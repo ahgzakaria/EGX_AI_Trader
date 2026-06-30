@@ -2,7 +2,7 @@ import pandas as pd
 
 from core.data_loader import load_data
 from indicators.technical import calculate_indicators
-from scoring import score_stock
+from core.scoring import score_stock
 
 
 def scan_symbols(file_path):
@@ -25,7 +25,13 @@ def scan_symbols(file_path):
 
                 "Ticker": symbol,
 
-                "Price": float(df["Close"].iloc[-1]),
+                "Price": round(float(df["Close"].iloc[-1]), 2),
+
+                "Signal": result["Signal"],
+
+                "Stars": result["Stars"],
+
+                "Confidence": result["Confidence"],
 
                 "Score": result["Score"],
 
@@ -49,9 +55,7 @@ def scan_symbols(file_path):
 
                 "RR": result["RR"],
 
-                "Signal": result["Signal"],
-
-                "Stars": result["Stars"]
+                "Reasons": " | ".join(result["Reasons"])
 
             })
 
@@ -59,6 +63,9 @@ def scan_symbols(file_path):
 
             print(f"{symbol} -> {e}")
 
-    results.sort(key=lambda x: x["Score"], reverse=True)
+    results.sort(
+        key=lambda x: (x["Confidence"], x["Score"]),
+        reverse=True
+    )
 
     return results

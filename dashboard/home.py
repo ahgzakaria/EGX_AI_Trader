@@ -20,17 +20,33 @@ def show_dashboard():
         watch = (df["Signal"] == "WATCH").sum()
         avoid = (df["Signal"] == "AVOID").sum()
 
-        c1, c2, c3, c4 = st.columns(4)
+        avg_confidence = round(df["Confidence"].mean(), 1)
+
+        c1, c2, c3, c4, c5 = st.columns(5)
 
         c1.metric("🟢 BUY", buy)
         c2.metric("🟡 WATCH", watch)
         c3.metric("🔴 AVOID", avoid)
         c4.metric("📈 Stocks", len(df))
+        c5.metric("🎯 Avg Confidence", f"{avg_confidence}%")
 
         st.divider()
 
+        display = df[
+            [
+                "Ticker",
+                "Signal",
+                "Stars",
+                "Confidence",
+                "Score",
+                "Price",
+                "RR",
+                "Reasons",
+            ]
+        ]
+
         st.dataframe(
-            df,
+            display,
             use_container_width=True,
             hide_index=True,
         )
