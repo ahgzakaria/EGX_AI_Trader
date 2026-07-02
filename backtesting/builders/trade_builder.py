@@ -14,6 +14,10 @@ class TradeBuilder:
 
         return Trade(
 
+            # ==================================
+            # Basic
+            # ==================================
+
             symbol=context.symbol,
 
             entry_date=context.entry_date,
@@ -34,6 +38,10 @@ class TradeBuilder:
 
             profit=context.profit,
 
+            # ==================================
+            # Strategy Scores
+            # ==================================
+
             score=signal["Score"],
             confidence=signal["Confidence"],
 
@@ -43,11 +51,58 @@ class TradeBuilder:
             candle_score=signal["Candles"],
             breakout_score=signal["Breakout"],
 
+            # ==================================
+            # Raw Indicators
+            # ==================================
+
             rsi=round(float(candle["RSI"]), 2),
+
             adx=round(float(candle["ADX"]), 2),
-            atr=round(float(candle["ATR"]), 2),
+
+            atr=round(float(candle["ATR"]), 4),
+
             macd=round(float(candle["MACD"]), 4),
 
-            reasons=" | ".join(signal["Reasons"])
+            # ==================================
+            # AI Features
+            # ==================================
+
+            ema20_dist=round(
+                float(candle["EMA20_DIST"]),
+                4
+            ),
+
+            ema50_dist=round(
+                float(candle["EMA50_DIST"]),
+                4
+            ),
+
+            ema200_dist=round(
+                float(candle["EMA200_DIST"]),
+                4
+            ),
+
+            volume_ratio=round(
+                float(candle["VOLUME_RATIO"]),
+                4
+            ),
+
+            atr_percent=round(
+                float(candle["ATR_PERCENT"]),
+                4
+            ),
+
+            bb_position=round(
+                float(candle["BB_POSITION"]),
+                4
+            ),
+
+            obv=float(candle["OBV"]),
+
+            # ==================================
+
+            reasons=" | ".join(
+                signal["Reasons"]
+            )
 
         )

@@ -25,7 +25,6 @@ def show_dashboard():
         if not results:
 
             st.error("No data found.")
-
             return
 
         df = pd.DataFrame(results)
@@ -36,7 +35,7 @@ def show_dashboard():
 
         df = df.sort_values(
 
-            ["Confidence", "Score"],
+            ["AIProbability", "Confidence", "Score"],
 
             ascending=False
 
@@ -47,40 +46,22 @@ def show_dashboard():
         # ===================================
 
         buy = (df["Signal"] == "BUY").sum()
-
         watch = (df["Signal"] == "WATCH").sum()
-
         avoid = (df["Signal"] == "AVOID").sum()
 
-        avg_confidence = round(
+        avg_confidence = round(df["Confidence"].mean(), 1)
+        avg_score = round(df["Score"].mean(), 1)
+        avg_ai = round(df["AIProbability"].mean(), 1)
 
-            df["Confidence"].mean(),
-
-            1
-
-        )
-
-        avg_score = round(
-
-            df["Score"].mean(),
-
-            1
-
-        )
-
-        c1, c2, c3, c4, c5, c6 = st.columns(6)
+        c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 
         c1.metric("🟢 BUY", buy)
-
         c2.metric("🟡 WATCH", watch)
-
         c3.metric("🔴 AVOID", avoid)
-
         c4.metric("📈 Stocks", len(df))
-
         c5.metric("🎯 Avg Confidence", f"{avg_confidence}%")
-
         c6.metric("⭐ Avg Score", avg_score)
+        c7.metric("🤖 Avg AI", f"{avg_ai}%")
 
         st.divider()
 
@@ -88,9 +69,7 @@ def show_dashboard():
         # Top BUY
         # ===================================
 
-        top_buy = df[
-            df["Signal"] == "BUY"
-        ].head(10)
+        top_buy = df[df["Signal"] == "BUY"].head(10)
 
         if len(top_buy):
 
@@ -103,17 +82,13 @@ def show_dashboard():
                     [
 
                         "Rank",
-
                         "Rating",
-
                         "Ticker",
-
+                        "AIProbability",
+                        "AILevel",
                         "Confidence",
-
                         "Score",
-
                         "Price",
-
                         "RR"
 
                     ]
@@ -121,7 +96,6 @@ def show_dashboard():
                 ],
 
                 use_container_width=True,
-
                 hide_index=True
 
             )
@@ -137,11 +111,8 @@ def show_dashboard():
             [
 
                 "ALL",
-
                 "BUY",
-
                 "WATCH",
-
                 "AVOID"
 
             ]
@@ -150,11 +121,11 @@ def show_dashboard():
 
         if signal_filter != "ALL":
 
-            df = df[
+            df = df[df["Signal"] == signal_filter]
 
-                df["Signal"] == signal_filter
-
-            ]
+        # ===================================
+        # Market Scan
+        # ===================================
 
         st.subheader("📋 Market Scan")
 
@@ -163,21 +134,18 @@ def show_dashboard():
             [
 
                 "Rank",
-
                 "Rating",
-
                 "Ticker",
-
                 "Signal",
-
                 "Stars",
 
-                "Confidence",
+                "AIProbability",
+                "AILevel",
 
+                "Confidence",
                 "Score",
 
                 "Price",
-
                 "RR",
 
                 "Reasons"

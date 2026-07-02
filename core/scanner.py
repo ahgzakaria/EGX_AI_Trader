@@ -4,10 +4,14 @@ from core.data_loader import load_data
 from indicators.technical import calculate_indicators
 from core.scoring import score_stock
 
+from ai.predictor import AIPredictor
+
 
 def scan_symbols(file_path):
 
     symbols = pd.read_csv(file_path)["Ticker"].tolist()
+
+    predictor = AIPredictor()
 
     results = []
 
@@ -22,6 +26,12 @@ def scan_symbols(file_path):
             i = len(df) - 1
 
             result = score_stock(df, i)
+
+            # ==========================
+            # AI Prediction
+            # ==========================
+
+            ai = predictor.predict(result)
 
             # ==========================
             # Rating
@@ -56,6 +66,15 @@ def scan_symbols(file_path):
                 "Confidence": result["Confidence"],
                 "Score": result["Score"],
 
+                # ==========================
+                # AI
+                # ==========================
+
+                "AIProbability": ai["Probability"],
+                "AILevel": ai["AILevel"],
+
+                # ==========================
+
                 "Trend": result["Trend"],
                 "Volume": result["Volume"],
                 "Momentum": result["Momentum"],
@@ -86,10 +105,15 @@ def scan_symbols(file_path):
 
             print(f"{symbol} -> {e}")
 
+    # ==========================
+    # Smart Sorting
+    # ==========================
+
     results.sort(
 
         key=lambda x: (
 
+            x["AIProbability"],
             x["Confidence"],
             x["Score"],
             x["RR"]
@@ -100,7 +124,10 @@ def scan_symbols(file_path):
 
     )
 
+    # ==========================
     # Rank
+    # ==========================
+
     for rank, stock in enumerate(results, start=1):
 
         stock["Rank"] = rank

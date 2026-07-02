@@ -30,7 +30,7 @@ class Trade:
     profit: float
 
     # ==========================
-    # Strategy Snapshot
+    # Strategy Scores
     # ==========================
 
     score: int
@@ -42,10 +42,32 @@ class Trade:
     candle_score: int
     breakout_score: int
 
+    # ==========================
+    # Raw Indicators
+    # ==========================
+
     rsi: float
     adx: float
     atr: float
     macd: float
+
+    # ==========================
+    # AI Features
+    # ==========================
+
+    ema20_dist: float
+    ema50_dist: float
+    ema200_dist: float
+
+    volume_ratio: float
+
+    atr_percent: float
+
+    bb_position: float
+
+    obv: float
+
+    # ==========================
 
     reasons: str
 
@@ -62,6 +84,8 @@ class Trade:
     profit_percent: float = field(init=False)
 
     r_multiple: float = field(init=False)
+
+    # ==========================
 
     def __post_init__(self):
 
@@ -81,7 +105,7 @@ class Trade:
                 exit - entry
             ).days
 
-        except:
+        except Exception:
 
             self.holding_days = 0
 
