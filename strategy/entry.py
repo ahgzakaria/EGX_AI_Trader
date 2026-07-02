@@ -1,56 +1,198 @@
-def entry_signal(df):
+def entry_signal(df, i):
 
-    last = df.iloc[-1]
+    last = df.iloc[i]
 
-    support = float(df["Low"].rolling(20).min().iloc[-1])
-    resistance = float(df["High"].rolling(20).max().iloc[-1])
+    start = max(0, i - 19)
+
+    support = float(df["Low"].iloc[start:i + 1].min())
+
+    # المقاومة بدون الشمعة الحالية
+    if i > 0:
+        resistance = float(df["High"].iloc[start:i].max())
+    else:
+        resistance = float(df["High"].iloc[0])
 
     price = float(last["Close"])
+    high = float(last["High"])
+    low = float(last["Low"])
+
     atr = float(last["ATR"])
 
-    buy_low = max(price - atr * 0.5, support)
-    buy_high = price
-
-    stop_loss = support - atr * 0.5
-
-    target1 = resistance
-    target2 = resistance + atr * 2
-
-    risk = price - stop_loss
-    reward = target2 - price
-
-    rr = round(reward / risk, 2) if risk > 0 else 0
+    volume = float(last["Volume"])
+    avg_volume = float(df["Volume"].iloc[start:i + 1].mean())
 
     score = 0
     confidence = 0
     reasons = []
 
-    if rr >= 3:
-        score += 20
-        confidence += 20
-        reasons.append("Excellent Risk/Reward")
+    # ==================================
+    # Breakout
+    # ==================================
 
-    elif rr >= 2:
-        score += 15
-        confidence += 15
-        reasons.append("Good Risk/Reward")
+    breakout = (
+
+        price > resistance
+        and volume > avg_volume * 1.2
+
+    )
+
+    if breakout:
+
+        score += 8
+        confidence += 10
+
+        reasons.append("Confirmed Breakout")
+
+    # ==================================
+    # Pullback
+    # ==================================
+
+    if abs(price - support) <= atr:
+
+        score += 6
+        confidence += 8
+
+        reasons.append("Near Support")
+
+    # ==================================
+    # Strong Close
+    # ==================================
+
+    candle_range = high - low
+
+    if candle_range > 0:
+
+        close_position = (price - low) / candle_range
+
+        if close_position >= 0.80:
+
+            score += 4
+            confidence += 5
+
+            reasons.append("Strong Close")
+
+    # ==================================
+    # Buy Zone
+    # ==================================
+
+    buy_low = round(
+
+        max(
+
+            support,
+
+            price - atr * 0.30
+
+        ),
+
+        2
+
+    )
+
+    buy_high = round(price, 2)
+
+    # ==================================
+    # Stop Loss
+    # ==================================
+
+    stop_loss = round(
+
+        support - atr * 0.30,
+
+        2
+
+    )
+
+    # ==================================
+    # Risk
+    # ==================================
+
+    risk = buy_high - stop_loss
+
+    if risk <= 0:
+
+        return {
+
+            "score": 0,
+
+            "confidence": 0,
+
+            "reasons": ["Invalid Risk"],
+
+            "BuyLow": buy_low,
+            "BuyHigh": buy_high,
+
+            "StopLoss": stop_loss,
+
+            "Target1": buy_high,
+            "Target2": buy_high,
+
+            "RR": 0
+
+        }
+
+    # ==================================
+    # Targets (Risk Based)
+    # ==================================
+
+    target1 = round(
+
+        buy_high + risk,
+
+        2
+
+    )
+
+    target2 = round(
+
+        buy_high + risk * 2,
+
+        2
+
+    )
+
+    rr = round(
+
+        (target2 - buy_high) / risk,
+
+        2
+
+    )
+
+    # ==================================
+    # RR Score
+    # ==================================
+
+    if rr >= 2:
+
+        score += 8
+        confidence += 8
+
+        reasons.append("Excellent RR")
 
     elif rr >= 1.5:
-        score += 10
-        confidence += 10
-        reasons.append("Acceptable Risk/Reward")
+
+        score += 4
+        confidence += 4
+
+        reasons.append("Good RR")
 
     return {
+
         "score": score,
+
         "confidence": confidence,
+
         "reasons": reasons,
 
-        "BuyLow": round(buy_low, 2),
-        "BuyHigh": round(buy_high, 2),
-        "StopLoss": round(stop_loss, 2),
+        "BuyLow": buy_low,
+        "BuyHigh": buy_high,
 
-        "Target1": round(target1, 2),
-        "Target2": round(target2, 2),
+        "StopLoss": stop_loss,
+
+        "Target1": target1,
+        "Target2": target2,
 
         "RR": rr
+
     }

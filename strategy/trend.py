@@ -1,39 +1,56 @@
-def trend_score(df):
+def trend_score(df, i):
 
-    last = df.iloc[-1]
+    last = df.iloc[i]
 
     score = 0
     confidence = 0
     reasons = []
 
+    ema20 = last["EMA20"]
+    ema50 = last["EMA50"]
+    ema200 = last["EMA200"]
+    close = last["Close"]
+
     # ترتيب المتوسطات
-    if last["EMA20"] > last["EMA50"] > last["EMA200"]:
-        score += 40
-        confidence += 30
-        reasons.append("EMA20 > EMA50 > EMA200")
-
-    # السعر فوق EMA20
-    if last["Close"] > last["EMA20"]:
+    if ema20 > ema50 > ema200:
         score += 20
-        confidence += 10
-        reasons.append("Price Above EMA20")
+        confidence += 20
+        reasons.append("Perfect EMA Alignment")
 
-    # السعر فوق EMA50
-    if last["Close"] > last["EMA50"]:
-        score += 20
-        confidence += 10
-        reasons.append("Price Above EMA50")
+    elif ema20 > ema50:
+        score += 12
+        confidence += 12
+        reasons.append("Bullish EMA Alignment")
 
-    # السعر فوق EMA200
-    if last["Close"] > last["EMA200"]:
-        score += 20
-        confidence += 10
-        reasons.append("Price Above EMA200")
+    # السعر فوق المتوسطات
+    if close > ema20:
+        score += 3
+        confidence += 5
+        reasons.append("Above EMA20")
 
-    confidence = min(confidence, 60)
+    if close > ema50:
+        score += 3
+        confidence += 5
+        reasons.append("Above EMA50")
+
+    if close > ema200:
+        score += 4
+        confidence += 10
+        reasons.append("Above EMA200")
+
+    # قوة الاتجاه
+    trend_strength = ((ema20 - ema50) / ema50) * 100
+
+    if trend_strength >= 3:
+        confidence += 10
+        reasons.append("Strong Trend")
+
+    elif trend_strength >= 1:
+        confidence += 5
+        reasons.append("Moderate Trend")
 
     return {
         "score": score,
-        "confidence": confidence,
+        "confidence": min(confidence, 60),
         "reasons": reasons
     }

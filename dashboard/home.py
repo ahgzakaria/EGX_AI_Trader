@@ -2,51 +2,222 @@ import streamlit as st
 import pandas as pd
 
 from core.scanner import scan_symbols
+from dashboard.stock_details import show_stock_details
 
 
 def show_dashboard():
 
-    st.title("📈 EGX AI Trader")
+    st.set_page_config(
+        page_title="EGX AI Trader",
+        page_icon="📈",
+        layout="wide"
+    )
 
+    st.title("📈 EGX AI Trader")
     st.caption("Egyptian Stock Market AI Scanner")
 
     if st.button("🔍 Scan Market", use_container_width=True):
 
-        results = scan_symbols("data/symbols.csv")
+        with st.spinner("Scanning EGX Stocks..."):
+
+            results = scan_symbols("data/symbols.csv")
+
+        if not results:
+
+            st.error("No data found.")
+
+            return
 
         df = pd.DataFrame(results)
 
+        # ===================================
+        # Sort
+        # ===================================
+
+        df = df.sort_values(
+
+            ["Confidence", "Score"],
+
+            ascending=False
+
+        ).reset_index(drop=True)
+
+        # ===================================
+        # Statistics
+        # ===================================
+
         buy = (df["Signal"] == "BUY").sum()
+
         watch = (df["Signal"] == "WATCH").sum()
+
         avoid = (df["Signal"] == "AVOID").sum()
 
-        avg_confidence = round(df["Confidence"].mean(), 1)
+        avg_confidence = round(
 
-        c1, c2, c3, c4, c5 = st.columns(5)
+            df["Confidence"].mean(),
+
+            1
+
+        )
+
+        avg_score = round(
+
+            df["Score"].mean(),
+
+            1
+
+        )
+
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
 
         c1.metric("🟢 BUY", buy)
+
         c2.metric("🟡 WATCH", watch)
+
         c3.metric("🔴 AVOID", avoid)
+
         c4.metric("📈 Stocks", len(df))
+
         c5.metric("🎯 Avg Confidence", f"{avg_confidence}%")
+
+        c6.metric("⭐ Avg Score", avg_score)
 
         st.divider()
 
-        display = df[
+        # ===================================
+        # Top BUY
+        # ===================================
+
+        top_buy = df[
+            df["Signal"] == "BUY"
+        ].head(10)
+
+        if len(top_buy):
+
+            st.subheader("🟢 Top BUY Opportunities")
+
+            st.dataframe(
+
+                top_buy[
+
+                    [
+
+                        "Rank",
+
+                        "Rating",
+
+                        "Ticker",
+
+                        "Confidence",
+
+                        "Score",
+
+                        "Price",
+
+                        "RR"
+
+                    ]
+
+                ],
+
+                use_container_width=True,
+
+                hide_index=True
+
+            )
+
+        # ===================================
+        # Filter
+        # ===================================
+
+        signal_filter = st.selectbox(
+
+            "Signal Filter",
+
             [
-                "Ticker",
-                "Signal",
-                "Stars",
-                "Confidence",
-                "Score",
-                "Price",
-                "RR",
-                "Reasons",
+
+                "ALL",
+
+                "BUY",
+
+                "WATCH",
+
+                "AVOID"
+
             ]
+
+        )
+
+        if signal_filter != "ALL":
+
+            df = df[
+
+                df["Signal"] == signal_filter
+
+            ]
+
+        st.subheader("📋 Market Scan")
+
+        display = df[
+
+            [
+
+                "Rank",
+
+                "Rating",
+
+                "Ticker",
+
+                "Signal",
+
+                "Stars",
+
+                "Confidence",
+
+                "Score",
+
+                "Price",
+
+                "RR",
+
+                "Reasons"
+
+            ]
+
         ]
 
         st.dataframe(
+
             display,
+
             use_container_width=True,
-            hide_index=True,
+
+            hide_index=True
+
         )
+
+        # ===================================
+        # Stock Details
+        # ===================================
+
+        st.divider()
+
+        st.subheader("📊 Stock Details")
+
+        selected = st.selectbox(
+
+            "Choose a Stock",
+
+            df["Ticker"].tolist()
+
+        )
+
+        stock = next(
+
+            s for s in results
+
+            if s["Ticker"] == selected
+
+        )
+
+        show_stock_details(stock)

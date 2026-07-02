@@ -1,29 +1,46 @@
-def support_resistance(df, window=20):
+def support_resistance(df, i, window=20):
 
-    support = float(df["Low"].rolling(window).min().iloc[-1])
-    resistance = float(df["High"].rolling(window).max().iloc[-1])
-    current_price = float(df["Close"].iloc[-1])
+    start = max(0, i - window + 1)
+
+    support = float(df["Low"].iloc[start:i + 1].min())
+    resistance = float(df["High"].iloc[start:i + 1].max())
+
+    current_price = float(df["Close"].iloc[i])
 
     score = 0
     confidence = 0
     reasons = []
 
-    # قريب من الدعم (أقل من 3%)
-    if current_price <= support * 1.03:
-        score += 20
-        confidence += 15
-        reasons.append("Near Support")
+    distance_to_support = (
+        (current_price - support) / support
+    ) * 100
 
-    # بعيد عن المقاومة (أكثر من 5%)
-    if current_price < resistance * 0.95:
+    distance_to_resistance = (
+        (resistance - current_price) / current_price
+    ) * 100
+
+    # قريب من الدعم
+    if distance_to_support <= 3:
         score += 10
         confidence += 10
-        reasons.append("Room To Resistance")
+        reasons.append("Near Support")
+
+    # مساحة صعود جيدة
+    if distance_to_resistance >= 5:
+        score += 5
+        confidence += 5
+        reasons.append("Good Upside Potential")
 
     return {
+
         "score": score,
+
         "confidence": confidence,
+
         "reasons": reasons,
-        "support": support,
-        "resistance": resistance
+
+        "support": round(support, 2),
+
+        "resistance": round(resistance, 2)
+
     }
