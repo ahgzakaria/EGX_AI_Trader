@@ -2,6 +2,7 @@ import streamlit as st
 
 from config.settings_manager import settings
 from services.backtest_service import run_backtest
+from ai.trainer import AITrainer
 
 
 def show_settings():
@@ -163,55 +164,90 @@ def show_settings():
             use_container_width=True
         ):
 
-            with st.spinner("Running Backtest..."):
+            progress = st.progress(0)
+            status = st.empty()
+            percent_text = st.empty()
+            elapsed_text = st.empty()
+            result = None
+     
+            for update in run_backtest():
 
-                result = run_backtest()
+                if update["type"] == "progress":
 
-            summary = result["summary"]
+                   progress.progress(
+                       update["current"] / update["total"]
+                   )
+
+                   status.info(
+                       f"Current Symbol : {update['symbol']}"
+                   )
+
+                   percent_text.write(
+                       f"Progress : {update['current']} / {update['total']} "
+                       f"({update['percent']}%)"
+                   )
+
+                elif update["type"] == "finished":
+
+                    result = update
+
+            progress.empty()
+            status.empty()
+            percent_text.empty()
+
+            elapsed_text.success(
+                f"Finished in {result['elapsed']}"
+            )
 
             st.success("Backtest Finished Successfully")
 
-            c1, c2, c3 = st.columns(3)
-
-            c1.metric(
-                "Trades",
-                summary["Trades"]
-            )
-
-            c2.metric(
-                "Win Rate",
-                f'{summary["WinRate"]}%'
-            )
-
-            c3.metric(
-                "Profit Factor",
-                summary["ProfitFactor"]
-            )
+            summary = result["summary"]
 
             c1, c2, c3 = st.columns(3)
 
-            c1.metric(
-                "Net Profit",
-                summary["NetProfit"]
-            )
+            c1.metric("Trades", summary["Trades"])
+            c2.metric("Win Rate", f"{summary['WinRate']}%")
+            c3.metric("Profit Factor", summary["ProfitFactor"])
 
-            c2.metric(
-                "Return %",
-                summary["TotalReturn"]
-            )
+            c1, c2, c3 = st.columns(3)
 
-            c3.metric(
-                "Drawdown",
-                summary["MaxDrawdown"]
-            )
+            c1.metric("Net Profit", summary["NetProfit"])
+            c2.metric("Return %", summary["TotalReturn"])
+            c3.metric("Drawdown", summary["MaxDrawdown"])
 
         st.divider()
 
-        st.button(
+        if st.button(
             "🤖 Train AI",
-            use_container_width=True,
-            disabled=True
-        )
+            use_container_width=True
+        ):
+
+            with st.spinner("Training AI Model..."):
+
+                trainer = AITrainer()
+
+                result = trainer.train()
+
+                trainer.save()
+
+            st.success("AI Training Completed Successfully")
+
+            c1, c2, c3 = st.columns(3)
+
+            c1.metric(
+                "Accuracy",
+                f"{result['accuracy']}%"
+            )
+
+            c2.metric(
+                "Cross Validation",
+                f"{result['cv_mean']}%"
+            )
+
+            c3.metric(
+                "Std Deviation",
+                f"{result['cv_std']}%"
+            )
 
         st.button(
             "📂 Open Reports",
@@ -226,10 +262,7 @@ def show_settings():
 
             settings.reset()
 
-            st.success(
-                "Settings restored successfully."
-            )
-    st.divider()
+            st.success("Settings restored successfully.")
 
     # ==================================
     # Save

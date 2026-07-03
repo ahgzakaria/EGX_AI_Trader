@@ -84,25 +84,11 @@ class AITrainer:
 
         for i, score in enumerate(scores, start=1):
 
-            print(
-
-                f"Fold {i} : {score:.4f}"
-
-            )
+            print(f"Fold {i} : {score:.4f}")
 
         print()
-
-        print(
-
-            f"Average Accuracy : {scores.mean():.4f}"
-
-        )
-
-        print(
-
-            f"Std Deviation    : {scores.std():.4f}"
-
-        )
+        print(f"Average Accuracy : {scores.mean():.4f}")
+        print(f"Std Deviation    : {scores.std():.4f}")
 
         # ==================================
         # Final Train/Test
@@ -148,11 +134,7 @@ class AITrainer:
         print("TEST SET")
         print("==============================")
 
-        print(
-
-            f"Accuracy : {accuracy:.4f}\n"
-
-        )
+        print(f"Accuracy : {accuracy:.4f}\n")
 
         print(
 
@@ -220,7 +202,19 @@ class AITrainer:
 
         )
 
-        return self.model
+        return {
+
+            "model": self.model,
+
+            "accuracy": round(accuracy * 100, 2),
+
+            "cv_mean": round(scores.mean() * 100, 2),
+
+            "cv_std": round(scores.std() * 100, 2),
+
+            "features": importance
+
+        }
 
     # ==================================
 
@@ -259,6 +253,8 @@ if __name__ == "__main__":
 
     trainer = AITrainer()
 
-    trainer.train()
+    result = trainer.train()
 
     trainer.save()
+
+    print(result)

@@ -26,7 +26,27 @@ def run_backtest():
 
     errors = []
 
+    total = len(symbols)
+
     for index, symbol in enumerate(symbols, start=1):
+
+        # ==============================
+        # Progress Update
+        # ==============================
+
+        yield {
+
+            "type": "progress",
+
+            "current": index,
+
+            "total": total,
+
+            "percent": round(index / total * 100, 1),
+
+            "symbol": symbol
+
+        }
 
         try:
 
@@ -56,10 +76,6 @@ def run_backtest():
 
     exit_reasons = stats.exit_reasons()
 
-    # ==================================
-    # Save Reports
-    # ==================================
-
     report = BacktestReport(all_trades)
 
     report.save_all()
@@ -70,13 +86,19 @@ def run_backtest():
         timedelta(seconds=elapsed_seconds)
     )
 
-    return {
+    # ==============================
+    # Final Result
+    # ==============================
+
+    yield {
+
+        "type": "finished",
 
         "summary": summary,
 
         "exit_reasons": exit_reasons,
 
-        "symbols": len(symbols),
+        "symbols": total,
 
         "successful": successful,
 
@@ -88,6 +110,6 @@ def run_backtest():
 
         "elapsed": elapsed,
 
-        "elapsed_seconds": elapsed_seconds,
+        "elapsed_seconds": elapsed_seconds
 
     }
