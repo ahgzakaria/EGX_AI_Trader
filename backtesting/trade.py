@@ -43,7 +43,7 @@ class Trade:
     breakout_score: int
 
     # ==========================
-    # Raw Indicators
+    # Original Indicators
     # ==========================
 
     rsi: float
@@ -52,7 +52,7 @@ class Trade:
     macd: float
 
     # ==========================
-    # AI Features
+    # AI Features V1
     # ==========================
 
     ema20_dist: float
@@ -68,11 +68,37 @@ class Trade:
     obv: float
 
     # ==========================
+    # AI Features V2
+    # ==========================
+
+    rsi7: float
+
+    ema20_slope: float
+    ema50_slope: float
+
+    rsi_slope: float
+
+    adx_rising: float
+
+    bb_width: float
+
+    obv_slope: float
+
+    dist_high20: float
+    dist_low20: float
+
+    # ==========================
+    # AI Features V3
+    # ==========================
+
+    macd_cross_age: int
+
+    # ==========================
 
     reasons: str
 
     # ==========================
-    # Calculated Fields
+    # Calculated
     # ==========================
 
     holding_days: int = field(init=False)
@@ -110,27 +136,43 @@ class Trade:
             self.holding_days = 0
 
         self.risk_per_share = round(
+
             abs(
+
                 self.entry_price -
+
                 self.stop_loss
+
             ),
+
             2
+
         )
 
         self.reward_per_share = round(
+
             self.exit_price -
+
             self.entry_price,
+
             2
+
         )
 
         if self.entry_price > 0:
 
             self.profit_percent = round(
+
                 (
+
                     self.profit /
+
                     self.entry_price
+
                 ) * 100,
+
                 2
+
             )
 
         else:
@@ -140,9 +182,13 @@ class Trade:
         if self.risk_per_share > 0:
 
             self.r_multiple = round(
+
                 self.reward_per_share /
+
                 self.risk_per_share,
+
                 2
+
             )
 
         else:

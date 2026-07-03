@@ -1,2 +1,2 @@
 ﻿Trades,Wins,Losses,BreakEven,WinRate,NetProfit,GrossProfit,GrossLoss,ProfitFactor,AverageWin,AverageLoss,Expectancy,AverageHoldingDays,AverageR,BestTrade,WorstTrade,LargestWinner,LargestLoser,InitialCapital,FinalCapital,TotalReturn,MaxDrawdown
-8,7,1,0,87.5,15.26,16.78,1.52,11.04,2.4,1.52,1.91,26.75,0.33,7.02,-1.32,ORHD.CA,EFID.CA,100000,100015.26,0.02,0.0
+1913,789,1124,0,41.24,39.5,2448.44,2408.94,1.02,3.1,2.14,0.02,15.76,0.06,62.87,-83.39,AXPH.CA,MFPC.CA,100000,100039.5,0.04,0.17

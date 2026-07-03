@@ -1,0 +1,1142 @@
+HTTP Error 404: {"quoteSummary":{"result":null,"error":{"code":"Not Found","description":"Quote not found for symbol: AGIN.CA"}}}
+$AGIN.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['AGIN.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$AITG.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['AITG.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$AIVC.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['AIVC.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$ALEX.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['ALEX.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$APPC.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['APPC.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$ARPI.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['ARPI.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$AUTO.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['AUTO.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$BSRF.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['BSRF.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$DCRC.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['DCRC.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$DIFC.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['DIFC.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$EITP.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['EITP.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$ESGI.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['ESGI.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$GTHE.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['GTHE.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$HCFI.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['HCFI.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$IRAX.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['IRAX.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$MBEN.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['MBEN.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$MNHD.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['MNHD.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$NBKE.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['NBKE.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$NCIN.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['NCIN.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$NCMP.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['NCMP.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$NRPD.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['NRPD.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$PACH.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['PACH.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$PIOH.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['PIOH.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$PORT.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['PORT.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$PSAD.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['PSAD.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$PTCC.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['PTCC.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$QNBA.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['QNBA.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$SBAG.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['SBAG.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$SMPP.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['SMPP.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$SNFI.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['SNFI.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$SRWA.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['SRWA.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$TORA.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['TORA.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$UNBE.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['UNBE.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$UNFO.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['UNFO.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$UTOP.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['UTOP.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$VERT.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['VERT.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$VODE.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['VODE.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+$WATP.CA: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+
+1 Failed download:
+['WATP.CA']: possibly delisted; no price data found  (period=10y) (Yahoo error = "No data found, symbol may be delisted")
+============================================================
+EGX AI Trader Backtest
+============================================================
+Total Symbols : 236
+[1/236] AALR.CA
+ERROR -> AALR.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[2/236] ABUK.CA
+ERROR -> ABUK.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[3/236] ACAMD.CA
+ERROR -> ACAMD.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[4/236] ACGC.CA
+ERROR -> ACGC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[5/236] ACRO.CA
+ERROR -> ACRO.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[6/236] ADCI.CA
+ERROR -> ADCI.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[7/236] ADIB.CA
+ERROR -> ADIB.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[8/236] ADPC.CA
+ERROR -> ADPC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[9/236] ADRI.CA
+ERROR -> ADRI.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[10/236] AFDI.CA
+ERROR -> AFDI.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[11/236] AFMC.CA
+ERROR -> AFMC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[12/236] AGIN.CA
+ERROR -> AGIN.CA
+No data found for AGIN.CA
+------------------------------------------------------------
+[13/236] AIFI.CA
+ERROR -> AIFI.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[14/236] AIH.CA
+ERROR -> AIH.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[15/236] AITG.CA
+ERROR -> AITG.CA
+No data found for AITG.CA
+------------------------------------------------------------
+[16/236] AIVC.CA
+ERROR -> AIVC.CA
+No data found for AIVC.CA
+------------------------------------------------------------
+[17/236] AJWA.CA
+ERROR -> AJWA.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[18/236] ALCN.CA
+ERROR -> ALCN.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[19/236] ALEX.CA
+ERROR -> ALEX.CA
+No data found for ALEX.CA
+------------------------------------------------------------
+[20/236] ALUM.CA
+ERROR -> ALUM.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[21/236] AMER.CA
+ERROR -> AMER.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[22/236] AMES.CA
+ERROR -> AMES.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[23/236] AMIA.CA
+ERROR -> AMIA.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[24/236] AMOC.CA
+ERROR -> AMOC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[25/236] AMPI.CA
+ERROR -> AMPI.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[26/236] ANFI.CA
+ERROR -> ANFI.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[27/236] APPC.CA
+ERROR -> APPC.CA
+No data found for APPC.CA
+------------------------------------------------------------
+[28/236] APSW.CA
+ERROR -> APSW.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[29/236] ARCC.CA
+ERROR -> ARCC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[30/236] AREH.CA
+ERROR -> AREH.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[31/236] ARPI.CA
+ERROR -> ARPI.CA
+No data found for ARPI.CA
+------------------------------------------------------------
+[32/236] ARVA.CA
+ERROR -> ARVA.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[33/236] ASCM.CA
+ERROR -> ASCM.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[34/236] ATLC.CA
+ERROR -> ATLC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[35/236] ATQA.CA
+ERROR -> ATQA.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[36/236] AUTO.CA
+ERROR -> AUTO.CA
+No data found for AUTO.CA
+------------------------------------------------------------
+[37/236] AXPH.CA
+ERROR -> AXPH.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[38/236] BIGP.CA
+ERROR -> BIGP.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[39/236] BINV.CA
+ERROR -> BINV.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[40/236] BIOC.CA
+ERROR -> BIOC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[41/236] BSRF.CA
+ERROR -> BSRF.CA
+No data found for BSRF.CA
+------------------------------------------------------------
+[42/236] BTFH.CA
+ERROR -> BTFH.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[43/236] CAED.CA
+ERROR -> CAED.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[44/236] CANA.CA
+ERROR -> CANA.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[45/236] CCAP.CA
+ERROR -> CCAP.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[46/236] CCRS.CA
+ERROR -> CCRS.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[47/236] CEFM.CA
+ERROR -> CEFM.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[48/236] CERA.CA
+ERROR -> CERA.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[49/236] CICH.CA
+ERROR -> CICH.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[50/236] CIEB.CA
+ERROR -> CIEB.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[51/236] CIRA.CA
+ERROR -> CIRA.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[52/236] CLHO.CA
+ERROR -> CLHO.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[53/236] COMI.CA
+ERROR -> COMI.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[54/236] COSG.CA
+ERROR -> COSG.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[55/236] CPCI.CA
+ERROR -> CPCI.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[56/236] CSAG.CA
+ERROR -> CSAG.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[57/236] DAPH.CA
+ERROR -> DAPH.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[58/236] DCRC.CA
+ERROR -> DCRC.CA
+No data found for DCRC.CA
+------------------------------------------------------------
+[59/236] DEIN.CA
+ERROR -> DEIN.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[60/236] DIFC.CA
+ERROR -> DIFC.CA
+No data found for DIFC.CA
+------------------------------------------------------------
+[61/236] DOMT.CA
+ERROR -> DOMT.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[62/236] DSCW.CA
+ERROR -> DSCW.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[63/236] DTPP.CA
+ERROR -> DTPP.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[64/236] EALR.CA
+ERROR -> EALR.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[65/236] EASB.CA
+ERROR -> EASB.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[66/236] EAST.CA
+ERROR -> EAST.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[67/236] EBSC.CA
+ERROR -> EBSC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[68/236] ECAP.CA
+ERROR -> ECAP.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[69/236] EDBM.CA
+ERROR -> EDBM.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[70/236] EDFM.CA
+ERROR -> EDFM.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[71/236] EEII.CA
+ERROR -> EEII.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[72/236] EFIC.CA
+ERROR -> EFIC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[73/236] EFID.CA
+ERROR -> EFID.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[74/236] EGAL.CA
+ERROR -> EGAL.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[75/236] EGAS.CA
+ERROR -> EGAS.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[76/236] EGBE.CA
+ERROR -> EGBE.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[77/236] EGCH.CA
+ERROR -> EGCH.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[78/236] EGSA.CA
+ERROR -> EGSA.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[79/236] EGTS.CA
+ERROR -> EGTS.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[80/236] EHDR.CA
+ERROR -> EHDR.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[81/236] EITP.CA
+ERROR -> EITP.CA
+No data found for EITP.CA
+------------------------------------------------------------
+[82/236] EIUD.CA
+ERROR -> EIUD.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[83/236] EKHO.CA
+ERROR -> EKHO.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[84/236] ELEC.CA
+ERROR -> ELEC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[85/236] ELKA.CA
+ERROR -> ELKA.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[86/236] ELNA.CA
+ERROR -> ELNA.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[87/236] ELSH.CA
+ERROR -> ELSH.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[88/236] ELWA.CA
+ERROR -> ELWA.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[89/236] EMFD.CA
+ERROR -> EMFD.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[90/236] ENGC.CA
+ERROR -> ENGC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[91/236] EOSB.CA
+ERROR -> EOSB.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[92/236] EPCO.CA
+ERROR -> EPCO.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[93/236] EPPK.CA
+ERROR -> EPPK.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[94/236] ESGI.CA
+ERROR -> ESGI.CA
+No data found for ESGI.CA
+------------------------------------------------------------
+[95/236] ESRS.CA
+ERROR -> ESRS.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[96/236] ETEL.CA
+ERROR -> ETEL.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[97/236] ETRS.CA
+ERROR -> ETRS.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[98/236] EXPA.CA
+ERROR -> EXPA.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[99/236] FAIT.CA
+ERROR -> FAIT.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[100/236] FAITA.CA
+ERROR -> FAITA.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[101/236] FNAR.CA
+ERROR -> FNAR.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[102/236] FWRY.CA
+ERROR -> FWRY.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[103/236] GETO.CA
+ERROR -> GETO.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[104/236] GGCC.CA
+ERROR -> GGCC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[105/236] GIHD.CA
+ERROR -> GIHD.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[106/236] GMCI.CA
+ERROR -> GMCI.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[107/236] GOCO.CA
+ERROR -> GOCO.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[108/236] GPPL.CA
+ERROR -> GPPL.CA
+Not enough history (235 bars)
+------------------------------------------------------------
+[109/236] GRCA.CA
+ERROR -> GRCA.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[110/236] GSSC.CA
+ERROR -> GSSC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[111/236] GTHE.CA
+ERROR -> GTHE.CA
+No data found for GTHE.CA
+------------------------------------------------------------
+[112/236] GTWL.CA
+ERROR -> GTWL.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[113/236] HCFI.CA
+ERROR -> HCFI.CA
+No data found for HCFI.CA
+------------------------------------------------------------
+[114/236] HDBK.CA
+ERROR -> HDBK.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[115/236] HELI.CA
+ERROR -> HELI.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[116/236] HRHO.CA
+ERROR -> HRHO.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[117/236] ICFC.CA
+ERROR -> ICFC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[118/236] ICID.CA
+ERROR -> ICID.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[119/236] ICMI.CA
+ERROR -> ICMI.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[120/236] IDRE.CA
+ERROR -> IDRE.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[121/236] IEEC.CA
+ERROR -> IEEC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[122/236] IFAP.CA
+ERROR -> IFAP.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[123/236] INEG.CA
+ERROR -> INEG.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[124/236] INFI.CA
+ERROR -> INFI.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[125/236] IRAX.CA
+ERROR -> IRAX.CA
+No data found for IRAX.CA
+------------------------------------------------------------
+[126/236] IRON.CA
+ERROR -> IRON.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[127/236] ISMA.CA
+ERROR -> ISMA.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[128/236] ISPH.CA
+ERROR -> ISPH.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[129/236] JUFO.CA
+ERROR -> JUFO.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[130/236] KABO.CA
+ERROR -> KABO.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[131/236] KWIN.CA
+ERROR -> KWIN.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[132/236] KZPC.CA
+ERROR -> KZPC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[133/236] LCSW.CA
+ERROR -> LCSW.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[134/236] MBEN.CA
+ERROR -> MBEN.CA
+No data found for MBEN.CA
+------------------------------------------------------------
+[135/236] MBSC.CA
+ERROR -> MBSC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[136/236] MCQE.CA
+ERROR -> MCQE.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[137/236] MEGM.CA
+ERROR -> MEGM.CA
+Not enough history (8 bars)
+------------------------------------------------------------
+[138/236] MENA.CA
+ERROR -> MENA.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[139/236] MEPA.CA
+ERROR -> MEPA.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[140/236] MFPC.CA
+ERROR -> MFPC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[141/236] MFSC.CA
+ERROR -> MFSC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[142/236] MHOT.CA
+ERROR -> MHOT.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[143/236] MICH.CA
+ERROR -> MICH.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[144/236] MILS.CA
+ERROR -> MILS.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[145/236] MIPH.CA
+ERROR -> MIPH.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[146/236] MKIT.CA
+ERROR -> MKIT.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[147/236] MMAT.CA
+ERROR -> MMAT.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[148/236] MNHD.CA
+ERROR -> MNHD.CA
+No data found for MNHD.CA
+------------------------------------------------------------
+[149/236] MOED.CA
+ERROR -> MOED.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[150/236] MOIL.CA
+ERROR -> MOIL.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[151/236] MOIN.CA
+ERROR -> MOIN.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[152/236] MOSC.CA
+ERROR -> MOSC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[153/236] MPCI.CA
+ERROR -> MPCI.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[154/236] MPCO.CA
+ERROR -> MPCO.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[155/236] MPRC.CA
+ERROR -> MPRC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[156/236] MTIE.CA
+ERROR -> MTIE.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[157/236] NAHO.CA
+ERROR -> NAHO.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[158/236] NBKE.CA
+ERROR -> NBKE.CA
+No data found for NBKE.CA
+------------------------------------------------------------
+[159/236] NCCW.CA
+ERROR -> NCCW.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[160/236] NCIN.CA
+ERROR -> NCIN.CA
+No data found for NCIN.CA
+------------------------------------------------------------
+[161/236] NCMP.CA
+ERROR -> NCMP.CA
+No data found for NCMP.CA
+------------------------------------------------------------
+[162/236] NDRL.CA
+ERROR -> NDRL.CA
+Not enough history (32 bars)
+------------------------------------------------------------
+[163/236] NEDA.CA
+ERROR -> NEDA.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[164/236] NHPS.CA
+ERROR -> NHPS.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[165/236] NINH.CA
+ERROR -> NINH.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[166/236] NIPH.CA
+ERROR -> NIPH.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[167/236] NRPD.CA
+ERROR -> NRPD.CA
+No data found for NRPD.CA
+------------------------------------------------------------
+[168/236] OBRI.CA
+ERROR -> OBRI.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[169/236] OCDI.CA
+ERROR -> OCDI.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[170/236] ODIN.CA
+ERROR -> ODIN.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[171/236] OIH.CA
+ERROR -> OIH.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[172/236] OLFI.CA
+ERROR -> OLFI.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[173/236] ORAS.CA
+ERROR -> ORAS.CA
+Not enough history (45 bars)
+------------------------------------------------------------
+[174/236] ORHD.CA
+ERROR -> ORHD.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[175/236] ORWE.CA
+ERROR -> ORWE.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[176/236] PACH.CA
+ERROR -> PACH.CA
+No data found for PACH.CA
+------------------------------------------------------------
+[177/236] PHAR.CA
+ERROR -> PHAR.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[178/236] PHDC.CA
+ERROR -> PHDC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[179/236] PHTV.CA
+ERROR -> PHTV.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[180/236] PIOH.CA
+ERROR -> PIOH.CA
+No data found for PIOH.CA
+------------------------------------------------------------
+[181/236] PORT.CA
+ERROR -> PORT.CA
+No data found for PORT.CA
+------------------------------------------------------------
+[182/236] POUL.CA
+ERROR -> POUL.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[183/236] PRCL.CA
+ERROR -> PRCL.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[184/236] PRMH.CA
+ERROR -> PRMH.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[185/236] PSAD.CA
+ERROR -> PSAD.CA
+No data found for PSAD.CA
+------------------------------------------------------------
+[186/236] PTCC.CA
+ERROR -> PTCC.CA
+No data found for PTCC.CA
+------------------------------------------------------------
+[187/236] QNBA.CA
+ERROR -> QNBA.CA
+No data found for QNBA.CA
+------------------------------------------------------------
+[188/236] RACC.CA
+ERROR -> RACC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[189/236] RAKT.CA
+ERROR -> RAKT.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[190/236] RAYA.CA
+ERROR -> RAYA.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[191/236] REAC.CA
+ERROR -> REAC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[192/236] ROTO.CA
+ERROR -> ROTO.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[193/236] RREI.CA
+ERROR -> RREI.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[194/236] RTVC.CA
+ERROR -> RTVC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[195/236] RUBX.CA
+ERROR -> RUBX.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[196/236] SAIB.CA
+[197/236] SAUD.CA
+ERROR -> SAUD.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[198/236] SBAG.CA
+ERROR -> SBAG.CA
+No data found for SBAG.CA
+------------------------------------------------------------
+[199/236] SCEM.CA
+ERROR -> SCEM.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[200/236] SCFM.CA
+ERROR -> SCFM.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[201/236] SCTS.CA
+ERROR -> SCTS.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[202/236] SDTI.CA
+ERROR -> SDTI.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[203/236] SEIG.CA
+ERROR -> SEIG.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[204/236] SIMO.CA
+ERROR -> SIMO.CA
+Not enough history (0 bars)
+------------------------------------------------------------
+[205/236] SIPC.CA
+ERROR -> SIPC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[206/236] SKPC.CA
+ERROR -> SKPC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[207/236] SMFR.CA
+ERROR -> SMFR.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[208/236] SMPP.CA
+ERROR -> SMPP.CA
+No data found for SMPP.CA
+------------------------------------------------------------
+[209/236] SNFC.CA
+ERROR -> SNFC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[210/236] SNFI.CA
+ERROR -> SNFI.CA
+No data found for SNFI.CA
+------------------------------------------------------------
+[211/236] SPHT.CA
+ERROR -> SPHT.CA
+Not enough history (44 bars)
+------------------------------------------------------------
+[212/236] SPIN.CA
+ERROR -> SPIN.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[213/236] SPMD.CA
+ERROR -> SPMD.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[214/236] SRWA.CA
+ERROR -> SRWA.CA
+No data found for SRWA.CA
+------------------------------------------------------------
+[215/236] SUCE.CA
+ERROR -> SUCE.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[216/236] SUGR.CA
+ERROR -> SUGR.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[217/236] SVCE.CA
+ERROR -> SVCE.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[218/236] SWDY.CA
+ERROR -> SWDY.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[219/236] TMGH.CA
+ERROR -> TMGH.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[220/236] TORA.CA
+ERROR -> TORA.CA
+No data found for TORA.CA
+------------------------------------------------------------
+[221/236] TRTO.CA
+ERROR -> TRTO.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[222/236] UASG.CA
+ERROR -> UASG.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[223/236] UEFM.CA
+ERROR -> UEFM.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[224/236] UEGC.CA
+ERROR -> UEGC.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[225/236] UNBE.CA
+ERROR -> UNBE.CA
+No data found for UNBE.CA
+------------------------------------------------------------
+[226/236] UNFO.CA
+ERROR -> UNFO.CA
+No data found for UNFO.CA
+------------------------------------------------------------
+[227/236] UNIP.CA
+ERROR -> UNIP.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[228/236] UNIT.CA
+ERROR -> UNIT.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[229/236] UTOP.CA
+ERROR -> UTOP.CA
+No data found for UTOP.CA
+------------------------------------------------------------
+[230/236] VERT.CA
+ERROR -> VERT.CA
+No data found for VERT.CA
+------------------------------------------------------------
+[231/236] VODE.CA
+ERROR -> VODE.CA
+No data found for VODE.CA
+------------------------------------------------------------
+[232/236] WATP.CA
+ERROR -> WATP.CA
+No data found for WATP.CA
+------------------------------------------------------------
+[233/236] WCDF.CA
+ERROR -> WCDF.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[234/236] WKOL.CA
+ERROR -> WKOL.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[235/236] ZEOT.CA
+ERROR -> ZEOT.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+[236/236] ZMID.CA
+ERROR -> ZMID.CA
+'MACD_CROSS_AGE'
+------------------------------------------------------------
+
+
+============================================================
+BACKTEST SUMMARY
+============================================================
+Trades               : 0
+Wins                 : 0
+Losses               : 0
+BreakEven            : 0
+WinRate              : 0
+NetProfit            : 0
+GrossProfit          : 0
+GrossLoss            : 0
+ProfitFactor         : 0
+AverageWin           : 0
+AverageLoss          : 0
+Expectancy           : 0
+AverageHoldingDays   : 0
+AverageR             : 0
+BestTrade            : 0
+WorstTrade           : 0
+LargestWinner        : 
+LargestLoser         : 
+InitialCapital       : 100000
+FinalCapital         : 100000
+TotalReturn          : 0
+MaxDrawdown          : 0
+
+
+============================================================
+REPORTS
+============================================================
+Trades      : reports/backtest_results.csv
+Statistics  : reports/backtest_statistics.csv
+Equity      : reports/equity_curve.csv
+
+
+============================================================
+RUN SUMMARY
+============================================================
+Symbols Loaded     : 236
+Successful         : 1
+Failed             : 235
+Total Trades       : 0

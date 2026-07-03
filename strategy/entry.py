@@ -6,7 +6,6 @@ def entry_signal(df, i):
 
     support = float(df["Low"].iloc[start:i + 1].min())
 
-    # المقاومة بدون الشمعة الحالية
     if i > 0:
         resistance = float(df["High"].iloc[start:i].max())
     else:
@@ -32,7 +31,10 @@ def entry_signal(df, i):
     breakout = (
 
         price > resistance
-        and volume > avg_volume * 1.2
+
+        and
+
+        volume > avg_volume * 1.2
 
     )
 
@@ -62,7 +64,11 @@ def entry_signal(df, i):
 
     if candle_range > 0:
 
-        close_position = (price - low) / candle_range
+        close_position = (
+
+            price - low
+
+        ) / candle_range
 
         if close_position >= 0.80:
 
@@ -72,7 +78,7 @@ def entry_signal(df, i):
             reasons.append("Strong Close")
 
     # ==================================
-    # Buy Zone
+    # Entry
     # ==================================
 
     buy_low = round(
@@ -91,10 +97,6 @@ def entry_signal(df, i):
 
     buy_high = round(price, 2)
 
-    # ==================================
-    # Stop Loss
-    # ==================================
-
     stop_loss = round(
 
         support - atr * 0.30,
@@ -103,10 +105,6 @@ def entry_signal(df, i):
 
     )
 
-    # ==================================
-    # Risk
-    # ==================================
-
     risk = buy_high - stop_loss
 
     if risk <= 0:
@@ -114,9 +112,7 @@ def entry_signal(df, i):
         return {
 
             "score": 0,
-
             "confidence": 0,
-
             "reasons": ["Invalid Risk"],
 
             "BuyLow": buy_low,
@@ -132,12 +128,12 @@ def entry_signal(df, i):
         }
 
     # ==================================
-    # Targets (Risk Based)
+    # Dynamic Targets
     # ==================================
 
     target1 = round(
 
-        buy_high + risk,
+        resistance,
 
         2
 
@@ -145,15 +141,17 @@ def entry_signal(df, i):
 
     target2 = round(
 
-        buy_high + risk * 2,
+        resistance + atr * 2,
 
         2
 
     )
 
+    reward = target2 - buy_high
+
     rr = round(
 
-        (target2 - buy_high) / risk,
+        reward / risk,
 
         2
 
@@ -163,26 +161,31 @@ def entry_signal(df, i):
     # RR Score
     # ==================================
 
-    if rr >= 2:
+    if rr >= 3:
+
+        score += 10
+        confidence += 10
+
+        reasons.append("Excellent RR")
+
+    elif rr >= 2:
 
         score += 8
         confidence += 8
 
-        reasons.append("Excellent RR")
+        reasons.append("Very Good RR")
 
     elif rr >= 1.5:
 
-        score += 4
-        confidence += 4
+        score += 5
+        confidence += 5
 
         reasons.append("Good RR")
 
     return {
 
         "score": score,
-
         "confidence": confidence,
-
         "reasons": reasons,
 
         "BuyLow": buy_low,

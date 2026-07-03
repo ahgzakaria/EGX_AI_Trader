@@ -16,147 +16,109 @@ def show_dashboard():
     st.title("📈 EGX AI Trader")
     st.caption("Egyptian Stock Market AI Scanner")
 
+    # ===================================
+    # Session State
+    # ===================================
+
+    if "results" not in st.session_state:
+
+        st.session_state.results = None
+
+    # ===================================
+    # Scan Button
+    # ===================================
+
     if st.button("🔍 Scan Market", use_container_width=True):
 
         with st.spinner("Scanning EGX Stocks..."):
 
-            results = scan_symbols("data/symbols.csv")
+            st.session_state.results = scan_symbols("data/symbols.csv")
 
-        if not results:
+    # ===================================
+    # No Results Yet
+    # ===================================
 
-            st.error("No data found.")
-            return
+    if st.session_state.results is None:
 
-        df = pd.DataFrame(results)
+        st.info("Press 'Scan Market' to start scanning.")
 
-        # ===================================
-        # Sort
-        # ===================================
+        return
 
-        df = df.sort_values(
+    results = st.session_state.results
 
-            ["AIProbability", "Confidence", "Score"],
+    if not results:
 
-            ascending=False
+        st.error("No data found.")
 
-        ).reset_index(drop=True)
+        return
 
-        # ===================================
-        # Statistics
-        # ===================================
+    df = pd.DataFrame(results)
 
-        buy = (df["Signal"] == "BUY").sum()
-        watch = (df["Signal"] == "WATCH").sum()
-        avoid = (df["Signal"] == "AVOID").sum()
+    # ===================================
+    # Sort
+    # ===================================
 
-        avg_confidence = round(df["Confidence"].mean(), 1)
-        avg_score = round(df["Score"].mean(), 1)
-        avg_ai = round(df["AIProbability"].mean(), 1)
+    df = df.sort_values(
 
-        c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
+        ["AIProbability", "Confidence", "Score"],
 
-        c1.metric("🟢 BUY", buy)
-        c2.metric("🟡 WATCH", watch)
-        c3.metric("🔴 AVOID", avoid)
-        c4.metric("📈 Stocks", len(df))
-        c5.metric("🎯 Avg Confidence", f"{avg_confidence}%")
-        c6.metric("⭐ Avg Score", avg_score)
-        c7.metric("🤖 Avg AI", f"{avg_ai}%")
+        ascending=False
 
-        st.divider()
+    ).reset_index(drop=True)
 
-        # ===================================
-        # Top BUY
-        # ===================================
+    # ===================================
+    # Statistics
+    # ===================================
 
-        top_buy = df[df["Signal"] == "BUY"].head(10)
+    buy = (df["Signal"] == "BUY").sum()
+    watch = (df["Signal"] == "WATCH").sum()
+    avoid = (df["Signal"] == "AVOID").sum()
 
-        if len(top_buy):
+    avg_confidence = round(df["Confidence"].mean(), 1)
+    avg_score = round(df["Score"].mean(), 1)
+    avg_ai = round(df["AIProbability"].mean(), 1)
 
-            st.subheader("🟢 Top BUY Opportunities")
+    c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 
-            st.dataframe(
+    c1.metric("🟢 BUY", buy)
+    c2.metric("🟡 WATCH", watch)
+    c3.metric("🔴 AVOID", avoid)
+    c4.metric("📈 Stocks", len(df))
+    c5.metric("🎯 Avg Confidence", f"{avg_confidence}%")
+    c6.metric("⭐ Avg Score", avg_score)
+    c7.metric("🤖 Avg AI", f"{avg_ai}%")
 
-                top_buy[
+    st.divider()
 
-                    [
+    # ===================================
+    # Top BUY
+    # ===================================
 
-                        "Rank",
-                        "Rating",
-                        "Ticker",
-                        "AIProbability",
-                        "AILevel",
-                        "Confidence",
-                        "Score",
-                        "Price",
-                        "RR"
+    top_buy = df[df["Signal"] == "BUY"].head(10)
 
-                    ]
+    if len(top_buy):
 
-                ],
-
-                use_container_width=True,
-                hide_index=True
-
-            )
-
-        # ===================================
-        # Filter
-        # ===================================
-
-        signal_filter = st.selectbox(
-
-            "Signal Filter",
-
-            [
-
-                "ALL",
-                "BUY",
-                "WATCH",
-                "AVOID"
-
-            ]
-
-        )
-
-        if signal_filter != "ALL":
-
-            df = df[df["Signal"] == signal_filter]
-
-        # ===================================
-        # Market Scan
-        # ===================================
-
-        st.subheader("📋 Market Scan")
-
-        display = df[
-
-            [
-
-                "Rank",
-                "Rating",
-                "Ticker",
-                "Signal",
-                "Stars",
-
-                "AIProbability",
-                "AILevel",
-
-                "Confidence",
-                "Score",
-
-                "Price",
-                "RR",
-
-                "Reasons"
-
-            ]
-
-        ]
+        st.subheader("🟢 Top BUY Opportunities")
 
         st.dataframe(
 
-            display,
+            top_buy[
+
+                [
+
+                    "Rank",
+                    "Rating",
+                    "Ticker",
+                    "AIProbability",
+                    "AILevel",
+                    "Confidence",
+                    "Score",
+                    "Price",
+                    "RR"
+
+                ]
+
+            ],
 
             use_container_width=True,
 
@@ -164,28 +126,98 @@ def show_dashboard():
 
         )
 
-        # ===================================
-        # Stock Details
-        # ===================================
+    # ===================================
+    # Filter
+    # ===================================
 
-        st.divider()
+    signal_filter = st.selectbox(
 
-        st.subheader("📊 Stock Details")
+        "Signal Filter",
 
-        selected = st.selectbox(
+        [
 
-            "Choose a Stock",
+            "ALL",
+            "BUY",
+            "WATCH",
+            "AVOID"
 
-            df["Ticker"].tolist()
+        ]
 
-        )
+    )
 
-        stock = next(
+    filtered_df = df.copy()
 
-            s for s in results
+    if signal_filter != "ALL":
 
-            if s["Ticker"] == selected
+        filtered_df = filtered_df[
 
-        )
+            filtered_df["Signal"] == signal_filter
 
-        show_stock_details(stock)
+        ]
+
+    # ===================================
+    # Market Scan
+    # ===================================
+
+    st.subheader("📋 Market Scan")
+
+    display = filtered_df[
+
+        [
+
+            "Rank",
+            "Rating",
+            "Ticker",
+            "Signal",
+            "Stars",
+
+            "AIProbability",
+            "AILevel",
+
+            "Confidence",
+            "Score",
+
+            "Price",
+            "RR",
+
+            "Reasons"
+
+        ]
+
+    ]
+
+    st.dataframe(
+
+        display,
+
+        use_container_width=True,
+
+        hide_index=True
+
+    )
+
+    # ===================================
+    # Stock Details
+    # ===================================
+
+    st.divider()
+
+    st.subheader("📊 Stock Details")
+
+    selected = st.selectbox(
+
+        "Choose a Stock",
+
+        filtered_df["Ticker"].tolist()
+
+    )
+
+    stock = next(
+
+        s for s in results
+
+        if s["Ticker"] == selected
+
+    )
+
+    show_stock_details(stock)

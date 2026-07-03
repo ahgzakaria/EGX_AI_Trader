@@ -20,10 +20,13 @@ def scan_symbols(file_path):
         try:
 
             df = load_data(symbol)
+
             df = calculate_indicators(df)
 
             # آخر شمعة
             i = len(df) - 1
+
+            last = df.iloc[i]
 
             result = score_stock(df, i)
 
@@ -31,25 +34,30 @@ def scan_symbols(file_path):
             # AI Prediction
             # ==========================
 
-            ai = predictor.predict(result)
+            ai = predictor.predict(last)
 
             # ==========================
             # Rating
             # ==========================
 
             if result["Confidence"] >= 90:
+
                 rating = "A+"
 
             elif result["Confidence"] >= 80:
+
                 rating = "A"
 
             elif result["Confidence"] >= 70:
+
                 rating = "B+"
 
             elif result["Confidence"] >= 60:
+
                 rating = "B"
 
             else:
+
                 rating = "C"
 
             results.append({
@@ -58,7 +66,7 @@ def scan_symbols(file_path):
 
                 "Rating": rating,
 
-                "Price": round(float(df["Close"].iloc[-1]), 2),
+                "Price": round(float(last["Close"]), 2),
 
                 "Signal": result["Signal"],
                 "Stars": result["Stars"],
@@ -96,7 +104,12 @@ def scan_symbols(file_path):
 
                 "Reasons": " | ".join(result["Reasons"]),
 
+                # AI Details
+
+                "AIFeatures": last,
+
                 # هنستخدمه فى صفحة تفاصيل السهم
+
                 "Data": df
 
             })
@@ -114,8 +127,11 @@ def scan_symbols(file_path):
         key=lambda x: (
 
             x["AIProbability"],
+
             x["Confidence"],
+
             x["Score"],
+
             x["RR"]
 
         ),

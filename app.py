@@ -2,6 +2,7 @@ import streamlit as st
 
 from dashboard.home import show_dashboard
 from dashboard.watchlist import show_watchlist
+from dashboard.settings import show_settings
 
 
 st.set_page_config(
@@ -24,7 +25,9 @@ page = st.sidebar.radio(
 
         "📈 Dashboard",
 
-        "⭐ Watchlist"
+        "⭐ Watchlist",
+
+        "⚙️ Settings"
 
     ]
 
@@ -41,3 +44,7 @@ if page == "📈 Dashboard":
 elif page == "⭐ Watchlist":
 
     show_watchlist()
+
+elif page == "⚙️ Settings":
+
+    show_settings()

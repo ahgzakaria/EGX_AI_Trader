@@ -23,7 +23,7 @@ def show_stock_details(stock):
 
         if c1.button(
             "❌ Remove from Watchlist",
-            use_container_width=True
+            width="stretch"
         ):
 
             watchlist.remove(stock["Ticker"])
@@ -36,7 +36,7 @@ def show_stock_details(stock):
 
         if c1.button(
             "⭐ Add to Watchlist",
-            use_container_width=True
+            width="stretch"
         ):
 
             watchlist.add(stock["Ticker"])
@@ -53,12 +53,19 @@ def show_stock_details(stock):
     # General
     # ==================================
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
 
     c1.metric("Signal", stock["Signal"])
+
     c2.metric("Rating", stock["Rating"])
+
     c3.metric("Confidence", f"{stock['Confidence']}%")
+
     c4.metric("Score", stock["Score"])
+
+    c5.metric("AI", f"{stock['AIProbability']}%")
+
+    c6.metric("Level", stock["AILevel"])
 
     st.divider()
 
@@ -69,20 +76,59 @@ def show_stock_details(stock):
     c1, c2, c3 = st.columns(3)
 
     c1.metric("Current Price", stock["Price"])
+
     c2.metric("Support", stock["Support"])
+
     c3.metric("Resistance", stock["Resistance"])
 
     c1, c2, c3 = st.columns(3)
 
     c1.metric("Buy Low", stock["BuyLow"])
+
     c2.metric("Buy High", stock["BuyHigh"])
+
     c3.metric("Risk / Reward", stock["RR"])
 
     c1, c2, c3 = st.columns(3)
 
     c1.metric("Stop Loss", stock["StopLoss"])
+
     c2.metric("Target 1", stock["Target1"])
+
     c3.metric("Target 2", stock["Target2"])
+
+    st.divider()
+
+    # ==================================
+    # AI Summary
+    # ==================================
+
+    st.subheader("🤖 AI Summary")
+
+    if stock["Signal"] == "BUY":
+
+        st.success(
+
+            f"""
+AI Probability : **{stock['AIProbability']}%**
+
+Rating : **{stock['Rating']}**
+
+Risk / Reward : **{stock['RR']}**
+"""
+        )
+
+    elif stock["Signal"] == "WATCH":
+
+        st.warning(
+            "The stock looks promising, but confirmation is recommended before entering."
+        )
+
+    else:
+
+        st.error(
+            "Current setup is weak. Waiting is preferable."
+        )
 
     st.divider()
 
@@ -224,7 +270,7 @@ def show_stock_details(stock):
 
         hide_index=True,
 
-        use_container_width=True
+        width="stretch"
 
     )
 
@@ -236,11 +282,19 @@ def show_stock_details(stock):
 
     st.subheader("Reasons")
 
-    for reason in stock["Reasons"].split("|"):
+    reasons = [
 
-        if reason.strip():
+        r.strip()
 
-            st.write(f"✅ {reason.strip()}")
+        for r in stock["Reasons"].split("|")
+
+        if r.strip()
+
+    ]
+
+    for reason in reasons:
+
+        st.success(reason)
 
     st.divider()
 
@@ -304,7 +358,7 @@ def show_stock_details(stock):
 
         hide_index=True,
 
-        use_container_width=True
+        width="stretch"
 
     )
 
@@ -332,6 +386,8 @@ def show_stock_details(stock):
 
             ]
 
-        ]
+        ],
+
+        width="stretch"
 
     )

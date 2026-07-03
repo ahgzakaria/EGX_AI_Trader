@@ -39,7 +39,7 @@ class TradeBuilder:
             profit=context.profit,
 
             # ==================================
-            # Strategy Scores
+            # Strategy
             # ==================================
 
             score=signal["Score"],
@@ -52,7 +52,7 @@ class TradeBuilder:
             breakout_score=signal["Breakout"],
 
             # ==================================
-            # Raw Indicators
+            # Original Indicators
             # ==================================
 
             rsi=round(float(candle["RSI"]), 2),
@@ -64,7 +64,7 @@ class TradeBuilder:
             macd=round(float(candle["MACD"]), 4),
 
             # ==================================
-            # AI Features
+            # AI Features V1
             # ==================================
 
             ema20_dist=round(
@@ -98,6 +98,63 @@ class TradeBuilder:
             ),
 
             obv=float(candle["OBV"]),
+
+            # ==================================
+            # AI Features V2
+            # ==================================
+
+            rsi7=round(
+                float(candle["RSI7"]),
+                2
+            ),
+
+            ema20_slope=round(
+                float(candle["EMA20_SLOPE"]),
+                4
+            ),
+
+            ema50_slope=round(
+                float(candle["EMA50_SLOPE"]),
+                4
+            ),
+
+            rsi_slope=round(
+                float(candle["RSI_SLOPE"]),
+                4
+            ),
+
+            adx_rising=round(
+                float(candle["ADX_RISING"]),
+                4
+            ),
+
+            bb_width=round(
+                float(candle["BB_WIDTH"]),
+                4
+            ),
+
+            obv_slope=round(
+                float(candle["OBV_SLOPE"]),
+                6
+            ),
+
+            dist_high20=round(
+                float(candle["DIST_HIGH20"]),
+                4
+            ),
+
+            dist_low20=round(
+                float(candle["DIST_LOW20"]),
+                4
+            ),
+
+            # ==================================
+            # AI Features V3
+            # ==================================
+
+            macd_cross_age=int(
+                candle["MACD_CROSS_AGE"]
+            ),
 
             # ==================================
 

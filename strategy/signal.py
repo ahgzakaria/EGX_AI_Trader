@@ -1,3 +1,13 @@
+from strategy.config import (
+    MIN_SCORE,
+    MIN_CONFIDENCE,
+    MIN_RR,
+    MIN_TREND,
+    MIN_MOMENTUM,
+    MIN_VOLUME
+)
+
+
 def signal_engine(result):
 
     score = result["Score"]
@@ -18,17 +28,17 @@ def signal_engine(result):
 
         market_passed
 
-        and score >= 65
+        and score >= MIN_SCORE
 
-        and confidence >= 80
+        and confidence >= MIN_CONFIDENCE
 
-        and rr >= 2
+        and rr >= MIN_RR
 
-        and trend >= 25
+        and trend >= MIN_TREND
 
-        and momentum >= 5
+        and momentum >= MIN_MOMENTUM
 
-        and volume >= 5
+        and volume >= MIN_VOLUME
 
     ):
 

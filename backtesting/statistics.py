@@ -8,6 +8,10 @@ class BacktestStatistics:
         self.trades = trades
         self.initial_capital = initial_capital
 
+    # ==================================
+    # Summary
+    # ==================================
+
     def summary(self):
 
         total_trades = len(self.trades)
@@ -43,13 +47,31 @@ class BacktestStatistics:
         losses = sum(1 for t in self.trades if t.result == "LOSS")
         breakeven = sum(1 for t in self.trades if t.result == "BREAKEVEN")
 
-        win_rate = round(wins / total_trades * 100, 2)
+        win_rate = round(
+            wins / total_trades * 100,
+            2
+        )
 
-        net_profit = round(sum(t.profit for t in self.trades), 2)
+        net_profit = round(
+            sum(t.profit for t in self.trades),
+            2
+        )
 
-        gross_profit = round(sum(t.profit for t in self.trades if t.profit > 0), 2)
+        gross_profit = round(
+            sum(t.profit for t in self.trades if t.profit > 0),
+            2
+        )
 
-        gross_loss = round(abs(sum(t.profit for t in self.trades if t.profit < 0)), 2)
+        gross_loss = round(
+            abs(
+                sum(
+                    t.profit
+                    for t in self.trades
+                    if t.profit < 0
+                )
+            ),
+            2
+        )
 
         profit_factor = round(
             gross_profit / gross_loss,
@@ -72,17 +94,30 @@ class BacktestStatistics:
         )
 
         average_holding = round(
-            sum(t.holding_days for t in self.trades) / total_trades,
+            sum(
+                t.holding_days
+                for t in self.trades
+            ) / total_trades,
             2
         )
 
         average_r = round(
-            sum(t.r_multiple for t in self.trades) / total_trades,
+            sum(
+                t.r_multiple
+                for t in self.trades
+            ) / total_trades,
             2
         )
 
-        best_trade = max(self.trades, key=lambda t: t.profit)
-        worst_trade = min(self.trades, key=lambda t: t.profit)
+        best_trade = max(
+            self.trades,
+            key=lambda t: t.profit
+        )
+
+        worst_trade = min(
+            self.trades,
+            key=lambda t: t.profit
+        )
 
         equity = EquityCurve(
             self.trades,
@@ -136,3 +171,35 @@ class BacktestStatistics:
             "MaxDrawdown": equity.max_drawdown()
 
         }
+
+    # ==================================
+    # Exit Reasons
+    # ==================================
+
+    def exit_reasons(self):
+
+        reasons = {}
+
+        for trade in self.trades:
+
+            reason = trade.exit_reason
+
+            if reason not in reasons:
+
+                reasons[reason] = 0
+
+            reasons[reason] += 1
+
+        return dict(
+
+            sorted(
+
+                reasons.items(),
+
+                key=lambda x: x[1],
+
+                reverse=True
+
+            )
+
+        )

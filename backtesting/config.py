@@ -1,64 +1,59 @@
+from config.settings_manager import settings
+
+# ==================================
+# Backtest Settings
+# ==================================
+
+backtest = settings.get("backtest")
+
 # ==================================
 # ENTRY
 # ==================================
 
-ENTRY_WAIT_DAYS = 5
+ENTRY_WAIT_DAYS = backtest["entry_wait_days"]
 
 # ==================================
 # EXIT
 # ==================================
 
-EXIT_MODE = "TARGET1"
+EXIT_MODE = backtest["exit_mode"]
 
-# TARGET1
-# TARGET2
-# TRAILING
-# PARTIAL
+MAX_HOLDING_DAYS = backtest["max_holding_days"]
 
-MAX_HOLDING_DAYS = 20
+MOVE_TO_BREAKEVEN = backtest["move_to_breakeven"]
 
-MOVE_TO_BREAKEVEN = False
+PARTIAL_EXIT = backtest["partial_exit"]
 
-PARTIAL_EXIT = False
-
-PARTIAL_PERCENT = 0.50
+PARTIAL_PERCENT = backtest["partial_percent"]
 
 # ==================================
 # RISK
 # ==================================
 
-RISK_MODE = "FIXED"
+RISK_MODE = backtest["risk_mode"]
 
-# FIXED
-# PERCENT
-# ATR
-
-RISK_PERCENT = 2
+RISK_PERCENT = backtest["risk_percent"]
 
 # ==================================
 # TRAILING STOP
 # ==================================
 
-TRAILING_MODE = "EMA20"
+TRAILING_MODE = backtest["trailing_mode"]
 
-# EMA20
-# ATR
-# LOW5
-
-TRAILING_ATR = 2
+TRAILING_ATR = backtest["trailing_atr"]
 
 # ==================================
 # BACKTEST
 # ==================================
 
-ALLOW_OVERLAPPING_TRADES = False
+ALLOW_OVERLAPPING_TRADES = backtest["allow_overlapping_trades"]
 
-INITIAL_CAPITAL = 100000
+INITIAL_CAPITAL = backtest["initial_capital"]
 
 # ==================================
 # COSTS
 # ==================================
 
-COMMISSION = 0.003
+COMMISSION = backtest["commission"]
 
-SLIPPAGE = 0.0005
+SLIPPAGE = backtest["slippage"]

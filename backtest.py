@@ -1,3 +1,4 @@
+import traceback
 import pandas as pd
 
 from backtesting.engine import BacktestEngine
@@ -46,12 +47,16 @@ def main():
 
             successful += 1
 
-        except Exception as e:
+        except Exception:
 
             failed += 1
 
+            print("\n" + "=" * 60)
             print(f"ERROR -> {symbol}")
-            print(e)
+            print("=" * 60)
+
+            traceback.print_exc()
+
             print("-" * 60)
 
     # ==================================
@@ -72,6 +77,25 @@ def main():
         print(f"{key:20} : {value}")
 
     # ==================================
+    # Exit Reasons
+    # ==================================
+
+    print("\n")
+    print("=" * 60)
+    print("EXIT REASONS")
+    print("=" * 60)
+
+    exit_reasons = stats.exit_reasons()
+
+    total = sum(exit_reasons.values())
+
+    for reason, count in exit_reasons.items():
+
+        percent = round(count / total * 100, 2) if total else 0
+
+        print(f"{reason:20} : {count:5} ({percent:6.2f}%)")
+
+    # ==================================
     # Reports
     # ==================================
 
@@ -87,6 +111,7 @@ def main():
     print("Trades      : reports/backtest_results.csv")
     print("Statistics  : reports/backtest_statistics.csv")
     print("Equity      : reports/equity_curve.csv")
+    print("Symbols     : reports/symbol_statistics.csv")
 
     print("\n")
     print("=" * 60)

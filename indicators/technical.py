@@ -6,18 +6,23 @@ from ta.volatility import AverageTrueRange, BollingerBands
 
 def calculate_indicators(df):
 
-    # ==========================
+    # ==================================
     # RSI
-    # ==========================
+    # ==================================
 
     df["RSI"] = RSIIndicator(
         close=df["Close"],
         window=14
     ).rsi()
 
-    # ==========================
+    df["RSI7"] = RSIIndicator(
+        close=df["Close"],
+        window=7
+    ).rsi()
+
+    # ==================================
     # EMA
-    # ==========================
+    # ==================================
 
     df["EMA20"] = EMAIndicator(
         close=df["Close"],
@@ -34,22 +39,43 @@ def calculate_indicators(df):
         window=200
     ).ema_indicator()
 
-    # ==========================
+    # ==================================
     # MACD
-    # ==========================
+    # ==================================
 
     macd = MACD(close=df["Close"])
 
     df["MACD"] = macd.macd()
-
-    # نحافظ على الاسم القديم حتى لا نكسر باقى المشروع
     df["MACD_Signal"] = macd.macd_signal()
-
     df["MACD_HIST"] = macd.macd_diff()
 
-    # ==========================
+    # ==================================
+    # MACD Cross Age
+    # ==================================
+
+    cross = (
+        (df["MACD"] > df["MACD_Signal"])
+        !=
+        (df["MACD"].shift(1) > df["MACD_Signal"].shift(1))
+    )
+
+    age = 0
+    ages = []
+
+    for is_cross in cross:
+
+        if is_cross:
+            age = 0
+        else:
+            age += 1
+
+        ages.append(age)
+
+    df["MACD_CROSS_AGE"] = ages
+
+    # ==================================
     # ADX
-    # ==========================
+    # ==================================
 
     adx = ADXIndicator(
         high=df["High"],
@@ -60,9 +86,9 @@ def calculate_indicators(df):
 
     df["ADX"] = adx.adx()
 
-    # ==========================
-    # Bollinger Bands
-    # ==========================
+    # ==================================
+    # Bollinger
+    # ==================================
 
     bb = BollingerBands(
         close=df["Close"],
@@ -74,18 +100,18 @@ def calculate_indicators(df):
     df["BB_MIDDLE"] = bb.bollinger_mavg()
     df["BB_LOWER"] = bb.bollinger_lband()
 
-    # ==========================
+    # ==================================
     # OBV
-    # ==========================
+    # ==================================
 
     df["OBV"] = OnBalanceVolumeIndicator(
         close=df["Close"],
         volume=df["Volume"]
     ).on_balance_volume()
 
-    # ==========================
+    # ==================================
     # ATR
-    # ==========================
+    # ==================================
 
     atr = AverageTrueRange(
         high=df["High"],
@@ -95,56 +121,73 @@ def calculate_indicators(df):
 
     df["ATR"] = atr.average_true_range()
 
-    # ==================================================
+    # ==================================
     # AI FEATURES
-    # ==================================================
-
-    df["VOLUME_AVG20"] = (
-        df["Volume"]
-        .rolling(20)
-        .mean()
-    )
-
-    df["VOLUME_RATIO"] = (
-        df["Volume"] /
-        df["VOLUME_AVG20"]
-    )
-
-    df["ATR_PERCENT"] = (
-        df["ATR"] /
-        df["Close"]
-    ) * 100
+    # ==================================
 
     df["EMA20_DIST"] = (
-        (df["Close"] - df["EMA20"]) /
-        df["EMA20"]
+        (df["Close"] - df["EMA20"])
+        / df["EMA20"]
     ) * 100
 
     df["EMA50_DIST"] = (
-        (df["Close"] - df["EMA50"]) /
-        df["EMA50"]
+        (df["Close"] - df["EMA50"])
+        / df["EMA50"]
     ) * 100
 
     df["EMA200_DIST"] = (
-        (df["Close"] - df["EMA200"]) /
-        df["EMA200"]
+        (df["Close"] - df["EMA200"])
+        / df["EMA200"]
+    ) * 100
+
+    df["EMA20_SLOPE"] = df["EMA20"].pct_change(5) * 100
+    df["EMA50_SLOPE"] = df["EMA50"].pct_change(5) * 100
+
+    df["RSI_SLOPE"] = df["RSI"].diff()
+
+    df["ADX_RISING"] = df["ADX"].diff()
+
+    df["VOLUME_RATIO"] = (
+        df["Volume"]
+        / df["Volume"].rolling(20).mean()
+    )
+
+    df["ATR_PERCENT"] = (
+        df["ATR"]
+        / df["Close"]
+    ) * 100
+
+    df["BB_WIDTH"] = (
+        (df["BB_UPPER"] - df["BB_LOWER"])
+        / df["BB_MIDDLE"]
     ) * 100
 
     df["BB_POSITION"] = (
-        (df["Close"] - df["BB_LOWER"]) /
+        (df["Close"] - df["BB_LOWER"])
+        /
         (df["BB_UPPER"] - df["BB_LOWER"])
     )
 
-    # ==========================
-    # Clean Data
-    # ==========================
+    df["OBV_SLOPE"] = df["OBV"].pct_change(5)
 
-    df.replace(
+    high20 = df["High"].rolling(20).max()
+    low20 = df["Low"].rolling(20).min()
+
+    df["DIST_HIGH20"] = (
+        (high20 - df["Close"])
+        / df["Close"]
+    ) * 100
+
+    df["DIST_LOW20"] = (
+        (df["Close"] - low20)
+        / df["Close"]
+    ) * 100
+
+    df = df.replace(
         [float("inf"), float("-inf")],
-        0,
-        inplace=True
+        0
     )
 
-    df.fillna(0, inplace=True)
+    df = df.fillna(0)
 
     return df
