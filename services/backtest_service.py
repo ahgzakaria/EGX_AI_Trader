@@ -1,3 +1,5 @@
+import time
+from datetime import timedelta
 import traceback
 import pandas as pd
 
@@ -7,6 +9,8 @@ from backtesting.report import BacktestReport
 
 
 def run_backtest():
+
+    start_time = time.time()
 
     symbols = (
         pd.read_csv("data/symbols.csv")["Ticker"]
@@ -60,6 +64,12 @@ def run_backtest():
 
     report.save_all()
 
+    elapsed_seconds = round(time.time() - start_time, 2)
+
+    elapsed = str(
+        timedelta(seconds=elapsed_seconds)
+    )
+
     return {
 
         "summary": summary,
@@ -74,6 +84,10 @@ def run_backtest():
 
         "trades": len(all_trades),
 
-        "errors": errors
+        "errors": errors,
+
+        "elapsed": elapsed,
+
+        "elapsed_seconds": elapsed_seconds,
 
     }
