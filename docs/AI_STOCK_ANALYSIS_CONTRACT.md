@@ -32,10 +32,10 @@ evidence field.
 
 ## Types
 - **AnalysisRequest** — inputs for one on-demand request (symbol, request_id, as_of, phase, lookback, language). Inputs only.
-- **PriceSummary** *(evidence)* — last/prev close, change, O/H/L, currency, price series + adjustment policy, optional live quote.
-- **IndicatorSummary** *(evidence)* — SMA/RSI/ATR, avg volume/turnover, and the volume provenance (`volume_series`, `volume_adjustment_policy`, `volume_safe_for_lookback`).
-- **KeyLevel** *(evidence)* — one level with `kind`, `price`, and an auditable `basis`.
-- **ScenarioResult** *(evidence)* — one decision scenario with `state`, entry/target/invalidation, R:R, machine `conditions` and `missing_confirmations` (not prose).
+- **PriceSummary** *(evidence)* — dedicated typed fields: `session_date`, `close`, `previous_close`, `change_amount`, `change_percent`, `open`, `high`, `low`, `volume`, `turnover`, currency + price series/adjustment policy, and a live Rubix block (`last`, `bid`, `ask`, `spread_percent`, `quote_timestamp`). Missing values stay `None`, never zero-filled.
+- **IndicatorSummary** *(evidence)* — every technical number as its own typed field: `sma_20/50/200`, **separate** `ema_20/50/200`, `rsi_14`, `macd`/`macd_signal`/`macd_histogram`, `atr_14`, `average_volume_20`, `volume_ratio`, `obv`, `expected_range_position`, `turnover`, `volume_safe`, plus volume provenance (`volume_series`, `volume_adjustment_policy`, `latest_action_in_lookback`). EMA values never occupy SMA fields; volume-derived fields are `None` when `volume_safe` is False. **No consumer parses numbers out of strings.**
+- **KeyLevel** *(evidence)* — one level with `kind`, `price`, and an auditable `basis` (a label, never the source of a required number).
+- **ScenarioResult** *(evidence)* — one decision scenario with typed `trigger`, `entry_low`/`entry_high`, `target`, `stop`, `remaining_room_percent`, `risk_reward`, `confidence`, plus machine-fact `confirmation_requirements` and `invalidation_conditions` (strings, not numbers-as-prose).
 - **ConfidenceComponent** / **ConfidenceBreakdown** *(evidence)* — weighted components and the derived `overall` (0–100).
 - **DataQualitySummary** *(evidence)* — `DataStatus`, domain/provider, freshness, sufficiency, `volume_safe_for_lookback`, and provenance flags (`yahoo_network_used` must be `False`, `yahoo_seed_present`).
 - **AnalysisResult** *(evidence aggregate)* — the single numeric source of truth: request + price + indicators + levels + scenarios + confidence + data quality + recommendation + `evidence_version` + `evidence_hash`.

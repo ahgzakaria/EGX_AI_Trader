@@ -96,37 +96,66 @@ class AnalysisRequest:
 
 @dataclass(frozen=True)
 class PriceSummary:
-    """Calculated price evidence. Numbers only — no prose."""
+    """Calculated price evidence. Numbers only — no prose.
+
+    Every value is a dedicated typed field. Missing values stay ``None`` — they are never
+    zero-filled — so the UI can distinguish "unknown" from a genuine zero. The live block
+    (``last``/``bid``/``ask``/``spread_percent``/``quote_timestamp``) is populated from the
+    Rubix overlay only when a live quote is available; otherwise it stays ``None``.
+    """
     symbol: str
-    latest_completed_session: str
-    last_close: float
-    prev_close: float | None = None
-    change_pct: float | None = None
-    day_open: float | None = None
-    day_high: float | None = None
-    day_low: float | None = None
+    session_date: str | None = None              # ISO date of the latest completed session
+    close: float | None = None                   # latest completed session close
+    previous_close: float | None = None
+    change_amount: float | None = None
+    change_percent: float | None = None
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    volume: float | None = None                  # latest completed session volume
+    turnover: float | None = None                # latest completed session turnover (EGP)
     currency: str = "EGP"
     price_series: str = "SPLIT_ADJUSTED"         # or PROJECT_LOCAL_SEED_PLUS_RUBIX
     price_adjustment_policy: str = "SPLIT_ADJUSTED_ALL_EVENTS"
-    live_quote_last: float | None = None
-    live_quote_timestamp: str | None = None
+    # Live Rubix overlay (None when the market is closed or no live quote exists).
+    last: float | None = None                    # latest traded price (live)
+    bid: float | None = None
+    ask: float | None = None
+    spread_percent: float | None = None
+    quote_timestamp: str | None = None
 
 
 @dataclass(frozen=True)
 class IndicatorSummary:
-    """Calculated indicator evidence. Volume provenance travels with the numbers."""
+    """Calculated indicator evidence — every technical number as a dedicated typed field.
+
+    SMA and EMA are kept strictly separate; an EMA value never occupies an SMA field.
+    Volume-derived fields (``average_volume_20``, ``volume_ratio``, ``obv``, ``turnover``)
+    are ``None`` when provenance says volume is not lookback-safe (``volume_safe`` False),
+    so they can never inflate confidence or a narrative. No consumer should parse numbers
+    out of strings — all numbers live here. Volume provenance travels with the numbers.
+    """
     symbol: str
     computed_from_sessions: int
     sma_20: float | None = None
     sma_50: float | None = None
     sma_200: float | None = None
+    ema_20: float | None = None
+    ema_50: float | None = None
+    ema_200: float | None = None
     rsi_14: float | None = None
+    macd: float | None = None                    # MACD line (EMA_fast - EMA_slow)
+    macd_signal: float | None = None
+    macd_histogram: float | None = None
     atr_14: float | None = None
-    avg_volume_20: float | None = None
-    avg_turnover_egp_20: float | None = None
+    average_volume_20: float | None = None
+    volume_ratio: float | None = None            # latest volume / average_volume_20
+    obv: float | None = None                     # on-balance volume (None when unsafe)
+    expected_range_position: float | None = None  # 0..100 within the recent H/L channel
+    turnover: float | None = None                # average turnover EGP over 20 sessions
+    volume_safe: bool = True                      # mirrors volume_safe_for_lookback
     volume_series: str = "RAW_EODHD"             # never a universal-multiplied series
     volume_adjustment_policy: str = "NONE"
-    volume_safe_for_lookback: bool = True
     latest_action_in_lookback: str | None = None
 
 
@@ -142,17 +171,26 @@ class KeyLevel:
 
 @dataclass(frozen=True)
 class ScenarioResult:
-    """One calculated decision scenario. Conditions are machine facts, not narrative."""
+    """One calculated decision scenario. Every price/level is a dedicated typed field.
+
+    ``confirmation_requirements`` and ``invalidation_conditions`` are machine-fact string
+    tuples describing *what* must happen — never numbers encoded as prose. The numbers a UI
+    needs (trigger, entry band, target, stop, remaining room, R:R, scenario confidence) are
+    all typed fields here.
+    """
     scenario_id: str
     title: str
     state: ScenarioState
-    entry_zone_low: float | None = None
-    entry_zone_high: float | None = None
+    trigger: float | None = None                 # price that activates the scenario
+    entry_low: float | None = None
+    entry_high: float | None = None
     target: float | None = None
-    invalidation: float | None = None
-    reward_risk_ratio: float | None = None
-    conditions: tuple[str, ...] = ()
-    missing_confirmations: tuple[str, ...] = ()
+    stop: float | None = None                    # invalidation / protective stop price
+    remaining_room_percent: float | None = None  # % from last close to target
+    risk_reward: float | None = None
+    confidence: float | None = None              # 0..1 scenario-level confidence
+    confirmation_requirements: tuple[str, ...] = ()
+    invalidation_conditions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
