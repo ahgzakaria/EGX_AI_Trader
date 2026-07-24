@@ -7,17 +7,110 @@ SETTINGS_FILE = "config/settings.json"
 
 
 DEFAULT_SETTINGS = {
+    # Market-data routing changes sources only; trading calculations remain
+    # frozen. Rubix is consumed only through the adapter's read-only SQLite.
+    "scanner_provider": "rubix",
+    "dashboard_provider": "rubix",
+    "forward_testing_provider": "rubix",
+    "backtest_provider": "yahoo",
+    "fallback_provider": "yahoo",
+    "market_data": {
+        "cache_path": "data/market_data_cache.sqlite",
+        "cache_source_provider": "rubix",
+        # Rubix adapter/database locations are supplied by environment or
+        # deployment settings; no credentials or network endpoints live here.
+        "rubix_db_path": "data/rubix_live_market.db",
+        "rubix_quote_stale_seconds": 60,
+        "rubix_bar_stale_seconds": 120,
+        "rubix_subscription_batch_size": 100,
+        # User-specific adapter/DB locations are supplied by environment or
+        # settings at deployment time and are never hardcoded in source.
+        "tickerchart_adapter_path": "",
+        "tickerchart_db_path": "",
+        "tickerchart_local_url": "",
+        "tickerchart_stale_after_minutes": 1440
+    },
+    "data": {
+        "history_period": "10y",
+        "interval": "1d",
+        "min_bars": 250
+    },
+    # Rubix Completed-Daily-Candle Bridge (shadow-first, disabled by default).
+    # This never changes any trading strategy, indicator, or threshold. It only
+    # controls a diagnostic/optional data layer that appends *validated,
+    # completed* Rubix daily sessions newer than Yahoo. Production activation is
+    # a separate, explicit, user-approved step; leave `enabled` false until the
+    # capability audit and reconciliation reports justify it.
+    "rubix_daily_bridge": {
+        "enabled": False,
+        "shadow_mode": True,
+        "close_safety_minutes": 15,
+        # Conservative gates: on the audited data these reject every current
+        # Rubix session (sparse coverage, ~46% volume capture). Do not lower
+        # without re-running RUBIX_DAILY_CAPABILITY_AUDIT.
+        "minimum_coverage_ratio": 0.90,
+        "minimum_volume_reliability": 0.90,
+        "holidays": [],
+        "early_closes": {}
+    },
+    # TradingView research provider (shadow-only, disabled by default). Yahoo
+    # remains the production historical source. No automation of the
+    # TradingView website is performed anywhere; data only enters via a
+    # user-exported CSV directory or a user-configured official webhook.
+    # See TRADINGVIEW_ACCESS_CAPABILITY_REPORT.md for the compliance basis.
+    "tradingview": {
+        "tradingview_provider_enabled": False,
+        "tradingview_shadow_mode": True,
+        "tradingview_method": "none",
+        "tradingview_csv_directory": "",
+        "tradingview_webhook_enabled": False,
+        "tradingview_webhook_secret": "",
+        "tradingview_completed_daily_bridge_enabled": False,
+        "tradingview_prefer_only_when_newer": True,
+        "tradingview_require_confirmed_bar": True
+    },
+    # Engineering-only retention and backup policy.  Automatic deletion is
+    # deliberately disabled so research evidence remains reproducible.
+    "reproducibility": {
+        "archive_format": "npz+csv.gz",
+        "automatic_dataset_deletion": False,
+        "verify_on_replay": True
+    },
+    "operations": {
+        "backup_root": "backups",
+        "backup_retention_count": 10,
+        "automatic_backup_pruning": False,
+        "rubix_supervisor_max_restarts": 20
+    },
     "strategy": {
         "min_score": 65,
         "min_confidence": 80,
         "min_rr": 2.0,
         "min_trend": 25,
         "min_momentum": 5,
-        "min_volume": 5
+        "min_volume": 5,
+        "watch_score": 60,
+        "watch_confidence": 65,
+        "market_trend_adx": 25,
+        "market_weak_trend_adx": 18,
+        "market_index_fast_ema": 50,
+        "market_index_slow_ema": 200,
+
+        "max_rr": 100.0,
+        "require_candle_confirmation": False,
+        "require_market_analyzer": False,
+
+        "require_quality_filter": False,
+        "quality_min_adx": 20,
+        "quality_min_volume_ratio": 1.0,
+        "quality_min_atr_percent": 1.5,
+        "quality_min_resistance_room": 3.0
     },
 
     "backtest": {
         "entry_wait_days": 5,
+        "ai_mode": "STRATEGY_ONLY",
+        "walk_forward_splits": 5,
         "exit_mode": "TARGET1",
         "max_holding_days": 20,
         "move_to_breakeven": True,
@@ -29,8 +122,12 @@ DEFAULT_SETTINGS = {
 
         "trailing_mode": "EMA20",
         "trailing_atr": 2,
+        "trailing_enabled": False,
 
         "allow_overlapping_trades": False,
+
+        "max_open_positions": 10,
+        "max_portfolio_risk_percent": 10,
 
         "initial_capital": 100000,
 
@@ -38,11 +135,116 @@ DEFAULT_SETTINGS = {
         "slippage": 0.0005
     },
 
+    # Additive advisory scoring only. It never replaces the frozen strategy
+    # Score, Signal, AI ranking, entry, exit, risk, or portfolio calculations.
+    "decision_support": {
+        "enabled": True,
+        "rvol_lookback": 20,
+        "include_ai_probability": True,
+        "max_spread_percent": 0.5,
+        "minimum_turnover": 1000000.0,
+        "minimum_volume": 100000.0,
+        "atr_target_percent": 2.0,
+        "sector_file": "data/sectors.csv",
+        "database_path": "data/decision_support.db",
+        "edge_alert_threshold": 9.0,
+        "edge_weights": {
+            "trend_quality": 1.0, "momentum": 0.8,
+            "relative_volume": 0.9, "liquidity": 1.0,
+            "spread": 0.9, "bid_ask_balance": 0.4,
+            "atr_feasibility": 0.7, "resistance_room": 0.7,
+            "support_quality": 0.5, "market_strength": 0.8,
+            "sector_strength": 0.5, "setup_quality": 0.8,
+            "rubix_freshness": 0.9, "historical_performance": 0.5,
+            "volatility": 0.5, "ai_probability": 0.6,
+        },
+    },
+
+    # Fully isolated paper-only intraday module. These values never feed the
+    # frozen daily strategy, AI, ranking, portfolio, or backtest.
+    "scalping": {
+        "enabled": False,
+        "mode": "PAPER_ONLY",
+        "take_profit_percent": 2.0,
+        "stop_loss_percent": 2.0,
+        "require_rubix_fresh": True,
+        "allow_yahoo_actionable": False,
+        "close_at_session_end": True,
+        "entry_cutoff": "14:10",
+        "forced_exit_time": "14:25",
+        "quote_max_age_seconds": 60,
+        "commission": 0.003,
+        "slippage": 0.0005,
+        "initial_capital": 100000.0,
+        "risk_per_trade_percent": 0.5,
+        "max_open_positions": 3,
+        "max_daily_loss_percent": 2.0,
+        "max_trades_per_day": 8,
+        "max_consecutive_losses": 3,
+        "max_exposure_per_symbol_percent": 20.0,
+        "max_spread_percent": 0.5,
+        "minimum_liquidity": 100000.0,
+        "minimum_relative_volume": 1.0,
+        "portfolio_heat_percent": 2.0,
+        "revenge_cooldown_minutes": 30,
+        "opening_range_minutes": 15,
+        "momentum_lookback_bars": 5,
+        "breakout_lookback_bars": 20,
+        "minimum_momentum_percent": 0.3,
+        "database_path": "data/scalping.db",
+        "tick_size_bands": [
+            {"max_price": 2.0, "tick_size": 0.001},
+            {"max_price": None, "tick_size": 0.01},
+        ],
+    },
     "ai": {
         "enabled": False,
         "min_probability": 70
+    },
+
+    # Phase 4 policy values are deliberately configuration, not optimisation.
+    # Their initial bands follow the requested illustrative values exactly.
+    "ai_risk_overlay": {
+        "position_sizing": {
+            "bands": [
+                {"min_probability": 75, "multiplier": 1.00},
+                {"min_probability": 60, "multiplier": 0.75},
+                {"min_probability": 45, "multiplier": 0.50}
+            ],
+            "below_band_action": "size",
+            "below_band_multiplier": 0.25
+        },
+        "ranking": {
+            "weights": {
+                "strategy_quality": 0.40,
+                "ai_probability": 0.35,
+                "risk_reward": 0.15,
+                "confidence": 0.05,
+                "market_regime": 0.05
+            },
+            "rr_cap": 5.0,
+            "regime_scores": {
+                "BULL": 1.0,
+                "SIDEWAYS": 0.5,
+                "BEAR": 0.0
+            }
+        },
+        "hybrid": {
+            "emergency_min_probability": 20
+        }
     }
 }
+
+
+def _merge_defaults(defaults, values):
+    """Preserve user values while safely adding newly introduced settings."""
+    merged = deepcopy(defaults)
+    for key, value in values.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _merge_defaults(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
 
 
 class SettingsManager:
@@ -73,7 +275,12 @@ class SettingsManager:
 
         ) as f:
 
-            return json.load(f)
+            loaded = json.load(f)
+
+        if not isinstance(loaded, dict):
+            raise ValueError("Settings file must contain a JSON object")
+
+        return _merge_defaults(DEFAULT_SETTINGS, loaded)
 
     # ==================================
     # Save

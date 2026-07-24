@@ -1,0 +1,60 @@
+{
+  "adapter_path": "C:\\Users\\ahgza\\OneDrive\\Documents\\Scrapping\\rubix_feed",
+  "database_path": "D:\\EGX_AI_Trader\\data\\rubix_live_market.db",
+  "last_auth_folder": "C:\\secure-temp",
+  "window_geometry": "1080x820+775+126",
+  "recent_launches": [
+    {
+      "time": "2026-07-23T07:49:40.790599+00:00",
+      "mode": "rubix",
+      "result": "failed"
+    },
+    {
+      "time": "2026-07-23T08:12:44.642077+00:00",
+      "mode": "rubix",
+      "result": "failed"
+    },
+    {
+      "time": "2026-07-23T08:24:40.040018+00:00",
+      "mode": "rubix",
+      "result": "failed"
+    },
+    {
+      "time": "2026-07-23T08:26:27.213591+00:00",
+      "mode": "rubix",
+      "result": "failed"
+    },
+    {
+      "time": "2026-07-23T08:35:47.096564+00:00",
+      "mode": "rubix",
+      "result": "failed"
+    },
+    {
+      "time": "2026-07-23T08:37:49.495455+00:00",
+      "mode": "rubix",
+      "result": "failed"
+    },
+    {
+      "time": "2026-07-23T08:42:51.720086+00:00",
+      "mode": "rubix",
+      "result": "market_closed"
+    },
+    {
+      "time": "2026-07-23T08:43:13.673890+00:00",
+      "mode": "yahoo",
+      "result": "ready"
+    },
+    {
+      "time": "2026-07-23T09:22:12.759773+00:00",
+      "mode": "rubix",
+      "result": "ready"
+    },
+    {
+      "time": "2026-07-24T12:37:06.661608+00:00",
+      "mode": "research",
+      "result": "ready"
+    }
+  ],
+  "streamlit_port": 8501,
+  "theme": "System"
+}

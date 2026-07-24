@@ -1,0 +1,60 @@
+{
+  "_comment": "Scalping V2 Range Scanner — RESEARCH DEFAULTS, not claimed-optimal. PAPER/DECISION-SUPPORT ONLY. Disabled by default. The old fixed-2% scalping config (config/settings.json -> scalping) is preserved and untouched.",
+  "enabled": false,
+  "mode": "PAPER_ONLY",
+
+  "activation_delay_minutes": 30,
+  "activation_variants_minutes": [15, 30, 45],
+
+  "minimum_data_coverage": 0.60,
+  "maximum_quote_age_seconds": 90,
+  "minimum_quote_updates": 30,
+
+  "maximum_spread_percent": 0.6,
+  "minimum_turnover_egp": 500000.0,
+
+  "minimum_adr_percentile": 50,
+  "minimum_session_range_percentile": 50,
+  "minimum_turnover_percentile": 40,
+
+  "range_lower_zone_percent": 33.0,
+  "range_upper_zone_percent": 66.0,
+  "no_chase_range_position_percent": 70.0,
+
+  "intraday_atr_buffer_multiple": 0.5,
+  "intraday_atr_period": 14,
+
+  "minimum_net_rr": 1.5,
+  "slippage_estimate": 0.0007,
+  "commission_estimate": 0.003,
+
+  "target_model": "RANGE_MIDPOINT_UPPER_THIRD_HIGH",
+  "stop_model": "MAX_OF_RANGE_LOW_SWING_ATR",
+
+  "opening_range_minutes_primary": 15,
+  "opening_range_minutes_secondary": 30,
+
+  "_egx_session_phase_comment": "EGX Cairo phases: continuous trading 10:00-14:15, closing auction 14:15-14:25 (randomized close ~14:23-14:25). Range quality is evaluated on continuous trading only; new range entries must stop before the auction; auction gaps never invalidate the continuous-session range.",
+  "continuous_trading_open": "10:00",
+  "continuous_trading_close": "14:15",
+  "closing_auction_start": "14:15",
+  "closing_auction_end": "14:25",
+  "no_new_entries_after": "14:15",
+
+  "adr_lookback_sessions": 20,
+  "atr_lookback_sessions": 14,
+
+  "database_path": "data/scalping_range.db",
+
+  "_event_gate_comment": "Shadow event-driven data-quality gate (research, PAPER-ONLY, DISABLED). The legacy 60% minute-coverage gate remains the production gate and is preserved unchanged. Enabling this does NOT change any Entry/Stop/Target/RR or the production scanner; it only powers the separate shadow comparison. Only RANGE_CONFIRMED may ever produce a paper opportunity.",
+  "event_gate_enabled": false,
+  "paper_recording_enabled": false,
+  "production_enabled": false,
+  "event_gate_shadow_mode": true,
+  "event_gate_min_events": 60,
+  "event_gate_min_two_sided_ratio": 0.80,
+  "event_gate_min_span_minutes": 180,
+  "event_gate_max_gap_confirmed_seconds": 300,
+  "event_gate_max_gap_partial_seconds": 900,
+  "legacy_min_coverage_ratio_preserved": 0.60
+}

@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "description": "Announcements discovered by the official-source sync. These are ADVISORY until manually confirmed (status DISCOVERED / NEEDS_REVIEW). Never auto-treated as a confirmed holiday.",
+  "records": []
+}

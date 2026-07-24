@@ -1,0 +1,30 @@
+{
+  "trained_through": "2026-07-20",
+  "samples": 702,
+  "class_distribution": {
+    "0": 519,
+    "1": 183
+  },
+  "walk_forward": {
+    "predictions": 585,
+    "accuracy": 0.7897,
+    "precision": 0.6774,
+    "recall": 0.2897,
+    "f1": 0.4058,
+    "roc_auc": 0.6375,
+    "confusion_matrix": [
+      [
+        420,
+        20
+      ],
+      [
+        103,
+        42
+      ]
+    ],
+    "class_distribution": {
+      "0": 440,
+      "1": 145
+    }
+  }
+}

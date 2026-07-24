@@ -1,0 +1,3 @@
+# Development-only validation tools; production runtime dependencies stay unchanged.
+-r requirements.txt
+pytest>=8.0.0

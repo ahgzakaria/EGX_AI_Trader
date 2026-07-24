@@ -1,0 +1,32 @@
+[
+  {
+    "date": "2016-04-05",
+    "declarationDate": null,
+    "recordDate": null,
+    "paymentDate": null,
+    "period": null,
+    "value": 0.14118,
+    "unadjustedValue": 0.15,
+    "currency": "EGP"
+  },
+  {
+    "date": "2021-04-21",
+    "declarationDate": null,
+    "recordDate": null,
+    "paymentDate": null,
+    "period": null,
+    "value": 0.1,
+    "unadjustedValue": 0.1,
+    "currency": "EGP"
+  },
+  {
+    "date": "2022-05-26",
+    "declarationDate": null,
+    "recordDate": null,
+    "paymentDate": null,
+    "period": null,
+    "value": 0.05,
+    "unadjustedValue": 0.05,
+    "currency": "EGP"
+  }
+]

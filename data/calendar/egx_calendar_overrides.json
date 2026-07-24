@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "description": "Manual operator overrides (highest priority). Includes exceptional closures, early-close / late-open declarations, and corrections. A CONFIRMED override wins operationally but any conflict with an official record is surfaced, never hidden.",
+  "records": []
+}

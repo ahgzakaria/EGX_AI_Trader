@@ -1,0 +1,289 @@
+{
+  "frozen_at": "2026-07-24T11:35:47.027100+00:00",
+  "source": "local_cache:yahoo (snapshot, no network)",
+  "note": "Frozen after disabling EGX_AI_Trader_YahooCacheRefresh; extend only via Rubix bridge.",
+  "yahoo_network_used": false,
+  "symbols": {
+    "ACRO": {
+      "symbol": "ACRO",
+      "rows": 1,
+      "first_session": "2026-02-12",
+      "last_session": "2026-02-12",
+      "content_hash": "de055e0c67585ca5",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "ADRI": {
+      "symbol": "ADRI",
+      "rows": 1,
+      "first_session": "2026-07-16",
+      "last_session": "2026-07-16",
+      "content_hash": "017bba67ee4461b9",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "AIFI": {
+      "symbol": "AIFI",
+      "rows": 2472,
+      "first_session": "2016-07-19",
+      "last_session": "2026-07-22",
+      "content_hash": "93153c32e8bc3904",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "AMPI": {
+      "symbol": "AMPI",
+      "rows": 2476,
+      "first_session": "2016-07-19",
+      "last_session": "2026-07-22",
+      "content_hash": "ed6dfce1b20fd1f2",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "ARAB": {
+      "symbol": "ARAB",
+      "rows": 2383,
+      "first_session": "2016-11-15",
+      "last_session": "2026-07-22",
+      "content_hash": "e0ea3faf63e3418b",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "ASPI": {
+      "symbol": "ASPI",
+      "rows": 2469,
+      "first_session": "2016-07-19",
+      "last_session": "2026-07-22",
+      "content_hash": "92d8dd655a7fe3e5",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "BIDI": {
+      "symbol": "BIDI",
+      "rows": 1935,
+      "first_session": "2018-09-04",
+      "last_session": "2026-07-22",
+      "content_hash": "a4055e8ffcf02f34",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "BIGP": {
+      "symbol": "BIGP",
+      "rows": 2472,
+      "first_session": "2016-07-19",
+      "last_session": "2026-07-22",
+      "content_hash": "3530b2170ac9fb3b",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "CFGH": {
+      "symbol": "CFGH",
+      "rows": 2469,
+      "first_session": "2016-07-19",
+      "last_session": "2026-07-22",
+      "content_hash": "7a962282f3ec92f6",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "COPR": {
+      "symbol": "COPR",
+      "rows": 2474,
+      "first_session": "2016-07-19",
+      "last_session": "2026-07-22",
+      "content_hash": "509e5773343769d4",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "DEIN": {
+      "symbol": "DEIN",
+      "rows": 2474,
+      "first_session": "2016-07-19",
+      "last_session": "2026-07-22",
+      "content_hash": "a2f5fbef642895d1",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "EASB": {
+      "symbol": "EASB",
+      "rows": 2469,
+      "first_session": "2016-07-19",
+      "last_session": "2026-07-22",
+      "content_hash": "e7a3fe4a704c15c1",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "ELWA": {
+      "symbol": "ELWA",
+      "rows": 2469,
+      "first_session": "2016-07-19",
+      "last_session": "2026-07-22",
+      "content_hash": "95753bd9bff7ad46",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "ESRS": {
+      "symbol": "ESRS",
+      "rows": 2144,
+      "first_session": "2016-07-19",
+      "last_session": "2025-03-13",
+      "content_hash": "a9b92c36e11fd33e",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "FIRE": {
+      "symbol": "FIRE",
+      "rows": 1806,
+      "first_session": "2019-03-04",
+      "last_session": "2026-07-22",
+      "content_hash": "e41aeb8461964f01",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "FNAR": {
+      "symbol": "FNAR",
+      "rows": 2474,
+      "first_session": "2016-07-19",
+      "last_session": "2026-07-22",
+      "content_hash": "c8bdea42b3c42f79",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "GOCO": {
+      "symbol": "GOCO",
+      "rows": 1,
+      "first_session": "2025-10-26",
+      "last_session": "2025-10-26",
+      "content_hash": "0f8a22a555721a69",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "HDBK": {
+      "symbol": "HDBK",
+      "rows": 2470,
+      "first_session": "2016-07-19",
+      "last_session": "2026-07-22",
+      "content_hash": "ab9a8715560709a7",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "IBCT": {
+      "symbol": "IBCT",
+      "rows": 1931,
+      "first_session": "2018-09-10",
+      "last_session": "2026-07-22",
+      "content_hash": "26809ace53cc880f",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "IEEC": {
+      "symbol": "IEEC",
+      "rows": 1,
+      "first_session": "2026-07-16",
+      "last_session": "2026-07-16",
+      "content_hash": "a2e26a757b2fde75",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "INEG": {
+      "symbol": "INEG",
+      "rows": 1936,
+      "first_session": "2018-09-02",
+      "last_session": "2026-07-22",
+      "content_hash": "be1498961ace0166",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "KZPC": {
+      "symbol": "KZPC",
+      "rows": 2469,
+      "first_session": "2016-07-19",
+      "last_session": "2026-07-22",
+      "content_hash": "7df058de15276e56",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "MEGM": {
+      "symbol": "MEGM",
+      "rows": 2478,
+      "first_session": "2016-07-19",
+      "last_session": "2026-07-22",
+      "content_hash": "86095e29f4bd40e3",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "MHOT": {
+      "symbol": "MHOT",
+      "rows": 2471,
+      "first_session": "2016-07-19",
+      "last_session": "2026-07-22",
+      "content_hash": "aff0f51ffb3e5b49",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "MISR": {
+      "symbol": "MISR",
+      "rows": 1909,
+      "first_session": "2018-10-15",
+      "last_session": "2026-07-22",
+      "content_hash": "1322d69997629685",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "MKIT": {
+      "symbol": "MKIT",
+      "rows": 1937,
+      "first_session": "2018-09-02",
+      "last_session": "2026-07-22",
+      "content_hash": "75eb865a60ba620c",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "MMAT": {
+      "symbol": "MMAT",
+      "rows": 2459,
+      "first_session": "2016-07-19",
+      "last_session": "2026-07-22",
+      "content_hash": "fb041bd85d721fe0",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "NAHO": {
+      "symbol": "NAHO",
+      "rows": 2469,
+      "first_session": "2016-07-19",
+      "last_session": "2026-07-22",
+      "content_hash": "37fe03ef09660d0a",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "PRDC": {
+      "symbol": "PRDC",
+      "rows": 1161,
+      "first_session": "2021-10-11",
+      "last_session": "2026-07-22",
+      "content_hash": "5e3b291db6d9ecf6",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "RKAZ": {
+      "symbol": "RKAZ",
+      "rows": 1879,
+      "first_session": "2018-11-21",
+      "last_session": "2026-07-22",
+      "content_hash": "b02b829878396d5e",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "SPMD": {
+      "symbol": "SPMD",
+      "rows": 1496,
+      "first_session": "2020-05-19",
+      "last_session": "2026-07-22",
+      "content_hash": "036653e2cc849293",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "SUCE": {
+      "symbol": "SUCE",
+      "rows": 1331,
+      "first_session": "2016-07-18",
+      "last_session": "2023-03-08",
+      "content_hash": "fa1cff489dff1404",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "TRTO": {
+      "symbol": "TRTO",
+      "rows": 2474,
+      "first_session": "2016-07-19",
+      "last_session": "2026-07-22",
+      "content_hash": "6193e2871663c31e",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "UASG": {
+      "symbol": "UASG",
+      "rows": 2042,
+      "first_session": "2016-07-19",
+      "last_session": "2024-10-23",
+      "content_hash": "763276e6a96b5400",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    },
+    "UNIP": {
+      "symbol": "UNIP",
+      "rows": 2470,
+      "first_session": "2016-07-19",
+      "last_session": "2026-07-22",
+      "content_hash": "d8056a91dbc10d30",
+      "seed_provider": "FROZEN_YAHOO_SEED"
+    }
+  },
+  "symbol_count": 35
+}

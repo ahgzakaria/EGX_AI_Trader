@@ -1,393 +1,182 @@
-import streamlit as st
+"""Compact tabbed stock details without changing analysis or sizing logic."""
+
 import pandas as pd
+import streamlit as st
 
 from core.watchlist import Watchlist
+from dashboard.ui import section_header
 from portfolio.sizing import PositionSizer
 
 
 def show_stock_details(stock):
-
     watchlist = Watchlist()
-
     symbols = watchlist.load()
-
-    st.subheader(f"📊 {stock['Ticker']} Analysis")
-
-    # ==================================
-    # Watchlist
-    # ==================================
-
-    c1, c2 = st.columns(2)
-
+    title_col, action_col, count_col = st.columns([2, 1, 1])
+    title_col.subheader(f"{stock['Ticker']} · {stock['Rating']} · {stock['Signal']}")
     if stock["Ticker"] in symbols:
-
-        if c1.button(
-            "❌ Remove from Watchlist",
-            width="stretch"
-        ):
-
+        if action_col.button("✕ Remove", use_container_width=True):
             watchlist.remove(stock["Ticker"])
-
-            st.success("Removed from Watchlist")
-
             st.rerun()
-
     else:
-
-        if c1.button(
-            "⭐ Add to Watchlist",
-            width="stretch"
-        ):
-
+        if action_col.button("☆ Add to Watchlist", use_container_width=True):
             watchlist.add(stock["Ticker"])
-
-            st.success("Added to Watchlist")
-
             st.rerun()
+    count_col.metric("Watchlist", len(symbols))
 
-    c2.metric("Watchlist Size", len(symbols))
+    overview, decision, sizing_tab, chart_tab = st.tabs([
+        "Overview", "Decision Trace", "Position Sizing", "Chart & Indicators"
+    ])
+    with overview:
+        _overview(stock)
+    with decision:
+        _decision_trace(stock)
+    with sizing_tab:
+        _position_sizing(stock)
+    with chart_tab:
+        _chart_and_indicators(stock)
 
-    st.divider()
 
-    # ==================================
-    # General
-    # ==================================
+def _overview(stock):
+    ai_probability = stock.get("AIProbability")
+    ai_label = f"{ai_probability}%" if ai_probability is not None else "Not evaluated"
+    metrics = st.columns(3)
+    metrics[0].metric("Signal", stock["Signal"])
+    metrics[1].metric("Confidence", f"{stock['Confidence']}%")
+    metrics[2].metric("Strategy Score", stock["Score"])
+    metrics = st.columns(3)
+    metrics[0].metric("AI Advisory", ai_label)
+    metrics[1].metric("AI Level", stock["AILevel"])
+    metrics[2].metric("Risk / Reward", f"{stock['RR']:.2f}")
 
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    section_header("Price Levels", "Frozen strategy execution levels")
+    levels = st.columns(4)
+    levels[0].metric("Current", stock["Price"])
+    levels[1].metric("Buy Range", f"{stock['BuyLow']} – {stock['BuyHigh']}")
+    levels[2].metric("Stop Loss", stock["StopLoss"])
+    levels[3].metric("Target 1 / 2", f"{stock['Target1']} / {stock['Target2']}")
+    support = st.columns(2)
+    support[0].metric("Support", stock["Support"])
+    support[1].metric("Resistance", stock["Resistance"])
 
-    c1.metric("Signal", stock["Signal"])
-
-    c2.metric("Rating", stock["Rating"])
-
-    c3.metric("Confidence", f"{stock['Confidence']}%")
-
-    c4.metric("Score", stock["Score"])
-
-    c5.metric("AI", f"{stock['AIProbability']}%")
-
-    c6.metric("Level", stock["AILevel"])
-
-    st.divider()
-
-    # ==================================
-    # Price Levels
-    # ==================================
-
-    c1, c2, c3 = st.columns(3)
-
-    c1.metric("Current Price", stock["Price"])
-
-    c2.metric("Support", stock["Support"])
-
-    c3.metric("Resistance", stock["Resistance"])
-
-    c1, c2, c3 = st.columns(3)
-
-    c1.metric("Buy Low", stock["BuyLow"])
-
-    c2.metric("Buy High", stock["BuyHigh"])
-
-    c3.metric("Risk / Reward", stock["RR"])
-
-    c1, c2, c3 = st.columns(3)
-
-    c1.metric("Stop Loss", stock["StopLoss"])
-
-    c2.metric("Target 1", stock["Target1"])
-
-    c3.metric("Target 2", stock["Target2"])
-
-    st.divider()
-
-    # ==================================
-    # AI Summary
-    # ==================================
-
-    st.subheader("🤖 AI Summary")
-
+    section_header("Decision Summary", "AI is advisory and never overrides Strategy Only")
     if stock["Signal"] == "BUY":
-
         st.success(
-
-            f"""
-AI Probability : **{stock['AIProbability']}%**
-
-Rating : **{stock['Rating']}**
-
-Risk / Reward : **{stock['RR']}**
-"""
+            f"Strategy BUY · Rating {stock['Rating']} · AI advisory {ai_label} · "
+            f"R/R {stock['RR']:.2f}"
         )
-
     elif stock["Signal"] == "WATCH":
-
-        st.warning(
-            "The stock looks promising, but confirmation is recommended before entering."
-        )
-
+        st.warning("Promising setup, but the frozen strategy requires more confirmation.")
     else:
+        st.error("The current setup does not satisfy the frozen strategy entry rules.")
 
-        st.error(
-            "Current setup is weak. Waiting is preferable."
-        )
+    section_header("Key Reasons", "Decision-engine evidence")
+    reasons = [item.strip() for item in str(stock["Reasons"]).split("|") if item.strip()]
+    if reasons:
+        st.write(" · ".join(f"`{reason}`" for reason in reasons))
 
-    st.divider()
 
-    # ==================================
-    # Portfolio
-    # ==================================
+def _decision_trace(stock):
+    regime = stock.get("Regime", "N/A")
+    index_regime = stock.get("IndexRegime", "N/A")
+    regime_labels = {
+        "BULL": "🟢 BULL", "SIDEWAYS": "🟡 SIDEWAYS", "BEAR": "🔴 BEAR"
+    }
+    columns = st.columns(2)
+    columns[0].metric("EGX30 Regime", regime_labels.get(index_regime, index_regime))
+    columns[1].metric("Stock Regime", regime_labels.get(regime, regime))
 
-    st.subheader("💰 Position Sizing")
+    trace = stock.get("DecisionTrace", {})
+    section_header("Gate Results", "The exact unified decision path")
+    if trace:
+        trace_frame = pd.DataFrame([
+            {"Gate": gate, "Result": result} for gate, result in trace.items()
+        ])
 
-    capital = st.number_input(
+        def color_result(value):
+            text = str(value)
+            if "PASS" in text:
+                return "color:#059669;font-weight:700"
+            if "FAIL" in text or "LOW" in text:
+                return "color:#dc2626;font-weight:700"
+            return "color:#64748b"
 
-        "Capital",
+        styled = trace_frame.style
+        try:
+            styled = styled.map(color_result, subset=["Result"])
+        except AttributeError:
+            styled = styled.applymap(color_result, subset=["Result"])
+        st.dataframe(styled, hide_index=True, use_container_width=True)
 
-        min_value=1000.0,
+    breakdown = stock.get("ConfidenceBreakdown", {})
+    if breakdown:
+        section_header("Confidence Breakdown", "Contribution by decision component")
+        st.bar_chart(pd.Series(breakdown, name="Confidence"), color="#2563eb")
 
-        value=100000.0,
-
-        step=1000.0
-
-    )
-
-    risk = st.slider(
-
-        "Risk Per Trade (%)",
-
-        0.25,
-
-        5.0,
-
-        1.0,
-
-        0.25
-
-    )
-
-    sizing = PositionSizer(
-
-        capital,
-
-        risk
-
-    )
-
-    summary = sizing.calculate(
-
-        stock["BuyHigh"],
-
-        stock["StopLoss"]
-
-    )
-
-    c1, c2, c3 = st.columns(3)
-
-    c1.metric(
-
-        "Suggested Shares",
-
-        summary["Shares"]
-
-    )
-
-    c2.metric(
-
-        "Position Value",
-
-        f"{summary['PositionValue']:.2f}"
-
-    )
-
-    c3.metric(
-
-        "Maximum Loss",
-
-        f"{summary['MaximumLoss']:.2f}"
-
-    )
-
-    c1, c2 = st.columns(2)
-
-    c1.metric(
-
-        "Cash Remaining",
-
-        f"{summary['CashRemaining']:.2f}"
-
-    )
-
-    if summary["EnoughCapital"]:
-
-        c2.success("✅ Enough Capital")
-
-    else:
-
-        c2.error("❌ Not Enough Capital")
-
-    st.divider()
-
-    # ==================================
-    # Strategy Scores
-    # ==================================
-
-    st.subheader("Strategy Scores")
-
+    section_header("Strategy Module Scores", "Raw module contribution")
     scores = pd.DataFrame({
-
-        "Module": [
-
-            "Trend",
-
-            "Volume",
-
-            "Momentum",
-
-            "Candles",
-
-            "Breakout"
-
-        ],
-
+        "Module": ["Trend", "Volume", "Momentum", "Candles", "Breakout"],
         "Score": [
-
-            stock["Trend"],
-
-            stock["Volume"],
-
-            stock["Momentum"],
-
-            stock["Candles"],
-
-            stock["Breakout"]
-
-        ]
-
+            stock["Trend"], stock["Volume"], stock["Momentum"],
+            stock["Candles"], stock["Breakout"],
+        ],
     })
-
     st.dataframe(
-
-        scores,
-
-        hide_index=True,
-
-        width="stretch"
-
+        scores, hide_index=True, use_container_width=True,
+        column_config={
+            "Score": st.column_config.ProgressColumn("Score", min_value=0, max_value=30)
+        },
     )
 
-    st.divider()
 
-    # ==================================
-    # Reasons
-    # ==================================
+def _position_sizing(stock):
+    section_header("Risk Inputs", "Calculator only; it does not place an order")
+    capital_col, risk_col = st.columns(2)
+    capital = capital_col.number_input(
+        "Capital", min_value=1000.0, value=100000.0, step=1000.0
+    )
+    risk = risk_col.slider("Risk Per Trade (%)", 0.25, 5.0, 1.0, 0.25)
+    summary = PositionSizer(capital, risk).calculate(
+        stock["BuyHigh"], stock["StopLoss"]
+    )
+    metrics = st.columns(3)
+    metrics[0].metric("Suggested Shares", summary["Shares"])
+    metrics[1].metric("Position Value", f"{summary['PositionValue']:,.2f}")
+    metrics[2].metric("Maximum Loss", f"{summary['MaximumLoss']:,.2f}")
+    metrics = st.columns(2)
+    metrics[0].metric("Cash Remaining", f"{summary['CashRemaining']:,.2f}")
+    metrics[1].metric("Capital Check", "PASS" if summary["EnoughCapital"] else "INSUFFICIENT")
 
-    st.subheader("Reasons")
 
-    reasons = [
-
-        r.strip()
-
-        for r in stock["Reasons"].split("|")
-
-        if r.strip()
-
-    ]
-
-    for reason in reasons:
-
-        st.success(reason)
-
-    st.divider()
-
-    # ==================================
-    # Indicators
-    # ==================================
-
-    df = stock["Data"]
-
-    last = df.iloc[-1]
-
+def _chart_and_indicators(stock):
+    frame = stock["Data"]
+    last = frame.iloc[-1]
+    section_header(
+        "Price & Decision Levels",
+        "Display-only overlay; frozen entry, target, stop and indicators are unchanged",
+    )
+    chart = frame[[name for name in ("Close", "EMA20", "EMA50", "EMA200", "VWAP") if name in frame]].copy()
+    overlays = {
+        "Entry": stock.get("BuyHigh"),
+        "Target 1": stock.get("Target1"),
+        "Target 2": stock.get("Target2"),
+        "Stop": stock.get("StopLoss"),
+        "Support": stock.get("Support"),
+        "Resistance": stock.get("Resistance"),
+    }
+    for name, value in overlays.items():
+        if value is not None:
+            chart[name] = float(value)
+    st.line_chart(chart.tail(180))
+    if "Volume" in frame:
+        section_header("Volume", "Source volume; no transformation")
+        st.bar_chart(frame[["Volume"]].tail(180), color="#64748b")
+    section_header("Latest Indicators", "Last available source candle")
+    names = ["EMA20", "EMA50", "EMA200", "RSI", "MACD", "ADX", "ATR", "OBV"]
     indicators = pd.DataFrame({
-
-        "Indicator": [
-
-            "EMA20",
-
-            "EMA50",
-
-            "EMA200",
-
-            "RSI",
-
-            "MACD",
-
-            "ADX",
-
-            "ATR",
-
-            "OBV"
-
-        ],
-
+        "Indicator": names,
         "Value": [
-
-            round(last["EMA20"], 2),
-
-            round(last["EMA50"], 2),
-
-            round(last["EMA200"], 2),
-
-            round(last["RSI"], 2),
-
-            round(last["MACD"], 2),
-
-            round(last["ADX"], 2),
-
-            round(last["ATR"], 2),
-
-            round(last["OBV"], 2)
-
-        ]
-
-    })
-
-    st.subheader("Indicators")
-
-    st.dataframe(
-
-        indicators,
-
-        hide_index=True,
-
-        width="stretch"
-
-    )
-
-    st.divider()
-
-    # ==================================
-    # Chart
-    # ==================================
-
-    st.subheader("Price Chart")
-
-    st.line_chart(
-
-        df[
-
-            [
-
-                "Close",
-
-                "EMA20",
-
-                "EMA50",
-
-                "EMA200"
-
-            ]
-
+            round(float(last[name]), 2) if name in last and pd.notna(last[name]) else None
+            for name in names
         ],
-
-        width="stretch"
-
-    )
+    })
+    st.dataframe(indicators, hide_index=True, use_container_width=True)
