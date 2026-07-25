@@ -160,8 +160,23 @@ def test_schema_helper_lists_every_section_explicitly():
     schema = build_response_schema()
     assert schema["required"] == list(REQUIRED_SECTIONS)
     assert schema["additionalProperties"] is False
-    assert all(schema["properties"][name]["type"] == "string"
-               for name in REQUIRED_SECTIONS)
+    for name in REQUIRED_SECTIONS:
+        section = schema["properties"][name]
+        assert section["type"] == "object"
+        assert section["additionalProperties"] is False
+        assert section["required"] == ["qualitative_text_ar", "fact_refs"]
+        assert section["properties"]["qualitative_text_ar"]["type"] == "string"
+        assert section["properties"]["fact_refs"]["type"] == "array"
+
+
+def test_caller_supplied_schema_is_sent_verbatim(monkeypatch):
+    """The per-analysis schema (with its fact_refs enums) must reach the provider."""
+    capture = _patch(monkeypatch, _Capture(_ok_envelope()))
+    per_analysis = {"type": "object", "properties": {}, "required": [],
+                    "additionalProperties": False, "marker": "per-analysis"}
+    OpenAIResponsesProvider(model="gpt-4.1-mini").complete(
+        MESSAGES, timeout=5.0, schema=per_analysis)
+    assert capture.body["text"]["format"]["schema"] == per_analysis
 
 
 def test_no_tools_and_no_conversation_persistence(monkeypatch):

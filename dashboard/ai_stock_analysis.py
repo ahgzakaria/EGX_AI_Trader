@@ -132,6 +132,11 @@ def _page_style():
             direction:rtl; }
         .egx-narr h4 { margin:0 0 .4rem; font-size:1.02rem; }
         .egx-narr p { margin:.25rem 0; color:var(--muted); font-size:.88rem; line-height:1.75; }
+        .egx-facts { display:flex; flex-wrap:wrap; gap:.3rem .55rem; margin:.1rem 0 .5rem;
+            padding-right:.2rem; }
+        .egx-facts .f { background:var(--surface); border:1px solid var(--border);
+            border-radius:8px; padding:.12rem .5rem; font-size:.8rem; font-weight:650;
+            color:var(--text); font-variant-numeric:tabular-nums; }
         .egx-conf { display:flex; align-items:center; gap:.6rem; margin:.28rem 0; }
         .egx-conf .lbl { min-width:150px; font-size:.8rem; direction:rtl; }
         .egx-conf .bar { flex:1; height:8px; border-radius:999px; background:var(--surface-2);
@@ -452,10 +457,16 @@ def _narrative_section(narrative, bundle=None, regenerator=None):
     body = [f'<h4>{html.escape(str(narrative.headline))}</h4>']
     sections = tuple(getattr(narrative, "sections", ()) or ())
     if sections:
-        # Validated external narrative: show every structured Arabic section as supplied.
+        # Validated external narrative. Each section is model prose followed by fact lines
+        # the application rendered: the numbers, labels, units and order are deterministic.
         for name, text in sections:
             label = SECTION_LABELS_AR.get(name, name)
-            body.append(f'<p><b>{html.escape(label)}:</b> {html.escape(str(text))}</p>')
+            prose, *fact_lines = str(text).split("\n")
+            body.append(f'<p><b>{html.escape(label)}:</b> {html.escape(prose)}</p>')
+            if fact_lines:
+                facts = "".join(f'<span class="f">{html.escape(line)}</span>'
+                                for line in fact_lines if line.strip())
+                body.append(f'<div class="egx-facts">{facts}</div>')
     else:
         body.append(f'<p>{html.escape(str(narrative.summary))}</p>')
         body.append(f'<p>{html.escape(str(narrative.rationale))}</p>')

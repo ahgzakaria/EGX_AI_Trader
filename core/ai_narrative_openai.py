@@ -30,7 +30,11 @@ import socket
 import urllib.error
 import urllib.request
 
-from core.ai_narrative_prompt import REQUIRED_SECTIONS
+from core.ai_narrative_prompt import (
+    FACT_REFS_FIELD,
+    QUALITATIVE_FIELD,
+    REQUIRED_SECTIONS,
+)
 from core.ai_narrative_provider import (
     NarrativeProviderError,
     ProviderEmptyResponse,
@@ -63,13 +67,26 @@ def _api_key() -> str:
 
 
 def build_response_schema() -> dict:
-    """The strict JSON Schema the model must satisfy: exactly the eight Arabic sections."""
-    return {
+    """Fallback schema when the caller supplies none.
+
+    The real schema is per-analysis (its ``fact_refs`` enums list exactly the facts that
+    analysis may cite) and is built by ``core.ai_narrative_prompt.build_section_schema``
+    from the fact registry. This shape is the same contract without the enum narrowing.
+    """
+    section = {
         "type": "object",
         "properties": {
-            name: {"type": "string", "description": f"Concise Arabic text for {name}."}
-            for name in REQUIRED_SECTIONS
+            QUALITATIVE_FIELD: {"type": "string",
+                                "description": "Concise Arabic prose containing NO digits."},
+            FACT_REFS_FIELD: {"type": "array", "items": {"type": "string"},
+                              "description": "Approved fact ids cited by this section."},
         },
+        "required": [QUALITATIVE_FIELD, FACT_REFS_FIELD],
+        "additionalProperties": False,
+    }
+    return {
+        "type": "object",
+        "properties": {name: dict(section) for name in REQUIRED_SECTIONS},
         "required": list(REQUIRED_SECTIONS),
         "additionalProperties": False,
     }
@@ -98,7 +115,8 @@ class OpenAIResponsesProvider:
 
     # -- request ------------------------------------------------------------- #
 
-    def build_request_body(self, messages: list[dict]) -> dict:
+    def build_request_body(self, messages: list[dict],
+                           schema: dict | None = None) -> dict:
         """Compose the Responses API payload. Stateless, tool-free, strictly typed."""
         system = "\n\n".join(str(m.get("content", "")) for m in messages
                              if m.get("role") == "system")
@@ -113,7 +131,7 @@ class OpenAIResponsesProvider:
                     "type": "json_schema",
                     "name": SCHEMA_NAME,
                     "strict": True,
-                    "schema": build_response_schema(),
+                    "schema": schema if schema is not None else build_response_schema(),
                 },
             },
             "max_output_tokens": MAX_OUTPUT_TOKENS,
@@ -204,9 +222,10 @@ class OpenAIResponsesProvider:
 
     # -- provider interface -------------------------------------------------- #
 
-    def complete(self, messages: list[dict], *, timeout: float) -> str:
+    def complete(self, messages: list[dict], *, timeout: float,
+                 schema: dict | None = None) -> str:
         """Return the model's structured JSON text, or raise a typed provider error."""
-        envelope = self._post(self.build_request_body(messages), timeout=timeout)
+        envelope = self._post(self.build_request_body(messages, schema), timeout=timeout)
         return self.extract_output_text(envelope)
 
 

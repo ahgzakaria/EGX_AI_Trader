@@ -1,20 +1,98 @@
-# AI Narrative Provider V2 — guarded external narrative layer
+# AI Narrative Provider V2 — AI narrative with deterministic facts
 
 The deterministic evidence engine (Layer 1) remains the **only** source of every market
-number. This layer adds an optional external language model as a **narrative and reasoning
-layer only**, behind validation that rejects anything it must not say.
+number. This layer adds an optional external language model as a **narrative layer only**:
+the model writes qualitative Arabic prose and *cites* facts by id — it never writes a
+number. Every figure the reader sees is inserted by the application from a typed evidence
+field, with the application's own label, unit, rounding and ordering.
 
 ```
 AnalysisResult
-  → sanitized evidence payload      core/ai_narrative_prompt.py
-  → external provider adapter        core/ai_narrative_openai.py   (or an injected one)
-  → structured JSON response
-  → schema + numeric + wording validation   core/ai_narrative_validator.py
+  → fact registry (typed facts + section permissions)   core/ai_narrative_facts.py
+  → number-free qualitative payload + strict schema     core/ai_narrative_prompt.py
+  → external provider adapter                           core/ai_narrative_openai.py
+  → {qualitative_text_ar, fact_refs} per section
+  → schema + no-digits + fact-binding + wording checks   core/ai_narrative_validator.py
+  → deterministic composition (prose + rendered fact lines)
   → accepted AI narrative
                         …any failure at any step → Deterministic Fallback
 ```
 
 Entry point: `core.ai_narrative_provider.build_narrative(result, ...)`. It never raises.
+
+## Why fact binding
+
+An exact numeric allow-list stops *invented* values but is global across the evidence, so
+it cannot stop **semantic misattribution**: 1.90 is a genuine risk/reward, so "الهدف 1.90"
+would pass a value-only check while being flatly wrong. The same hole allowed RSI as a
+target, a stop as a positive target, volume as turnover, or remaining-room as the daily
+change. The fix is structural — the model is not allowed to emit digits at all.
+
+## Provider output shape
+
+Each of the eight sections is an object, not a string:
+
+```json
+"positive_scenario_ar": {
+  "qualitative_text_ar": "السيناريو الإيجابي يرتبط بتجاوز مستوى التفعيل.",
+  "fact_refs": ["scenario.primary.trigger", "scenario.primary.target",
+                "scenario.primary.risk_reward"]
+}
+```
+
+The strict JSON Schema is built **per analysis**: `additionalProperties: false`, both
+fields required in every section, and each section's `fact_refs` is an `enum` of exactly
+the fact ids that section may cite for this result. No tools, no web search, no file
+search, no conversation persistence.
+
+## Fact registry
+
+[core/ai_narrative_facts.py](../core/ai_narrative_facts.py) builds one registry per
+analysis from **typed contract fields only** — nothing is parsed out of prose, a level
+`basis` string, or a machine reason. Each fact carries `fact_id`, source path, raw typed
+value, field kind, deterministic formatted value, Arabic label, and the sections allowed
+to cite it. A fact whose value is missing is absent from the registry, so it cannot be
+cited; volume-derived facts (`price.volume`, `price.turnover`, `indicator.volume_ratio`,
+`indicator.average_volume_20`) are withheld entirely when `volume_safe` is false.
+
+Ids include `price.close`, `price.change_percent`, `indicator.sma_20`, `indicator.ema_20`,
+`indicator.rsi_14`, `indicator.macd`, `indicator.macd_histogram`, `indicator.atr_14`,
+`indicator.volume_ratio`, `level.support_1`, `level.resistance_1`, `level.breakout`,
+`level.invalidation`, `scenario.primary.trigger`, `.entry_low`, `.entry_high`, `.target`,
+`.stop`, `.risk_reward`, `.remaining_room_percent`, `confidence.overall`, plus the
+non-numeric states `classification.trend`, `classification.momentum`, `recommendation`,
+`data.status`, `data.volume_safe`.
+
+## Section permissions
+
+| Section | May cite |
+| --- | --- |
+| executive_summary | close, change amount/percent, trend, momentum, recommendation, overall confidence |
+| technical_read | typed indicator fields, trend, momentum, volume safety (volume facts only when safe) |
+| positive_scenario | trigger, entry range, target, remaining room, risk/reward, scenario confidence, resistance, breakout |
+| negative_scenario | stop, invalidation, supports |
+| confirmation_conditions | trigger, breakout, volume ratio (only when `volume_safe`), momentum, volume safety |
+| invalidation_conditions | stop, invalidation, first support |
+| risk_notes | ATR, risk/reward, scenario confidence, overall confidence, volume safety |
+| data_limitations | data status, freshness, provider, latest session, sessions used, volume safety |
+
+A reference outside its section's list rejects the whole response.
+
+## Deterministic rendering
+
+After validation the application composes each section as the model's prose followed by
+`label: value` lines, in **registry order** (never the model's), duplicates collapsed:
+
+```
+السيناريو الإيجابي يرتبط بتجاوز مستوى التفعيل.
+نقطة التفعيل: 93.50 جنيه
+الهدف المحسوب: 97.80 جنيه
+العائد إلى المخاطرة: 1.90
+```
+
+The AI owns the words. The application owns the numeric formatting, currency labels, field
+labels, ordering and rounding — `format_value()` is the only place a market number becomes
+text.
 
 ## Configuration (environment only)
 
@@ -39,24 +117,25 @@ secret left blank.
 logs, the UI, or the exported card. Failure reasons are built from exception *types* and
 rule ids, never from provider text.
 
-## What the model may see
+## What the model may see — no market values at all
 
-A strict allow-list projection of the analysis (`build_evidence_payload`): symbol, company
-name, timestamp, market phase, session date, price summary, trend/momentum, SMA/EMA, RSI,
-MACD, ATR, volume safety, supports/resistances/breakout/invalidation, supplied scenarios,
-confidence components, provider provenance, data-quality warnings. Nothing else exists in
-the payload — no keys, no paths, no portfolio, no other symbol, no universe, no raw logs.
+`build_qualitative_payload` sends a strict allow-list projection containing **states, not
+values**: symbol, company name, market phase, recommendation, trend/momentum,
+scenario state, data status/freshness/history/volume-safety flags, number-stripped
+condition kinds and machine reasons, and the list of citable facts (id, number-free label,
+allowed sections). No price, no indicator value, no level, no timestamp — the model cannot
+leak a figure it was never given, and indicator periods are stripped from the labels it
+sees so it cannot copy a digit from `المتوسط المتحرك البسيط 20` either.
 
-Evidence strings are sanitized (controls, bidi marks, code fences and chat-role markers
-removed, length-capped) and framed as **untrusted data** the model may describe but never
-obey.
+Nothing else exists in the payload — no keys, no paths, no portfolio, no other symbol, no
+universe, no raw logs. Evidence strings are sanitized (controls, bidi marks, code fences
+and chat-role markers removed, length-capped) and framed as **untrusted data** the model
+may describe but never obey.
 
 ## What the model must return
 
-A single JSON object with exactly these keys, concise Arabic, no markdown tables:
-`executive_summary_ar`, `technical_read_ar`, `positive_scenario_ar`,
-`negative_scenario_ar`, `confirmation_conditions_ar`, `invalidation_conditions_ar`,
-`risk_notes_ar`, `data_limitations_ar`.
+A single JSON object with exactly the eight section keys, each an object with exactly
+`qualitative_text_ar` (concise Arabic, **no digits**) and `fact_refs` (approved ids).
 
 This is enforced at the transport level too: the request uses OpenAI's **Responses API**
 (`POST /v1/responses`) with strict Structured Outputs — `text.format.type = "json_schema"`,
@@ -67,11 +146,17 @@ tools (`"tools": []` — no function calling, no web search, no file search), no
 enters. A Structured-Outputs **refusal** arrives as a `refusal` content item and is turned
 into a typed error, never mistaken for narrative.
 
-Rejected outright: any number that is not an approved *textual rendering* of a typed
-evidence value, any direct order (`اشترِ الآن`, `بيع فورًا`, `ادخل بكل السيولة`,
-`ضاعف مركزك`), any certainty claim, any markup.
+Rejected outright, discarding the whole response: **any digit or percent sign in the
+model's prose** (Western, Arabic-Indic or Extended Arabic-Indic — status
+`RAW_NUMBER_IN_PROSE`), any unknown fact id, any fact cited from a section that may not
+use it (`FACT_REFERENCE_INVALID`), any direct order (`اشترِ الآن`, `بيع فورًا`,
+`ادخل بكل السيولة`, `ضاعف مركزك`), any certainty claim, and any markup.
 
-### Numeric validation — exact, field-aware, no tolerance
+### Numeric validation — exact, field-aware, no tolerance (defence in depth)
+
+The composed section — model prose **plus** the application's rendered fact lines — is
+re-checked against the allow-list below, so even a rendering bug cannot put an untraceable
+number on screen.
 
 There is **no absolute and no relative epsilon anywhere**. A 0.05 epsilon would accept
 `1.89` for a stock evidenced at `1.84` — a 2.7% error on a low-priced EGX security. Instead
@@ -121,6 +206,11 @@ monkeypatching every one of those entry points to raise.
 
 ## Tests
 
+* `tests/test_ai_narrative_fact_binding.py` — semantic binding: risk/reward cannot be
+  written as a price, target cannot be cited from the technical read, RSI cannot be a
+  target, stop cannot headline the positive scenario, volume ≠ turnover, remaining room ≠
+  daily change, digits in any script rejected, renderer inserts the exact typed values in
+  registry order, volume facts withheld when unsafe, PNG carries only rendered numbers.
 * `tests/test_ai_narrative_provider_v2.py` — the guarded path end to end (mocked provider).
 * `tests/test_ai_narrative_numbers.py` — numeric exactness, including the low-price
   boundary cases (1.84 vs 1.85/1.89, 97.80 vs 97.85, 91.00 vs 91.05, 15.37% vs 15.42%).

@@ -37,11 +37,13 @@ from enum import Enum
 from typing import Callable, Protocol, runtime_checkable
 
 from core.ai_analysis_narrative import FALLBACK_MODEL, build_fallback_narrative
+from core.ai_narrative_facts import build_fact_registry
 from core.ai_narrative_prompt import (
     PROMPT_VERSION,
     REQUIRED_SECTIONS,
-    build_evidence_payload,
     build_messages,
+    build_qualitative_payload,
+    build_section_schema,
 )
 from core.ai_narrative_validator import validate_response
 from core.ai_stock_analysis_contract import (
@@ -130,8 +132,14 @@ class AINarrativeProvider(Protocol):
     def is_configured(self) -> bool:
         """True when a credential is present. Never returns or logs the credential."""
 
-    def complete(self, messages: list[dict], *, timeout: float) -> str:
-        """Return the model's raw text answer, or raise a ``NarrativeProviderError``."""
+    def complete(self, messages: list[dict], *, timeout: float,
+                 schema: dict | None = None) -> str:
+        """Return the model's raw text answer, or raise a ``NarrativeProviderError``.
+
+        ``schema`` is the per-analysis strict JSON Schema (its ``fact_refs`` enums list
+        exactly the facts this analysis may cite); adapters that support structured
+        outputs must send it.
+        """
 
 
 # --------------------------------------------------------------------------- #
@@ -302,11 +310,13 @@ def _fallback(result: AnalysisResult, language: str, *, source: str, reason: str
 
 def _accepted(result: AnalysisResult, language: str, sections: dict, *, provider: str,
               model: str, latency_ms: int, now=None) -> NarrativeResult:
-    """Compose the accepted AI narrative.
+    """Compose the accepted AI narrative — **AI prose with deterministic facts**.
 
     The headline stays deterministic (built from evidence by the Layer-1 fallback writer)
-    so the single most prominent line on the page and the PNG can never be model prose;
-    the model's eight validated Arabic sections supply everything else.
+    so the single most prominent line on the page and the PNG can never be model prose.
+    Each section is the model's qualitative Arabic sentence followed by the fact lines the
+    application rendered: the model chose the words, the application owns every number,
+    its label, its unit, its rounding and the order the lines appear in.
     """
     base = build_fallback_narrative(result, language=language)
     provenance = NarrativeProvenance(
@@ -384,7 +394,11 @@ def build_narrative(
             stamped = replace(cached.provenance, cached=True)
             return replace(cached, provenance=stamped)
 
-    messages = build_messages(build_evidence_payload(result))
+    # The fact registry is the contract for this analysis: it decides which numbers exist,
+    # which sections may cite them, and how each one is rendered.
+    registry = build_fact_registry(result)
+    messages = build_messages(build_qualitative_payload(result, registry))
+    schema = build_section_schema(registry)
     attempts = max(1, int(settings.max_retries) + 1)
     started = time.perf_counter()
     raw = None
@@ -392,7 +406,8 @@ def build_narrative(
 
     for attempt in range(attempts):
         try:
-            raw = adapter.complete(messages, timeout=float(settings.timeout_seconds))
+            raw = adapter.complete(messages, timeout=float(settings.timeout_seconds),
+                                   schema=schema)
             break
         except NarrativeProviderError as error:
             last_reason = error.reason
@@ -417,7 +432,7 @@ def build_narrative(
     # Unparsable-but-present text is a schema violation, not an empty response; passing the
     # raw string through lets the validator classify it without ever returning its content.
     payload = decoded if decoded is not None else (str(raw).strip() or None)
-    report = validate_response(payload, result)
+    report = validate_response(payload, result, registry)
     if not report.ok:
         # The rejected text is dropped here and never returned, displayed or logged.
         return _fallback(result, language, source=SOURCE_FALLBACK,

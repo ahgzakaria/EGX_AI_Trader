@@ -24,6 +24,7 @@ from core import ai_narrative_prompt as prompt
 from core import ai_narrative_provider as provider_layer
 from core import ai_narrative_validator as validator
 from core.ai_analysis_narrative import FALLBACK_MODEL, build_fallback_narrative
+from core.ai_narrative_facts import build_fact_registry
 from core.ai_narrative_provider import (
     NarrativeCache,
     NarrativeConfig,
@@ -107,28 +108,56 @@ def _clean_cache():
 # --------------------------------------------------------------------------- #
 
 def _valid_sections(result) -> dict:
-    """A well-formed answer that mentions only numbers present in the evidence."""
-    close = result.price.close
-    rsi = result.indicators.rsi_14
-    scenario = result.scenarios[0] if result.scenarios else None
-    target = scenario.target if scenario else None
-    stop = scenario.stop if scenario else None
+    """A well-formed answer: number-free Arabic prose plus permitted fact references."""
+    registry = build_fact_registry(result)
+
+    def _section(name, text, *refs):
+        allowed = registry.for_section(name)
+        return {"qualitative_text_ar": text,
+                "fact_refs": [r for r in refs if r in allowed]}
+
     return {
-        "executive_summary_ar": (
-            f"يغلق السهم عند {close:.2f} جنيه، والسيناريو يظل مشروطًا ويحتاج إلى تأكيد."),
-        "technical_read_ar": (
-            f"مؤشر القوة النسبية عند {rsi:.2f} ويقرأ ضمن الأدلة المحسوبة فقط."),
-        "positive_scenario_ar": (
-            f"تتم المراقبة عند المستوى المحسوب {target:.2f} إذا تحقق التأكيد."
-            if target is not None else "تتم المراقبة عند المستوى المحسوب."),
-        "negative_scenario_ar": (
-            f"يبطل السيناريو عند مستوى الإلغاء المحسوب {stop:.2f}."
-            if stop is not None else "يبطل السيناريو عند مستوى الإلغاء المحسوب."),
-        "confirmation_conditions_ar": "يحتاج إلى تأكيد بإغلاق فوق المستوى المحسوب.",
-        "invalidation_conditions_ar": "يبطل السيناريو عند مستوى الإلغاء المحسوب.",
-        "risk_notes_ar": "السيولة والانزلاق السعري قد يغيّران نتيجة المتابعة.",
-        "data_limitations_ar": "الأدلة تقتصر على الجلسات المكتملة المتاحة فقط.",
+        "executive_summary_ar": _section(
+            "executive_summary_ar",
+            "الاتجاه العام إيجابي لكن السيناريو ما زال مشروطًا ويحتاج إلى تأكيد.",
+            "price.close", "classification.trend", "recommendation", "confidence.overall"),
+        "technical_read_ar": _section(
+            "technical_read_ar",
+            "الزخم إيجابي مع حاجة إلى استمرار التأكيد ضمن الأدلة المحسوبة.",
+            "indicator.rsi_14", "indicator.macd_histogram", "classification.momentum"),
+        "positive_scenario_ar": _section(
+            "positive_scenario_ar",
+            "السيناريو الإيجابي يرتبط بتجاوز مستوى التفعيل مع استمرار التأكيد.",
+            "scenario.primary.trigger", "scenario.primary.target",
+            "scenario.primary.risk_reward"),
+        "negative_scenario_ar": _section(
+            "negative_scenario_ar",
+            "يبطل السيناريو عند مستوى الإلغاء المحسوب أو عند فقدان الدعم.",
+            "scenario.primary.stop", "level.support_1"),
+        "confirmation_conditions_ar": _section(
+            "confirmation_conditions_ar",
+            "يحتاج إلى تأكيد بإغلاق فوق مستوى التفعيل مع حجم تداول موثوق.",
+            "scenario.primary.trigger", "data.volume_safe"),
+        "invalidation_conditions_ar": _section(
+            "invalidation_conditions_ar",
+            "يبطل السيناريو عند كسر مستوى الإلغاء المحسوب.",
+            "scenario.primary.stop", "level.invalidation"),
+        "risk_notes_ar": _section(
+            "risk_notes_ar",
+            "تقلب السعر والسيولة قد يغيّران نتيجة المتابعة؛ هذا محتوى بحثي فقط.",
+            "indicator.atr_14", "scenario.primary.risk_reward"),
+        "data_limitations_ar": _section(
+            "data_limitations_ar",
+            "الأدلة تقتصر على الجلسات المكتملة المتاحة ولا تشمل أي مصدر خارجي.",
+            "data.status", "data.latest_session"),
     }
+
+
+def _with_prose(result, section, text) -> dict:
+    """The valid answer with one section's prose replaced (fact refs untouched)."""
+    sections = _valid_sections(result)
+    sections[section] = {**sections[section], "qualitative_text_ar": text}
+    return sections
 
 
 class MockProvider:
@@ -142,13 +171,15 @@ class MockProvider:
         self._configured = configured
         self.calls = 0
         self.messages = []
+        self.schemas = []
 
     def is_configured(self) -> bool:
         return self._configured
 
-    def complete(self, messages, *, timeout):
+    def complete(self, messages, *, timeout, schema=None):
         self.calls += 1
         self.messages.append(messages)
+        self.schemas.append(schema)
         answer = self._answers[min(self.calls - 1, len(self._answers) - 1)]
         if isinstance(answer, Exception):
             raise answer
@@ -233,42 +264,38 @@ def test_accepted_narrative_keeps_the_deterministic_headline(result):
     assert narrative.headline == build_fallback_narrative(result).headline
 
 
-def test_arabic_numeral_and_percent_formatting_is_accepted(result):
-    sections = _valid_sections(result)
-    percent = result.price.change_percent
-    arabic_digits = str(f"{percent:.2f}").translate(
-        {ord(str(i)): chr(0x0660 + i) for i in range(10)}).replace(".", chr(0x066B))
-    sections["technical_read_ar"] = f"بلغ التغير {arabic_digits}\u066a خلال الجلسة."
-    narrative = build_narrative(result, config=EXTERNAL_CONFIG,
-                                provider=_json_provider(sections))
-    assert narrative.provenance.source == SOURCE_AI
+def test_deterministic_fact_lines_are_appended_to_the_prose(result):
+    narrative, _ = _ai(result)
+    sections = dict(narrative.sections)
+    positive = sections["positive_scenario_ar"].split("\n")
+    assert positive[0].strip() and not any(ch.isdigit() for ch in positive[0])
+    assert len(positive) > 1                      # the numbers arrive as rendered lines
+    assert any("نقطة التفعيل" in line for line in positive[1:])
 
 
-def test_thousands_separated_volume_is_accepted(result):
-    sections = _valid_sections(result)
-    sections["data_limitations_ar"] = f"حجم التداول المحسوب {result.price.volume:,.0f} سهم."
+def test_conditional_wording_is_allowed(result):
+    sections = _with_prose(result, "executive_summary_ar",
+                           "السيناريو يظل مشروطًا ويحتاج إلى تأكيد؛ تتم المراقبة عند "
+                           "المستوى المحسوب.")
     narrative = build_narrative(result, config=EXTERNAL_CONFIG,
                                 provider=_json_provider(sections))
     assert narrative.provenance.source == SOURCE_AI
 
 
 # --------------------------------------------------------------------------- #
-# Numeric hallucination — every variant is rejected outright
+# Raw numbers in prose — the model may not write ANY figure
 # --------------------------------------------------------------------------- #
 
 def _rejected(result, section, text):
-    sections = _valid_sections(result)
-    sections[section] = text
-    narrative = build_narrative(result, config=EXTERNAL_CONFIG,
-                                provider=_json_provider(sections))
-    return narrative
+    return build_narrative(result, config=EXTERNAL_CONFIG,
+                           provider=_json_provider(_with_prose(result, section, text)))
 
 
 def test_unknown_number_is_rejected(result):
     narrative = _rejected(result, "technical_read_ar",
                           "القيمة المرجعية 987654.31 غير موجودة في الأدلة.")
     assert narrative.provenance.source == SOURCE_FALLBACK
-    assert narrative.provenance.validation_status == validator.NUMERIC_HALLUCINATION
+    assert narrative.provenance.validation_status == validator.RAW_NUMBER_IN_PROSE
     assert narrative.model == FALLBACK_MODEL
 
 
@@ -276,32 +303,31 @@ def test_altered_target_is_rejected(result):
     target = result.scenarios[0].target
     narrative = _rejected(result, "positive_scenario_ar",
                           f"الهدف المحسوب {target * 1.25:.2f}.")
-    assert narrative.provenance.validation_status == validator.NUMERIC_HALLUCINATION
+    assert narrative.provenance.validation_status == validator.RAW_NUMBER_IN_PROSE
 
 
 def test_altered_stop_is_rejected(result):
     stop = result.scenarios[0].stop
     narrative = _rejected(result, "negative_scenario_ar",
                           f"يبطل السيناريو عند {stop * 0.8:.2f}.")
-    assert narrative.provenance.validation_status == validator.NUMERIC_HALLUCINATION
+    assert narrative.provenance.validation_status == validator.RAW_NUMBER_IN_PROSE
 
 
 def test_invented_percentage_is_rejected(result):
     narrative = _rejected(result, "risk_notes_ar", "احتمال النجاح 73.4٪ وفق القراءة.")
-    assert narrative.provenance.validation_status == validator.NUMERIC_HALLUCINATION
+    assert narrative.provenance.validation_status == validator.RAW_NUMBER_IN_PROSE
 
 
 def test_invented_indicator_value_is_rejected(result):
     narrative = _rejected(result, "technical_read_ar", "مؤشر القوة النسبية عند 41.37.")
-    assert narrative.provenance.validation_status == validator.NUMERIC_HALLUCINATION
+    assert narrative.provenance.validation_status == validator.RAW_NUMBER_IN_PROSE
 
 
-def test_unrelated_value_cannot_match_volume_by_tolerance(result):
-    # A figure "close" to a large volume in relative terms is still fabricated.
-    volume = result.price.volume
-    narrative = _rejected(result, "data_limitations_ar",
-                          f"حجم التداول نحو {volume * 1.01:.0f} سهم.")
-    assert narrative.provenance.validation_status == validator.NUMERIC_HALLUCINATION
+def test_even_a_correct_evidence_value_is_rejected_in_prose(result):
+    """The close is a real evidence number — the model still may not type it."""
+    narrative = _rejected(result, "executive_summary_ar",
+                          f"الإغلاق {result.price.close:.2f} جنيه.")
+    assert narrative.provenance.validation_status == validator.RAW_NUMBER_IN_PROSE
 
 
 def test_rejection_reason_never_contains_the_rejected_prose(result):
@@ -333,15 +359,6 @@ def test_certainty_claim_is_rejected(result):
     assert narrative.provenance.validation_status == validator.FORBIDDEN_RECOMMENDATION
 
 
-def test_conditional_wording_is_allowed(result):
-    sections = _valid_sections(result)
-    sections["executive_summary_ar"] = ("السيناريو يظل مشروطًا ويحتاج إلى تأكيد؛ تتم "
-                                        "المراقبة عند المستوى المحسوب.")
-    narrative = build_narrative(result, config=EXTERNAL_CONFIG,
-                                provider=_json_provider(sections))
-    assert narrative.provenance.source == SOURCE_AI
-
-
 def test_markdown_table_is_rejected(result):
     narrative = _rejected(result, "technical_read_ar", "الاتجاه | القيمة")
     assert narrative.provenance.validation_status == validator.FORMAT_VIOLATION
@@ -368,7 +385,8 @@ def test_missing_section_falls_back(result):
 
 def test_extra_key_falls_back(result):
     sections = _valid_sections(result)
-    sections["recommended_action"] = "BUY"
+    sections["recommended_action"] = {"qualitative_text_ar": "شراء",
+                                      "fact_refs": []}
     narrative = build_narrative(result, config=EXTERNAL_CONFIG,
                                 provider=_json_provider(sections))
     assert narrative.provenance.validation_status == validator.SCHEMA_INVALID
@@ -418,7 +436,7 @@ def test_unexpected_adapter_exception_is_contained(result):
         def is_configured(self):
             return True
 
-        def complete(self, messages, *, timeout):
+        def complete(self, messages, *, timeout, schema=None):
             raise RuntimeError("boom: sk-should-never-surface")
 
     narrative = build_narrative(result, config=EXTERNAL_CONFIG, provider=Exploding())
@@ -458,7 +476,8 @@ def test_changed_evidence_hash_triggers_a_new_request(result):
 def test_rejected_narrative_is_never_cached(result):
     cache = NarrativeCache()
     sections = _valid_sections(result)
-    sections["risk_notes_ar"] = "قيمة مخترعة 987654.31"
+    sections["risk_notes_ar"] = {"qualitative_text_ar": "قيمة مخترعة 987654.31",
+                                 "fact_refs": []}
     mock = _json_provider(sections)
     build_narrative(result, config=EXTERNAL_CONFIG, provider=mock, cache=cache)
     build_narrative(result, config=EXTERNAL_CONFIG, provider=mock, cache=cache)
