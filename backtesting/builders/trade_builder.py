@@ -160,6 +160,17 @@ class TradeBuilder:
 
             reasons=" | ".join(
                 signal["Reasons"]
-            )
+            ),
+
+            signal_date=str(
+                context.data.index[context.signal_index].date()
+            ),
+            regime=signal.get("Regime", ""),
+            ai_probability=signal.get("AIProbability"),
+            ai_approved=bool(signal.get("AIApproved", True)),
+            ai_multiplier=float(signal.get("AIPositionMultiplier", 1.0)),
+            ai_rank=float(signal.get("AIRank", 0.0)),
+            ai_rejection_reason=str(signal.get("AIRejectionReason", "")),
+            ai_mode=str(signal.get("AIMode", "STRATEGY_ONLY")),
 
         )

@@ -97,6 +97,17 @@ class Trade:
 
     reasons: str
 
+    # Final-decision audit fields.  They let comparison reports trace every
+    # trade to the exact signal date, regime and out-of-sample AI decision.
+    signal_date: str = ""
+    regime: str = ""
+    ai_probability: float | None = None
+    ai_approved: bool = True
+    ai_multiplier: float = 1.0
+    ai_rank: float = 0.0
+    ai_rejection_reason: str = ""
+    ai_mode: str = "STRATEGY_ONLY"
+
     # ==========================
     # Calculated
     # ==========================
@@ -110,6 +121,28 @@ class Trade:
     profit_percent: float = field(init=False)
 
     r_multiple: float = field(init=False)
+
+    # ==========================
+    # Portfolio Simulation
+    # ==========================
+    # الحقول دي بتتملى لاحقًا بمعرفة PortfolioSimulator
+    # (backtesting/trade.py نفسه معندوش أي فكرة عن رأس المال
+    # أو باقي الصفقات المتزامنة، فبتفضل بالقيم الافتراضية دي
+    # لحد ما الـ simulator يشتغل عليها).
+    # ==========================
+
+    shares: int = field(init=False, default=0)
+
+    portfolio_profit: float = field(init=False, default=0.0)
+
+    executed: bool = field(init=False, default=False)
+
+    risk_amount: float = field(init=False, default=0.0)
+
+    # Explicit final size makes every overlay decision auditable, including
+    # portfolio-rejected candidates whose final size remains zero.
+    final_position_size: int = field(init=False, default=0)
+    portfolio_rejection_reason: str = field(init=False, default="")
 
     # ==========================
 

@@ -1,15 +1,12 @@
-from backtesting.config import (
-    COMMISSION,
-    SLIPPAGE
-)
+from backtesting.config import load as load_backtest_config
 
 
 class TradingCosts:
 
     def __init__(
         self,
-        commission=COMMISSION,
-        slippage=SLIPPAGE
+        commission=None,
+        slippage=None
     ):
 
         """
@@ -17,10 +14,24 @@ class TradingCosts:
 
         commission = 0.003  -> 0.30%
         slippage  = 0.0005 -> 0.05%
+
+        لو محددتش commission/slippage صراحة، بيتقروا Live من
+        settings.json وقت إنشاء الكلاس (مش وقت استيراد الملف).
         """
 
-        self.commission = commission
-        self.slippage = slippage
+        cfg = load_backtest_config()
+
+        self.commission = (
+            commission
+            if commission is not None
+            else cfg.COMMISSION
+        )
+
+        self.slippage = (
+            slippage
+            if slippage is not None
+            else cfg.SLIPPAGE
+        )
 
     # ==================================
     # Entry Execution Price

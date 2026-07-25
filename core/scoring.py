@@ -1,95 +1,23 @@
-from strategy.filter import market_filter
+# ==========================================================
+# هذا الملف بقى مجرد "إعادة توجيه" (Backward-Compatible Shim)
+# ==========================================================
+#
+# كل منطق القرار الفعلي انتقل بالكامل لـ:
+#
+#       strategy/decision_engine.py
+#
+# وده الملف الوحيد فى المشروع كله المسموح له يقرر
+# BUY / WATCH / AVOID (زي ما اتفقنا فى Sprint 1).
+#
+# الملف ده باقي بس عشان أي كود قديم بينادي:
+#
+#       from core.scoring import score_stock
+#
+# (زي backtesting/engine.py و core/scanner.py) يفضل شغال
+# من غير أي تعديل فيه.
+# ==========================================================
 
-from strategy.trend import trend_score
-from strategy.volume import volume_score
-from strategy.support import support_resistance
-from strategy.entry import entry_signal
-from strategy.momentum import momentum_score
-from strategy.candles import candle_score
-from strategy.breakout import breakout_score
-from strategy.signal import signal_engine
+from strategy.decision_engine import evaluate as score_stock
 
 
-def score_stock(df, i):
-
-    # ==================================
-    # Market Filter
-    # ==================================
-
-    market = market_filter(df, i)
-
-    trend = trend_score(df, i)
-    volume = volume_score(df, i)
-    support = support_resistance(df, i)
-    entry = entry_signal(df, i)
-    momentum = momentum_score(df, i)
-    candles = candle_score(df, i)
-    breakout = breakout_score(df, i)
-
-    score = (
-        trend["score"]
-        + volume["score"]
-        + support["score"]
-        + entry["score"]
-        + momentum["score"]
-        + candles["score"]
-        + breakout["score"]
-    )
-
-    confidence = min(
-        trend["confidence"]
-        + volume["confidence"]
-        + support["confidence"]
-        + entry["confidence"]
-        + momentum["confidence"]
-        + candles["confidence"]
-        + breakout["confidence"],
-        100
-    )
-
-    reasons = (
-        market["reasons"]
-        + trend["reasons"]
-        + volume["reasons"]
-        + support["reasons"]
-        + entry["reasons"]
-        + momentum["reasons"]
-        + candles["reasons"]
-        + breakout["reasons"]
-    )
-
-    result = {
-
-        "MarketPassed": market["passed"],
-
-        "Score": score,
-        "Confidence": confidence,
-        "Reasons": reasons,
-
-        "Trend": trend["score"],
-        "Volume": volume["score"],
-        "Momentum": momentum["score"],
-        "Candles": candles["score"],
-        "Breakout": breakout["score"],
-
-        "Support": support["support"],
-        "Resistance": support["resistance"],
-
-        "BuyLow": entry["BuyLow"],
-        "BuyHigh": entry["BuyHigh"],
-
-        "StopLoss": entry["StopLoss"],
-
-        "Target1": entry["Target1"],
-        "Target2": entry["Target2"],
-
-        "RR": entry["RR"]
-
-    }
-
-    signal = signal_engine(result)
-
-    result["Signal"] = signal["Signal"]
-    result["Stars"] = signal["Stars"]
-
-    return result
+__all__ = ["score_stock"]

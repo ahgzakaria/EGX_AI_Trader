@@ -1,264 +1,85 @@
+"""Train the live model only after leakage-safe walk-forward validation."""
+
+import json
 import os
+
 import joblib
 import pandas as pd
 
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import (
-    train_test_split,
-    StratifiedKFold,
-    cross_val_score
-)
-from sklearn.metrics import (
-    accuracy_score,
-    classification_report
-)
-
 from ai.dataset import DatasetBuilder
+from ai.walk_forward import WalkForwardValidator, build_model
 
 
 class AITrainer:
-
     def __init__(self):
-
         self.dataset = DatasetBuilder()
-
-        self.model = RandomForestClassifier(
-
-            n_estimators=500,
-
-            max_depth=12,
-
-            min_samples_leaf=5,
-
-            random_state=42,
-
-            n_jobs=-1
-
-        )
-
-    # ==================================
-
-    def train(
-
-        self,
-
-        csv_path="reports/backtest_results.csv"
-
-    ):
-
-        X, y = self.dataset.build(csv_path)
-
-        # ==================================
-        # Cross Validation
-        # ==================================
-
-        cv = StratifiedKFold(
-
-            n_splits=5,
-
-            shuffle=True,
-
-            random_state=42
-
-        )
-
-        scores = cross_val_score(
-
-            self.model,
-
-            X,
-
-            y,
-
-            cv=cv,
-
-            scoring="accuracy",
-
-            n_jobs=-1
-
-        )
-
-        print("\n==============================")
-        print("5-FOLD CROSS VALIDATION")
-        print("==============================")
-
-        for i, score in enumerate(scores, start=1):
-
-            print(
-
-                f"Fold {i} : {score:.4f}"
-
-            )
-
-        print()
-
-        print(
-
-            f"Average Accuracy : {scores.mean():.4f}"
-
-        )
-
-        print(
-
-            f"Std Deviation    : {scores.std():.4f}"
-
-        )
-
-        # ==================================
-        # Final Train/Test
-        # ==================================
-
-        X_train, X_test, y_train, y_test = train_test_split(
-
-            X,
-
-            y,
-
-            test_size=0.2,
-
-            random_state=42,
-
-            stratify=y
-
-        )
-
-        self.model.fit(
-
-            X_train,
-
-            y_train
-
-        )
-
-        prediction = self.model.predict(
-
-            X_test
-
-        )
-
-        accuracy = accuracy_score(
-
-            y_test,
-
-            prediction
-
-        )
-
-        print("\n==============================")
-        print("TEST SET")
-        print("==============================")
-
-        print(
-
-            f"Accuracy : {accuracy:.4f}\n"
-
-        )
-
-        print(
-
-            classification_report(
-
-                y_test,
-
-                prediction
-
-            )
-
-        )
-
-        # ==================================
-        # Feature Importance
-        # ==================================
-
+        self.model = None
+        self.metadata = {}
+
+    def train(self, csv_path="reports/backtest_results.csv", n_splits=5):
+        samples = self.dataset.load(csv_path)
+        required = {"entry_date", "exit_date", "result"}
+        missing = required.difference(samples.columns)
+        if missing:
+            raise ValueError(f"Training report missing columns: {sorted(missing)}")
+
+        samples["entry_date"] = pd.to_datetime(samples["entry_date"], errors="coerce")
+        samples["exit_date"] = pd.to_datetime(samples["exit_date"], errors="coerce")
+        samples = samples.dropna(subset=["entry_date", "exit_date"]).sort_values(
+            "entry_date"
+        ).reset_index(drop=True)
+
+        if samples["result"].nunique() < 2:
+            raise ValueError("AI training requires both WIN and non-WIN samples")
+
+        validation = WalkForwardValidator(n_splits=n_splits).validate(samples)
+        if validation.aggregate["predictions"] == 0:
+            raise ValueError("No valid out-of-sample walk-forward predictions were produced")
+
+        # A deployed live model may train on all labels known at deployment
+        # time. Historical backtests never use this global model.
+        self.model = build_model()
+        self.model.fit(samples[self.dataset.FEATURES], samples["result"].astype(int))
+
+        forest = self.model.named_steps["model"]
         importance = pd.DataFrame({
+            "Feature": self.dataset.FEATURES,
+            "Importance": forest.feature_importances_,
+        }).sort_values("Importance", ascending=False)
+        os.makedirs("reports", exist_ok=True)
+        importance.to_csv("reports/feature_importance.csv", index=False, encoding="utf-8-sig")
 
-            "Feature": X.columns,
+        self.metadata = {
+            "trained_through": samples["exit_date"].max().date().isoformat(),
+            "samples": len(samples),
+            "class_distribution": samples["result"].value_counts().sort_index().to_dict(),
+            "walk_forward": validation.aggregate,
+        }
 
-            "Importance": self.model.feature_importances_
+        return {
+            "model": self.model,
+            "accuracy": round(validation.aggregate["accuracy"] * 100, 2),
+            "precision": round(validation.aggregate["precision"] * 100, 2),
+            "recall": round(validation.aggregate["recall"] * 100, 2),
+            "f1": round(validation.aggregate["f1"] * 100, 2),
+            "roc_auc": validation.aggregate["roc_auc"],
+            "predictions": validation.aggregate["predictions"],
+            "folds": validation.folds,
+            "features": importance,
+        }
 
-        })
+    def save(self, filename="ai/models/trading_model.pkl"):
+        if self.model is None:
+            raise RuntimeError("Train the AI model before saving it")
 
-        importance = importance.sort_values(
-
-            "Importance",
-
-            ascending=False
-
-        )
-
-        print("\n==============================")
-        print("FEATURE IMPORTANCE")
-        print("==============================")
-
-        print(
-
-            importance.to_string(index=False)
-
-        )
-
-        os.makedirs(
-
-            "reports",
-
-            exist_ok=True
-
-        )
-
-        importance.to_csv(
-
-            "reports/feature_importance.csv",
-
-            index=False,
-
-            encoding="utf-8-sig"
-
-        )
-
-        print(
-
-            "\nFeature report saved -> reports/feature_importance.csv"
-
-        )
-
-        return self.model
-
-    # ==================================
-
-    def save(
-
-        self,
-
-        filename="ai/models/trading_model.pkl"
-
-    ):
-
-        os.makedirs(
-
-            "ai/models",
-
-            exist_ok=True
-
-        )
-
-        joblib.dump(
-
-            self.model,
-
-            filename
-
-        )
-
-        print(
-
-            f"\nModel saved -> {filename}"
-
-        )
+        os.makedirs("ai/models", exist_ok=True)
+        joblib.dump(self.model, filename)
+        metadata_path = os.path.splitext(filename)[0] + ".metadata.json"
+        with open(metadata_path, "w", encoding="utf-8") as file:
+            json.dump(self.metadata, file, indent=2, default=str)
 
 
 if __name__ == "__main__":
-
     trainer = AITrainer()
-
-    trainer.train()
-
+    print(trainer.train())
     trainer.save()

@@ -1,0 +1,49 @@
+// Rubix/Yahoo research: TradingView Confirmed-Daily-Bar Webhook Alert (Pine v5)
+//
+// Purpose: emit ONE JSON payload per symbol, only on a confirmed (closed)
+// daily bar, for manual research use with providers/tradingview_webhook_receiver.py.
+//
+// This script never fires on the forming/live bar (barstate.isconfirmed gates
+// everything). It never trades, never places orders, and never reads or writes
+// account/broker state. It is display/alert-only.
+//
+// SETUP (manual, per official TradingView docs — not automated by this repo):
+//   1. Add this script to the chart for ONE EGX symbol on the Daily (1D) timeframe.
+//   2. Create an alert on this script's "Confirmed Daily Bar" condition.
+//   3. Alert trigger: "Once Per Bar Close" (so it fires exactly once, after close).
+//   4. Webhook URL: your own HTTPS endpoint running providers/tradingview_webhook_receiver.py.
+//   5. Your TradingView account must have 2FA enabled (TradingView requirement
+//      for webhook alerts) and a plan whose active-alert quota covers your
+//      symbol count (see TRADINGVIEW_ACCESS_CAPABILITY_REPORT.md).
+//   6. Repeat per symbol — one alert instance per chart/symbol, per TradingView's
+//      documented alert model.
+//
+// The receiver independently re-validates every field; this script does not
+// need to be trusted blindly.
+
+//@version=5
+indicator("EGX Confirmed Daily Bar Webhook (Research)", overlay=true)
+
+// Fires exactly once, on the first tick of the NEXT bar after the daily bar
+// closed — this is the standard, documented way to detect a confirmed bar in
+// Pine without ever alerting on the still-forming bar.
+confirmedBar = barstate.isconfirmed and timeframe.period == "1D"
+
+if confirmedBar
+    payload = '{' +
+      '"schema_version":1,' +
+      '"source":"TRADINGVIEW_OFFICIAL_ALERT",' +
+      '"ticker":"' + syminfo.ticker + '",' +
+      '"ticker_id":"' + syminfo.tickerid + '",' +
+      '"exchange":"' + syminfo.exchange + '",' +
+      '"interval":"' + timeframe.period + '",' +
+      '"bar_time":"' + str.tostring(time) + '",' +
+      '"bar_close_time":"' + str.tostring(time_close) + '",' +
+      '"open":' + str.tostring(open) + ',' +
+      '"high":' + str.tostring(high) + ',' +
+      '"low":' + str.tostring(low) + ',' +
+      '"close":' + str.tostring(close) + ',' +
+      '"volume":' + str.tostring(volume) + ',' +
+      '"confirmed":true' +
+      '}'
+    alert(payload, alert.freq_once_per_bar_close)

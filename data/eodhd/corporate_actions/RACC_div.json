@@ -1,0 +1,22 @@
+[
+  {
+    "date": "2018-06-11",
+    "declarationDate": null,
+    "recordDate": null,
+    "paymentDate": null,
+    "period": null,
+    "value": 0.31,
+    "unadjustedValue": 0.62,
+    "currency": "EGP"
+  },
+  {
+    "date": "2019-06-10",
+    "declarationDate": null,
+    "recordDate": null,
+    "paymentDate": null,
+    "period": null,
+    "value": 0.425,
+    "unadjustedValue": 0.85,
+    "currency": "EGP"
+  }
+]

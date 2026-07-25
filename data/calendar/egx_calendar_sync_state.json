@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "description": "State of the last official-EGX holiday sync run. Advisory; drives source-freshness warnings in the pre-flight check and UI.",
+  "last_sync_at": "",
+  "last_status": "NEVER_RUN",
+  "last_verdict": "",
+  "sources_checked": [],
+  "failures": [],
+  "discovered_count": 0,
+  "confirmed_count": 0,
+  "runs": []
+}

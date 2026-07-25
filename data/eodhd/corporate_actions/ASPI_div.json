@@ -1,0 +1,22 @@
+[
+  {
+    "date": "2009-10-25",
+    "declarationDate": null,
+    "recordDate": null,
+    "paymentDate": null,
+    "period": null,
+    "value": 0.15567,
+    "unadjustedValue": 0.3,
+    "currency": "EGP"
+  },
+  {
+    "date": "2010-05-09",
+    "declarationDate": null,
+    "recordDate": null,
+    "paymentDate": null,
+    "period": null,
+    "value": 0.02595,
+    "unadjustedValue": 0.05001,
+    "currency": "EGP"
+  }
+]

@@ -1,4 +1,4 @@
-from backtesting.config import ENTRY_WAIT_DAYS
+from backtesting.config import load as load_backtest_config
 
 
 class EntryManager:
@@ -7,11 +7,19 @@ class EntryManager:
 
         self,
 
-        costs
+        costs,
+
+        execution_delay_bars=0
 
     ):
 
         self.costs = costs
+        self.execution_delay_bars = max(0, int(execution_delay_bars))
+
+        # بنقرا الإعدادات Live وقت إنشاء الـ Manager (بداية كل
+        # سهم فى الـ backtest)، مش مجمّدة وقت استيراد الملف.
+
+        self.entry_wait_days = load_backtest_config().ENTRY_WAIT_DAYS
 
     # ==================================
     # Find Entry
@@ -33,7 +41,7 @@ class EntryManager:
 
             context.signal_index +
 
-            ENTRY_WAIT_DAYS + 1,
+            self.entry_wait_days + 1,
 
             data.length
 
@@ -54,20 +62,26 @@ class EntryManager:
 
             ):
 
-                context.entry_price = self.costs.entry_price(
+                execution_index = j + self.execution_delay_bars
+                if execution_index >= data.length:
+                    return False
 
-                    buy_high
-
+                # The default remains the existing buy-zone execution. The
+                # optional delayed path is used only by a Phase 5 stress test.
+                execution_price = (
+                    buy_high if self.execution_delay_bars == 0
+                    else float(data.open[execution_index])
                 )
+                context.entry_price = self.costs.entry_price(execution_price)
 
                 context.entry_date = str(
 
-                    data.index[j].date()
+                    data.index[execution_index].date()
 
                 )
 
                 # أول شمعة بعد الدخول
-                context.entry_index = j + 1
+                context.entry_index = execution_index + 1
 
                 return True
 

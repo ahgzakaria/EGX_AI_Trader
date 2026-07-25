@@ -1,0 +1,52 @@
+[
+  {
+    "date": "2010-05-09",
+    "declarationDate": null,
+    "recordDate": null,
+    "paymentDate": null,
+    "period": null,
+    "value": 0.00907,
+    "unadjustedValue": 0.05,
+    "currency": "EGP"
+  },
+  {
+    "date": "2011-05-24",
+    "declarationDate": null,
+    "recordDate": null,
+    "paymentDate": null,
+    "period": null,
+    "value": 0.00907,
+    "unadjustedValue": 0.05,
+    "currency": "EGP"
+  },
+  {
+    "date": "2012-08-21",
+    "declarationDate": null,
+    "recordDate": null,
+    "paymentDate": null,
+    "period": null,
+    "value": 0.00907,
+    "unadjustedValue": 0.05,
+    "currency": "EGP"
+  },
+  {
+    "date": "2013-11-26",
+    "declarationDate": null,
+    "recordDate": null,
+    "paymentDate": null,
+    "period": null,
+    "value": 0.00907,
+    "unadjustedValue": 0.05,
+    "currency": "EGP"
+  },
+  {
+    "date": "2014-09-16",
+    "declarationDate": null,
+    "recordDate": null,
+    "paymentDate": null,
+    "period": null,
+    "value": 0.00907,
+    "unadjustedValue": 0.05,
+    "currency": "EGP"
+  }
+]

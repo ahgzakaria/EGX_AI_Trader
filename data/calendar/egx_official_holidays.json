@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "description": "Confirmed EGX official / trading-calendar holiday records. Edited by the sync (official auto-confirm) and by manual approval in the Trading Calendar UI. Do NOT edit Python code to add a holiday.",
+  "records": [
+    {
+      "date": "2026-07-23",
+      "name_ar": "عيد ثورة 23 يوليو",
+      "name_en": "23 July Revolution Day",
+      "exchange": "EGX",
+      "closure_type": "FULL_DAY",
+      "status": "CONFIRMED",
+      "source_type": "EGX_OFFICIAL",
+      "source_url": "",
+      "source_title": "Egyptian national holiday — 23 July Revolution (EGX closed)",
+      "announcement_date": "",
+      "discovered_at": "",
+      "confirmed_at": "2026-07-23T00:00:00+03:00",
+      "confirmed_by": "MANUAL",
+      "confidence": 1.0,
+      "notes": "Migrated from the built-in Python calendar; operator-confirmed EGX full-day closure.",
+      "source_hash": "",
+      "version": 1
+    }
+  ]
+}

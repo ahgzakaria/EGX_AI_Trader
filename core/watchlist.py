@@ -22,18 +22,13 @@ class Watchlist:
                 json.dump([], f)
 
     def load(self):
+        try:
+            with open(WATCHLIST_FILE, "r", encoding="utf-8") as f:
+                symbols = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return []
 
-        with open(
-
-            WATCHLIST_FILE,
-
-            "r",
-
-            encoding="utf-8"
-
-        ) as f:
-
-            return json.load(f)
+        return symbols if isinstance(symbols, list) else []
 
     def save(self, symbols):
 

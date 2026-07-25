@@ -14,8 +14,63 @@ venv/
 # Streamlit
 .streamlit/
 
+# Runtime market-data cache (recreated automatically)
+data/market_data_cache.sqlite*
+
+# Provider response caches (recreated at runtime — never commit)
+data/eodhd_cache/
+data/yahoo_cache/
+
+# SQLite write-ahead-log / shared-memory sidecar files
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Runtime health/status snapshots
+data/*_health.json
+data/*.pid.json
+data/*.lock
+
+# Append-only AI analysis history is runtime production data, never source control.
+data/ai_analysis/
+
 # Windows
 Thumbs.db
 
 # macOS
 .DS_Store
+
+# Secrets / credentials (never commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secure-temp/
+
+# Databases and runtime state (recreated at runtime — never commit)
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs, backups, generated binaries and runtime capture
+logs/
+backups/
+outputs/
+*.out
+*.err
+
+# Duplicate project snapshot — must not be committed
+/EGX_AI_Trader_RC1/
+
+# Local agent/editor tooling config
+.claude/
+
+# Generated backtest/run report artifacts (temporary — never commit).
+# Keep only the EODHD reconciliation/routing CSVs that code and tests depend on.
+reports/
+!reports/eodhd/
+!reports/eodhd/**

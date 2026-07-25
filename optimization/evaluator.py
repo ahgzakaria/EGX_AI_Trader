@@ -1,24 +1,29 @@
-import pandas as pd
-
-import strategy.config as config
+from config.settings_manager import settings
 
 from backtesting.engine import BacktestEngine
 from backtesting.statistics import BacktestStatistics
+from core.symbols import load_symbols
+from strategy.trading_decision import TradingDecisionService
 
 
 class StrategyEvaluator:
 
     def __init__(self):
 
-        self.symbols = (
+        settings.reload()
 
-            pd.read_csv("data/symbols.csv")["Ticker"]
+        self.symbols = load_symbols("data/symbols.csv")
+        self.decision_service = TradingDecisionService()
 
-            .dropna()
+        # نحفظ نسخة من إعدادات الاستراتيجية الأصلية عشان
+        # نرجعها زي ما كانت بعد ما التجريب يخلص (الميثود دي
+        # بتلعب فى الإعدادات "فى الذاكرة" بس، مش بتكتب على
+        # settings.json خالص، عشان الأداء ومنعًا لتخريب
+        # الملف بمليون قيمة أثناء الـ Grid Search).
 
-            .unique()
+        self._original_strategy = dict(
 
-            .tolist()
+            settings.get("strategy")
 
         )
 
@@ -33,20 +38,23 @@ class StrategyEvaluator:
     ):
 
         # ---------------------------------
-        # Apply Parameters
+        # Apply Parameters (In-Memory Only)
+        # ---------------------------------
+        # بما إن strategy/config.py بقى بيقرا الإعدادات Live
+        # من settings.data فى كل نداء لـ signal_engine، أبسط
+        # طريقة نجرب بيها باراميترات مختلفة هي إننا نعدّل
+        # القاموس نفسه فى الذاكرة مباشرة (من غير .set() اللي
+        # بتكتب على القرص فى كل تجربة).
         # ---------------------------------
 
-        config.MIN_SCORE = params.score
+        strategy = settings.get("strategy")
 
-        config.MIN_CONFIDENCE = params.confidence
-
-        config.MIN_RR = params.rr
-
-        config.MIN_TREND = params.trend
-
-        config.MIN_MOMENTUM = params.momentum
-
-        config.MIN_VOLUME = params.volume
+        strategy["min_score"] = params.score
+        strategy["min_confidence"] = params.confidence
+        strategy["min_rr"] = params.rr
+        strategy["min_trend"] = params.trend
+        strategy["min_momentum"] = params.momentum
+        strategy["min_volume"] = params.volume
 
         # ---------------------------------
 
@@ -62,7 +70,10 @@ class StrategyEvaluator:
 
             try:
 
-                engine = BacktestEngine(symbol)
+                engine = BacktestEngine(
+                    symbol,
+                    decision_service=self.decision_service
+                )
 
                 trades.extend(
 
@@ -82,9 +93,21 @@ class StrategyEvaluator:
 
             return None
 
+        # ملحوظة: الصفقات هنا جايه مباشرة من BacktestEngine
+        # (من غير PortfolioSimulator)، فـ "executed" بتاعها
+        # False بالـ default. هنا بنقيّمها كلها كـ "صفقات
+        # مرشحة" بمعزل عن قيود رأس المال، عشان الهدف من
+        # الـ Optimizer مقارنة جودة الإشارات نفسها، مش محاكاة
+        # محفظة حقيقية.
+
+        for trade in trades:
+            trade.executed = True
+
         summary = BacktestStatistics(
 
-            trades
+            trades,
+
+            profit_field="profit"
 
         ).summary()
 
@@ -121,3 +144,14 @@ class StrategyEvaluator:
             "MaxDrawdown": summary["MaxDrawdown"]
 
         }
+
+    # ==================================
+    # Restore Original Settings
+    # ==================================
+    # لازم تتنادى بعد ما التجريب كله يخلص، عشان ترجع
+    # settings.json (فى الذاكرة) لآخر حاجة كانت محفوظة قبل
+    # ما نبدأ نجرب باراميترات مختلفة.
+
+    def restore(self):
+
+        settings.data["strategy"] = self._original_strategy

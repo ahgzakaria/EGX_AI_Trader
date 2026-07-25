@@ -1,129 +1,72 @@
-import traceback
-import pandas as pd
+"""Command-line presentation for the shared backtest service.
 
-from backtesting.engine import BacktestEngine
-from backtesting.statistics import BacktestStatistics
-from backtesting.report import BacktestReport
+The service owns all backtest behaviour.  This file intentionally contains no
+trading rules so command-line and dashboard runs cannot diverge.
+"""
+
+from services.backtest_service import run_backtest
 
 
 def main():
-
-    # ==================================
-    # Load All Symbols
-    # ==================================
-
-    symbols = (
-        pd.read_csv("data/symbols.csv")["Ticker"]
-        .dropna()
-        .unique()
-        .tolist()
-    )
-
     print("=" * 60)
     print("EGX AI Trader Backtest")
     print("=" * 60)
-    print(f"Total Symbols : {len(symbols)}")
 
-    all_trades = []
+    final = None
+    for update in run_backtest():
+        if update["type"] == "progress":
+            print(
+                f"[{update['current']}/{update['total']}] "
+                f"{update['symbol']}"
+            )
+        elif update["type"] == "stage":
+            print(f"[{update['phase']}] {update.get('message', '')}")
+        elif update["type"] == "started":
+            print(f"Run ID: {update['run_id']}")
+        elif update["type"] == "finished":
+            final = update
 
-    successful = 0
-    failed = 0
+    if final is None:
+        print("Backtest did not produce a result.")
+        return
 
-    # ==================================
-    # Run Backtest
-    # ==================================
-
-    for index, symbol in enumerate(symbols, start=1):
-
-        print(f"[{index}/{len(symbols)}] {symbol}")
-
-        try:
-
-            engine = BacktestEngine(symbol)
-
-            trades = engine.run()
-
-            all_trades.extend(trades)
-
-            successful += 1
-
-        except Exception:
-
-            failed += 1
-
-            print("\n" + "=" * 60)
-            print(f"ERROR -> {symbol}")
-            print("=" * 60)
-
-            traceback.print_exc()
-
-            print("-" * 60)
-
-    # ==================================
-    # Statistics
-    # ==================================
-
-    stats = BacktestStatistics(all_trades)
-
-    summary = stats.summary()
-
-    print("\n")
-    print("=" * 60)
-    print("BACKTEST SUMMARY")
-    print("=" * 60)
-
-    for key, value in summary.items():
-
+    print("\nBACKTEST SUMMARY (Portfolio-Realistic)")
+    for key, value in final["summary"].items():
         print(f"{key:20} : {value}")
 
-    # ==================================
-    # Exit Reasons
-    # ==================================
+    print("\nREJECTED TRADES (Signal Level)")
+    for reason, count in sorted(
+        final["signal_rejections"].items(),
+        key=lambda item: item[1],
+        reverse=True,
+    ):
+        print(f"{reason:15} : {count}")
 
-    print("\n")
-    print("=" * 60)
-    print("EXIT REASONS")
-    print("=" * 60)
+    print("\nREJECTED TRADES (Portfolio Level)")
+    for reason, count in sorted(
+        final["portfolio_rejections"].items(),
+        key=lambda item: item[1],
+        reverse=True,
+    ):
+        print(f"{reason:15} : {count}")
 
-    exit_reasons = stats.exit_reasons()
+    print("\nRUN SUMMARY")
+    print(f"Symbols Loaded     : {final['symbols']}")
+    print(f"Successful         : {final['successful']}")
+    print(f"Failed             : {final['failed']}")
+    print(f"Total Signals      : {final['signals']}")
+    print(f"Total Trades       : {final['trades']}")
+    print(f"Elapsed            : {final['elapsed']}")
 
-    total = sum(exit_reasons.values())
-
-    for reason, count in exit_reasons.items():
-
-        percent = round(count / total * 100, 2) if total else 0
-
-        print(f"{reason:20} : {count:5} ({percent:6.2f}%)")
-
-    # ==================================
-    # Reports
-    # ==================================
-
-    report = BacktestReport(all_trades)
-
-    report.save_all()
-
-    print("\n")
-    print("=" * 60)
-    print("REPORTS")
-    print("=" * 60)
-
-    print("Trades      : reports/backtest_results.csv")
-    print("Statistics  : reports/backtest_statistics.csv")
-    print("Equity      : reports/equity_curve.csv")
-    print("Symbols     : reports/symbol_statistics.csv")
-
-    print("\n")
-    print("=" * 60)
-    print("RUN SUMMARY")
-    print("=" * 60)
-
-    print(f"Symbols Loaded     : {len(symbols)}")
-    print(f"Successful         : {successful}")
-    print(f"Failed             : {failed}")
-    print(f"Total Trades       : {len(all_trades)}")
+    if final.get("walk_forward"):
+        comparison = final["comparison"]
+        print("\nWALK-FORWARD AI VALIDATION")
+        print(f"OOS Accuracy       : {final['walk_forward']['accuracy']}")
+        print(f"OOS F1             : {final['walk_forward']['f1']}")
+        print(f"Strategy PF        : {comparison['StrategyOnlyProfitFactor']}")
+        print(f"AI-filtered PF     : {comparison['AIFilteredProfitFactor']}")
+        print(f"AI Rejected        : {comparison['AIRejectedTrades']}")
 
 
 if __name__ == "__main__":
-
     main()

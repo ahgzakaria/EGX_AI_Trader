@@ -49,29 +49,28 @@ def calculate_indicators(df):
     df["MACD_Signal"] = macd.macd_signal()
     df["MACD_HIST"] = macd.macd_diff()
 
-    # ==================================
-    # MACD Cross Age
+        # ==================================
+    # MACD Cross Age (Improved)
     # ==================================
 
-    cross = (
-        (df["MACD"] > df["MACD_Signal"])
-        !=
-        (df["MACD"].shift(1) > df["MACD_Signal"].shift(1))
+    macd_above = (
+
+        df["MACD"] > df["MACD_Signal"]
+
+    ).fillna(False)
+
+    cross_groups = (
+
+        macd_above != macd_above.shift(fill_value=False)
+
+    ).cumsum()
+
+    df["MACD_CROSS_AGE"] = (
+
+        macd_above
+        .groupby(cross_groups)
+        .cumcount()
     )
-
-    age = 0
-    ages = []
-
-    for is_cross in cross:
-
-        if is_cross:
-            age = 0
-        else:
-            age += 1
-
-        ages.append(age)
-
-    df["MACD_CROSS_AGE"] = ages
 
     # ==================================
     # ADX

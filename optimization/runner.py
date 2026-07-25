@@ -19,26 +19,29 @@ def main():
     print(f"Total Configurations : {total}")
     print()
 
-    for index, params in enumerate(space.generate(), start=1):
-
-        print(
-            f"[{index}/{total}] "
-            f"Score={params.score} "
-            f"Conf={params.confidence} "
-            f"RR={params.rr}"
-        )
-
-        result = evaluator.evaluate(params)
-
-        manager.add(result)
-
-        if result:
+    try:
+        for index, params in enumerate(space.generate(), start=1):
 
             print(
-                f"PF={result['ProfitFactor']} | "
-                f"Net={result['NetProfit']} | "
-                f"Trades={result['Trades']}"
+                f"[{index}/{total}] "
+                f"Score={params.score} "
+                f"Conf={params.confidence} "
+                f"RR={params.rr}"
             )
+
+            result = evaluator.evaluate(params)
+
+            manager.add(result)
+
+            if result:
+
+                print(
+                    f"PF={result['ProfitFactor']} | "
+                    f"Net={result['NetProfit']} | "
+                    f"Trades={result['Trades']}"
+                )
+    finally:
+        evaluator.restore()
 
     print("\nSaving Results...")
 

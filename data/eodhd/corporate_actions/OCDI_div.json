@@ -1,0 +1,42 @@
+[
+  {
+    "date": "2011-05-10",
+    "declarationDate": null,
+    "recordDate": null,
+    "paymentDate": null,
+    "period": null,
+    "value": 0.14651,
+    "unadjustedValue": 3.99996,
+    "currency": "EGP"
+  },
+  {
+    "date": "2019-05-06",
+    "declarationDate": null,
+    "recordDate": null,
+    "paymentDate": null,
+    "period": null,
+    "value": 0.13814,
+    "unadjustedValue": 0.50001,
+    "currency": "EGP"
+  },
+  {
+    "date": "2020-04-28",
+    "declarationDate": null,
+    "recordDate": null,
+    "paymentDate": null,
+    "period": null,
+    "value": 0.15195,
+    "unadjustedValue": 0.55,
+    "currency": "EGP"
+  },
+  {
+    "date": "2021-06-07",
+    "declarationDate": null,
+    "recordDate": null,
+    "paymentDate": null,
+    "period": null,
+    "value": 0.15195,
+    "unadjustedValue": 0.55,
+    "currency": "EGP"
+  }
+]

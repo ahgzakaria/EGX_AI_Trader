@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "description": "Forward-research experiment versions. Results from different versions use DIFFERENT datasets and must never be aggregated or compared as one experiment.",
+  "active_version": "FORWARD_RESEARCH_V2_EODHD",
+  "versions": [
+    {
+      "version": "FORWARD_RESEARCH_V1_YAHOO",
+      "status": "CLOSED",
+      "start_date": null,
+      "end_date": "2026-07-23",
+      "provider_architecture": "local_cache:yahoo daily history + Rubix quote overlay",
+      "historical_provider": "yahoo",
+      "live_provider": "rubix",
+      "mapping_version": "n/a",
+      "adjustment_policy_version": "yahoo_native_split_adjusted_close",
+      "calendar_version": "pre-dynamic-calendar / partial",
+      "routing_policy_version": "none",
+      "notes": "Retained read-only as prior evidence. Do NOT append V2 results to these statistics."
+    },
+    {
+      "version": "FORWARD_RESEARCH_V2_EODHD",
+      "status": "ACTIVE",
+      "start_date": "2026-07-23",
+      "end_date": null,
+      "provider_architecture": "EODHD split-adjusted daily (tiered) + validated local history + Rubix Daily Bridge; Rubix live intraday",
+      "historical_provider": "eodhd",
+      "live_provider": "rubix",
+      "mapping_version": "eodhd_symbol_mapping@2026-07-23 (225/265 VERIFIED_EXACT)",
+      "adjustment_policy_version": "SPLIT_ONLY_EVENT_SPECIFIC (bonus vs split reconciled per event)",
+      "calendar_version": "core.calendar.egx_calendar_service v1 (dynamic holidays)",
+      "routing_policy_version": "historical_symbol_routing_review@2026-07-23 (4 tiers)",
+      "notes": "New forward evidence starts here. Yahoo is not used for current research."
+    }
+  ]
+}

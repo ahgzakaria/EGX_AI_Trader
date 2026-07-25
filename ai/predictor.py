@@ -111,10 +111,15 @@ class AIPredictor:
 
         X = self._build_features(candle)
 
-        probability = float(
+        # لا نفترض أن الفئة الرابحة موجودة دائماً أو أن ترتيبها هو 1.
+        # ذلك يحصل مثلاً مع مجموعة تدريب كلها خسائر/أرباح.
+        classes = list(self.model.classes_)
+        win_index = classes.index(1) if 1 in classes else None
 
-            self.model.predict_proba(X)[0][1]
-
+        probability = (
+            float(self.model.predict_proba(X)[0][win_index])
+            if win_index is not None
+            else 0.0
         ) * 100
 
         probability = round(probability, 1)

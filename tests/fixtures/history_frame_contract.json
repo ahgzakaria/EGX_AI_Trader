@@ -1,0 +1,38 @@
+{
+  "type": "DataFrame",
+  "index": {
+    "type": "DatetimeIndex",
+    "name": "Date",
+    "tz": null,
+    "dtype": "datetime64"
+  },
+  "columns_order": [
+    "Open",
+    "High",
+    "Low",
+    "Close",
+    "Adj Close",
+    "Volume"
+  ],
+  "dtypes": {
+    "Open": "float64",
+    "High": "float64",
+    "Low": "float64",
+    "Close": "float64",
+    "Adj Close": "float64",
+    "Volume": "float64"
+  },
+  "adj_close_required": true,
+  "no_nan": true,
+  "attrs_key": "market_data",
+  "attrs_required_fields": [
+    "provider",
+    "effective_provider",
+    "requested_provider",
+    "purpose",
+    "fallback_active",
+    "delayed",
+    "provider_status"
+  ],
+  "notes": "Reproduced from real load_history('SWDY.CA', purpose='backtest'). Adapter must match schema/dtypes/index/attrs without changing the engine."
+}
