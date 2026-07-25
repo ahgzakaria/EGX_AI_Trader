@@ -1,6 +1,7 @@
 """Minimal, secure Twelve Data adapter structure ONLY.
 
-Per AUTOMATED_PROVIDER_CAPABILITY_PROBE.md, no TWELVEDATA_API_KEY exists in
+Per docs/audits/providers/AUTOMATED_PROVIDER_CAPABILITY_PROBE.md, no
+TWELVEDATA_API_KEY exists in
 this environment and no real request has ever been made to Twelve Data from
 this project. This module is deliberately NOT a full validated provider:
 

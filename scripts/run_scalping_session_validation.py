@@ -34,7 +34,7 @@ from scalping.session_validator import analyze_session, multisession_state  # no
 
 MULTISESSION_CSV = "reports/scalping_event_gate_multisession.csv"
 SESSIONS_DIR = "reports/scalping_sessions"
-VERDICT_MD = "SCALPING_MULTI_SESSION_VERDICT.md"
+VERDICT_MD = "docs/audits/strategies/SCALPING_MULTI_SESSION_VERDICT.md"
 
 MULTI_FIELDS = [
     "Session Date", "Patched Collector", "Continuous Uptime %", "Frame Count",

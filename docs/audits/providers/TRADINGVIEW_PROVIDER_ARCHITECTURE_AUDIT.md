@@ -6,7 +6,7 @@ was changed to produce this document.
 
 ---
 
-## 1. `MarketDataProvider` interface ([providers/base_provider.py](providers/base_provider.py))
+## 1. `MarketDataProvider` interface ([providers/base_provider.py](../../../providers/base_provider.py))
 
 ```python
 class MarketDataProvider(ABC):
@@ -31,13 +31,13 @@ A TradingView provider must produce exactly this contract — same required
 columns, same attrs contract — so it is a drop-in candidate wherever a
 `MarketDataProvider` is expected, without any engine-side changes.
 
-## 2. Yahoo provider ([providers/yahoo_provider.py](providers/yahoo_provider.py))
+## 2. Yahoo provider ([providers/yahoo_provider.py](../../../providers/yahoo_provider.py))
 
 Thin wrapper over `yfinance.download`; `delayed=True`, no official real-time
 entitlement. This is today's **sole production historical source** for
 Swing/Daily and remains so throughout this task.
 
-## 3. Local cache provider ([providers/local_cache_provider.py](providers/local_cache_provider.py))
+## 3. Local cache provider ([providers/local_cache_provider.py](../../../providers/local_cache_provider.py))
 
 Owns `data/market_data_cache.sqlite` (`market_data_entries` + `market_data_candles`
 tables, keyed by `(provider, symbol, period, interval)`). `load_cached(...,
@@ -46,7 +46,7 @@ history without triggering a fresh network call every scan. Any new provider
 can reuse this cache under its own `provider` key (e.g. `"tradingview_csv"`)
 without touching Yahoo's cached rows.
 
-## 4. `ProviderManager` ([providers/provider_manager.py](providers/provider_manager.py))
+## 4. `ProviderManager` ([providers/provider_manager.py](../../../providers/provider_manager.py))
 
 Generic "prefer X only if newer than fallback" comparator — compares
 `source_latest_timestamp`/`latest_exchange_timestamp` in each frame's
@@ -55,7 +55,7 @@ the mechanism a future `tradingview` route could use analogous to Rubix,
 **but it is not being wired in for this task** — TradingView stays fully
 outside routing.
 
-## 5. Swing/Daily frozen routing ([core/data_provider.py:148-159](core/data_provider.py:148))
+## 5. Swing/Daily frozen routing ([core/data_provider.py](../../../core/data_provider.py))
 
 ```python
 if (requested_name == "rubix" and purpose in {scanner, dashboard, forward_testing}
@@ -80,7 +80,7 @@ anywhere in `core/data_provider.py`.
   never-overwrite, provenance-tracked pattern** for consistency and review
   familiarity.
 
-## 7. Settings / environment overrides ([config/settings_manager.py](config/settings_manager.py))
+## 7. Settings / environment overrides ([config/settings_manager.py](../../../config/settings_manager.py))
 
 `SettingsManager` merges `DEFAULT_SETTINGS` with `config/settings.json`,
 additively — new keys are safe to introduce (`_merge_defaults`). Current
@@ -89,7 +89,7 @@ routing keys: `scanner_provider="rubix"`, `dashboard_provider="rubix"`,
 `fallback_provider="yahoo"`. A `tradingview_*` block will be added the same
 way (Phase K) — additive, all defaults `false`/`"none"`.
 
-## 8. EGX symbol mapping ([providers/symbol_mapping.py](providers/symbol_mapping.py))
+## 8. EGX symbol mapping ([providers/symbol_mapping.py](../../../providers/symbol_mapping.py))
 
 Engine tickers are Yahoo-style (`COMI.CA`). `to_egx_code()` strips `.CA`/`.EGY`
 suffixes to the bare EGX code (`COMI`). TradingView's public EGX tickers use

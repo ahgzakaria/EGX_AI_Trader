@@ -33,7 +33,7 @@ from strategy.support import support_resistance
 CURRENT_RUN = PROJECT / "reports" / "RUN_20260719_191032"
 PHASE8_RUN = PROJECT / "reports" / "RUN_20260714_125023"
 TRACE_PATH = PROJECT / "reports" / "buy_signal_full_trace.csv"
-OUTPUT_CSV = PROJECT / "rr_audit.csv"
+OUTPUT_CSV = PROJECT / "reports" / "audits" / "rr_audit.csv"
 SUMMARY_JSON = PROJECT / "reports" / "rr_audit_summary.json"
 CHART_DIR = PROJECT / "reports" / "rr_audit_charts"
 CHART_INDEX = CHART_DIR / "INDEX.md"

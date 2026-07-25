@@ -14,7 +14,7 @@ or confirm it resolves on TradingView's symbol search. Do not treat the
 ## Symbol mapping convention
 
 Engine tickers are Yahoo-style (`data/symbols.csv`, e.g. `COMI.CA`). Per
-[core/egx_session.py](core/egx_session.py) / [providers/symbol_mapping.py](providers/symbol_mapping.py),
+[core/egx_session.py](../../../core/egx_session.py) / [providers/symbol_mapping.py](../../../providers/symbol_mapping.py),
 `to_egx_code()` strips the `.CA`/`.EGY` suffix to the bare exchange code
 (`COMI`). TradingView's documented symbol format is `EXCHANGE:TICKER`, and its
 EGX30 index page (`EGX:EGX30`) confirms `EGX:` is the exchange prefix TradingView
@@ -74,7 +74,7 @@ symbols had usable cache at time of writing).
 | GPPL.CA | EGX:GPPL | 709 |
 | MISR.CA | EGX:MISR | 762 |
 
-## Symbols known to be missing/delayed in Yahoo (from the prior provider-diagnostic run — see [provider_selection_report.csv](provider_selection_report.csv))
+## Symbols known to be missing/delayed in Yahoo (from the prior provider-diagnostic run — see [provider_selection_report.csv](../../../reports/audits/provider_selection_report.csv))
 
 These 48 symbols had **no cached Yahoo daily history** in the earlier
 diagnostic. A subset is included here specifically to test whether
@@ -95,7 +95,7 @@ is weakest:
 No live scan was run to identify genuinely recent breakout signals for this
 design step (that would require executing the scanner, which is out of scope
 for a symbol-mapping document). Substituting the two symbols with the
-strongest recorded historical performance in [reports/symbol_statistics.csv](reports/symbol_statistics.csv)
+strongest recorded historical performance in [reports/symbol_statistics.csv](../../../reports/symbol_statistics.csv)
 as stand-ins, clearly labeled as such:
 
 | Engine symbol | Candidate TradingView symbol | Note |

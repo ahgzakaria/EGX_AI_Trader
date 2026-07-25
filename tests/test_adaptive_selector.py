@@ -162,11 +162,16 @@ def test_strategy_edge_and_explanations_are_present():
 
 
 def test_frozen_classic_and_breakout_manifest_is_unchanged():
+    def normalized_source_hash(path):
+        # Git may check text out as CRLF on Windows. Freeze semantics, not checkout bytes.
+        data = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+        return hashlib.sha256(data).hexdigest()
+
     manifest = json.loads(
         (ROOT / "strategy_selector" / "frozen_strategy_manifest.json").read_text(encoding="utf-8")
     )
     for relative, expected in manifest.items():
-        actual = hashlib.sha256((ROOT / relative).read_bytes()).hexdigest()
+        actual = normalized_source_hash(ROOT / relative)
         assert actual == expected, relative
 
 

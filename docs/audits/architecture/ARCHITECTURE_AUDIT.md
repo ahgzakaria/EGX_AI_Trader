@@ -84,7 +84,7 @@ Removed unused `config.py` and `strategy/strategy_result.py`.
 - Added per-fold dates, class distribution, accuracy, precision, recall, F1,
   ROC-AUC, confusion matrices and prediction-level reports.
 - The former global-model historical AI metrics are invalid and are documented
-  as discarded in `AI_WALK_FORWARD_REPORT.md`.
+  as discarded in [`AI_WALK_FORWARD_REPORT.md`](../strategies/AI_WALK_FORWARD_REPORT.md).
 
 ## Remaining technical debt
 
@@ -137,8 +137,8 @@ Files added or changed specifically for the comparative validation:
 - `backtesting/trade.py`
 - `backtesting/builders/trade_builder.py`
 - `core/data_loader.py`
-- `AI_WALK_FORWARD_REPORT.md`
-- `STRATEGY_VS_AI_COMPARISON.md`
+- [`AI_WALK_FORWARD_REPORT.md`](../strategies/AI_WALK_FORWARD_REPORT.md)
+- [`STRATEGY_VS_AI_COMPARISON.md`](../strategies/STRATEGY_VS_AI_COMPARISON.md)
 - generated `reports/strategy_vs_ai_*.csv` and `reports/ai_walk_forward_*.csv`
 
 Verification after the final comparison:
@@ -178,7 +178,7 @@ Verification after the final comparison:
 - `config/settings.json`, `config/settings_manager.py`
 - `dashboard/settings.py`
 - `tests/test_ai_risk_overlay.py`
-- `AI_RISK_OVERLAY_COMPARISON.md`
+- [`AI_RISK_OVERLAY_COMPARISON.md`](../strategies/AI_RISK_OVERLAY_COMPARISON.md)
 - `reports/ai_risk_overlay_summary.csv`, `reports/ai_risk_overlay_trades.csv`
 
 ## Phase 5 — Ranking robustness and deterministic portfolio selection
@@ -204,5 +204,5 @@ Verification after the final comparison:
 - `services/ranking_robustness.py`
 - `tests/test_portfolio_determinism.py`
 - `tests/test_ranking_robustness.py`
-- `AI_RANKING_ROBUSTNESS_REPORT.md`
+- [`AI_RANKING_ROBUSTNESS_REPORT.md`](../strategies/AI_RANKING_ROBUSTNESS_REPORT.md)
 - generated `reports/ai_ranking_*.csv`

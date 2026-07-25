@@ -16,12 +16,12 @@ report below is honestly schema-only, not fabricated.
 | A | [TRADINGVIEW_PROVIDER_ARCHITECTURE_AUDIT.md](TRADINGVIEW_PROVIDER_ARCHITECTURE_AUDIT.md) |
 | B | [TRADINGVIEW_ACCESS_CAPABILITY_REPORT.md](TRADINGVIEW_ACCESS_CAPABILITY_REPORT.md) — researched against current official TradingView docs |
 | C | [TRADINGVIEW_TEST_BASKET_AND_SYMBOL_MAP.md](TRADINGVIEW_TEST_BASKET_AND_SYMBOL_MAP.md) — 23-symbol basket, unverified candidate `EGX:` mapping |
-| D | [scripts/tradingview_confirmed_daily_alert.pine](scripts/tradingview_confirmed_daily_alert.pine) + [providers/tradingview_webhook_receiver.py](providers/tradingview_webhook_receiver.py) — isolated, not deployed |
-| E/F | [providers/tradingview_csv_provider.py](providers/tradingview_csv_provider.py) — manual-export-only, strict validation |
-| G/H | [services/tradingview_reconciliation.py](services/tradingview_reconciliation.py) → 4 reports (schema-only, real logic proven with synthetic data) |
-| I/J | [providers/tradingview_completed_daily_bridge.py](providers/tradingview_completed_daily_bridge.py), [services/tradingview_daily_shadow.py](services/tradingview_daily_shadow.py) → `reports/tradingview_shadow_decision_comparison.csv` |
+| D | [scripts/tradingview_confirmed_daily_alert.pine](../../../scripts/tradingview_confirmed_daily_alert.pine) + [providers/tradingview_webhook_receiver.py](../../../providers/tradingview_webhook_receiver.py) — isolated, not deployed |
+| E/F | [providers/tradingview_csv_provider.py](../../../providers/tradingview_csv_provider.py) — manual-export-only, strict validation |
+| G/H | [services/tradingview_reconciliation.py](../../../services/tradingview_reconciliation.py) → 4 reports (schema-only, real logic proven with synthetic data) |
+| I/J | [providers/tradingview_completed_daily_bridge.py](../../../providers/tradingview_completed_daily_bridge.py), [services/tradingview_daily_shadow.py](../../../services/tradingview_daily_shadow.py) → `reports/tradingview_shadow_decision_comparison.csv` |
 | K | `config/settings.json → tradingview` block, all off/none by default |
-| L | "TradingView Research (Experimental, Disabled)" panel in [dashboard/home.py](dashboard/home.py) |
+| L | "TradingView Research (Experimental, Disabled)" panel in [dashboard/home.py](../../../dashboard/home.py) |
 
 **Test coverage added:** 40 new tests (15 webhook receiver, 12 CSV provider,
 7 reconciliation-math, 6 completed-daily bridge) — all synthetic data, proving
@@ -60,7 +60,7 @@ model).
 **Cannot be determined.** No real TradingView data was ingested. The freshness
 report ran successfully end-to-end and would answer this the moment real data
 arrives, but currently shows **0/23 symbols with any TradingView data** (see
-[reports/tradingview_freshness_audit.csv](reports/tradingview_freshness_audit.csv)).
+[reports/tradingview_freshness_audit.csv](../../../reports/tradingview_freshness_audit.csv)).
 
 **5. By how many completed sessions?**
 **N/A** — same reason as #4. `tradingview_newer_for: 0`, `yahoo_newer_for: 0`,
@@ -78,13 +78,13 @@ value has been checked yet.
 (`services/tradingview_reconciliation.py`) computes this automatically against
 Rubix's best-effort daily aggregate (reusing the already-audited
 `RubixDailyAggregator` from the prior Rubix bridge work) the moment real
-TradingView rows exist — but today [reports/tradingview_rubix_reconciliation.csv](reports/tradingview_rubix_reconciliation.csv)
+TradingView rows exist — but today [reports/tradingview_rubix_reconciliation.csv](../../../reports/tradingview_rubix_reconciliation.csv)
 is empty of real comparisons (23/23 "TradingView Available: No").
 
 **8. How many Shadow decisions changed?**
 **0 of 23** — necessarily, since sessions-appended is 0 for every symbol
 (no real TradingView data to append). See
-[reports/tradingview_shadow_decision_comparison.csv](reports/tradingview_shadow_decision_comparison.csv).
+[reports/tradingview_shadow_decision_comparison.csv](../../../reports/tradingview_shadow_decision_comparison.csv).
 
 **9. Did any strategy, indicator, threshold, replay, or backtest change?**
 **No.** `core/data_provider.py` routing is byte-for-byte unchanged. All new
@@ -118,7 +118,7 @@ tests, with no test modified.
    `python -m services.tradingview_daily_shadow` will immediately produce real
    numbers using the exact code already built and tested.
 2. **You configure a real Pine alert + webhook** (2FA required, per Phase B)
-   for at least one symbol using [scripts/tradingview_confirmed_daily_alert.pine](scripts/tradingview_confirmed_daily_alert.pine),
+   for at least one symbol using [scripts/tradingview_confirmed_daily_alert.pine](../../../scripts/tradingview_confirmed_daily_alert.pine),
    deploy `providers/tradingview_webhook_receiver.py` behind your own HTTPS
    endpoint, and set `tradingview_webhook_enabled: true` +
    `tradingview_webhook_secret`.

@@ -115,7 +115,7 @@ mutual eviction → stale-snapshot churn.
 
 ## 7. Lock mechanism implemented
 
-`SingleInstanceLock` in [scripts/launcher_process_utils.py](scripts/launcher_process_utils.py):
+`SingleInstanceLock` in [scripts/launcher_process_utils.py](../../../scripts/launcher_process_utils.py):
 
 - Acquires an **exclusive, non-blocking OS lock** on a dedicated lock file
   (`msvcrt.locking` on Windows, `fcntl.flock` on POSIX), **held for the whole
@@ -129,11 +129,11 @@ mutual eviction → stale-snapshot churn.
 - `pid_record_is_current` still verifies a recorded PID is alive **and** its start
   time matches (a reused PID is never mistaken for the supervisor).
 - `supervisor_status()` gives the launcher a non-destructive "is one running?" read.
-- The supervisor ([scripts/rubix_collector_supervisor.py](scripts/rubix_collector_supervisor.py))
+- The supervisor ([scripts/rubix_collector_supervisor.py](../../../scripts/rubix_collector_supervisor.py))
   now acquires the lock in `run()` before starting any child, releases it in
   `finally`, and `start_child()` refuses to spawn a **second** collector while one
   is alive. New `--lock-file` arg (default `data/rubix_supervisor.lock`).
-- The launcher ([scripts/launch_rubix_production.py](scripts/launch_rubix_production.py))
+- The launcher ([scripts/launch_rubix_production.py](../../../scripts/launch_rubix_production.py))
   refuses to spawn when `supervisor_status()` reports a live instance, passes
   `--lock-file`, and on `InstanceAlreadyRunning` offers to **open the dashboard for
   the running instance** instead of starting a competing collector (retry/replace
@@ -141,7 +141,7 @@ mutual eviction → stale-snapshot churn.
 
 ## 8. Tests added + regression
 
-New: [tests/test_rubix_single_instance.py](tests/test_rubix_single_instance.py) (11 tests):
+New: [tests/test_rubix_single_instance.py](../../../tests/test_rubix_single_instance.py) (11 tests):
 two simultaneous starts → exactly one wins; atomic metadata names the holder; stale
 pid file doesn't block; live-but-unrelated PID rejected; `supervisor_status`
 recognizes the current process; lock re-acquired after graceful release; crash

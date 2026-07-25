@@ -16,12 +16,15 @@ SOURCE_DIRECTORIES = (
     "indicators", "portfolio", "providers", "services", "strategy", "scalping",
     "decision_support", "scripts", "tests",
 )
-ROOT_FILES = (
+RELEASE_FILES = (
     "app.py", "backtest.py", "pytest.ini", "requirements.txt", "requirements-lock.txt", "requirements-dev.txt",
-    "PHASE8_PRODUCTION_HARDENING_REPORT.md", "DATA_REPRODUCIBILITY_POLICY.md",
-    "RUBIX_OPERATIONS_GUIDE.md", "BACKUP_AND_RESTORE_GUIDE.md", "RELEASE_RC1_GUIDE.md",
-    "SCALPING_MODULE_IMPLEMENTATION_REPORT.md",
-    "PHASE9_DECISION_SUPPORT_REPORT.md",
+    "docs/archive/historical/phases/PHASE8_PRODUCTION_HARDENING_REPORT.md",
+    "docs/audits/research/DATA_REPRODUCIBILITY_POLICY.md",
+    "docs/guides/operations/RUBIX_OPERATIONS_GUIDE.md",
+    "docs/guides/backup/BACKUP_AND_RESTORE_GUIDE.md",
+    "docs/guides/operations/RELEASE_RC1_GUIDE.md",
+    "docs/audits/strategies/SCALPING_MODULE_IMPLEMENTATION_REPORT.md",
+    "docs/archive/historical/phases/PHASE9_DECISION_SUPPORT_REPORT.md",
 )
 EXCLUDED_NAMES = {"__pycache__", ".pytest_cache", "venv", ".git"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo", ".db", ".sqlite", ".sqlite3", ".log"}
@@ -52,10 +55,12 @@ def build_release(destination: Path, replace=False) -> Path:
                     target = staging / relative
                     target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(source, target)
-        for filename in ROOT_FILES:
+        for filename in RELEASE_FILES:
             source = PROJECT_ROOT / filename
             if source.is_file():
-                shutil.copy2(source, staging / filename)
+                target = staging / filename
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
         for directory in ("data", "logs", "reports", "backups"):
             (staging / directory).mkdir(exist_ok=True)
             (staging / directory / ".gitkeep").write_text("", encoding="utf-8")

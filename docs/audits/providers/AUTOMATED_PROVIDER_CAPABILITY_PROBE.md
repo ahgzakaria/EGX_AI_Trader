@@ -47,7 +47,7 @@ either).
 **Important context — this is NOT a fresh unknown.** A prior session already
 did real, credentialed EODHD testing and left a report:
 [EODHD_PHASE1_REPORT.md](EODHD_PHASE1_REPORT.md) (dated 2026-07-18) and a
-working adapter at [providers/eodhd_provider.py](providers/eodhd_provider.py).
+working adapter at [providers/eodhd_provider.py](../../../providers/eodhd_provider.py).
 That report's real findings (quoted, not re-tested here):
 
 - A **free-tier token** was used; the account dashboard showed **20/20 daily

@@ -27,7 +27,8 @@ No strategy rule, threshold, indicator, or price level was changed during this a
 
 ## Audit outputs
 
-- Complete 113-row calculation table: `rr_audit.csv`
+- Complete 113-row calculation table:
+  [`reports/audits/rr_audit.csv`](../../../reports/audits/rr_audit.csv)
 - Machine-readable verification summary: `reports/rr_audit_summary.json`
 - All 113 charts: `reports/rr_audit_charts/`
 - Chart index: `reports/rr_audit_charts/INDEX.md`
@@ -160,7 +161,7 @@ RR = round(1.30 / 3.03, 2) = 0.43
 
 The chart shows the risk band is more than twice the reward band. Rubix Last was 14.50 and is plotted as an informational cross only.
 
-![IBCT RR geometry](reports/rr_audit_charts/IBCT_CA.png)
+![IBCT RR geometry](../../../reports/rr_audit_charts/IBCT_CA.png)
 
 ### DTPP.CA — large advance moved Entry far above 20-bar support
 
@@ -178,7 +179,7 @@ RR = 0.15
 
 The price advance is technically strong, but the frozen Stop remains anchored below the 20-bar low. A high trend score therefore does not imply attractive RR.
 
-![DTPP RR geometry](reports/rr_audit_charts/DTPP_CA.png)
+![DTPP RR geometry](../../../reports/rr_audit_charts/DTPP_CA.png)
 
 ### BIOC.CA — Target2 below Entry
 
@@ -196,7 +197,7 @@ RR = -0.22
 
 The current candle advanced beyond the prior resistance by more than `2 × ATR`, so the formula places Target2 below Entry. The negative RR is mathematically correct for the existing target formula. Rubix Last was 126.84, but was not used.
 
-![BIOC RR geometry](reports/rr_audit_charts/BIOC_CA.png)
+![BIOC RR geometry](../../../reports/rr_audit_charts/BIOC_CA.png)
 
 ### ETRS.CA — closest rejected candidate
 
@@ -212,7 +213,7 @@ Production RR = 1.45
 
 ETRS is the highest failed RR. Even without intermediate price-level rounding, it remains below 1.5, proving that rounding did not create the rejection.
 
-![ETRS RR geometry](reports/rr_audit_charts/ETRS_CA.png)
+![ETRS RR geometry](../../../reports/rr_audit_charts/ETRS_CA.png)
 
 ### COPR.CA — low-priced rounding cross-check
 
@@ -226,7 +227,7 @@ Production RR = 1.33
 
 The two-decimal price convention moves the numeric value slightly, but both raw and production RR fail 1.5. Across all 113 candidates, no gate outcome changed due to rounding.
 
-![COPR RR geometry](reports/rr_audit_charts/COPR_CA.png)
+![COPR RR geometry](../../../reports/rr_audit_charts/COPR_CA.png)
 
 ## 6. Phase 8 comparison
 
@@ -260,7 +261,11 @@ These are input-data changes, not code divergence. Comparing metrics from differ
 
 ## 7. Rubix isolation
 
-Rubix Last appears in `rr_audit.csv` and each chart for visual comparison only. The calculation starts from the archived completed daily OHLCV and never reads Rubix Last/Bid/Ask. Large differences, such as BIOC Close 105.70 versus Rubix Last 126.84, do not alter Entry, Stop, Targets, ATR, or RR.
+Rubix Last appears in
+[`reports/audits/rr_audit.csv`](../../../reports/audits/rr_audit.csv)
+and each chart for visual comparison only. The calculation starts from the archived
+completed daily OHLCV and never reads Rubix Last/Bid/Ask. Large differences, such as
+BIOC Close 105.70 versus Rubix Last 126.84, do not alter Entry, Stop, Targets, ATR, or RR.
 
 ## 8. Exact conclusion
 

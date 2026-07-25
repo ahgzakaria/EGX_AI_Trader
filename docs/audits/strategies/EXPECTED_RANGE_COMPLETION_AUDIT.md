@@ -22,14 +22,14 @@ daily session until 07-21's session and auction finish and the provider publishe
 the candle.
 
 **Fix:** new auction-aware, holiday-aware calendar logic in
-[core/egx_session.py](core/egx_session.py):
+[core/egx_session.py](../../../core/egx_session.py):
 `expected_latest_completed_session(now, provider_finalized, holidays)`,
 `last_completed_exchange_session(...)` and `classify_history_freshness(...)`,
 returning five explicit statuses — `HISTORY_CURRENT`,
 `TODAY_CANDLE_NOT_YET_COMPLETE`, `PROVIDER_FINALIZATION_PENDING`, `HISTORY_STALE`,
 `HISTORY_UNAVAILABLE` — with EGX phases continuous 10:00–14:15, auction 14:15–14:25,
 Fri/Sat + configured holidays non-trading. The selector
-([historical_selector.py](scalping_expected_range/historical_selector.py)) now
+([historical_selector.py](../../../scalping_expected_range/historical_selector.py)) now
 treats CURRENT / TODAY_NOT_COMPLETE / PROVIDER_PENDING as usable (not stale) and
 flags only genuinely lagging history as `DATA_STALE`. This is disclosure-only and
 does not touch the Swing/Daily provider path (`trading_session_lag` is unchanged).

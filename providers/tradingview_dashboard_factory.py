@@ -74,7 +74,9 @@ def tradingview_research_disclosure():
     return {
         "method": method,
         "access_status": access_status,
-        "symbol_mapping_reference": "TRADINGVIEW_TEST_BASKET_AND_SYMBOL_MAP.md",
+        "symbol_mapping_reference": (
+            "docs/audits/providers/TRADINGVIEW_TEST_BASKET_AND_SYMBOL_MAP.md"
+        ),
         "latest_completed_tradingview_candle": latest_tv or "Not available",
         "latest_yahoo_candle": latest_yahoo or "Not available",
         "freshness_advantage": freshness_advantage,

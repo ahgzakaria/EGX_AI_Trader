@@ -1371,7 +1371,10 @@ class RubixAuthenticationAssistantUI(LauncherUI):
             self._last_good_geometry = current
 
     def _open_guide(self):
-        guide = PROJECT_ROOT / "AUTHENTICATION_ASSISTANT_GUIDE.md"
+        guide = (
+            PROJECT_ROOT / "docs" / "guides" / "authentication"
+            / "AUTHENTICATION_ASSISTANT_GUIDE.md"
+        )
         if guide.is_file():
             os.startfile(guide)
 
