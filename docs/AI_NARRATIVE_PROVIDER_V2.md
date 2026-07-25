@@ -20,6 +20,49 @@ AnalysisResult
 
 Entry point: `core.ai_narrative_provider.build_narrative(result, ...)`. It never raises.
 
+## Providers
+
+| Provider | Status | Cost | Notes |
+| --- | --- | --- | --- |
+| `ollama` | **operational default** | free | Local model over loopback. No API key. No cloud. |
+| `openai` | available, **disabled** | paid | Kept working; selected only if explicitly configured. |
+| *(none)* | default | — | Deterministic Fallback, byte-identical to V1. |
+
+### Ollama — free, local, offline
+
+`POST http://127.0.0.1:11434/api/chat` with `stream: false`, the per-analysis strict
+schema in `format`, `tools: []`, and `think: false` (Qwen reasoning off). Only
+`message.content` is read — a `thinking` field is never parsed, returned, logged or
+stored. Ollama **Cloud is never contacted**: the endpoint must resolve to loopback, and a
+remote URL is refused unless `AI_NARRATIVE_OLLAMA_ALLOW_REMOTE=true`. Temperature,
+`keep_alive` and the model all come from the environment.
+
+**Install the model yourself — nothing is downloaded automatically:**
+
+```bash
+ollama pull qwen3:4b
+```
+
+Optional smoke test, and an optional larger model for quality comparison:
+
+```bash
+ollama run qwen3:4b
+```
+
+```bash
+ollama pull qwen3:8b
+```
+
+**Health check** — `GET /api/tags`, read-only and short-timeout, reporting only
+`reachable`, `model_installed`, the model name, the endpoint and a sanitized error token.
+It runs only when a local provider is configured, never raises, and never blocks the
+deterministic analysis. The page shows one of: **Local AI Ready** · **Local AI Model
+Missing** · **Local AI Unavailable**, alongside the narrative-source badge.
+
+A validated local answer is labelled **Local AI** everywhere — badge, technical details
+and the PNG footer (`Narrative  Local AI  ·  qwen3:4b`). Anything else stays
+**Deterministic Fallback**.
+
 ## Why fact binding
 
 An exact numeric allow-list stops *invented* values but is global across the evidence, so
@@ -99,13 +142,18 @@ text.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `AI_NARRATIVE_ENABLED` | `false` | Master switch. False ⇒ behaviour identical to V1. |
-| `AI_NARRATIVE_PROVIDER` | `none` | `none`/`deterministic` ⇒ fallback mode; `openai` ⇒ external. |
-| `AI_NARRATIVE_MODEL` | *(empty)* | Model id passed to the adapter. |
-| `AI_NARRATIVE_TIMEOUT_SECONDS` | `20` | Per-request timeout (clamped 1–120). |
+| `AI_NARRATIVE_PROVIDER` | `none` | `none`/`deterministic` ⇒ fallback mode; `ollama` ⇒ local; `openai` ⇒ paid. |
+| `AI_NARRATIVE_MODEL` | *(empty)* | Model id passed to the adapter (`qwen3:4b` for Ollama). |
+| `AI_NARRATIVE_TIMEOUT_SECONDS` | `20` | Per-request timeout (clamped 1–120); use `60` for a local model. |
 | `AI_NARRATIVE_MAX_RETRIES` | `1` | Retries for **transient** failures only (clamped 0–3). |
 | `AI_NARRATIVE_CACHE_ENABLED` | `true` | Cache accepted narratives in-process. |
-| `AI_NARRATIVE_BASE_URL` | OpenAI v1 | Any OpenAI-compatible Responses endpoint. |
-| `OPENAI_API_KEY` | — | Secret, standard name. Read from the environment only. |
+| `AI_NARRATIVE_OLLAMA_URL` | `http://127.0.0.1:11434` | Local Ollama server. Loopback only. |
+| `AI_NARRATIVE_OLLAMA_TEMPERATURE` | `0.2` | Sampling temperature for the local model. |
+| `AI_NARRATIVE_OLLAMA_KEEP_ALIVE` | `5m` | How long Ollama keeps the model resident. |
+| `AI_NARRATIVE_OLLAMA_DISABLE_THINKING` | `true` | Send `think: false` (no Qwen reasoning trace). |
+| `AI_NARRATIVE_OLLAMA_ALLOW_REMOTE` | `false` | Must be true to permit a non-loopback URL. |
+| `AI_NARRATIVE_BASE_URL` | OpenAI v1 | Any OpenAI-compatible Responses endpoint (paid path). |
+| `OPENAI_API_KEY` | — | Secret, standard name. Only used by the `openai` provider. |
 | `AI_NARRATIVE_API_KEY` | — | Optional documented alias, used only when `OPENAI_API_KEY` is unset. |
 
 Modes: `disabled` · `external_ai` · `deterministic_fallback`. The model is never
@@ -206,6 +254,10 @@ monkeypatching every one of those entry points to raise.
 
 ## Tests
 
+* `tests/test_ai_narrative_ollama.py` — the local provider with `urlopen` mocked:
+  loopback-only endpoint policy, no API key, no tools, `stream:false` + `format` schema,
+  reasoning trace never read, unreachable server / missing model / timeout → fallback,
+  health states, cache behaviour, honest `Local AI` labelling.
 * `tests/test_ai_narrative_fact_binding.py` — semantic binding: risk/reward cannot be
   written as a price, target cannot be cited from the technical read, RSI cannot be a
   target, stop cannot headline the positive scenario, volume ≠ turnover, remaining room ≠

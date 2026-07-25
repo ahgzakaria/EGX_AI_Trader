@@ -753,6 +753,7 @@ def _tone_for_recommendation(label: str) -> str:
 
 
 AI_NARRATIVE_LABEL = "Narrative  AI Narrative"
+LOCAL_AI_NARRATIVE_LABEL = "Narrative  Local AI"
 FALLBACK_NARRATIVE_LABEL = "Narrative  Deterministic Fallback"
 UNAVAILABLE_NARRATIVE_LABEL = "Narrative  Unavailable"
 
@@ -760,15 +761,18 @@ UNAVAILABLE_NARRATIVE_LABEL = "Narrative  Unavailable"
 def narrative_source_label(model: str | None, source: str | None = None) -> str:
     """Return the honest narrative provenance label printed on exported cards.
 
-    ``AI Narrative`` is printed ONLY when the caller passes the ``AI_NARRATIVE`` source —
-    i.e. an external provider answered and its answer passed every validation. Anything
-    else (fallback, rejection, disabled, no narrative) is labelled as such. The model name
-    is deliberately not printed as a claim of AI authorship on its own.
+    ``AI Narrative`` / ``Local AI`` is printed ONLY for the matching validated source —
+    i.e. a provider answered and its answer passed every validation, with ``Local AI``
+    reserved for a model that ran on this machine. Anything else (fallback, rejection,
+    disabled, no narrative) is labelled as such. The model name is deliberately not
+    printed as a claim of AI authorship on its own.
     """
     origin = str(source or "").strip().upper()
     value = str(model or "").strip()
-    if origin == "AI_NARRATIVE":
-        return f"{AI_NARRATIVE_LABEL}  ·  {value}" if value else AI_NARRATIVE_LABEL
+    if origin in ("AI_NARRATIVE", "LOCAL_AI_NARRATIVE"):
+        label = (LOCAL_AI_NARRATIVE_LABEL if origin == "LOCAL_AI_NARRATIVE"
+                 else AI_NARRATIVE_LABEL)
+        return f"{label}  ·  {value}" if value else label
     if origin in ("DETERMINISTIC_FALLBACK", "AI_UNAVAILABLE"):
         return (FALLBACK_NARRATIVE_LABEL if origin == "DETERMINISTIC_FALLBACK"
                 else UNAVAILABLE_NARRATIVE_LABEL)

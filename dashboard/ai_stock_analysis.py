@@ -37,6 +37,7 @@ from dashboard.ai_stock_analysis_components import (
     key_level_rows,
     market_phase_labels,
     momentum_reading,
+    local_ai_status,
     narrative_source,
     narrative_technical_rows,
     normalize_symbol,
@@ -450,7 +451,17 @@ def _narrative_section(narrative, bundle=None, regenerator=None):
                     narrative = refreshed.narrative
 
     source_ar, source_en, tone = narrative_source(narrative)
-    st.markdown(badge_html(f"{source_ar} · {source_en}", tone), unsafe_allow_html=True)
+    badges = [badge_html(f"{source_ar} · {source_en}", tone)]
+    # Local-model readiness. Absent unless a local provider is configured, and never
+    # allowed to raise — the deterministic analysis must not depend on this probe.
+    try:
+        status = local_ai_status()
+    except Exception:
+        status = None
+    if status is not None:
+        _, status_ar, status_en, status_tone = status
+        badges.append(badge_html(f"{status_ar} · {status_en}", status_tone))
+    st.markdown(" ".join(badges), unsafe_allow_html=True)
     if narrative is None:
         empty_state("السرد غير متاح", "No narrative was produced for this analysis.")
         return

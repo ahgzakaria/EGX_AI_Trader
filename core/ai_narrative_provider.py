@@ -53,10 +53,14 @@ from core.ai_stock_analysis_contract import (
 )
 from core.egx_session import CAIRO
 
-# Narrative source tokens (also the three exact UI states).
+# Narrative source tokens (also the UI states).
 SOURCE_AI = "AI_NARRATIVE"
+SOURCE_LOCAL_AI = "LOCAL_AI_NARRATIVE"      # validated answer from a local model (Ollama)
 SOURCE_FALLBACK = "DETERMINISTIC_FALLBACK"
 SOURCE_UNAVAILABLE = "AI_UNAVAILABLE"
+
+# Providers that run entirely on this machine; their narratives are labelled "Local AI".
+LOCAL_PROVIDERS = frozenset({"ollama"})
 
 NOT_ATTEMPTED = "NOT_ATTEMPTED"
 
@@ -215,6 +219,14 @@ def _openai_factory(config: NarrativeConfig) -> AINarrativeProvider:
     return OpenAIResponsesProvider(model=config.model)
 
 
+def _ollama_factory(config: NarrativeConfig) -> AINarrativeProvider:
+    from core.ai_narrative_ollama import OllamaProvider
+    return OllamaProvider(model=config.model or None)
+
+
+# ``ollama`` is the free local default; ``openai`` stays available but is never selected
+# unless the operator configures it explicitly.
+register_provider("ollama", _ollama_factory)
 register_provider("openai", _openai_factory)
 
 
@@ -308,6 +320,12 @@ def _fallback(result: AnalysisResult, language: str, *, source: str, reason: str
     return replace(narrative, provenance=provenance)
 
 
+def accepted_source(provider: str) -> str:
+    """``LOCAL_AI_NARRATIVE`` for an on-machine model, else ``AI_NARRATIVE``."""
+    return SOURCE_LOCAL_AI if str(provider).strip().lower() in LOCAL_PROVIDERS \
+        else SOURCE_AI
+
+
 def _accepted(result: AnalysisResult, language: str, sections: dict, *, provider: str,
               model: str, latency_ms: int, now=None) -> NarrativeResult:
     """Compose the accepted AI narrative — **AI prose with deterministic facts**.
@@ -320,7 +338,8 @@ def _accepted(result: AnalysisResult, language: str, sections: dict, *, provider
     """
     base = build_fallback_narrative(result, language=language)
     provenance = NarrativeProvenance(
-        source=SOURCE_AI, provider=provider, model=model, prompt_version=PROMPT_VERSION,
+        source=accepted_source(provider), provider=provider, model=model,
+        prompt_version=PROMPT_VERSION,
         evidence_hash=result.evidence_hash or "", generated_at=_now_iso(now),
         validation_status="VALIDATED", latency_ms=latency_ms, cached=False,
         fallback_reason="")
@@ -468,7 +487,8 @@ def narrative_generator_from_config(
 
 
 __all__ = [
-    "SOURCE_AI", "SOURCE_FALLBACK", "SOURCE_UNAVAILABLE", "NOT_ATTEMPTED",
+    "SOURCE_AI", "SOURCE_LOCAL_AI", "SOURCE_FALLBACK", "SOURCE_UNAVAILABLE",
+    "LOCAL_PROVIDERS", "accepted_source", "NOT_ATTEMPTED",
     "FALLBACK_MODEL", "PROMPT_VERSION",
     "NarrativeMode", "NarrativeConfig", "AINarrativeProvider", "NarrativeCache",
     "NARRATIVE_CACHE", "NarrativeProviderError", "ProviderNotConfigured",

@@ -118,8 +118,17 @@ MODE_CACHE = ("وضع الذاكرة المؤقتة", "Cache Mode", "amber")
 MODE_LIVE_UNAVAILABLE = ("البيانات الحية غير متاحة", "Live Data Unavailable", "red")
 
 NARRATIVE_SOURCE_AI = ("سرد الذكاء الاصطناعي", "AI Narrative", "blue")
+NARRATIVE_SOURCE_LOCAL_AI = ("سرد ذكاء اصطناعي محلي", "Local AI", "blue")
 NARRATIVE_SOURCE_FALLBACK = ("سرد استنتاجي حتمي", "Deterministic Fallback", "amber")
 NARRATIVE_SOURCE_UNAVAILABLE = ("السرد غير متاح", "AI Unavailable", "red")
+
+# Local-model readiness, shown only when the narrative provider is a local one.
+LOCAL_AI_STATUS_LABELS = {
+    "LOCAL_AI_READY": ("الذكاء المحلي جاهز", "Local AI Ready", "green"),
+    "LOCAL_AI_MODEL_MISSING": ("نموذج الذكاء المحلي غير مثبّت", "Local AI Model Missing",
+                               "amber"),
+    "LOCAL_AI_UNAVAILABLE": ("الذكاء المحلي غير متاح", "Local AI Unavailable", "red"),
+}
 
 SAFETY_BADGES = (
     ("دعم قرار فقط", "Decision Support Only", "blue"),
@@ -543,7 +552,8 @@ def narrative_source_token(narrative: NarrativeResult | None) -> str:
     provenance = getattr(narrative, "provenance", None)
     if provenance is not None:
         source = str(getattr(provenance, "source", "") or "").strip().upper()
-        if source in ("AI_NARRATIVE", "DETERMINISTIC_FALLBACK", "AI_UNAVAILABLE"):
+        if source in ("AI_NARRATIVE", "LOCAL_AI_NARRATIVE", "DETERMINISTIC_FALLBACK",
+                      "AI_UNAVAILABLE"):
             return source
     model = str(narrative.model or "").strip()
     if not model:
@@ -555,9 +565,33 @@ def narrative_source_token(narrative: NarrativeResult | None) -> str:
 
 _NARRATIVE_SOURCE_BADGES = {
     "AI_NARRATIVE": NARRATIVE_SOURCE_AI,
+    "LOCAL_AI_NARRATIVE": NARRATIVE_SOURCE_LOCAL_AI,
     "DETERMINISTIC_FALLBACK": NARRATIVE_SOURCE_FALLBACK,
     "AI_UNAVAILABLE": NARRATIVE_SOURCE_UNAVAILABLE,
 }
+
+
+def local_ai_status(config=None):
+    """(state, arabic, english, tone) for the local model, or ``None`` when not in use.
+
+    Returns ``None`` unless the narrative layer is enabled AND configured to a local
+    provider, so the default (disabled) configuration performs no probe at all. The probe
+    itself is read-only, loopback-only, short-timeout, and never raises — a missing or
+    unreachable Ollama can never block or slow the deterministic analysis.
+    """
+    from core.ai_narrative_provider import LOCAL_PROVIDERS, NarrativeConfig, NarrativeMode
+
+    settings = config or NarrativeConfig.from_env()
+    if settings.mode is not NarrativeMode.EXTERNAL_AI:
+        return None
+    if settings.provider not in LOCAL_PROVIDERS:
+        return None
+    try:
+        from core.ai_narrative_ollama import check_health
+        health = check_health(model=settings.model or None)
+    except Exception:
+        return ("LOCAL_AI_UNAVAILABLE", *LOCAL_AI_STATUS_LABELS["LOCAL_AI_UNAVAILABLE"])
+    return (health.state, *LOCAL_AI_STATUS_LABELS[health.state])
 
 
 def narrative_source(narrative: NarrativeResult | None):
@@ -572,10 +606,20 @@ def narrative_technical_rows(narrative: NarrativeResult | None):
         return (("المصدر", "Narrative Source", narrative_source_token(narrative)),
                 ("النموذج", "Model", (narrative.model if narrative else EM_DASH) or EM_DASH))
     latency = getattr(provenance, "latency_ms", None)
+    provider = str(provenance.provider or "").strip().lower()
+    endpoint_rows = ()
+    if provider == "ollama":
+        # A loopback URL is not a secret; prompts and keys are still never shown.
+        import os
+
+        endpoint = (os.environ.get("AI_NARRATIVE_OLLAMA_URL", "").strip()
+                    or "http://127.0.0.1:11434")
+        endpoint_rows = (("نقطة الاتصال المحلية", "Local Endpoint", endpoint),)
     return (
         ("المصدر", "Narrative Source", str(provenance.source or EM_DASH)),
         ("المزود", "Provider", str(provenance.provider or EM_DASH)),
         ("النموذج", "Model", str(provenance.model or EM_DASH)),
+        *endpoint_rows,
         ("إصدار التعليمات", "Prompt Version", str(provenance.prompt_version or EM_DASH)),
         ("بصمة الأدلة", "Evidence Hash", str(provenance.evidence_hash or EM_DASH)),
         ("وقت التوليد", "Generated At", str(provenance.generated_at or EM_DASH)),
