@@ -300,6 +300,11 @@ REQUIRED_SECTIONS = (
 QUALITATIVE_FIELD = "qualitative_text_ar"
 FACT_REFS_FIELD = "fact_refs"
 
+# How many facts one section may cite. Part of the OUTPUT CONTRACT: it is stated in the
+# system prompt and carried as ``maxItems`` in the schema, so a well-behaved model can
+# satisfy it instead of being rejected by a limit it was never told about.
+MAX_FACT_REFS = 6
+
 SYSTEM_PROMPT = """You are a cautious Arabic financial-writing assistant for a single \
 Egyptian Exchange (EGX) stock. You write QUALITATIVE EXPLANATION ONLY. You are NOT an \
 analyst, NOT a calculator, and NOT an execution system.
@@ -321,6 +326,8 @@ CITING FACTS
 lists allowed_sections; citing a fact from a section that is not listed is a hard error \
 and the whole answer is discarded.
 - Cite only facts your sentence actually refers to. An empty list is acceptable.
+- AT MOST SIX fact ids per section. Choose the few that matter for that sentence; a \
+seventh id is a hard error and the whole answer is discarded.
 - A fact absent from citable_facts does not exist for this analysis — never invent an id.
 
 AUTHORITY AND CERTAINTY
@@ -391,8 +398,10 @@ def build_section_schema(registry) -> dict:
                 },
                 FACT_REFS_FIELD: {
                     "type": "array",
-                    "description": f"Approved fact ids citable from {section}.",
+                    "description": (f"Approved fact ids citable from {section}; "
+                                    f"at most {MAX_FACT_REFS}."),
                     "items": items,
+                    "maxItems": MAX_FACT_REFS,
                 },
             },
             "required": [QUALITATIVE_FIELD, FACT_REFS_FIELD],

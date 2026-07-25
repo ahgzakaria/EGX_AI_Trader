@@ -37,6 +37,7 @@ from core.ai_narrative_numbers import (
 )
 from core.ai_narrative_prompt import (
     FACT_REFS_FIELD,
+    MAX_FACT_REFS,
     QUALITATIVE_FIELD,
     REQUIRED_SECTIONS,
 )
@@ -54,7 +55,9 @@ FACT_REFERENCE_INVALID = "FACT_REFERENCE_INVALID"
 
 MAX_SECTION_CHARS = 700
 MAX_TOTAL_CHARS = 4000
-MAX_FACT_REFS = 6
+# Re-exported from the prompt module, which owns the output contract the model is told
+# about (system prompt) and constrained by (schema ``maxItems``).
+__all_max_fact_refs__ = MAX_FACT_REFS
 
 
 def normalize_numerals(text: str) -> str:

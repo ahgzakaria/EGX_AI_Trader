@@ -261,6 +261,35 @@ def test_remaining_room_cannot_be_presented_as_the_daily_change(result):
     assert change.status == validator.FACT_REFERENCE_INVALID
 
 
+def test_the_fact_reference_cap_is_announced_and_constrained(result, registry):
+    """A limit the model is never told about produces spurious fallbacks.
+
+    Found in real local-model validation: qwen3:4b cited seven permitted facts in the
+    technical read and the whole answer was discarded by an internal cap that appeared
+    neither in the prompt nor in the schema.
+    """
+    from core.ai_narrative_prompt import MAX_FACT_REFS, SYSTEM_PROMPT
+
+    assert "AT MOST SIX fact ids per section" in SYSTEM_PROMPT
+    schema = build_section_schema(registry)
+    for section in SECTIONS:
+        refs = schema["properties"][section]["properties"]["fact_refs"]
+        assert refs["maxItems"] == MAX_FACT_REFS
+
+    # The cap is still enforced — it is now merely reachable by a compliant model.
+    allowed = list(registry.for_section("technical_read_ar"))[:MAX_FACT_REFS + 1]
+    assert len(allowed) == MAX_FACT_REFS + 1
+    report = _validate(result, _answer(result, technical_read_ar=_section(
+        "technical_read_ar", "القراءة الفنية تشير إلى استمرار الاتجاه.", allowed)))
+    assert report.status == validator.FACT_REFERENCE_INVALID
+    assert "too many fact_refs" in report.reason
+
+    at_cap = allowed[:MAX_FACT_REFS]
+    ok = _validate(result, _answer(result, technical_read_ar=_section(
+        "technical_read_ar", "القراءة الفنية تشير إلى استمرار الاتجاه.", at_cap)))
+    assert ok.ok, ok.reason
+
+
 def test_unknown_fact_id_is_rejected(result):
     report = _validate(result, _answer(result, risk_notes_ar=_section(
         "risk_notes_ar", "ملاحظة مخاطر.", ["scenario.primary.made_up"])))
