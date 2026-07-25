@@ -44,6 +44,7 @@ def build_history_record(
             summary += f" · awaiting {primary.confirmation_requirements[0]}"
         elif primary.invalidation_conditions:
             summary += f" · needs {primary.invalidation_conditions[0]}"
+    provenance = getattr(narrative, "provenance", None) if narrative else None
     return AnalysisHistoryRecord(
         record_id=rid,
         symbol=result.request.symbol,
@@ -57,7 +58,38 @@ def build_history_record(
         evidence_hash=result.evidence_hash or "",
         narrative_model=(narrative.model if narrative else None),
         language=result.request.language,
+        **_narrative_metadata(provenance),
     )
+
+
+# Narrative provenance is metadata only: no key, no prompt, no rejected narrative body.
+_PROVENANCE_DEFAULTS = {
+    "narrative_source": "DETERMINISTIC_FALLBACK",
+    "narrative_provider": "none",
+    "narrative_prompt_version": "",
+    "narrative_validation_status": "NOT_ATTEMPTED",
+    "narrative_generated_at": "",
+    "narrative_latency_ms": None,
+    "narrative_fallback_reason": "",
+}
+
+
+def _narrative_metadata(provenance) -> dict:
+    """Flatten a ``NarrativeProvenance`` into record fields (defaults when absent)."""
+    if provenance is None:
+        return dict(_PROVENANCE_DEFAULTS)
+    latency = getattr(provenance, "latency_ms", None)
+    return {
+        "narrative_source": str(getattr(provenance, "source", "") or
+                                _PROVENANCE_DEFAULTS["narrative_source"]),
+        "narrative_provider": str(getattr(provenance, "provider", "") or "none"),
+        "narrative_prompt_version": str(getattr(provenance, "prompt_version", "") or ""),
+        "narrative_validation_status": str(getattr(provenance, "validation_status", "") or
+                                           _PROVENANCE_DEFAULTS["narrative_validation_status"]),
+        "narrative_generated_at": str(getattr(provenance, "generated_at", "") or ""),
+        "narrative_latency_ms": None if latency is None else int(latency),
+        "narrative_fallback_reason": str(getattr(provenance, "fallback_reason", "") or ""),
+    }
 
 
 def _record_to_dict(record: AnalysisHistoryRecord) -> dict:
@@ -83,6 +115,17 @@ def _record_from_dict(data: dict) -> AnalysisHistoryRecord:
         evidence_hash=data.get("evidence_hash", ""),
         narrative_model=data.get("narrative_model"),
         language=data.get("language", "ar"),
+        # Pre-v1.2 lines carry no narrative metadata; they read back with the defaults.
+        narrative_source=data.get("narrative_source",
+                                  _PROVENANCE_DEFAULTS["narrative_source"]),
+        narrative_provider=data.get("narrative_provider", "none"),
+        narrative_prompt_version=data.get("narrative_prompt_version", ""),
+        narrative_validation_status=data.get(
+            "narrative_validation_status",
+            _PROVENANCE_DEFAULTS["narrative_validation_status"]),
+        narrative_generated_at=data.get("narrative_generated_at", ""),
+        narrative_latency_ms=data.get("narrative_latency_ms"),
+        narrative_fallback_reason=data.get("narrative_fallback_reason", ""),
     )
 
 

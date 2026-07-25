@@ -752,13 +752,35 @@ def _tone_for_recommendation(label: str) -> str:
     return "gray"
 
 
-def narrative_source_label(model: str | None) -> str:
-    """Return the honest narrative provenance label printed on exported cards."""
+AI_NARRATIVE_LABEL = "Narrative  AI Narrative"
+LOCAL_AI_NARRATIVE_LABEL = "Narrative  Local AI"
+FALLBACK_NARRATIVE_LABEL = "Narrative  Deterministic Fallback"
+UNAVAILABLE_NARRATIVE_LABEL = "Narrative  Unavailable"
+
+
+def narrative_source_label(model: str | None, source: str | None = None) -> str:
+    """Return the honest narrative provenance label printed on exported cards.
+
+    ``AI Narrative`` / ``Local AI`` is printed ONLY for the matching validated source —
+    i.e. a provider answered and its answer passed every validation, with ``Local AI``
+    reserved for a model that ran on this machine. Anything else (fallback, rejection,
+    disabled, no narrative) is labelled as such. The model name is deliberately not
+    printed as a claim of AI authorship on its own.
+    """
+    origin = str(source or "").strip().upper()
     value = str(model or "").strip()
+    if origin in ("AI_NARRATIVE", "LOCAL_AI_NARRATIVE"):
+        label = (LOCAL_AI_NARRATIVE_LABEL if origin == "LOCAL_AI_NARRATIVE"
+                 else AI_NARRATIVE_LABEL)
+        return f"{label}  ·  {value}" if value else label
+    if origin in ("DETERMINISTIC_FALLBACK", "AI_UNAVAILABLE"):
+        return (FALLBACK_NARRATIVE_LABEL if origin == "DETERMINISTIC_FALLBACK"
+                else UNAVAILABLE_NARRATIVE_LABEL)
+    # No explicit source (pre-v1.2 payload): infer conservatively from the model name.
     if not value:
-        return "Narrative  Unavailable"
+        return UNAVAILABLE_NARRATIVE_LABEL
     if "fallback" in value.lower():
-        return "Narrative  Deterministic Fallback"
+        return FALLBACK_NARRATIVE_LABEL
     return f"Narrative model  {value}"
 
 
@@ -971,7 +993,8 @@ def render_card_png(payload, chart: CardChartData | None = None, *,
     if payload.data_quality_label:
         canvas.text_ltr(left, footer["quality_y"], str(payload.data_quality_label),
                         21, PALETTE["muted"])
-    provenance = narrative_source_label(payload.narrative_model)
+    provenance = narrative_source_label(payload.narrative_model,
+                                        getattr(payload, "narrative_source", ""))
     if provenance:
         canvas.text_rtl(right, footer["evidence_y"],
                         canvas.fit_rtl(provenance, 19, content_width),

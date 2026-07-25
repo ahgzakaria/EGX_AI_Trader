@@ -33,13 +33,12 @@ FALLBACK_MODEL = "deterministic-fallback@1.0.0"
 # indicator periods, the 0-100 percentage/confidence scale.
 _STRUCTURAL_NUMBERS = {0, 9, 12, 14, 20, 26, 50, 100, 200}
 
-# A narrative token matches an evidence number only when it equals one of the evidence
-# value's fixed-precision renderings (0..4 dp) — i.e. a formatted version of a KNOWN
-# number — or lies within a tiny absolute epsilon. There is deliberately NO broad
-# relative tolerance, so an unrelated figure can never "match" a large volume value.
+# LEGACY numeric surface (kept for pre-V2 callers and their tests). The PRODUCTION gate is
+# :mod:`core.ai_narrative_numbers`, a field-aware EXACT allow-list with no tolerance of any
+# kind — ``generate_narrative`` below uses that one. Matching here is exact against a
+# value's fixed-precision renderings (0..4 dp); no absolute or relative epsilon remains.
 _ROUND_DPS = (0, 1, 2, 3, 4)
-_ABS_TOL = 0.05
-_EPS = 1e-6
+_EPS = 1e-9
 
 _NUMBER_RE = re.compile(r"-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?:\.\d+)?")
 
@@ -125,13 +124,8 @@ def _expand(allowed: set[float]) -> set[float]:
 
 
 def _is_traceable(token: float, allowed: set[float], expanded: set[float]) -> bool:
-    for a in expanded:
-        if abs(token - a) <= _EPS:      # exact match to a formatted rendering of a known value
-            return True
-    for a in allowed:
-        if abs(token - a) <= _ABS_TOL:  # tiny absolute epsilon only — no relative widening
-            return True
-    return False
+    """Exact match against a formatted rendering of a known value. No tolerance."""
+    return any(abs(token - a) <= _EPS for a in expanded)
 
 
 def validate_no_original_numbers(text: str, allowed: set[float]) -> tuple[bool, list[float]]:
@@ -237,13 +231,16 @@ def generate_narrative(
     if not isinstance(produced, dict):
         return build_fallback_narrative(result, language=language)
 
-    allowed = allowed_numbers(result)
+    # The production gate is the field-aware EXACT allow-list: no epsilon, no tolerance.
+    from core.ai_narrative_numbers import build_number_allowlist, validate_numbers
+
+    allowlist = build_number_allowlist(result)
     fields = {}
     for name in _NARRATIVE_FIELDS:
         text = produced.get(name)
         if not isinstance(text, str) or not text.strip():
             return build_fallback_narrative(result, language=language)
-        ok, offending = validate_no_original_numbers(text, allowed)
+        ok, offending = validate_numbers(text, allowlist)
         if not ok:
             # AI introduced a number with no evidence source → reject the whole narrative.
             return build_fallback_narrative(result, language=language)
