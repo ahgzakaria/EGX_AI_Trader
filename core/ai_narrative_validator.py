@@ -80,10 +80,21 @@ def _normalize_arabic(text: str) -> str:
 # Prohibited wording
 # --------------------------------------------------------------------------- #
 
-# Patterns are matched against Arabic-normalized text. Each entry is (rule_id, regex).
-# They target direct orders and certainty claims only — ordinary market vocabulary such as
-# "ضغط بيع" (selling pressure) or "منطقه شراء" (buying zone) stays allowed, while an
-# imperative ("اشترِ الآن", "بيع فورًا", "ادخل بكل السيولة", "ضاعف مركزك") is rejected.
+# Patterns are matched against Arabic-normalized text (diacritics folded, ة→ه, أإآ→ا,
+# ؤ→و, ى→ي). Each entry is (rule_id, regex). They target direct orders and CATEGORICAL
+# certainty only — ordinary market vocabulary such as "ضغط بيع" (selling pressure) or
+# "منطقه شراء" (buying zone) stays allowed, and an imperative ("اشترِ الآن", "بيع فورًا",
+# "ادخل بكل السيولة", "ضاعف مركزك") is rejected.
+#
+# On certainty the distinction is deliberate and narrow:
+#   * REJECTED — a guaranteed outcome: مؤكد / مؤكدة / مؤكدًا, مضمون / مضمونة, حتمي,
+#     حتمًا, بالتأكيد (سيرتفع/سينخفض/سيحدث), لا بد أن…, لا شك.
+#   * ALLOWED — conditional technical confirmation, which is the language this product
+#     is built on: يحتاج إلى تأكيد · في انتظار التأكيد · يتطلب تأكيدًا فنيًا ·
+#     تتحسن شروط التأكيد · تكتمل شروط التفعيل · يظل السيناريو مشروطًا.
+# The noun تأكيد is never rejected on its own; only the adjectival/adverbial certainty
+# forms are. A negated hedge ("غير مؤكد", "ليس مؤكدًا") is a hedge, not a claim, so the
+# lookbehinds keep it allowed.
 _FORBIDDEN_PATTERNS = (
     ("imperative_buy", r"\bاشتر[ي]?\b"),
     ("imperative_sell", r"\bبع\b|\bبيع\s+(?:فورا|الان|حالا|علي\s+الفور)"),
@@ -91,7 +102,18 @@ _FORBIDDEN_PATTERNS = (
     ("all_in", r"بكل\s+(?:السيوله|راس\s*المال|الرصيد)|كل\s+سيولتك"),
     ("size_up", r"\bضاعف\b|\bزود\s+مركزك\b|\bزد\s+مركزك\b"),
     ("execute_now", r"نفذ\s+(?:الان|الصفقه|الامر)|ارسل\s+امر"),
-    ("certainty", r"\bمضمون\b|\bمضمونه\b|\bلا\s+شك\b|\bحتما\b|\bبالتاكيد\s+سي"),
+    # Guaranteed-outcome adjectives: مؤكد/مؤكدة/مؤكدًا, مضمون/مضمونة, حتمي/حتمية.
+    ("certainty_guaranteed",
+     r"(?<!غير )(?<!ليس )\b(?:ال)?موكد(?:ه|ا|ون|ين|ات)?\b"
+     r"|(?<!غير )(?<!ليس )\b(?:ال)?مضمون(?:ه|ا|ون|ات)?\b"
+     r"|\bحتمي(?:ه|ا)?\b"),
+    # Certainty adverbs and "there is no doubt / it must". ``بالتأكيد`` is only rejected
+    # next to a future verb ("سيرتفع بالتأكيد", "بالتأكيد سيحدث"): the same string is also
+    # the ordinary preposition phrase "بـ + التأكيد" — "مشروط بالتأكيد" (conditional upon
+    # confirmation) is exactly the wording this product wants and must stay allowed.
+    ("certainty_absolute",
+     r"\bحتما\b|\bلا\s+شك\b|\bلا\s+بد\b"
+     r"|\bبالتاكيد\s+(?:سي\w+|سوف)\b|\bسي\w+\s+بالتاكيد\b"),
 )
 _FORBIDDEN = tuple((rule, re.compile(pattern)) for rule, pattern in _FORBIDDEN_PATTERNS)
 

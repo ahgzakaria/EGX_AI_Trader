@@ -333,6 +333,76 @@ def test_bare_percent_signs_in_prose_are_rejected(result, text):
     assert report.status == validator.RAW_NUMBER_IN_PROSE
 
 
+# --------------------------------------------------------------------------- #
+# Certainty wording — categorical claims out, conditional confirmation in
+# --------------------------------------------------------------------------- #
+
+def _prose(result, text):
+    """Validate one answer whose risk-notes prose is ``text`` (no fact refs)."""
+    return _validate(result, _answer(result, risk_notes_ar=_section(
+        "risk_notes_ar", text, [])))
+
+
+@pytest.mark.parametrize("text", [
+    "السيناريو مؤكد.",                       # the exact form the real model produced
+    "يُصبح السيناريو المحتمل مؤكدًا.",
+    "النتيجة مؤكدة عند هذا المستوى.",
+    "الهدف مضمون.",
+    "الأرباح مضمونة عند هذا المستوى.",
+    "السهم سيرتفع بالتأكيد.",
+    "السهم سينخفض بالتأكيد.",
+    "بالتأكيد سيحدث الاختراق.",
+    "لا بد أن يرتفع السهم.",
+    "سيصل حتمًا إلى الهدف المحسوب.",
+    "الارتفاع حتمي بعد الاختراق.",
+    "لا شك في استمرار الاتجاه.",
+])
+def test_categorical_certainty_wording_is_rejected(result, text):
+    report = _prose(result, text)
+    assert not report.ok
+    assert report.status == validator.FORBIDDEN_RECOMMENDATION
+    assert "certainty" in report.reason
+
+
+@pytest.mark.parametrize("text", [
+    "يحتاج السيناريو إلى تأكيد.",
+    "في انتظار التأكيد قبل أي متابعة.",
+    "يتطلب تأكيدًا فنيًا بإغلاق فوق المستوى المحسوب.",
+    "تتحسن شروط التأكيد مع استمرار الزخم.",
+    "إذا تجاوز السعر المقاومة الأولى، تكتمل شروط تفعيل السيناريو الإيجابي.",
+    "تكتمل شروط التفعيل عند الإغلاق فوق المستوى المحسوب.",
+    "السيناريو يظل مشروطًا حتى اكتمال شروط التفعيل.",
+    "تتم المراقبة عند المستوى المحسوب.",
+    # A negated hedge is a hedge, not a guarantee.
+    "الاتجاه غير مؤكد حتى الآن.",
+    "الاختراق ليس مؤكدًا بعد.",
+    # "بالتأكيد" here is the preposition phrase "بـ + التأكيد", not the adverb.
+    "السيناريو الإيجابي مشروط بالتأكيد.",
+    "التفعيل مرهون بالتأكيد الفني.",
+])
+def test_conditional_confirmation_wording_is_accepted(result, text):
+    report = _prose(result, text)
+    assert report.ok, f"{text!r} rejected: {report.status} {report.reason}"
+    assert report.sections["risk_notes_ar"] == text
+
+
+def test_the_noun_confirmation_is_never_rejected_on_its_own(result):
+    assert validator.check_forbidden_wording("تأكيد") is None
+    assert validator.check_forbidden_wording("شروط التأكيد") is None
+    assert validator.check_forbidden_wording("يحتاج إلى تأكيد") is None
+    assert validator.check_forbidden_wording("السيناريو مؤكد") == "certainty_guaranteed"
+    assert validator.check_forbidden_wording("الهدف مضمون") == "certainty_guaranteed"
+    assert validator.check_forbidden_wording("سيرتفع بالتأكيد") == "certainty_absolute"
+
+
+def test_the_prompt_states_the_certainty_rule_and_the_preferred_phrasing():
+    from core.ai_narrative_prompt import SYSTEM_PROMPT
+
+    assert "مؤكد" in SYSTEM_PROMPT and "مضمون" in SYSTEM_PROMPT
+    assert "تكتمل شروط تفعيل السيناريو الإيجابي" in SYSTEM_PROMPT
+    assert "في انتظار التأكيد" in SYSTEM_PROMPT
+
+
 def test_find_raw_number_covers_every_digit_script():
     assert validator.find_raw_number("لا أرقام هنا") is None
     assert validator.find_raw_number("قيمة 5") is not None
