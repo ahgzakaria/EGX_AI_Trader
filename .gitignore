@@ -34,6 +34,9 @@ data/*_health.json
 data/*.pid.json
 data/*.lock
 
+# Append-only AI analysis history is runtime production data, never source control.
+data/ai_analysis/
+
 # Windows
 Thumbs.db
 

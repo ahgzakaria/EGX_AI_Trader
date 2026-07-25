@@ -13,6 +13,7 @@ import pandas as pd
 
 from core.ai_analysis_narrative import FALLBACK_MODEL
 from core.ai_stock_analysis_contract import MomentumState, TrendState
+from core.ai_stock_analysis_history import AnalysisHistoryStore
 from core.ai_stock_analysis_service import analyze_symbol
 from core.egx_session import CAIRO
 from dashboard.ai_stock_analysis_components import (
@@ -150,3 +151,57 @@ def test_analysis_contract_remains_serializable_and_yahoo_absent():
     assert payload["data_quality"]["provider"] == "eodhd"
     assert payload["data_quality"]["yahoo_network_used"] is False
     assert payload["daily_chart_series"]["source"] == "eodhd"
+
+
+def test_integration_analysis_never_mutates_production_history(tmp_path):
+    """Tests and previews must append only to their explicitly temporary store."""
+    production = Path(__file__).resolve().parents[1] / "data" / "ai_analysis" / "history.jsonl"
+    before = production.read_bytes() if production.exists() else None
+    temporary = tmp_path / "history.jsonl"
+    store = AnalysisHistoryStore(temporary)
+
+    for minute in (0, 1):
+        analyze_symbol(
+            "COMI",
+            now=datetime(2026, 7, 22, 12, minute, tzinfo=CAIRO),
+            history_loader=lambda _symbol: _daily(),
+            live_quote_provider=lambda _symbol: None,
+            intraday_provider=lambda _symbol: _intraday(),
+            history_store=store,
+        )
+
+    after = production.read_bytes() if production.exists() else None
+    records = temporary.read_text(encoding="utf-8").splitlines()
+    assert after == before
+    assert len(records) == 2
+    assert records[0] != records[1]
+
+
+def test_exactly_one_requested_symbol_reaches_each_provider():
+    calls = []
+
+    def daily(symbol):
+        calls.append(("daily", symbol))
+        return _daily(symbol)
+
+    def quote(symbol):
+        calls.append(("quote", symbol))
+        return None
+
+    def intraday(symbol):
+        calls.append(("intraday", symbol))
+        return _intraday()
+
+    analyze_symbol(
+        "COMI",
+        now=datetime(2026, 7, 22, 12, 0, tzinfo=CAIRO),
+        history_loader=daily,
+        live_quote_provider=quote,
+        intraday_provider=intraday,
+    )
+
+    assert calls == [
+        ("daily", "COMI"),
+        ("quote", "COMI"),
+        ("intraday", "COMI"),
+    ]

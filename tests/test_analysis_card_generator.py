@@ -21,6 +21,7 @@ from core.analysis_card_generator import (
     FontUnavailableError,
     bidi_reorder,
     display_text,
+    narrative_source_label,
     render_card_png,
     resolve_font_family,
     shape_arabic,
@@ -158,6 +159,28 @@ def test_png_is_generated_from_fixture_evidence(bundle):
     data = generate_card_bytes(bundle.result, bundle.narrative)
     assert data[:8] == b"\x89PNG\r\n\x1a\n"
     assert len(data) > 10_000
+
+
+def test_card_labels_deterministic_narrative_source_honestly(bundle, monkeypatch):
+    from core import analysis_card_generator as card_module
+    from core.ai_analysis_narrative import FALLBACK_MODEL
+
+    drawn = []
+    original = card_module._Canvas.text_rtl
+
+    def recording_text(self, right, y, text, *args, **kwargs):
+        drawn.append(str(text))
+        return original(self, right, y, text, *args, **kwargs)
+
+    monkeypatch.setattr(card_module._Canvas, "text_rtl", recording_text)
+    fallback_narrative = replace(bundle.narrative, model=FALLBACK_MODEL)
+    generate_card_bytes(bundle.result, fallback_narrative)
+
+    assert narrative_source_label(fallback_narrative.model) == (
+        "Narrative  Deterministic Fallback"
+    )
+    assert any("Narrative  Deterministic Fallback" in text for text in drawn)
+    assert not any("ChatGPT" in text or "external AI" in text for text in drawn)
 
 
 @pytest.mark.parametrize("size,expected", [("POST", (1080, 1350)), ("STORY", (1080, 1920))])

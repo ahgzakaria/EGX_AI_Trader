@@ -704,6 +704,16 @@ def _tone_for_recommendation(label: str) -> str:
     return "gray"
 
 
+def narrative_source_label(model: str | None) -> str:
+    """Return the honest narrative provenance label printed on exported cards."""
+    value = str(model or "").strip()
+    if not value:
+        return "Narrative  Unavailable"
+    if "fallback" in value.lower():
+        return "Narrative  Deterministic Fallback"
+    return f"Narrative model  {value}"
+
+
 def _footer_geometry(height: int, margin: int) -> dict:
     """Fixed bottom band: safety badges, disclaimer and provenance never move."""
     badges_y = height - margin - 46
@@ -903,10 +913,12 @@ def render_card_png(payload, chart: CardChartData | None = None, *,
         canvas.text_rtl(right, footer["quality_y"],
                         canvas.fit_rtl(payload.data_quality_label, 21, content_width),
                         21, PALETTE["muted"])
+    provenance = narrative_source_label(payload.narrative_model)
     if payload.evidence_version:
+        provenance = f"Evidence  {payload.evidence_version}  ·  {provenance}"
+    if provenance:
         canvas.text_rtl(right, footer["evidence_y"],
-                        canvas.fit_rtl(f"Evidence  {payload.evidence_version}", 19,
-                                       content_width),
+                        canvas.fit_rtl(provenance, 19, content_width),
                         19, PALETTE["muted"])
     if payload.disclaimer:
         canvas.text_rtl(right, footer["disclaimer_y"],
