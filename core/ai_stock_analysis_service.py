@@ -32,6 +32,11 @@ import pandas as pd
 
 from core import ai_analysis_evidence as evidence
 from core.ai_analysis_narrative import NarrativeGenerator, generate_narrative
+from core.ai_narrative_provider import (
+    AINarrativeProvider,
+    NarrativeConfig,
+    build_narrative,
+)
 from core.ai_stock_analysis_contract import (
     AnalysisRequest,
     AnalysisResult,
@@ -177,6 +182,8 @@ def analyze_symbol(
     intraday_provider: IntradayProvider | None = None,
     narrative_generator: NarrativeGenerator | None = None,
     narrative_model: str | None = None,
+    narrative_config: NarrativeConfig | None = None,
+    narrative_provider: AINarrativeProvider | None = None,
     history_store: AnalysisHistoryStore | None = None,
 ) -> AnalysisResponse:
     """Analyze exactly one manually-requested EGX symbol.
@@ -205,14 +212,16 @@ def analyze_symbol(
     except Exception as error:  # ResearchDataUnavailable and any loader failure
         result = _insufficient_from_error(request, market_phase, generated_at, error)
         return _finish(result, request, language, narrative_generator, narrative_model,
-                       history_store, generated_at)
+                       history_store, generated_at, narrative_config=narrative_config,
+                       narrative_provider=narrative_provider)
 
     if frame is None or getattr(frame, "empty", True):
         result = evidence.build_insufficient_evidence(
             request, market_phase=market_phase, generated_at=generated_at,
             status=DataStatus.DATA_UNAVAILABLE, reason="loader returned no history")
         return _finish(result, request, language, narrative_generator, narrative_model,
-                       history_store, generated_at)
+                       history_store, generated_at, narrative_config=narrative_config,
+                       narrative_provider=narrative_provider)
 
     live_quote = None
     intraday_frame = None
@@ -238,13 +247,56 @@ def analyze_symbol(
         request, frame, market_phase=market_phase, live_quote=live_quote,
         intraday_frame=intraday_frame, generated_at=generated_at)
     return _finish(result, request, language, narrative_generator, narrative_model,
-                   history_store, generated_at)
+                   history_store, generated_at, narrative_config=narrative_config,
+                   narrative_provider=narrative_provider)
+
+
+def regenerate_narrative(
+    response: AnalysisResponse,
+    *,
+    narrative_config: NarrativeConfig | None = None,
+    narrative_provider: AINarrativeProvider | None = None,
+    language: str | None = None,
+    force_refresh: bool = True,
+    history_store: AnalysisHistoryStore | None = None,
+    now: datetime | None = None,
+) -> AnalysisResponse:
+    """Rebuild the narrative for an ALREADY-COMPUTED analysis. Nothing else re-runs.
+
+    No indicator is recomputed, no provider is contacted and the evidence object is reused
+    unchanged — only Layer 2 is produced again. ``force_refresh`` bypasses the narrative
+    cache so a manual button can genuinely ask again for the same evidence hash; leave it
+    False to honour an already-validated cached narrative.
+    """
+    result = response.result
+    narrative = build_narrative(
+        result, config=narrative_config, provider=narrative_provider,
+        language=language or result.request.language, force_refresh=force_refresh)
+    record = response.history_record
+    if history_store is not None:
+        record = history_store.record_analysis(result, narrative,
+                                               created_at=_now_iso(now))
+    return AnalysisResponse(result=result, narrative=narrative, history_record=record)
 
 
 def _finish(result, request, language, narrative_generator, narrative_model,
-            history_store, generated_at) -> AnalysisResponse:
-    narrative = generate_narrative(
-        result, generator=narrative_generator, model=narrative_model, language=language)
+            history_store, generated_at, narrative_config=None,
+            narrative_provider=None, force_narrative_refresh=False) -> AnalysisResponse:
+    """Attach the narrative, then optionally append one immutable history record.
+
+    A caller-supplied ``narrative_generator`` keeps the original V1 contract (a callable
+    returning a field dict, validated by ``generate_narrative``). Otherwise the guarded
+    external-AI path runs; it degrades to the deterministic fallback on every failure, so
+    the analysis itself always completes.
+    """
+    if narrative_generator is not None:
+        narrative = generate_narrative(
+            result, generator=narrative_generator, model=narrative_model,
+            language=language)
+    else:
+        narrative = build_narrative(
+            result, config=narrative_config, provider=narrative_provider,
+            language=language, force_refresh=force_narrative_refresh)
     record = None
     if history_store is not None:
         record = history_store.record_analysis(result, narrative, created_at=generated_at)

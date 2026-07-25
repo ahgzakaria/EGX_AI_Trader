@@ -531,16 +531,59 @@ def confidence_rows(confidence: ConfidenceBreakdown):
 # Narrative source / provenance / warnings
 # --------------------------------------------------------------------------- #
 
-def narrative_source(narrative: NarrativeResult | None):
-    """(arabic, english, tone) — the narrative's true origin, never a flattering guess."""
+def narrative_source_token(narrative: NarrativeResult | None) -> str:
+    """The narrative's true origin as a token: AI_NARRATIVE / DETERMINISTIC_FALLBACK / AI_UNAVAILABLE.
+
+    Provenance, when present, is authoritative — it is set to ``AI_NARRATIVE`` only after an
+    external provider answered AND passed every validation. Without provenance (pre-v1.2)
+    the model name is used, and an unknown model is never assumed to be AI.
+    """
     if narrative is None or not str(narrative.summary or "").strip():
-        return NARRATIVE_SOURCE_UNAVAILABLE
+        return "AI_UNAVAILABLE"
+    provenance = getattr(narrative, "provenance", None)
+    if provenance is not None:
+        source = str(getattr(provenance, "source", "") or "").strip().upper()
+        if source in ("AI_NARRATIVE", "DETERMINISTIC_FALLBACK", "AI_UNAVAILABLE"):
+            return source
     model = str(narrative.model or "").strip()
     if not model:
-        return NARRATIVE_SOURCE_UNAVAILABLE
+        return "AI_UNAVAILABLE"
     if model == FALLBACK_MODEL or "fallback" in model.lower():
-        return NARRATIVE_SOURCE_FALLBACK
-    return NARRATIVE_SOURCE_AI
+        return "DETERMINISTIC_FALLBACK"
+    return "AI_NARRATIVE"
+
+
+_NARRATIVE_SOURCE_BADGES = {
+    "AI_NARRATIVE": NARRATIVE_SOURCE_AI,
+    "DETERMINISTIC_FALLBACK": NARRATIVE_SOURCE_FALLBACK,
+    "AI_UNAVAILABLE": NARRATIVE_SOURCE_UNAVAILABLE,
+}
+
+
+def narrative_source(narrative: NarrativeResult | None):
+    """(arabic, english, tone) — the narrative's true origin, never a flattering guess."""
+    return _NARRATIVE_SOURCE_BADGES[narrative_source_token(narrative)]
+
+
+def narrative_technical_rows(narrative: NarrativeResult | None):
+    """Technical provenance rows for the UI expander. Never exposes a key or a prompt."""
+    provenance = getattr(narrative, "provenance", None) if narrative else None
+    if provenance is None:
+        return (("المصدر", "Narrative Source", narrative_source_token(narrative)),
+                ("النموذج", "Model", (narrative.model if narrative else EM_DASH) or EM_DASH))
+    latency = getattr(provenance, "latency_ms", None)
+    return (
+        ("المصدر", "Narrative Source", str(provenance.source or EM_DASH)),
+        ("المزود", "Provider", str(provenance.provider or EM_DASH)),
+        ("النموذج", "Model", str(provenance.model or EM_DASH)),
+        ("إصدار التعليمات", "Prompt Version", str(provenance.prompt_version or EM_DASH)),
+        ("بصمة الأدلة", "Evidence Hash", str(provenance.evidence_hash or EM_DASH)),
+        ("وقت التوليد", "Generated At", str(provenance.generated_at or EM_DASH)),
+        ("نتيجة التحقق", "Validation Result", str(provenance.validation_status or EM_DASH)),
+        ("زمن الاستجابة", "Latency", EM_DASH if latency is None else f"{int(latency)} ms"),
+        ("من الذاكرة المؤقتة", "Served From Cache", "نعم / yes" if provenance.cached else "لا / no"),
+        ("سبب التراجع", "Fallback Reason", str(provenance.fallback_reason or EM_DASH)),
+    )
 
 
 FROZEN_SEED_LABEL = "Frozen historical bootstrap seed"
@@ -866,6 +909,7 @@ def build_card_payload(result: AnalysisResult, narrative: NarrativeResult | None
         theme="dark", language=result.request.language, export_format="PNG",
         evidence_version=result.evidence_version,
         narrative_model=(narrative.model if narrative else None),
+        narrative_source=narrative_source_token(narrative),
     )
 
 

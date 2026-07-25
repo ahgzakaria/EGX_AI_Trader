@@ -30,7 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-CONTRACT_VERSION = "ai_stock_analysis_contract@1.1.0"
+CONTRACT_VERSION = "ai_stock_analysis_contract@1.2.0"
 
 
 # --------------------------------------------------------------------------- #
@@ -313,6 +313,29 @@ class AnalysisResult:
 # --------------------------------------------------------------------------- #
 
 @dataclass(frozen=True)
+class NarrativeProvenance:
+    """Honest origin of one narrative — auditable, and free of secret material.
+
+    ``source`` is one of ``AI_NARRATIVE`` (an external model answered AND passed every
+    validation), ``DETERMINISTIC_FALLBACK`` (the evidence-only writer produced the text),
+    or ``AI_UNAVAILABLE`` (no narrative at all). It is never optimistic: an external call
+    that failed validation is recorded as a fallback, with the safe rejection reason in
+    ``fallback_reason``. No API key, prompt body, or raw provider message may be stored in
+    any field here.
+    """
+    source: str = "DETERMINISTIC_FALLBACK"
+    provider: str = "none"
+    model: str = ""
+    prompt_version: str = ""
+    evidence_hash: str = ""
+    generated_at: str = ""
+    validation_status: str = "NOT_ATTEMPTED"
+    latency_ms: int | None = None
+    cached: bool = False
+    fallback_reason: str = ""
+
+
+@dataclass(frozen=True)
 class NarrativeResult:
     """AI-written text describing an AnalysisResult.
 
@@ -320,6 +343,12 @@ class NarrativeResult:
     rendering of an evidence field from the AnalysisResult identified by
     ``derived_from_evidence_version``. ``contains_no_original_numbers`` documents this
     contract; the core narrative engine is responsible for upholding it.
+
+    ``sections`` carries the optional structured Arabic sections produced by an external
+    model (executive summary, technical read, positive/negative scenarios, confirmation and
+    invalidation conditions, risk notes, data limitations) as ordered ``(name, text)``
+    pairs. It is empty for the deterministic fallback. ``provenance`` records where the
+    text actually came from; it is ``None`` only for pre-v1.2 callers.
     """
     request_id: str
     symbol: str
@@ -332,6 +361,8 @@ class NarrativeResult:
     model: str
     derived_from_evidence_version: str
     contains_no_original_numbers: bool = True
+    sections: tuple[tuple[str, str], ...] = ()
+    provenance: NarrativeProvenance | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -364,6 +395,8 @@ class CardPayload:
     export_format: str = "PNG"                    # PNG | SVG | HTML
     evidence_version: str = ""
     narrative_model: str | None = None
+    # Honest narrative origin for the printed card line; see ``NarrativeProvenance``.
+    narrative_source: str = ""
 
 
 # --------------------------------------------------------------------------- #
@@ -372,7 +405,12 @@ class CardPayload:
 
 @dataclass(frozen=True)
 class AnalysisHistoryRecord:
-    """A durable record of one completed analysis (evidence + narrative provenance)."""
+    """A durable record of one completed analysis (evidence + narrative provenance).
+
+    The narrative block is metadata only — origin, provider, model, prompt version,
+    validation outcome, latency and (when applicable) the safe fallback reason. It never
+    stores an API key, a prompt, or a rejected narrative body.
+    """
     record_id: str
     symbol: str
     created_at: str
@@ -385,6 +423,13 @@ class AnalysisHistoryRecord:
     evidence_hash: str
     narrative_model: str | None = None
     language: str = "ar"
+    narrative_source: str = "DETERMINISTIC_FALLBACK"
+    narrative_provider: str = "none"
+    narrative_prompt_version: str = ""
+    narrative_validation_status: str = "NOT_ATTEMPTED"
+    narrative_generated_at: str = ""
+    narrative_latency_ms: int | None = None
+    narrative_fallback_reason: str = ""
 
 
 # The public contract surface. Import from here; do not redefine these elsewhere.
@@ -395,6 +440,7 @@ __all__ = [
     "AnalysisRequest", "PriceSummary", "IndicatorSummary", "KeyLevel",
     "ChartPoint", "ChartSeries",
     "ScenarioResult", "ConfidenceComponent", "ConfidenceBreakdown",
-    "DataQualitySummary", "AnalysisResult", "NarrativeResult", "CardPayload",
+    "DataQualitySummary", "AnalysisResult", "NarrativeProvenance", "NarrativeResult",
+    "CardPayload",
     "AnalysisHistoryRecord",
 ]

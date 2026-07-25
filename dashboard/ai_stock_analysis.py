@@ -38,6 +38,7 @@ from dashboard.ai_stock_analysis_components import (
     market_phase_labels,
     momentum_reading,
     narrative_source,
+    narrative_technical_rows,
     normalize_symbol,
     price_summary_rows,
     provenance_rows,
@@ -403,23 +404,71 @@ def _scenario_section(result):
         st.markdown("<div style='height:.5rem'></div>", unsafe_allow_html=True)
 
 
-def _narrative_section(narrative):
+SECTION_LABELS_AR = {
+    "executive_summary_ar": "الخلاصة التنفيذية",
+    "technical_read_ar": "القراءة الفنية",
+    "positive_scenario_ar": "السيناريو الإيجابي",
+    "negative_scenario_ar": "السيناريو السلبي",
+    "confirmation_conditions_ar": "شروط التأكيد",
+    "invalidation_conditions_ar": "شروط الإبطال",
+    "risk_notes_ar": "ملاحظات المخاطر",
+    "data_limitations_ar": "حدود البيانات",
+}
+
+
+def _regenerate_narrative_only(bundle):
+    """Re-run Layer 2 ONLY. No indicator, provider or full analysis is re-executed."""
+    from core.ai_stock_analysis_service import regenerate_narrative
+
+    return regenerate_narrative(bundle, force_refresh=True)
+
+
+def _narrative_section(narrative, bundle=None, regenerator=None):
+    section_header("السرد التحليلي", "AI Narrative")
+
+    if bundle is not None:
+        # Narrative-only regeneration. The evidence object is reused unchanged: no
+        # indicator is recomputed, no provider is contacted, no analysis is re-run.
+        if st.button("♻ إعادة توليد الشرح بالذكاء الاصطناعي",
+                     key="_ai_analysis_regen_narrative",
+                     help="يعيد توليد الشرح فقط دون إعادة حساب المؤشرات أو استدعاء أي مزود بيانات."):
+            with st.spinner("جارٍ إعادة توليد الشرح… · Regenerating narrative only…"):
+                try:
+                    refreshed = (regenerator or _regenerate_narrative_only)(bundle)
+                except Exception as error:
+                    # The provider layer already degrades safely; this guards the call
+                    # itself. Only the exception TYPE is shown — never a provider message.
+                    st.warning("تعذر توليد شرح جديد؛ يبقى الشرح الحتمي معروضاً. · "
+                               f"Narrative regeneration failed: {type(error).__name__}")
+                else:
+                    st.session_state[STATE_BUNDLE] = refreshed
+                    narrative = refreshed.narrative
+
     source_ar, source_en, tone = narrative_source(narrative)
-    section_header("السرد التحليلي", f"AI Narrative — source: {source_en}")
     st.markdown(badge_html(f"{source_ar} · {source_en}", tone), unsafe_allow_html=True)
     if narrative is None:
         empty_state("السرد غير متاح", "No narrative was produced for this analysis.")
         return
-    st.markdown(
-        f'<div class="egx-narr"><h4>{html.escape(str(narrative.headline))}</h4>'
-        f'<p>{html.escape(str(narrative.summary))}</p>'
-        f'<p>{html.escape(str(narrative.rationale))}</p>'
-        f'<p><b>المخاطر · Risks:</b> {html.escape(str(narrative.risks))}</p>'
-        f'<p style="opacity:.7">{html.escape(str(narrative.disclaimer))}</p></div>',
-        unsafe_allow_html=True)
-    st.caption(f"model: {narrative.model} · derived from evidence "
-               f"{narrative.derived_from_evidence_version} · numbers are renderings of "
-               f"evidence fields, never new facts.")
+    body = [f'<h4>{html.escape(str(narrative.headline))}</h4>']
+    sections = tuple(getattr(narrative, "sections", ()) or ())
+    if sections:
+        # Validated external narrative: show every structured Arabic section as supplied.
+        for name, text in sections:
+            label = SECTION_LABELS_AR.get(name, name)
+            body.append(f'<p><b>{html.escape(label)}:</b> {html.escape(str(text))}</p>')
+    else:
+        body.append(f'<p>{html.escape(str(narrative.summary))}</p>')
+        body.append(f'<p>{html.escape(str(narrative.rationale))}</p>')
+        body.append(f'<p><b>المخاطر · Risks:</b> {html.escape(str(narrative.risks))}</p>')
+    body.append(f'<p style="opacity:.7">{html.escape(str(narrative.disclaimer))}</p>')
+    st.markdown(f'<div class="egx-narr">{"".join(body)}</div>', unsafe_allow_html=True)
+    st.caption(f"derived from evidence {narrative.derived_from_evidence_version} · numbers "
+               "are renderings of evidence fields, never new facts.")
+
+    with st.expander("تفاصيل توليد الشرح · Narrative technical details"):
+        _kv_table(narrative_technical_rows(narrative))
+        st.caption("لا تُعرض المفاتيح ولا نص التعليمات ولا رسائل المزود الخام. · API keys, "
+                   "prompt text and raw provider messages are never shown.")
 
 
 def _confidence_section(result):
@@ -525,6 +574,8 @@ def _history_section(symbol):
         "حالة البيانات / Data": record.data_status.value,
         "الجلسة / Phase": record.market_phase.value,
         "النموذج / Model": record.narrative_model or EM_DASH,
+        "مصدر الشرح / Narrative": getattr(record, "narrative_source", "") or EM_DASH,
+        "التحقق / Validation": getattr(record, "narrative_validation_status", "") or EM_DASH,
         "الأدلة / Evidence": record.evidence_version,
     } for record in reversed(records)])
     st.dataframe(frame, use_container_width=True, hide_index=True)
@@ -585,7 +636,7 @@ def show_ai_stock_analysis(runner=None):
     _technical_section(result)
     _levels_section(result)
     _scenario_section(result)
-    _narrative_section(narrative)
+    _narrative_section(narrative, bundle=bundle)
     _confidence_section(result)
     _warnings_section(result)
     _card_section(result, narrative)
