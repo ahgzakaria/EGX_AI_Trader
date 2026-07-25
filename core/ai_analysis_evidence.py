@@ -38,6 +38,8 @@ import pandas as pd
 from core.ai_stock_analysis_contract import (
     AnalysisRequest,
     AnalysisResult,
+    ChartPoint,
+    ChartSeries,
     ConfidenceBreakdown,
     ConfidenceComponent,
     DataQualitySummary,
@@ -45,10 +47,12 @@ from core.ai_stock_analysis_contract import (
     IndicatorSummary,
     KeyLevel,
     MarketPhase,
+    MomentumState,
     PriceSummary,
     Recommendation,
     ScenarioResult,
     ScenarioState,
+    TrendState,
 )
 
 # --------------------------------------------------------------------------- #
@@ -197,6 +201,7 @@ def build_evidence(
     *,
     market_phase: MarketPhase,
     live_quote: dict | None = None,
+    intraday_frame: pd.DataFrame | None = None,
     generated_at: str,
 ) -> AnalysisResult:
     """Build the full ``AnalysisResult`` (Layer 1) from one symbol's daily frame."""
@@ -288,9 +293,16 @@ def build_evidence(
     else:
         avg_vol = avg_turnover = volume_ratio = obv_val = obv_slope = None
 
+    trend, trend_strength = _classify_trend(last_close, sma_vals, ema_vals)
+    momentum, momentum_strength = _classify_momentum(rsi_val, macd_hist_val)
+
     indicators = IndicatorSummary(
         symbol=symbol,
         computed_from_sessions=n,
+        trend=trend,
+        trend_strength=_r(trend_strength, PCT_DP),
+        momentum=momentum,
+        momentum_strength=_r(momentum_strength, PCT_DP),
         sma_20=_r(sma_vals[20], IND_DP),
         sma_50=_r(sma_vals[50], IND_DP),
         sma_200=_r(sma_vals[200], IND_DP),
@@ -314,12 +326,8 @@ def build_evidence(
         latest_action_in_lookback=str(latest_action) if latest_action else None,
     )
 
-    # ---- Classifications --------------------------------------------------- #
-    trend = _classify_trend(last_close, sma_vals, ema_vals)
-    momentum = _classify_momentum(rsi_val, macd_hist_val)
-
     # ---- Key levels (deterministic support / resistance / EMA dynamics) ---- #
-    key_levels = _key_levels(last_close, sma_vals, ema_vals, channel_high,
+    key_levels = _key_levels(frame, last_close, sma_vals, ema_vals, channel_high,
                              channel_low, atr_val)
 
     # ---- Scenario engine --------------------------------------------------- #
@@ -327,14 +335,14 @@ def build_evidence(
     usable = n >= MIN_BARS_USABLE and last_close is not None
     scenarios = _scenarios(
         last_close=last_close, channel_high=channel_high, channel_low=channel_low,
-        atr_val=atr_val, trend=trend, momentum=momentum, volume_safe=volume_safe,
-        volume_ratio=volume_ratio, usable=usable,
+        atr_val=atr_val, trend=trend.value, momentum=momentum.value,
+        volume_safe=volume_safe, volume_ratio=volume_ratio, usable=usable,
     )
     primary_state = scenarios[0].state if scenarios else ScenarioState.DATA_INSUFFICIENT
 
     # ---- Confidence (pure function of completed-session evidence) ---------- #
     confidence = _confidence(
-        trend=trend, momentum=momentum, volume_safe=volume_safe,
+        trend=trend.value, momentum=momentum.value, volume_safe=volume_safe,
         volume_ratio=volume_ratio, avg_turnover=avg_turnover,
         history_sufficient=history_sufficient, usable=usable,
     )
@@ -346,20 +354,32 @@ def build_evidence(
 
     # ---- Recommendation + machine reasons (supplementary; not a data source) #
     recommendation, reasons = _recommendation(
-        data_status=data_quality.status, primary_state=primary_state, trend=trend,
-        momentum=momentum, last_close=last_close, sma_vals=sma_vals, ema_vals=ema_vals,
+        data_status=data_quality.status, primary_state=primary_state, trend=trend.value,
+        momentum=momentum.value, last_close=last_close, sma_vals=sma_vals, ema_vals=ema_vals,
         volume_safe=volume_safe, volume_ratio=volume_ratio, rsi_val=rsi_val,
         macd_hist_val=macd_hist_val, obv_slope=obv_slope, range_position=range_position,
         channel_high=channel_high,
     )
 
     # ---- Assemble + hash --------------------------------------------------- #
+    daily_series = _chart_series(
+        frame.tail(180), timeframe="1D", source=str(md.get("provider", "eodhd")),
+        latest_completed_session=str(latest_session) if latest_session else None,
+        intraday=False,
+    )
+    intraday_series = _chart_series(
+        intraday_frame, timeframe="1m", source="rubix",
+        latest_completed_session=str(latest_session) if latest_session else None,
+        intraday=True,
+    ) if intraday_frame is not None and not intraday_frame.empty else None
+
     partial = AnalysisResult(
         request=request, price=price, indicators=indicators, confidence=confidence,
         data_quality=data_quality, recommendation=recommendation,
         market_phase=market_phase, evidence_version="", generated_at=generated_at,
         key_levels=tuple(key_levels), scenarios=tuple(scenarios),
         recommendation_reasons=tuple(reasons), evidence_hash=None,
+        daily_chart_series=daily_series, intraday_chart_series=intraday_series,
     )
     evidence_hash = _evidence_hash(partial)
     session_token = str(latest_session or "unknown")
@@ -425,41 +445,46 @@ def build_insufficient_evidence(
 # Classification / level / scenario / confidence internals
 # --------------------------------------------------------------------------- #
 
-def _classify_trend(last_close, sma_vals, ema_vals) -> str:
+def _classify_trend(last_close, sma_vals, ema_vals):
     s20, s50, s200 = sma_vals.get(20), sma_vals.get(50), sma_vals.get(200)
     if last_close is None or s20 is None or s50 is None:
-        return "UNKNOWN"
-    above_200 = (s200 is None) or (last_close > s200)
-    below_200 = (s200 is None) or (last_close < s200)
+        return TrendState.DATA_INSUFFICIENT, None
+    e20, e50, e200 = ema_vals.get(20), ema_vals.get(50), ema_vals.get(200)
+    above_200 = s200 is None or last_close > s200
+    below_200 = s200 is None or last_close < s200
+    ema_strong_up = all(v is not None for v in (e20, e50, e200)) and e20 > e50 > e200
+    ema_strong_down = all(v is not None for v in (e20, e50, e200)) and e20 < e50 < e200
     if last_close > s20 > s50 and above_200:
-        return "UPTREND"
+        state = TrendState.STRONG_UPTREND if ema_strong_up else TrendState.UPTREND
+        return state, 100.0 if state == TrendState.STRONG_UPTREND else 80.0
     if last_close < s20 < s50 and below_200:
-        return "DOWNTREND"
+        state = TrendState.STRONG_DOWNTREND if ema_strong_down else TrendState.DOWNTREND
+        return state, 100.0 if state == TrendState.STRONG_DOWNTREND else 80.0
     if last_close > s50 and above_200:
-        return "MILD_UPTREND"
+        return TrendState.UPTREND, 65.0
     if last_close < s50 and below_200:
-        return "MILD_DOWNTREND"
-    return "SIDEWAYS"
+        return TrendState.DOWNTREND, 65.0
+    return TrendState.SIDEWAYS, 50.0
 
 
-def _classify_momentum(rsi_val, macd_hist_val) -> str:
+def _classify_momentum(rsi_val, macd_hist_val):
     if rsi_val is None:
-        return "UNKNOWN"
+        return MomentumState.DATA_INSUFFICIENT, None
     hist_pos = macd_hist_val is not None and macd_hist_val > 0
     hist_neg = macd_hist_val is not None and macd_hist_val < 0
     if rsi_val >= 70:
-        return "OVERBOUGHT"
+        return MomentumState.STRONG_POSITIVE, min(100.0, float(rsi_val))
     if rsi_val >= 60 and hist_pos:
-        return "STRONG_BULLISH"
+        return MomentumState.STRONG_POSITIVE, min(100.0, float(rsi_val))
     if rsi_val >= 55 or (rsi_val >= 50 and hist_pos):
-        return "BULLISH"
+        return MomentumState.POSITIVE, max(55.0, float(rsi_val))
     if rsi_val <= 30:
-        return "OVERSOLD"
+        return MomentumState.STRONG_NEGATIVE, min(100.0, 100.0 - float(rsi_val))
     if rsi_val <= 40 and hist_neg:
-        return "STRONG_BEARISH"
+        return MomentumState.STRONG_NEGATIVE, min(100.0, 100.0 - float(rsi_val))
     if rsi_val <= 45 or (rsi_val < 50 and hist_neg):
-        return "BEARISH"
-    return "NEUTRAL"
+        return MomentumState.NEGATIVE, max(55.0, 100.0 - float(rsi_val))
+    return MomentumState.NEUTRAL, 50.0
 
 
 def _distance_pct(level, ref):
@@ -468,7 +493,7 @@ def _distance_pct(level, ref):
     return _r((level - ref) / ref * 100.0, PCT_DP)
 
 
-def _key_levels(last_close, sma_vals, ema_vals, channel_high, channel_low, atr_val):
+def _key_levels(frame, last_close, sma_vals, ema_vals, channel_high, channel_low, atr_val):
     levels: list[KeyLevel] = []
     if last_close is None:
         return levels
@@ -476,11 +501,16 @@ def _key_levels(last_close, sma_vals, ema_vals, channel_high, channel_low, atr_v
     def add(kind, price, basis, confidence=None):
         if price is None:
             return
+        touches, last_touch = _level_touches(frame, price, atr_val)
+        strength = min(1.0, (confidence or 0.4) + min(touches, 5) * 0.06)
         levels.append(KeyLevel(kind=kind, price=_r(price, PRICE_DP), basis=basis,
-                               distance_pct=_distance_pct(price, last_close),
-                               confidence=confidence))
+                               timeframe="1D", touches=touches,
+                               last_touch_date=last_touch,
+                               distance_percent=_distance_pct(price, last_close),
+                               strength=_r(strength, 2), confidence=confidence))
 
     add("RESISTANCE", channel_high, f"{CHANNEL_WINDOW}d high", 0.7)
+    add("BREAKOUT", channel_high, f"{CHANNEL_WINDOW}d high breakout", 0.7)
     add("SUPPORT", channel_low, f"{CHANNEL_WINDOW}d low", 0.6)
     for period in SMA_PERIODS:
         val = sma_vals.get(period)
@@ -493,8 +523,93 @@ def _key_levels(last_close, sma_vals, ema_vals, channel_high, channel_low, atr_v
     if atr_val is not None:
         add("STOP", last_close - ATR_STOP_MULT * atr_val, f"{ATR_STOP_MULT}x ATR below last close")
 
-    levels.sort(key=lambda lv: (lv.kind, abs(lv.distance_pct) if lv.distance_pct is not None else 1e9))
+    levels.sort(key=lambda lv: (
+        lv.kind,
+        abs(lv.distance_percent) if lv.distance_percent is not None else 1e9,
+    ))
     return levels
+
+
+def _level_touches(frame, price, atr_val):
+    """Count completed-session touches without inventing intraday precision."""
+    if frame is None or frame.empty or price in (None, 0):
+        return 0, None
+    recent = frame.tail(60)
+    tolerance = max(abs(float(price)) * 0.005, float(atr_val or 0) * 0.25)
+    touched = (
+        (recent["Low"].astype(float) <= float(price) + tolerance)
+        & (recent["High"].astype(float) >= float(price) - tolerance)
+    )
+    dates = recent.index[touched]
+    return int(touched.sum()), (
+        pd.Timestamp(dates[-1]).date().isoformat() if len(dates) else None
+    )
+
+
+def _chart_series(frame, *, timeframe, source, latest_completed_session, intraday):
+    """Convert provider-normalized frames to the typed chart contract."""
+    if frame is None or frame.empty:
+        return None
+    points = []
+    continuous = []
+    auction = []
+    local_dates = []
+    for timestamp, row in frame.iterrows():
+        ts = pd.Timestamp(timestamp)
+        if intraday:
+            if ts.tzinfo is None:
+                ts = ts.tz_localize("UTC")
+            cairo = ts.tz_convert("Africa/Cairo")
+            local_dates.append(cairo.date())
+            minute = cairo.hour * 60 + cairo.minute
+            if 10 * 60 <= minute < 14 * 60 + 15:
+                phase = "CONTINUOUS"
+            elif 14 * 60 + 15 <= minute < 14 * 60 + 25:
+                phase = "CLOSING_AUCTION"
+            elif minute < 10 * 60:
+                phase = "PRE_SESSION"
+            else:
+                phase = "CLOSED"
+        else:
+            cairo = ts
+            local_dates.append(ts.date())
+            phase = "COMPLETED_SESSION"
+        point = ChartPoint(
+            timestamp=cairo.isoformat(),
+            open=_r(row.get("Open"), PRICE_DP),
+            high=_r(row.get("High"), PRICE_DP),
+            low=_r(row.get("Low"), PRICE_DP),
+            close=_r(row.get("Close"), PRICE_DP),
+            volume=_r(row.get("Volume"), VOL_DP),
+            source=source,
+            session_phase=phase,
+        )
+        points.append(point)
+        if phase == "CONTINUOUS":
+            continuous.append(point)
+        elif phase == "CLOSING_AUCTION":
+            auction.append(point)
+    session_date = max(local_dates).isoformat() if local_dates else None
+    if intraday:
+        # The contract exposes the most recent Rubix session only. Older stored minutes
+        # cannot be mistaken for a current/live chart.
+        points = [p for p in points if pd.Timestamp(p.timestamp).date().isoformat() == session_date]
+        continuous = [
+            p for p in continuous if pd.Timestamp(p.timestamp).date().isoformat() == session_date
+        ]
+        auction = [
+            p for p in auction if pd.Timestamp(p.timestamp).date().isoformat() == session_date
+        ]
+    return ChartSeries(
+        timeframe=timeframe,
+        session_date=session_date,
+        points=tuple(points),
+        continuous_points=tuple(continuous),
+        auction_points=tuple(auction),
+        latest_completed_session=latest_completed_session,
+        source=source,
+        data_status="AVAILABLE" if points else "UNAVAILABLE",
+    )
 
 
 def _scenarios(*, last_close, channel_high, channel_low, atr_val, trend, momentum,
@@ -528,8 +643,8 @@ def _scenarios(*, last_close, channel_high, channel_low, atr_val, trend, momentu
     if not volume_safe:
         invalidation.append("volume unsafe for lookback")
 
-    bearish = trend in ("DOWNTREND", "MILD_DOWNTREND") or momentum in (
-        "BEARISH", "STRONG_BEARISH")
+    bearish = trend in ("DOWNTREND", "STRONG_DOWNTREND") or momentum in (
+        "NEGATIVE", "STRONG_NEGATIVE")
     if bearish:
         state = ScenarioState.AVOID
     elif not volume_safe:
@@ -537,7 +652,7 @@ def _scenarios(*, last_close, channel_high, channel_low, atr_val, trend, momentu
     elif last_close >= breakout:
         state = ScenarioState.READY_WITH_CONDITIONS
     elif dist_to_breakout is not None and dist_to_breakout <= 3.0 and trend in (
-            "UPTREND", "MILD_UPTREND"):
+            "UPTREND", "STRONG_UPTREND"):
         state = ScenarioState.NEAR_READY
     else:
         state = ScenarioState.WAIT
@@ -566,12 +681,14 @@ def _scenarios(*, last_close, channel_high, channel_low, atr_val, trend, momentu
 def _confidence(*, trend, momentum, volume_safe, volume_ratio, avg_turnover,
                 history_sufficient, usable):
     trend_score = {
-        "UPTREND": 85.0, "MILD_UPTREND": 65.0, "SIDEWAYS": 45.0,
-        "MILD_DOWNTREND": 30.0, "DOWNTREND": 15.0, "UNKNOWN": 25.0,
+        "STRONG_UPTREND": 85.0, "UPTREND": 65.0, "SIDEWAYS": 45.0,
+        "DOWNTREND": 30.0, "STRONG_DOWNTREND": 15.0,
+        "DATA_INSUFFICIENT": 25.0,
     }.get(trend, 40.0)
     momentum_score = {
-        "STRONG_BULLISH": 85.0, "BULLISH": 70.0, "OVERBOUGHT": 55.0, "NEUTRAL": 50.0,
-        "OVERSOLD": 45.0, "BEARISH": 30.0, "STRONG_BEARISH": 15.0, "UNKNOWN": 30.0,
+        "STRONG_POSITIVE": 85.0, "POSITIVE": 70.0, "NEUTRAL": 50.0,
+        "NEGATIVE": 30.0, "STRONG_NEGATIVE": 15.0,
+        "DATA_INSUFFICIENT": 30.0,
     }.get(momentum, 45.0)
 
     # Volume must never lift confidence when it is not lookback-safe.
@@ -694,7 +811,7 @@ def _recommendation(*, data_status, primary_state, trend, momentum, last_close, 
         ScenarioState.DATA_INSUFFICIENT: Recommendation.DATA_INSUFFICIENT,
     }
     rec = mapping.get(primary_state, Recommendation.WAIT)
-    if rec == Recommendation.WAIT and trend in ("UPTREND", "MILD_UPTREND") and volume_safe:
+    if rec == Recommendation.WAIT and trend in ("UPTREND", "STRONG_UPTREND") and volume_safe:
         rec = Recommendation.WATCH
     if channel_high is not None and last_close is not None and last_close < channel_high:
         reasons.append("awaiting close above resistance")
@@ -743,6 +860,8 @@ def _replace_result(result: AnalysisResult, **changes) -> AnalysisResult:
         "evidence_version": result.evidence_version, "generated_at": result.generated_at,
         "key_levels": result.key_levels, "scenarios": result.scenarios,
         "recommendation_reasons": result.recommendation_reasons,
+        "daily_chart_series": result.daily_chart_series,
+        "intraday_chart_series": result.intraday_chart_series,
         "evidence_hash": result.evidence_hash,
     }
     data.update(changes)

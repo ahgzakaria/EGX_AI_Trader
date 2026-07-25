@@ -20,10 +20,13 @@ Every external dependency is injectable so the whole path is deterministic under
 
 from __future__ import annotations
 
+import json
+import os
 import uuid
 from collections.abc import Iterable
 from datetime import datetime, time, timezone
 from typing import Callable
+from pathlib import Path
 
 import pandas as pd
 
@@ -48,6 +51,7 @@ from core.egx_session import (
 
 HistoryLoader = Callable[[str], pd.DataFrame]
 LiveQuoteProvider = Callable[[str], dict | None]
+IntradayProvider = Callable[[str], pd.DataFrame | None]
 
 # Router status → contract DataStatus for the data-block (no-frame) path.
 _ROUTER_STATUS_TO_DATA_STATUS = {
@@ -112,12 +116,34 @@ def _default_history_loader(symbol: str) -> pd.DataFrame:
     return get_current_research_history(symbol)
 
 
+def _rubix_provider():
+    """Build the existing read-only provider from centralized deployment settings."""
+    from providers.rubix_sqlite_provider import RubixSQLiteProvider
+
+    db_path = os.getenv("RUBIX_DB_PATH")
+    if not db_path:
+        settings_path = Path(__file__).resolve().parents[1] / "config" / "settings.json"
+        try:
+            settings = json.loads(settings_path.read_text(encoding="utf-8"))
+            db_path = settings.get("market_data", {}).get("rubix_db_path")
+        except (OSError, ValueError, TypeError):
+            db_path = None
+    return RubixSQLiteProvider(db_path=db_path)
+
+
 def _default_live_quote(symbol: str) -> dict | None:
     """Best-effort Rubix overlay. Any failure (no config/DB) degrades to None."""
     try:
-        from providers.rubix_sqlite_provider import RubixSqliteProvider
-        overlay = RubixSqliteProvider().quote_overlay(symbol)
+        overlay = _rubix_provider().quote_overlay(symbol)
         return overlay if isinstance(overlay, dict) else None
+    except Exception:
+        return None
+
+
+def _default_intraday(symbol: str) -> pd.DataFrame | None:
+    """Best-effort read-only Rubix minute series; never contacts a network."""
+    try:
+        return _rubix_provider().load_history(symbol, "5d", "1m")
     except Exception:
         return None
 
@@ -148,6 +174,7 @@ def analyze_symbol(
     request_id: str | None = None,
     history_loader: HistoryLoader | None = None,
     live_quote_provider: LiveQuoteProvider | None = None,
+    intraday_provider: IntradayProvider | None = None,
     narrative_generator: NarrativeGenerator | None = None,
     narrative_model: str | None = None,
     history_store: AnalysisHistoryStore | None = None,
@@ -188,16 +215,28 @@ def analyze_symbol(
                        history_store, generated_at)
 
     live_quote = None
+    intraday_frame = None
     if include_live:
         provider = live_quote_provider or _default_live_quote
         try:
             live_quote = provider(sym)
         except Exception:
             live_quote = None
+        minute_loader = intraday_provider or _default_intraday
+        try:
+            intraday_frame = minute_loader(sym)
+        except Exception:
+            intraday_frame = None
+
+    # A stored quote is not "live" outside the continuous/auction session and an older
+    # session's last print is never presented as current. The intraday chart may still
+    # show the completed Rubix session, clearly typed as historical chart evidence.
+    if not _live_quote_is_current(live_quote, market_phase, generated_at):
+        live_quote = None
 
     result = evidence.build_evidence(
         request, frame, market_phase=market_phase, live_quote=live_quote,
-        generated_at=generated_at)
+        intraday_frame=intraday_frame, generated_at=generated_at)
     return _finish(result, request, language, narrative_generator, narrative_model,
                    history_store, generated_at)
 
@@ -227,3 +266,22 @@ def _now_iso(now: datetime | None) -> str:
     if current.tzinfo is None:
         current = current.replace(tzinfo=timezone.utc)
     return current.astimezone(CAIRO).isoformat()
+
+
+def _live_quote_is_current(live_quote, market_phase, generated_at):
+    if not live_quote or market_phase not in (
+            MarketPhase.CONTINUOUS, MarketPhase.CLOSING_AUCTION):
+        return False
+    raw = live_quote.get("quote_timestamp") or live_quote.get("timestamp")
+    if not raw:
+        return False
+    try:
+        quote_date = pd.Timestamp(raw)
+        if quote_date.tzinfo is None:
+            quote_date = quote_date.tz_localize("UTC")
+        request_date = pd.Timestamp(generated_at)
+        if request_date.tzinfo is None:
+            request_date = request_date.tz_localize(CAIRO)
+        return quote_date.tz_convert(CAIRO).date() == request_date.tz_convert(CAIRO).date()
+    except (TypeError, ValueError):
+        return False

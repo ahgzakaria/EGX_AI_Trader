@@ -1,4 +1,4 @@
-"""AI Stock Analysis — manual, one-symbol, on-demand analysis page (UI only).
+"""AI Stock Analysis — manual, one-symbol, on-demand analysis page.
 
 تحليل سهم بالذكاء الاصطناعي · AI Stock Analysis
 
@@ -8,10 +8,8 @@ all is analysed until the user picks one symbol and presses *Analyze Stock*. All
 come from dedicated typed fields on the contract objects — never from narrative prose and
 never from a machine recommendation reason.
 
-Until the Core service is wired in, the analysis runner is a fixture-backed stand-in
-(:func:`dashboard.ai_stock_analysis_components.fixture_analysis`); swapping it for
-``core.ai_stock_analysis_service.analyze_symbol`` is a one-line change because both return
-the same response shape.
+The default runner is the real one-symbol Core service. Tests may inject a fixture runner,
+but the production page never imports a fixture and never contacts a provider directly.
 """
 
 from __future__ import annotations
@@ -31,7 +29,6 @@ from dashboard.ai_stock_analysis_components import (
     confidence_rows,
     data_mode,
     data_quality_warnings,
-    fixture_analysis,
     fmt_score,
     generate_card_bytes,
     include_live_in_session_range,
@@ -81,8 +78,11 @@ PAGE_TITLE_EN = "AI Stock Analysis"
 # --------------------------------------------------------------------------- #
 
 def _default_runner(symbol: str):
-    """Fixture-backed stand-in for the Core service. One symbol, no I/O beyond a local file."""
-    return fixture_analysis(symbol)
+    """Run the real service and append one immutable history record."""
+    from core.ai_stock_analysis_history import AnalysisHistoryStore
+    from core.ai_stock_analysis_service import analyze_symbol
+
+    return analyze_symbol(symbol, history_store=AnalysisHistoryStore())
 
 
 def run_analysis(symbol, runner=None):
@@ -197,7 +197,11 @@ def _price_section(result):
     rows = price_summary_rows(result)
     headline = rows[0]
     session_rows = [row for row in rows[1:] if row[4] == "session"]
-    live_rows = [row for row in rows[1:] if row[4] == "live"]
+    # Do not render an empty "live" block after close/holiday: that could imply an old
+    # stored quote is current. Missing live evidence remains absent, not relabelled.
+    live_rows = [
+        row for row in rows[1:] if row[4] == "live" and row[2] != EM_DASH
+    ]
 
     for start in range(0, len([headline] + session_rows), 4):
         chunk = ([headline] + session_rows)[start:start + 4]
@@ -220,69 +224,88 @@ def _price_section(result):
 
 
 def _chart_section(result):
-    """An interactive chart built ONLY from supplied typed values."""
-    section_header("الرسم البياني", "Interactive Chart — plotted from supplied values only")
+    """Render typed daily/Rubix series without fetching or deriving data in the UI."""
+    section_header("الرسم البياني", "Typed Daily + Rubix Intraday Series")
     try:
         import plotly.graph_objects as go
     except Exception:
         st.caption("Plotly is unavailable in this environment; the chart is skipped.")
         return
 
-    price = result.price
-    if price.open is None or price.high is None or price.low is None or price.close is None:
-        empty_state("لا توجد بيانات كافية للرسم", "No OHLC evidence supplied for this symbol.")
+    daily = result.daily_chart_series
+    intraday = result.intraday_chart_series
+    if daily is None or not daily.points:
+        empty_state("لا توجد بيانات كافية للرسم", "No typed daily chart series was supplied.")
         return
 
-    session = result.data_quality.latest_completed_session or "session"
-    figure = go.Figure()
-    figure.add_trace(go.Candlestick(
-        x=[session], open=[price.open], high=[price.high], low=[price.low],
-        close=[price.close], name="Session OHLC",
-        increasing_line_color="#34d399", decreasing_line_color="#f87171"))
+    daily_tab, intraday_tab = st.tabs(("Daily · يومي", "Rubix Intraday · لحظي"))
 
-    lines = [(row["label_en"], row) for row in key_level_rows(result) if row["present"]]
-    palette = {"Support 1": "#34d399", "Support 2": "#10b981", "Resistance 1": "#fbbf24",
-               "Resistance 2": "#f59e0b", "Breakout": "#60a5fa", "Invalidation": "#f87171"}
-    drawn = []
-    for label, row in lines:
-        try:
-            value = float(str(row["value"]).replace(",", ""))
-        except ValueError:
-            continue
-        # Two levels may share a price (a resistance that is also the breakout trigger);
-        # nudge the label so the annotations stay readable instead of stacking.
-        shift = 14 * sum(1 for seen in drawn if abs(seen - value) < 1e-9)
-        drawn.append(value)
-        figure.add_hline(y=value, line_dash="dot", line_color=palette.get(label, "#94a3b8"),
-                         annotation_text=f"{label} {row['value']}",
-                         annotation_position="right", annotation_yshift=shift,
-                         annotation_font_color=palette.get(label, "#94a3b8"))
+    def base_figure(series, *, name):
+        figure = go.Figure()
+        points = series.points
+        figure.add_trace(go.Candlestick(
+            x=[p.timestamp for p in points],
+            open=[p.open for p in points], high=[p.high for p in points],
+            low=[p.low for p in points], close=[p.close for p in points],
+            name=name, increasing_line_color="#34d399", decreasing_line_color="#f87171"))
+        figure.update_layout(
+            template="plotly_dark", height=470, margin=dict(l=70, r=130, t=24, b=34),
+            paper_bgcolor="#0b1220", plot_bgcolor="#0e1729",
+            xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#223049", title="EGP"),
+            xaxis_rangeslider_visible=False, showlegend=True,
+            legend=dict(orientation="h", y=1.12, bgcolor="rgba(0,0,0,0)"))
+        return figure
 
-    indicators = result.indicators
-    for label, value, colour in (("SMA 20", indicators.sma_20, "#60a5fa"),
-                                 ("SMA 50", indicators.sma_50, "#818cf8"),
-                                 ("EMA 20", indicators.ema_20, "#a78bfa")):
-        if value is not None:
-            figure.add_hline(y=value, line_dash="dash", line_color=colour, opacity=.55,
-                             annotation_text=label, annotation_position="left",
-                             annotation_font_color=colour)
+    with daily_tab:
+        figure = base_figure(daily, name=f"{daily.source} · {daily.timeframe}")
+        lines = [(row["label_en"], row) for row in key_level_rows(result) if row["present"]]
+        palette = {"Support 1": "#34d399", "Support 2": "#10b981",
+                   "Resistance 1": "#fbbf24", "Resistance 2": "#f59e0b",
+                   "Breakout": "#60a5fa", "Invalidation": "#f87171"}
+        drawn = []
+        for label, row in lines:
+            try:
+                value = float(str(row["value"]).replace(",", ""))
+            except ValueError:
+                continue
+            shift = 14 * sum(1 for seen in drawn if abs(seen - value) < 1e-9)
+            drawn.append(value)
+            figure.add_hline(
+                y=value, line_dash="dot", line_color=palette.get(label, "#94a3b8"),
+                annotation_text=f"{label} {row['value']}", annotation_position="right",
+                annotation_yshift=shift,
+                annotation_font_color=palette.get(label, "#94a3b8"))
 
-    if price.last is not None and include_live_in_session_range(result.market_phase):
-        figure.add_trace(go.Scatter(x=[session], y=[price.last], mode="markers",
-                                    name="Last (live)",
-                                    marker=dict(size=12, color="#e6edf7",
-                                                line=dict(width=2, color="#0b1220"))))
+        st.plotly_chart(figure, use_container_width=True)
+        st.caption(f"source: {daily.source} · latest completed session: "
+                   f"{daily.latest_completed_session or EM_DASH}")
 
-    figure.update_layout(
-        template="plotly_dark", height=430, margin=dict(l=104, r=150, t=24, b=34),
-        paper_bgcolor="#0b1220", plot_bgcolor="#0e1729",
-        # Categorical: one completed session, not a time series — a date axis would
-        # invent sub-second ticks around a single point.
-        xaxis=dict(type="category", showgrid=False),
-        yaxis=dict(gridcolor="#223049", title=dict(text=price.currency, standoff=26)),
-        xaxis_rangeslider_visible=False, showlegend=True,
-        legend=dict(orientation="h", y=1.12, bgcolor="rgba(0,0,0,0)"))
-    st.plotly_chart(figure, use_container_width=True)
+    with intraday_tab:
+        if intraday is None or not intraday.points:
+            empty_state("لا توجد شموع Rubix", "No typed current-session Rubix series supplied.")
+        else:
+            intraday_figure = go.Figure()
+            if intraday.continuous_points:
+                pts = intraday.continuous_points
+                intraday_figure.add_trace(go.Candlestick(
+                    x=[p.timestamp for p in pts], open=[p.open for p in pts],
+                    high=[p.high for p in pts], low=[p.low for p in pts],
+                    close=[p.close for p in pts], name="Continuous",
+                    increasing_line_color="#34d399", decreasing_line_color="#f87171"))
+            if intraday.auction_points:
+                pts = intraday.auction_points
+                intraday_figure.add_trace(go.Scatter(
+                    x=[p.timestamp for p in pts], y=[p.close for p in pts],
+                    mode="markers", name="Closing Auction (separate)",
+                    marker=dict(size=8, color="#fbbf24", symbol="diamond")))
+            intraday_figure.update_layout(
+                template="plotly_dark", height=470, margin=dict(l=70, r=40, t=24, b=34),
+                paper_bgcolor="#0b1220", plot_bgcolor="#0e1729",
+                xaxis_rangeslider_visible=False,
+                yaxis=dict(gridcolor="#223049", title="EGP"))
+            st.plotly_chart(intraday_figure, use_container_width=True)
+            st.caption(f"source: {intraday.source} · session: {intraday.session_date} · "
+                       f"auction points: {len(intraday.auction_points)} (kept separate)")
     st.caption("كل القيم معروضة كما وردت من محرك الأدلة — لا يحسب هذا الرسم أي مؤشر. · Every value "
                "is plotted exactly as supplied; the chart computes nothing.")
 
@@ -333,11 +356,12 @@ def _levels_section(result):
         "الإطار الزمني / Timeframe": row["timeframe"],
         "القوة / Strength": row["strength"],
         "اللمسات / Touches": row["touches"],
+        "آخر لمسة / Last Touch": row["last_touch_date"],
         "المسافة / Distance": row["distance"],
     } for row in rows])
     st.dataframe(frame, use_container_width=True, hide_index=True)
-    st.caption("الإطار الزمني وعدد اللمسات غير مضمّنة في العقد الحالي وتظهر كشرطة. · Timeframe and "
-               "touch count are not part of the current contract and render as an em dash.")
+    st.caption("كل الحقول محسوبة في Core ومورّدة عبر العقد؛ لا تستنتج الواجهة أي مستوى. · "
+               "All fields are Core-calculated and contract-supplied; the UI estimates none.")
 
 
 def _scenario_section(result):

@@ -344,65 +344,44 @@ VOLUME_UNAVAILABLE_LABELS = ("تحليل الحجم غير متاح", "Volume An
 
 
 def trend_reading(result: AnalysisResult):
-    """(arabic, english, tone, basis) trend classification of ALREADY-SUPPLIED values.
-
-    This is an ordinal *label*, not a calculation: it only compares the supplied close to
-    the supplied SMA 20 / 50 / 200 fields and reports which side of them the price sits on.
-    No number is produced, and the comparison basis is always shown next to the label so a
-    reader can audit it. The contract carries no ``trend`` field yet — see
-    ``docs/AI_STOCK_ANALYSIS_UI_VALIDATION.md``.
-    """
-    close = result.price.close
-    indicators = result.indicators
-    references = [indicators.sma_20, indicators.sma_50, indicators.sma_200]
-    basis = "close vs SMA 20 / 50 / 200"
-    if close is None or all(value is None for value in references):
-        return (EM_DASH, "Unavailable", "gray", basis)
-    available = [value for value in references if value is not None]
-    above = sum(1 for value in available if float(close) > float(value))
-    if above == len(available):
-        return ("اتجاه صاعد", "Uptrend", "green", basis)
-    if above == 0:
-        return ("اتجاه هابط", "Downtrend", "red", basis)
-    return ("اتجاه متذبذب", "Mixed", "amber", basis)
+    """Render the Core-owned typed trend. No comparison or classification occurs here."""
+    value = getattr(result.indicators.trend, "value", result.indicators.trend)
+    labels = {
+        "STRONG_UPTREND": ("اتجاه صاعد قوي", "Strong Uptrend", "green"),
+        "UPTREND": ("اتجاه صاعد", "Uptrend", "green"),
+        "SIDEWAYS": ("اتجاه عرضي", "Sideways", "amber"),
+        "DOWNTREND": ("اتجاه هابط", "Downtrend", "red"),
+        "STRONG_DOWNTREND": ("اتجاه هابط قوي", "Strong Downtrend", "red"),
+        "DATA_INSUFFICIENT": (EM_DASH, "Unavailable", "gray"),
+    }
+    arabic, english, tone = labels.get(value, (EM_DASH, "Unavailable", "gray"))
+    strength = result.indicators.trend_strength
+    basis = f"Core typed evidence · strength {strength:.0f}/100" if strength is not None else (
+        "Core typed evidence")
+    return arabic, english, tone, basis
 
 
 def momentum_reading(result: AnalysisResult):
-    """(arabic, english, tone, basis) momentum classification of supplied values only.
-
-    Reads the sign of the supplied MACD histogram and the band of the supplied RSI 14.
-    Produces a label, never a number. See the note on :func:`trend_reading`.
-    """
-    indicators = result.indicators
-    histogram, rsi = indicators.macd_histogram, indicators.rsi_14
-    basis = "MACD histogram sign · RSI 14 band"
-    if histogram is None and rsi is None:
-        return (EM_DASH, "Unavailable", "gray", basis)
-    positive = histogram is not None and float(histogram) > 0
-    negative = histogram is not None and float(histogram) < 0
-    strong = rsi is not None and float(rsi) >= 60
-    weak = rsi is not None and float(rsi) <= 40
-    if positive and strong:
-        return ("زخم إيجابي قوي", "Strong Positive", "green", basis)
-    if positive:
-        return ("زخم إيجابي", "Positive", "green", basis)
-    if negative and weak:
-        return ("زخم سلبي قوي", "Strong Negative", "red", basis)
-    if negative:
-        return ("زخم سلبي", "Negative", "red", basis)
-    return ("زخم محايد", "Neutral", "amber", basis)
+    """Render the Core-owned typed momentum. No indicator logic exists in the UI."""
+    value = getattr(result.indicators.momentum, "value", result.indicators.momentum)
+    labels = {
+        "STRONG_POSITIVE": ("زخم إيجابي قوي", "Strong Positive", "green"),
+        "POSITIVE": ("زخم إيجابي", "Positive", "green"),
+        "NEUTRAL": ("زخم محايد", "Neutral", "amber"),
+        "NEGATIVE": ("زخم سلبي", "Negative", "red"),
+        "STRONG_NEGATIVE": ("زخم سلبي قوي", "Strong Negative", "red"),
+        "DATA_INSUFFICIENT": (EM_DASH, "Unavailable", "gray"),
+    }
+    arabic, english, tone = labels.get(value, (EM_DASH, "Unavailable", "gray"))
+    strength = result.indicators.momentum_strength
+    basis = f"Core typed evidence · strength {strength:.0f}/100" if strength is not None else (
+        "Core typed evidence")
+    return arabic, english, tone, basis
 
 
 # --------------------------------------------------------------------------- #
 # Key levels
 # --------------------------------------------------------------------------- #
-
-def _distance(level_price, reference):
-    """Distance from the current price, taken from evidence when the engine supplied it."""
-    if reference in (None, 0) or level_price is None:
-        return None
-    return (float(level_price) - float(reference)) / float(reference) * 100.0
-
 
 KEY_LEVEL_SLOTS = (
     ("support_1", "دعم 1", "Support 1"),
@@ -423,36 +402,28 @@ def selected_levels(result: AnalysisResult) -> dict:
     and the basis records that. Every consumer — the page and the exported card — reads
     this one selection, so the two can never disagree.
     """
-    reference = result.price.last if result.price.last is not None else result.price.close
     supports = sorted((lv for lv in result.key_levels if lv.kind == "SUPPORT"),
                       key=lambda lv: -float(lv.price))
     resistances = sorted((lv for lv in result.key_levels if lv.kind == "RESISTANCE"),
                          key=lambda lv: float(lv.price))
     by_kind = {lv.kind: lv for lv in result.key_levels}
-    primary = result.scenarios[0] if result.scenarios else None
-
     candidates = {
-        "support_1": (supports[0] if len(supports) > 0 else None, None),
-        "support_2": (supports[1] if len(supports) > 1 else None, None),
-        "resistance_1": (resistances[0] if len(resistances) > 0 else None, None),
-        "resistance_2": (resistances[1] if len(resistances) > 1 else None, None),
-        "breakout": (by_kind.get("BREAKOUT"),
-                     (primary.trigger if primary else None, "scenario trigger")),
-        "invalidation": (by_kind.get("STOP"),
-                         (primary.stop if primary else None, "scenario stop")),
+        "support_1": supports[0] if len(supports) > 0 else None,
+        "support_2": supports[1] if len(supports) > 1 else None,
+        "resistance_1": resistances[0] if len(resistances) > 0 else None,
+        "resistance_2": resistances[1] if len(resistances) > 1 else None,
+        "breakout": by_kind.get("BREAKOUT"),
+        "invalidation": by_kind.get("STOP"),
     }
 
     chosen = {}
-    for key, (level, fallback) in candidates.items():
+    for key, level in candidates.items():
         if level is not None:
-            distance = level.distance_pct
-            if distance is None:
-                distance = _distance(level.price, reference)
             chosen[key] = {"price": level.price, "basis": level.basis,
-                           "strength": level.confidence, "distance": distance}
-        elif fallback and fallback[0] is not None:
-            chosen[key] = {"price": fallback[0], "basis": fallback[1], "strength": None,
-                           "distance": _distance(fallback[0], reference)}
+                           "timeframe": level.timeframe, "touches": level.touches,
+                           "last_touch_date": level.last_touch_date,
+                           "strength": level.strength,
+                           "distance": level.distance_percent}
         else:
             chosen[key] = None
     return chosen
@@ -461,8 +432,7 @@ def selected_levels(result: AnalysisResult) -> dict:
 def key_level_rows(result: AnalysisResult):
     """Display rows for Support 1/2, Resistance 1/2, Breakout and Invalidation.
 
-    Timeframe and touch count are not part of the contract yet, so they render as em
-    dashes rather than as guesses.
+    Every value is rendered from the typed Core contract; missing values remain em dashes.
     """
     chosen = selected_levels(result)
     rows = []
@@ -474,9 +444,13 @@ def key_level_rows(result: AnalysisResult):
             "label_en": english,
             "value": dash(level["price"]) if level else EM_DASH,
             "basis": (level["basis"] if level and level["basis"] else EM_DASH),
-            "timeframe": EM_DASH,       # not carried by the contract
+            "timeframe": (level["timeframe"] if level and level["timeframe"] else EM_DASH),
             "strength": fmt_confidence_fraction(level["strength"]) if level else EM_DASH,
-            "touches": EM_DASH,         # not carried by the contract
+            "touches": (str(level["touches"]) if level and level["touches"] is not None
+                        else EM_DASH),
+            "last_touch_date": (
+                level["last_touch_date"] if level and level["last_touch_date"] else EM_DASH
+            ),
             "distance": fmt_signed_percent(level["distance"]) if level else EM_DASH,
             "tone": change_tone(level["distance"]) if level else "gray",
             "present": level is not None,

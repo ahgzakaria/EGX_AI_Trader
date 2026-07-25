@@ -30,7 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-CONTRACT_VERSION = "ai_stock_analysis_contract@1.0.0"
+CONTRACT_VERSION = "ai_stock_analysis_contract@1.1.0"
 
 
 # --------------------------------------------------------------------------- #
@@ -71,6 +71,24 @@ class DataStatus(str, Enum):
     VOLUME_UNSAFE = "VOLUME_UNSAFE"
     HISTORY_INSUFFICIENT = "HISTORY_INSUFFICIENT"
     DATA_UNAVAILABLE = "DATA_UNAVAILABLE"
+
+
+class TrendState(str, Enum):
+    STRONG_UPTREND = "STRONG_UPTREND"
+    UPTREND = "UPTREND"
+    SIDEWAYS = "SIDEWAYS"
+    DOWNTREND = "DOWNTREND"
+    STRONG_DOWNTREND = "STRONG_DOWNTREND"
+    DATA_INSUFFICIENT = "DATA_INSUFFICIENT"
+
+
+class MomentumState(str, Enum):
+    STRONG_POSITIVE = "STRONG_POSITIVE"
+    POSITIVE = "POSITIVE"
+    NEUTRAL = "NEUTRAL"
+    NEGATIVE = "NEGATIVE"
+    STRONG_NEGATIVE = "STRONG_NEGATIVE"
+    DATA_INSUFFICIENT = "DATA_INSUFFICIENT"
 
 
 # --------------------------------------------------------------------------- #
@@ -137,6 +155,10 @@ class IndicatorSummary:
     """
     symbol: str
     computed_from_sessions: int
+    trend: TrendState = TrendState.DATA_INSUFFICIENT
+    trend_strength: float | None = None           # 0..100 deterministic evidence score
+    momentum: MomentumState = MomentumState.DATA_INSUFFICIENT
+    momentum_strength: float | None = None        # 0..100 deterministic evidence score
     sma_20: float | None = None
     sma_50: float | None = None
     sma_200: float | None = None
@@ -165,8 +187,43 @@ class KeyLevel:
     kind: str                                    # SUPPORT / RESISTANCE / PIVOT / ENTRY / TARGET / STOP
     price: float
     basis: str
-    distance_pct: float | None = None
+    timeframe: str = "1D"
+    touches: int | None = None
+    last_touch_date: str | None = None
+    distance_percent: float | None = None
+    strength: float | None = None                 # 0..1, calculated by the Core
     confidence: float | None = None
+
+    @property
+    def distance_pct(self):
+        """Compatibility accessor for pre-v1.1 consumers; no value is recalculated."""
+        return self.distance_percent
+
+
+@dataclass(frozen=True)
+class ChartPoint:
+    """One provider-supplied OHLCV point; the UI must not derive or mutate it."""
+    timestamp: str
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    close: float | None = None
+    volume: float | None = None
+    source: str = ""
+    session_phase: str | None = None
+
+
+@dataclass(frozen=True)
+class ChartSeries:
+    """Typed chart payload with closing-auction points explicitly separated."""
+    timeframe: str
+    session_date: str | None
+    points: tuple[ChartPoint, ...] = ()
+    continuous_points: tuple[ChartPoint, ...] = ()
+    auction_points: tuple[ChartPoint, ...] = ()
+    latest_completed_session: str | None = None
+    source: str = ""
+    data_status: str = "UNAVAILABLE"
 
 
 @dataclass(frozen=True)
@@ -246,6 +303,8 @@ class AnalysisResult:
     key_levels: tuple[KeyLevel, ...] = ()
     scenarios: tuple[ScenarioResult, ...] = ()
     recommendation_reasons: tuple[str, ...] = ()   # machine reasons, not AI prose
+    daily_chart_series: ChartSeries | None = None
+    intraday_chart_series: ChartSeries | None = None
     evidence_hash: str | None = None               # fingerprint for reproducibility/history
 
 
@@ -331,7 +390,9 @@ class AnalysisHistoryRecord:
 __all__ = [
     "CONTRACT_VERSION",
     "MarketPhase", "Recommendation", "ScenarioState", "DataStatus",
+    "TrendState", "MomentumState",
     "AnalysisRequest", "PriceSummary", "IndicatorSummary", "KeyLevel",
+    "ChartPoint", "ChartSeries",
     "ScenarioResult", "ConfidenceComponent", "ConfidenceBreakdown",
     "DataQualitySummary", "AnalysisResult", "NarrativeResult", "CardPayload",
     "AnalysisHistoryRecord",

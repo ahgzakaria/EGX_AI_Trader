@@ -12,6 +12,7 @@ from dashboard.backtest_state import (
     initialize_backtest_state,
     recover_interrupted_backtest,
 )
+from dashboard.ai_stock_analysis import show_ai_stock_analysis
 from dashboard.compare_runs import show_compare_runs
 from dashboard.decision_support import show_decision_analytics
 from dashboard.expected_range_scalper import show_expected_range_scalper
@@ -64,6 +65,7 @@ navigation = st.navigation({
         st.Page(show_scalping_settings, title="Settings", icon="🛠️"),
     ],
     "RESEARCH & SYSTEM": [
+        st.Page(show_ai_stock_analysis, title="AI Stock Analysis", icon="🤖"),
         st.Page(show_settings, title="Backtest", icon="⚙️"),
         st.Page(show_run_history, title="Run History", icon="🧪"),
         st.Page(show_compare_runs, title="Compare Runs", icon="⚖️"),

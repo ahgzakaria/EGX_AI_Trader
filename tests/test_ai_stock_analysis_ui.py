@@ -151,9 +151,10 @@ def test_no_full_universe_scan_is_reachable_from_the_page():
 
 def test_no_provider_call_from_the_ui():
     names = _referenced_names(_page_source()) | _referenced_names(_components_source())
-    for forbidden in ("RubixSqliteProvider", "requests", "urllib", "httpx", "socket",
+    for forbidden in ("RubixSqliteProvider", "RubixSQLiteProvider", "requests", "urllib",
+                      "httpx", "socket",
                       "data_provider", "research_router", "get_current_research_history",
-                      "quote_overlay", "yfinance", "analyze_symbol"):
+                      "quote_overlay", "yfinance"):
         assert forbidden not in names, f"UI references a provider path: {forbidden}"
 
 
@@ -357,9 +358,9 @@ def test_key_levels_render_supplied_values_with_their_basis(result):
     assert rows["support_1"]["distance"] == "-2.90%"
     assert rows["resistance_1"]["value"] == "93.50"
     assert rows["invalidation"]["value"] == "88.60"
-    # Fields the contract does not carry are em dashes, not invented values.
-    assert rows["support_1"]["timeframe"] == EM_DASH
-    assert rows["support_1"]["touches"] == EM_DASH
+    assert rows["support_1"]["timeframe"] == "1D"
+    assert rows["support_1"]["touches"] == "3"
+    assert rows["support_1"]["last_touch_date"] == "2026-07-07"
     # A slot with no supplied level stays empty rather than borrowing another level.
     assert rows["support_2"]["present"] is False
     assert rows["support_2"]["value"] == EM_DASH

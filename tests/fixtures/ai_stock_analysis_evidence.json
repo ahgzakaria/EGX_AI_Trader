@@ -1,6 +1,6 @@
 {
   "_comment": "Sample AI Stock Analysis evidence fixture. Illustrative values only — NOT real market data. Shape matches core/ai_stock_analysis_contract.py: every technical number is a dedicated typed field (SMA and EMA separate; MACD/OBV/volume_ratio/expected_range_position explicit). Numbers live only in the evidence layer; narrative/card reference them by evidence_version and never originate a number.",
-  "contract_version": "ai_stock_analysis_contract@1.0.0",
+  "contract_version": "ai_stock_analysis_contract@1.1.0",
   "request": {
     "symbol": "COMI",
     "request_id": "req-sample-0001",
@@ -47,6 +47,10 @@
     "indicators": {
       "symbol": "COMI",
       "computed_from_sessions": 250,
+      "trend": "UPTREND",
+      "trend_strength": 80.0,
+      "momentum": "STRONG_POSITIVE",
+      "momentum_strength": 61.5,
       "sma_20": 89.7,
       "sma_50": 86.2,
       "sma_200": 78.4,
@@ -69,9 +73,10 @@
       "latest_action_in_lookback": null
     },
     "key_levels": [
-      {"kind": "SUPPORT", "price": 89.7, "basis": "SMA20", "distance_pct": -2.9, "confidence": 0.6},
-      {"kind": "RESISTANCE", "price": 93.5, "basis": "20d high", "distance_pct": 1.2, "confidence": 0.7},
-      {"kind": "STOP", "price": 88.6, "basis": "1.75x ATR below last close", "distance_pct": -4.1, "confidence": null}
+      {"kind": "SUPPORT", "price": 89.7, "basis": "SMA20", "timeframe": "1D", "touches": 3, "last_touch_date": "2026-07-07", "distance_percent": -2.9, "strength": 0.78, "confidence": 0.6},
+      {"kind": "RESISTANCE", "price": 93.5, "basis": "20d high", "timeframe": "1D", "touches": 2, "last_touch_date": "2026-07-08", "distance_percent": 1.2, "strength": 0.82, "confidence": 0.7},
+      {"kind": "BREAKOUT", "price": 93.5, "basis": "20d high breakout", "timeframe": "1D", "touches": 2, "last_touch_date": "2026-07-08", "distance_percent": 1.2, "strength": 0.82, "confidence": 0.7},
+      {"kind": "STOP", "price": 88.6, "basis": "1.75x ATR below last close", "timeframe": "1D", "touches": 0, "last_touch_date": null, "distance_percent": -4.1, "strength": 0.4, "confidence": null}
     ],
     "scenarios": [
       {
