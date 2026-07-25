@@ -17,8 +17,8 @@ unmerged work was deleted. The cleanup remains isolated on
 - Clean main HEAD used as the cleanup baseline:
   `b85056ec2b213832c9496102a0c13cc325e5ef05`
 - Cleanup branch: `chore/repository-cleanup-2026-07-25`
-- Cleanup commit: this report is included in the cleanup commit; its exact hash is
-  recorded in the final handoff.
+- Cleanup commit:
+  `783bc24a7122510be06f60777b7c7d941a4f4f9e`
 
 ## 2. Recovery checkpoint
 
@@ -39,8 +39,18 @@ unmerged work was deleted. The cleanup remains isolated on
 - Stash message:
   `preserve local Rubix launcher runtime state 2026-07-25`
 
-The stash was not applied, dropped, cleared, reformatted, or included in either
-commit. No Rubix runtime state was deleted.
+The earlier setup-report stash is also preserved:
+
+- Current reference: `stash@{1}`
+- Immutable stash hash:
+  `39a5f0bcfa0fff1ab8ab2da66703c3105c3182ae`
+- Message:
+  `pre-merge preserve AI_STOCK_ANALYSIS_WORKTREE_SETUP_REPORT.md`
+- Preserved untracked file:
+  `AI_STOCK_ANALYSIS_WORKTREE_SETUP_REPORT.md`
+
+Neither stash was applied, popped, dropped, cleared, rewritten, or included in
+the cleanup commits. No Rubix runtime state was deleted.
 
 ## 4. Worktree audit and removals
 
@@ -61,6 +71,30 @@ Removed with `git worktree remove` and without `--force`:
 |---|---|---|
 | `.claude/worktrees/ai-stock-analysis-verification-bf14a4` | `claude/ai-stock-analysis-verification-bf14a4` / `6fb53cd5` | Clean, but has two commits not contained in main |
 | `D:\EGX_AI_Trader_AI_UI_Claude` | `claude/ai-stock-analysis-ui` / `88857a5f` | Clean, but branch ancestry is not fully merged into main |
+
+Detailed pre-merge audit:
+
+1. `D:\EGX_AI_Trader\.claude\worktrees\ai-stock-analysis-verification-bf14a4`
+   - branch: `claude/ai-stock-analysis-verification-bf14a4`
+   - HEAD: `6fb53cd56c9c514f6b997cd8bf0d79b1b2b50e4b`
+   - status: clean; no tracked changes and no untracked files
+   - commits unique relative to current main:
+     - `d9cdc6b` — deterministic single-symbol AI Stock Analysis core
+     - `6fb53cd` — typed-contract, market-phase, provenance, volume-safety and
+       evidence-validation corrections
+   - retention reason: removing it would discard a branch whose commit ancestry
+     is not contained in main, even though validated equivalents were later
+     integrated through another branch.
+2. `D:\EGX_AI_Trader_AI_UI_Claude`
+   - branch: `claude/ai-stock-analysis-ui`
+   - HEAD: `88857a5fc6b77a08dd4cdab36e27c5c164a296c6`
+   - status: clean; no tracked changes and no untracked files
+   - commits unique relative to current main:
+     - `d9cdc6b` — deterministic single-symbol backend
+     - `6fb53cd` — typed Core contract correction
+     - `88857a5` — manual one-symbol UI and Arabic PNG presentation layer
+   - retention reason: the branch has a separate, not-fully-merged ancestry and
+     must be reviewed or reconciled before its worktree can be removed.
 
 No associated local branch was deleted.
 
@@ -211,3 +245,71 @@ Repository/tool metadata directories remain intentionally present.
 - No dirty or unmerged worktree was removed.
 - No branch or stash was deleted.
 - The cleanup branch was not merged and nothing was pushed.
+
+## 16. Final pre-merge audit
+
+### Commit chain
+
+- Current branch: `chore/repository-cleanup-2026-07-25`
+- Main HEAD: `b85056ec2b213832c9496102a0c13cc325e5ef05`
+- Merge-base with main:
+  `b85056ec2b213832c9496102a0c13cc325e5ef05`
+- Approved PNG commit:
+  `b85056ec2b213832c9496102a0c13cc325e5ef05`
+- Repository cleanup commit:
+  `783bc24a7122510be06f60777b7c7d941a4f4f9e`
+- Corrective settings-restoration commit:
+  `7ac0ad76f654683e5516ae9b55af558bb9b615df`
+
+The commits remain separate and ordered. No commit was squashed, amended, reset,
+or otherwise rewritten.
+
+### `config/settings_manager.py` audit
+
+The cleanup commit changed one comment:
+
+```diff
+-    # See TRADINGVIEW_ACCESS_CAPABILITY_REPORT.md for the compliance basis.
++    # See docs/audits/providers/TRADINGVIEW_ACCESS_CAPABILITY_REPORT.md.
+```
+
+This was a documentation-path update inside Python source. It was not a
+line-ending-only change and it did not alter settings defaults, provider
+selection, runtime configuration, or any executable behavior. Because tests and
+runtime do not depend on this comment, retaining it was not strictly required.
+The corrective commit restored the file exactly to its pre-cleanup/main state,
+eliminating unnecessary source churn.
+
+### Document-move validation
+
+- Git classified all reorganized reports as renames, preserving file history.
+- No tracked document has a standalone deletion status.
+- No useful report was deleted; uncertain historical content was archived.
+- Internal references and script-held paths required by moved files were updated.
+- The Markdown relative-link audit found `0` broken links.
+- README and launcher-referenced guides resolve to existing files.
+- Only `README.md` remains as a root-level Markdown entry point.
+
+### Final revalidation after restoration
+
+| Validation | Result |
+|---|---|
+| PNG card tests | 41 passed |
+| AI Stock Analysis tests | 153 passed |
+| Unified/Rubix launcher tests | 78 passed |
+| Full repository suite | 769 passed |
+| Streamlit smoke | `STREAMLIT_SMOKE_OK` |
+| Temporary PNG generation | 1080×1350, 145,991 bytes, removed after verification |
+| Markdown relative-link audit | 0 broken links |
+| `git diff --check` | passed |
+
+The feature tests reconfirm EODHD current research, Rubix live data with closing
+auction kept separate, one-requested-symbol analysis, no operational Yahoo call
+or comparison, honest `Deterministic Fallback` labelling, and
+`Production Disabled`. No trading, strategy, AI, ranking, provider, portfolio,
+risk, indicator, entry, exit, backtest, replay, or forward-testing behavior was
+changed.
+
+After committing this audit update, the cleanup worktree is clean. Both stashes,
+the external Rubix backup, runtime databases, `.env`, analysis history and all
+user/runtime data remain intact. The branch remains unmerged and unpushed.
