@@ -1,6 +1,8 @@
 """Phase 10 isolation, chronology, geometry, and portfolio tests."""
 
 from dataclasses import replace
+import hashlib
+import json
 from pathlib import Path
 
 import numpy as np
@@ -152,8 +154,18 @@ def test_frozen_engine_files_match_release_candidate():
         "backtesting/engine.py",
         "portfolio/portfolio_simulator.py",
     )
+    manifest = json.loads(
+        (ROOT / "strategy_selector" / "frozen_strategy_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
     for relative in frozen:
-        assert (ROOT / relative).read_bytes() == (ROOT / "EGX_AI_Trader_RC1" / relative).read_bytes()
+        # The release snapshot is archived outside the active repository. The normalized
+        # manifest preserves the same semantic baseline without a duplicate source tree.
+        data = (ROOT / relative).read_bytes().replace(b"\r\n", b"\n").replace(
+            b"\r", b"\n"
+        )
+        assert hashlib.sha256(data).hexdigest() == manifest[relative], relative
 
 
 def test_breakout_package_does_not_import_classic_strategy():

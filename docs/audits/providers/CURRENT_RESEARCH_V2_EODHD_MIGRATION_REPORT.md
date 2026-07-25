@@ -1,6 +1,6 @@
 # CURRENT_RESEARCH_V2 — EODHD Operational Migration
 
-> **⚠ SUPERSEDED IN PART — see [CURRENT_RESEARCH_V2_RECONCILIATION.md](CURRENT_RESEARCH_V2_RECONCILIATION.md).**
+> **⚠ SUPERSEDED IN PART — see [CURRENT_RESEARCH_V2_RECONCILIATION.md](../research/CURRENT_RESEARCH_V2_RECONCILIATION.md).**
 > A pre-approval reconciliation found answers **Q4, Q7, Q8, Q10 and Q12 below to be wrong**.
 > In particular: 31 activated symbols are served Yahoo-derived bars with zero Rubix Daily
 > Bridge appends, their freshness is derived from the Yahoo seed, and the volume series is

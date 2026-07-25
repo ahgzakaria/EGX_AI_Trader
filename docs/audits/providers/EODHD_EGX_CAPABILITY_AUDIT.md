@@ -25,11 +25,11 @@ no plan purchased or upgraded. All external-provider flags remain disabled.
 
 | Deliverable | State |
 |---|---|
-| [core/providers/eodhd_daily.py](core/providers/eodhd_daily.py) | Isolated adapter: entitlement / EOD / dividends / splits / exchange-list / bulk endpoints, full failure taxonomy, token never exposed, rate-limit throttle. |
-| [scripts/observe_eodhd_egx_finalization.py](scripts/observe_eodhd_egx_finalization.py) | Restart-safe, rate-limited finalization observer; dedups poll rows by (symbol, poll-ts, response-hash); stores response hashes; refuses to fabricate (records `API_KEY_MISSING`). |
-| [scripts/run_eodhd_capability_audit.py](scripts/run_eodhd_capability_audit.py) | Runs the real Phase 1 probe, offline Phase 2 mapping, analytical Phase 10 cost model, emits all CSVs. |
+| [core/providers/eodhd_daily.py](../../../core/providers/eodhd_daily.py) | Isolated adapter: entitlement / EOD / dividends / splits / exchange-list / bulk endpoints, full failure taxonomy, token never exposed, rate-limit throttle. |
+| [scripts/observe_eodhd_egx_finalization.py](../../../scripts/observe_eodhd_egx_finalization.py) | Restart-safe, rate-limited finalization observer; dedups poll rows by (symbol, poll-ts, response-hash); stores response hashes; refuses to fabricate (records `API_KEY_MISSING`). |
+| [scripts/run_eodhd_capability_audit.py](../../../scripts/run_eodhd_capability_audit.py) | Runs the real Phase 1 probe, offline Phase 2 mapping, analytical Phase 10 cost model, emits all CSVs. |
 | 9 report CSVs | `eodhd_symbol_coverage.csv` (mapping filled, live cols `PENDING_API_KEY`), `eodhd_cost_capacity.csv` (analytical), plus 7 schema/status files marked `API_KEY_MISSING`. |
-| [tests/test_eodhd_daily.py](tests/test_eodhd_daily.py) | 8 tests: failure taxonomy incl `API_KEY_MISSING`, HTTP-code classification, credential non-exposure, mapping, observer key-missing + dedup. |
+| [tests/test_eodhd_daily.py](../../../tests/test_eodhd_daily.py) | 8 tests: failure taxonomy incl `API_KEY_MISSING`, HTTP-code classification, credential non-exposure, mapping, observer key-missing + dedup. |
 
 ## Phase 1 — entitlement probe (real)
 

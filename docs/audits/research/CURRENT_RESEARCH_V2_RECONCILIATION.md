@@ -180,7 +180,9 @@ Regenerated with machine-checked assertions (`reconciles_to_universe: true`,
 
 ## 6. Corrections to the migration report
 
-These answers in `CURRENT_RESEARCH_V2_EODHD_MIGRATION_REPORT.md` were wrong:
+These answers in
+[`CURRENT_RESEARCH_V2_EODHD_MIGRATION_REPORT.md`](../providers/CURRENT_RESEARCH_V2_EODHD_MIGRATION_REPORT.md)
+were wrong:
 
 - **Q4** — "Yahoo code survives only in the legacy reader and audit tooling." Wrong: 31
   activated current-research symbols are served Yahoo-derived bars.

@@ -1,12 +1,14 @@
 """Phase E/F: TradingView manual-CSV-export provider.
 
 Reads only user-exported CSV files (TradingView's official "Download chart
-data..." feature — see TRADINGVIEW_ACCESS_CAPABILITY_REPORT.md). This module
+data..." feature — see docs/audits/providers/TRADINGVIEW_ACCESS_CAPABILITY_REPORT.md).
+This module
 never automates the TradingView website, never scrapes, and never talks to any
 TradingView endpoint. It is a pure local-file reader + validator.
 
 Conforms to the same MarketDataProvider / normalize_history contract as Yahoo
-and Rubix (see TRADINGVIEW_PROVIDER_ARCHITECTURE_AUDIT.md section 1), so it can
+and Rubix (see docs/audits/providers/TRADINGVIEW_PROVIDER_ARCHITECTURE_AUDIT.md
+section 1), so it can
 be evaluated identically, but it is not wired into core/data_provider routing.
 """
 
@@ -53,7 +55,8 @@ class TradingViewCsvProvider(MarketDataProvider):
     """Load, validate, and normalize a single user-exported TradingView CSV."""
 
     name = "tradingview_csv"
-    delayed = None  # Unknown/undisclosed per TRADINGVIEW_ACCESS_CAPABILITY_REPORT.md
+    # Compliance basis: docs/audits/providers/TRADINGVIEW_ACCESS_CAPABILITY_REPORT.md
+    delayed = None
     delay_minutes = None
 
     def __init__(self, *, close_safety_minutes=15, holidays=(), now=None):
