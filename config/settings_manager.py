@@ -57,7 +57,7 @@ DEFAULT_SETTINGS = {
     # remains the production historical source. No automation of the
     # TradingView website is performed anywhere; data only enters via a
     # user-exported CSV directory or a user-configured official webhook.
-    # See docs/audits/providers/TRADINGVIEW_ACCESS_CAPABILITY_REPORT.md.
+    # See TRADINGVIEW_ACCESS_CAPABILITY_REPORT.md for the compliance basis.
     "tradingview": {
         "tradingview_provider_enabled": False,
         "tradingview_shadow_mode": True,
