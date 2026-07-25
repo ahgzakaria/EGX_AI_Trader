@@ -350,6 +350,7 @@ class CardPayload:
     title: str
     as_of_label: str
     recommendation_label: str
+    company_name: str = ""
     price_rows: tuple[tuple[str, str], ...] = ()
     level_rows: tuple[tuple[str, str], ...] = ()
     scenario_rows: tuple[tuple[str, str], ...] = ()

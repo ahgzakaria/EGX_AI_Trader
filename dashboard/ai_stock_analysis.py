@@ -462,8 +462,10 @@ def _card_section(result, narrative):
                         format_func=lambda key: CARD_SIZE_LABELS[key],
                         horizontal=True, key="_ai_analysis_card_size",
                         index=list(CARD_SIZES).index(DEFAULT_CARD_SIZE))
-        company = st.text_input("اسم الشركة (اختياري) · Company name (optional)", value="",
-                                key="_ai_analysis_company").strip()
+        company = st.text_input(
+            "اسم الشركة بالعربية (اختياري) · Arabic company name (optional)",
+            value="", key="_ai_analysis_company",
+        ).strip()
         generate = st.button("🖼 إنشاء البطاقة · Generate Analysis Card",
                              key="_ai_analysis_card_go")
 

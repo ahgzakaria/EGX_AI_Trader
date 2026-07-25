@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from core.ai_stock_analysis_contract import (
     AnalysisRequest,
@@ -51,6 +53,12 @@ from dashboard.formatting import (
 )
 
 FIXTURE_PATH = Path("tests/fixtures/ai_stock_analysis_evidence.json")
+CAIRO = ZoneInfo("Africa/Cairo")
+
+ARABIC_MONTHS = (
+    "", "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+    "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر",
+)
 
 # The deterministic narrative model id published by the core narrative engine.
 try:  # pragma: no cover - the constant is stable; the guard keeps imports resilient
@@ -698,6 +706,41 @@ def fixture_analysis(symbol, *, path=None, phase: MarketPhase | None = None,
 # Card composition (Layer 4 input) — display strings only
 # --------------------------------------------------------------------------- #
 
+def _parse_display_datetime(value: str | None) -> datetime | None:
+    """Parse a typed ISO date/time for presentation without changing its value."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=CAIRO)
+    return parsed.astimezone(CAIRO)
+
+
+def format_arabic_date(value: str | None) -> str:
+    """Render an ISO date as a concise Arabic calendar date."""
+    parsed = _parse_display_datetime(value)
+    if parsed is None:
+        return str(value or EM_DASH)
+    return f"{parsed.day} {ARABIC_MONTHS[parsed.month]} {parsed.year}"
+
+
+def format_cairo_timestamp(value: str | None) -> str:
+    """Render an ISO timestamp for people, explicitly in Cairo local time."""
+    parsed = _parse_display_datetime(value)
+    if parsed is None:
+        return str(value or EM_DASH)
+    hour = parsed.hour % 12 or 12
+    period = "ص" if parsed.hour < 12 else "م"
+    return (
+        f"{format_arabic_date(parsed.isoformat())} — "
+        f"{hour}:{parsed.minute:02d} {period} بتوقيت القاهرة"
+    )
+
+
 def build_card_chart(result: AnalysisResult) -> CardChartData:
     """Collect the already-computed numbers the compact card chart plots.
 
@@ -717,7 +760,9 @@ def build_card_chart(result: AnalysisResult) -> CardChartData:
         previous_close=result.price.previous_close,
         last=result.price.last if include_live_in_session_range(result.market_phase) else None,
         support=price_of("support_1"),
+        support_2=price_of("support_2"),
         resistance=price_of("resistance_1"),
+        resistance_2=price_of("resistance_2"),
         trigger=price_of("breakout"),
         target=primary.target if primary else None,
         stop=price_of("invalidation"),
@@ -733,13 +778,18 @@ def build_card_payload(result: AnalysisResult, narrative: NarrativeResult | None
     recommendation_ar, recommendation_en, _ = RECOMMENDATION_LABELS.get(
         result.recommendation, ("البيانات غير كافية", "Data Insufficient", "red"))
     phase_ar, phase_en, _ = market_phase_labels(result.market_phase)
-    mode_ar, mode_en, _ = data_mode(result)
     trend_ar, _, _, _ = trend_reading(result)
     momentum_ar, _, _, _ = momentum_reading(result)
 
-    headline_price = price.last if price.last is not None else price.close
+    live_price_available = (
+        result.data_quality.live_available
+        and price.last is not None
+        and result.market_phase in (MarketPhase.CONTINUOUS, MarketPhase.CLOSING_AUCTION)
+    )
+    headline_price = price.last if live_price_available else price.close
+    headline_label = "السعر" if live_price_available else "آخر إغلاق"
     price_rows = [
-        ("السعر", f"{dash(headline_price)} {price.currency}".strip()),
+        (headline_label, f"{dash(headline_price)} {price.currency}".strip()),
         ("التغير", f"{fmt_signed(price.change_amount)} ({fmt_signed_percent(price.change_percent)})"),
         ("الافتتاح", dash(price.open)),
         ("الأعلى", dash(price.high)),
@@ -750,10 +800,27 @@ def build_card_payload(result: AnalysisResult, narrative: NarrativeResult | None
     ]
 
     levels = {row["key"]: row for row in key_level_rows(result)}
-    level_rows = [(levels[key]["label_ar"], levels[key]["value"])
-                  for key in ("support_1", "support_2", "resistance_1", "resistance_2",
-                              "breakout", "invalidation")
-                  if levels[key]["present"]][:5]
+    typed_levels = selected_levels(result)
+    level_rows = []
+    for key in ("support_1", "support_2"):
+        if levels[key]["present"]:
+            level_rows.append((levels[key]["label_ar"], levels[key]["value"]))
+
+    resistance = typed_levels.get("resistance_1")
+    breakout = typed_levels.get("breakout")
+    if resistance and breakout and resistance["price"] == breakout["price"]:
+        level_rows.append(("المقاومة / نقطة الاختراق", levels["resistance_1"]["value"]))
+    else:
+        if levels["resistance_1"]["present"]:
+            level_rows.append((levels["resistance_1"]["label_ar"],
+                               levels["resistance_1"]["value"]))
+        if levels["breakout"]["present"]:
+            level_rows.append((levels["breakout"]["label_ar"], levels["breakout"]["value"]))
+
+    for key in ("resistance_2", "invalidation"):
+        if levels[key]["present"]:
+            level_rows.append((levels[key]["label_ar"], levels[key]["value"]))
+    level_rows = level_rows[:5]
 
     # Ordered by importance: the card renderer truncates from the end when space is
     # tight, so state / trigger / target / stop always survive.
@@ -761,32 +828,33 @@ def build_card_payload(result: AnalysisResult, narrative: NarrativeResult | None
     if result.scenarios:
         view = scenario_view(result.scenarios[0])
         scenario_rows = [
-            ("الحالة", view["state_ar"]),
+            ("حالة السيناريو", view["state_ar"]),
             ("التفعيل", view["trigger"]),
             ("الهدف", view["target"]),
             ("الوقف", view["stop"]),
-            ("ثقة السيناريو", view["confidence"]),
             ("العائد/المخاطرة", view["risk_reward"]),
+            ("المسافة من آخر إغلاق إلى الهدف", view["remaining_room"]),
+            ("ثقة السيناريو", view["confidence"]),
         ]
 
-    # Provenance line for the card footer: provider, mode and the data timestamp the
-    # numbers belong to. Yahoo never appears here as a provider or comparison source.
+    # Public provenance deliberately contains no evidence hash/version or technical IDs.
+    # It exposes only the provider and the latest completed research session.
     quality = result.data_quality
-    timestamp = price.quote_timestamp or quality.latest_completed_session or EM_DASH
-    quality_bits = [str(quality.provider or EM_DASH), mode_en, str(timestamp)]
-    if quality.freshness_status:
-        quality_bits.append(str(quality.freshness_status))
-    if quality.yahoo_seed_present:
-        quality_bits.append(FROZEN_SEED_LABEL)
-
-    title_parts = [company_name] if company_name else []
-    title_parts.append(f"{phase_ar} · {phase_en}")
+    completed_session = quality.latest_completed_session or price.session_date
+    provider_label = str(quality.provider or EM_DASH)
+    if provider_label != EM_DASH:
+        provider_label = provider_label.upper()
+    quality_bits = [
+        f"Provider  {provider_label}",
+        f"Last completed session  {format_arabic_date(completed_session)}",
+    ]
 
     return CardPayload(
         symbol=result.request.symbol,
-        title=" — ".join(part for part in title_parts if part),
-        as_of_label=as_of_label or str(result.generated_at),
+        title=f"{phase_ar} · {phase_en}",
+        as_of_label=format_cairo_timestamp(as_of_label or result.generated_at),
         recommendation_label=recommendation_ar,
+        company_name=str(company_name or "").strip(),
         price_rows=tuple(price_rows),
         level_rows=tuple(level_rows),
         scenario_rows=tuple(scenario_rows),

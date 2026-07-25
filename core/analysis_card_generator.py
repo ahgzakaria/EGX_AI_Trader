@@ -450,15 +450,38 @@ class CardChartData:
     previous_close: float | None = None
     last: float | None = None
     support: float | None = None
+    support_2: float | None = None
     resistance: float | None = None
+    resistance_2: float | None = None
     trigger: float | None = None
     target: float | None = None
     stop: float | None = None
 
+    def numeric_values(self) -> tuple[float, ...]:
+        """Return every supplied display level used by the visual scale.
+
+        This is display-only plumbing: values are copied without rounding or derivation.
+        """
+        supplied = (
+            self.low, self.high, self.open, self.close, self.previous_close, self.last,
+            self.support, self.support_2, self.resistance, self.resistance_2,
+            self.trigger, self.target, self.stop,
+        )
+        return tuple(float(value) for value in supplied if value is not None)
+
+    def analysis_bounds(self) -> tuple[float, float] | None:
+        """Exact full-scale bounds across every displayed numeric level."""
+        values = self.numeric_values()
+        if not values:
+            return None
+        low, high = min(values), max(values)
+        return (low, high) if high > low else None
+
     def has_axis(self) -> bool:
-        """True when a low/high axis with a positive span is available to plot on."""
+        """True when a completed-session range and a non-zero full scale are available."""
         return (self.low is not None and self.high is not None
-                and float(self.high) > float(self.low))
+                and float(self.high) > float(self.low)
+                and self.analysis_bounds() is not None)
 
 
 # --------------------------------------------------------------------------- #
@@ -596,11 +619,22 @@ def _identity_mark(canvas: _Canvas, right_x: int, y: int, box: int):
                                       radius=int(unit * 0.45), fill=colour)
 
 
-def _draw_range_chart(canvas: _Canvas, box, chart: CardChartData, currency: str):
-    """Compact session-range chart: axis low→high with supplied markers plotted on it.
+def _proportional_axis_x(value: float, axis_low: float, axis_high: float,
+                         inner_left: float, inner_right: float) -> float:
+    """Map an unmodified numeric value onto the RTL visual axis.
 
-    Only supplied numbers are plotted. When no low/high axis exists the panel says so
-    rather than drawing an invented scale.
+    Larger prices appear farther left, but the distance between any two markers remains
+    exactly proportional to their numeric distance.
+    """
+    ratio = (float(value) - axis_low) / (axis_high - axis_low)
+    return inner_right - ratio * (inner_right - inner_left)
+
+
+def _draw_range_chart(canvas: _Canvas, box, chart: CardChartData, currency: str):
+    """Full analysis scale with the completed-session range highlighted inside it.
+
+    Only supplied numbers are plotted. The exact minimum and maximum are used without
+    padding, so no visually invented price range is introduced.
     """
     x0, y0, x1, y1 = box
     canvas.panel(box)
@@ -613,25 +647,19 @@ def _draw_range_chart(canvas: _Canvas, box, chart: CardChartData, currency: str)
                            26, PALETTE["muted"])
         return
 
-    canvas.text_centre(centre_x, y0 + 14, f"نطاق الجلسة والمستويات · {currency}", 21,
+    canvas.text_centre(centre_x, y0 + 14, f"نطاق التحليل الكامل · {currency}", 21,
                        PALETTE["muted"])
 
     low, high = float(chart.low), float(chart.high)
-    values = [value for value in (chart.support, chart.resistance, chart.trigger,
-                                  chart.target, chart.stop, chart.previous_close,
-                                  chart.last, chart.open, chart.close)
-              if value is not None]
-    axis_low = min([low] + [float(v) for v in values])
-    axis_high = max([high] + [float(v) for v in values])
-    span = axis_high - axis_low or 1.0
-    pad = span * 0.06
-    axis_low, axis_high = axis_low - pad, axis_high + pad
-    span = axis_high - axis_low
+    bounds = chart.analysis_bounds()
+    if bounds is None:
+        return
+    axis_low, axis_high = bounds
 
     def position(value):
-        # RTL axis: low on the right, high on the left.
-        ratio = (float(value) - axis_low) / span
-        return inner_right - ratio * (inner_right - inner_left)
+        return _proportional_axis_x(
+            float(value), axis_low, axis_high, inner_left, inner_right
+        )
 
     track_y = y0 + int((y1 - y0) * 0.60)
     canvas.draw.rounded_rectangle((inner_left, track_y - 7, inner_right, track_y + 7),
@@ -642,16 +670,33 @@ def _draw_range_chart(canvas: _Canvas, box, chart: CardChartData, currency: str)
     session_left, session_right = position(high), position(low)
     canvas.draw.rounded_rectangle((session_left, track_y - 7, session_right, track_y + 7),
                                   radius=7, fill=_tint(PALETTE["blue"], 0.46))
+    canvas.text_centre(int((session_left + session_right) / 2), track_y + 22,
+                       "نطاق الجلسة المكتملة", 18, PALETTE["blue"], bold=True)
 
     # Reference levels as vertical ticks. Two levels can legitimately sit at the same
     # price (a resistance that is also the scenario trigger), so labels are staggered
     # instead of being drawn on top of each other.
+    level_markers = [
+        (chart.stop, "red", "وقف"),
+        (chart.support, "green", "دعم 1"),
+        (chart.support_2, "green", "دعم 2"),
+        (chart.resistance, "amber", "مقاومة 1"),
+        (chart.resistance_2, "amber", "مقاومة 2"),
+        (chart.trigger, "blue", "تفعيل"),
+        (chart.target, "green", "هدف"),
+    ]
+    # Identical resistance/trigger values are one visual point, matching the combined
+    # textual row and avoiding duplicate-looking labels.
+    if chart.resistance is not None and chart.trigger is not None:
+        if float(chart.resistance) == float(chart.trigger):
+            level_markers = [
+                marker for marker in level_markers
+                if not (marker[0] == chart.resistance and marker[2] in ("مقاومة 1", "تفعيل"))
+            ]
+            level_markers.append((chart.trigger, "blue", "مقاومة / تفعيل"))
+
     label_rows: list[tuple[float, int]] = []
-    for value, tone, label in ((chart.stop, "red", "وقف"),
-                               (chart.support, "green", "دعم"),
-                               (chart.resistance, "amber", "مقاومة"),
-                               (chart.trigger, "blue", "تفعيل"),
-                               (chart.target, "green", "هدف")):
+    for value, tone, label in level_markers:
         if value is None:
             continue
         x = position(value)
@@ -664,7 +709,7 @@ def _draw_range_chart(canvas: _Canvas, box, chart: CardChartData, currency: str)
         tick = 24 + row * 22
         # Labels sit above the track so they can never collide with the axis readouts.
         canvas.draw.line((x, track_y - tick, x, track_y + 24), fill=colour, width=3)
-        canvas.text_centre(int(x), track_y - tick - 28, label, 21, colour)
+        canvas.text_centre(int(x), track_y - tick - 25, label, 18, colour)
 
     # open / close / last markers
     if chart.open is not None:
@@ -677,9 +722,12 @@ def _draw_range_chart(canvas: _Canvas, box, chart: CardChartData, currency: str)
         canvas.draw.ellipse((x - 13, track_y - 13, x + 13, track_y + 13),
                             fill=PALETTE["text"], outline=PALETTE["bg"], width=3)
 
-    canvas.text_rtl(inner_right, track_y + 32, f"أدنى {_plain(chart.low)}", 22,
+    # These are full-analysis endpoints, not session low/high labels.
+    canvas.text_rtl(inner_right, track_y + 50,
+                    f"حد التحليل الأدنى  {_plain(axis_low)}", 19,
                     PALETTE["muted"])
-    canvas.text_ltr(inner_left, track_y + 32, f"{_plain(chart.high)} أعلى", 22,
+    canvas.text_ltr(inner_left, track_y + 50,
+                    f"{_plain(axis_high)}  الحد الأقصى للتحليل", 19,
                     PALETTE["muted"])
 
 
@@ -766,17 +814,19 @@ def render_card_png(payload, chart: CardChartData | None = None, *,
     summary = str(payload.narrative_summary or "")
 
     header_h = 110
-    identity_h = 124
+    identity_h = 140
     price_row_h, side_row_h = 46, 40
-    chart_h = 200 if size == "POST" else 250
+    chart_h = 195 if size == "POST" else 270
     min_chart_h = 160
     min_gap = 16
     # The taller story format spreads its slack between blocks instead of leaving a void
     # at the bottom of the card.
-    max_gap = 56 if size == "POST" else 112
+    max_gap = 44 if size == "POST" else 76
 
-    headline_lines = canvas.wrap_rtl(headline, 27, content_width - 60, 2) if headline else []
-    max_summary_lines = 3 if size == "POST" else 6
+    # Public narrative is intentionally concise: at most two readable lines total.
+    # Text is only clipped for presentation; no number or meaning is recalculated.
+    headline_lines = canvas.wrap_rtl(headline, 27, content_width - 60, 1) if headline else []
+    max_summary_lines = 1 if headline_lines else 2
     summary_lines = (canvas.wrap_rtl(summary, 25, content_width - 60, max_summary_lines)
                      if summary else [])
 
@@ -806,8 +856,6 @@ def render_card_png(payload, chart: CardChartData | None = None, *,
     # this can only ever shorten optional copy — never the mandatory badges. Secondary
     # table rows go before narrative text, and the narrative keeps at least one line for
     # as long as anything else can give way.
-    while _overflow() > 0 and len(scenario_rows) > 4:
-        scenario_rows = scenario_rows[:-1]
     while _overflow() > 0 and len(level_rows) > 4:
         level_rows = level_rows[:-1]
     while _overflow() > 0 and len(summary_lines) > 2:
@@ -835,18 +883,28 @@ def render_card_png(payload, chart: CardChartData | None = None, *,
     canvas.text_rtl(right - 92, cursor + 46, "تحليل سهم بالذكاء الاصطناعي", 23,
                     PALETTE["muted"])
     canvas.text_ltr(left, cursor + 8, "AI STOCK ANALYSIS", 22, PALETTE["blue"], bold=True)
+    # The label intentionally starts with a Western-digit date; LTR base direction keeps
+    # date/time segments in user order while the embedded Arabic words remain shaped.
     canvas.text_ltr(left, cursor + 42, str(payload.as_of_label), 21, PALETTE["muted"])
     canvas.rule(left, right, cursor + 96)
     cursor += header_h + gap - 18
 
     # ----- symbol + recommendation ------------------------------------------ #
-    canvas.text_rtl(right, cursor, str(payload.symbol), 74, PALETTE["text"], bold=True)
-    canvas.text_rtl(right, cursor + 88, canvas.fit_rtl(payload.title, 25, content_width - 40),
-                    25, PALETTE["muted"])
-    canvas.pill_at_left(left, cursor + 10, str(payload.recommendation_label), 27,
+    canvas.text_rtl(right, cursor, str(payload.symbol), 68, PALETTE["text"], bold=True)
+    title_y = cursor + 84
+    if payload.company_name:
+        canvas.text_rtl(right, cursor + 70,
+                        canvas.fit_rtl(payload.company_name, 25, content_width - 420),
+                        25, PALETTE["text"], bold=True)
+        title_y = cursor + 106
+    canvas.text_rtl(right, title_y,
+                    canvas.fit_rtl(payload.title, 22, content_width - 420),
+                    22, PALETTE["muted"])
+    canvas.text_rtl(left + 250, cursor + 2, "التوصية العامة", 20, PALETTE["muted"])
+    canvas.pill_at_left(left, cursor + 34, str(payload.recommendation_label), 27,
                         _tone_for_recommendation(payload.recommendation_label), solid=True)
     if payload.confidence_label:
-        canvas.text_ltr(left, cursor + 72, f"Confidence  {payload.confidence_label}",
+        canvas.text_ltr(left, cursor + 98, f"Confidence  {payload.confidence_label}",
                         23, PALETTE["muted"])
     cursor += identity_h + gap
 
@@ -891,7 +949,8 @@ def render_card_png(payload, chart: CardChartData | None = None, *,
             _row_panel(right, right - half, level_rows, "المستويات · Key Levels",
                        PALETTE["blue"])
         if scenario_rows:
-            _row_panel(left + half, left, scenario_rows, "السيناريو · Scenario",
+            _row_panel(left + half, left, scenario_rows,
+                       "حالة السيناريو · Scenario Status",
                        PALETTE["green"])
         cursor += side_h + gap
 
@@ -910,12 +969,9 @@ def render_card_png(payload, chart: CardChartData | None = None, *,
     # ----- provenance + mandatory safety badges -------------------------------- #
     canvas.rule(left, right, footer["rule_y"])
     if payload.data_quality_label:
-        canvas.text_rtl(right, footer["quality_y"],
-                        canvas.fit_rtl(payload.data_quality_label, 21, content_width),
+        canvas.text_ltr(left, footer["quality_y"], str(payload.data_quality_label),
                         21, PALETTE["muted"])
     provenance = narrative_source_label(payload.narrative_model)
-    if payload.evidence_version:
-        provenance = f"Evidence  {payload.evidence_version}  ·  {provenance}"
     if provenance:
         canvas.text_rtl(right, footer["evidence_y"],
                         canvas.fit_rtl(provenance, 19, content_width),

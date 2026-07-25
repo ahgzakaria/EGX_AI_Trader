@@ -30,6 +30,7 @@ from dashboard.ai_stock_analysis_components import (
     build_card_chart,
     build_card_payload,
     fixture_analysis,
+    format_cairo_timestamp,
     generate_card_bytes,
 )
 
@@ -174,12 +175,22 @@ def test_card_labels_deterministic_narrative_source_honestly(bundle, monkeypatch
 
     monkeypatch.setattr(card_module._Canvas, "text_rtl", recording_text)
     fallback_narrative = replace(bundle.narrative, model=FALLBACK_MODEL)
-    generate_card_bytes(bundle.result, fallback_narrative)
+    generate_card_bytes(
+        bundle.result,
+        fallback_narrative,
+        company_name="مجموعة طلعت مصطفى",
+    )
 
     assert narrative_source_label(fallback_narrative.model) == (
         "Narrative  Deterministic Fallback"
     )
     assert any("Narrative  Deterministic Fallback" in text for text in drawn)
+    assert any("مجموعة طلعت مصطفى" in text for text in drawn)
+    assert any("التوصية العامة" in text for text in drawn)
+    assert any("حالة السيناريو" in text for text in drawn)
+    assert any("المقاومة / نقطة الاختراق" in text for text in drawn)
+    assert not any(bundle.result.evidence_version in text for text in drawn)
+    assert not any(str(bundle.result.evidence_hash) in text for text in drawn)
     assert not any("ChatGPT" in text or "external AI" in text for text in drawn)
 
 
@@ -249,11 +260,12 @@ def test_arabic_glyphs_have_real_bitmaps_in_the_resolved_font():
 
 def test_card_payload_carries_the_required_content(bundle):
     payload = build_card_payload(bundle.result, bundle.narrative,
-                                 company_name="Commercial International Bank")
+                                 company_name="البنك التجاري الدولي")
     assert payload.symbol == "COMI"
-    assert "Commercial International Bank" in payload.title
+    assert payload.company_name == "البنك التجاري الدولي"
     assert "Continuous Session" in payload.title          # market status
-    assert payload.as_of_label
+    assert payload.as_of_label == "22 يوليو 2026 — 1:40 م بتوقيت القاهرة"
+    assert "T" not in payload.as_of_label
     assert payload.recommendation_label == "قريب من التفعيل"
     assert payload.confidence_label == "63 / 100"
     assert payload.evidence_version == bundle.result.evidence_version
@@ -265,12 +277,55 @@ def test_card_payload_carries_the_required_content(bundle):
         assert required in price_labels
 
     scenario_labels = [label for label, _ in payload.scenario_rows]
-    for required in ("الحالة", "التفعيل", "الهدف", "الوقف"):
+    for required in ("حالة السيناريو", "التفعيل", "الهدف", "الوقف",
+                     "العائد/المخاطرة", "المسافة من آخر إغلاق إلى الهدف"):
         assert required in scenario_labels
+    scenario_values = dict(payload.scenario_rows)
+    assert scenario_values["العائد/المخاطرة"] == "1.90×"
+    assert scenario_values["المسافة من آخر إغلاق إلى الهدف"] == "5.84%"
 
-    # Provider and data timestamp travel with the card.
-    assert "eodhd" in payload.data_quality_label
-    assert "2026-07-22" in payload.data_quality_label
+    # Public provenance is intentionally concise and contains no technical identifiers.
+    assert payload.data_quality_label == (
+        "Provider  EODHD · Last completed session  22 يوليو 2026"
+    )
+    assert "evidence@" not in payload.data_quality_label
+    assert "sha256:" not in payload.data_quality_label
+
+    level_labels = [label for label, _ in payload.level_rows]
+    assert "المقاومة / نقطة الاختراق" in level_labels
+    assert "المقاومة 1" not in level_labels
+    assert "نقطة الاختراق" not in level_labels
+
+
+def test_human_cairo_timestamp_format_never_exposes_raw_iso():
+    label = format_cairo_timestamp("2026-07-25T15:13:00+03:00")
+    assert label == "25 يوليو 2026 — 3:13 م بتوقيت القاهرة"
+    assert "T15:13" not in label
+
+
+@pytest.mark.parametrize(
+    "phase",
+    (MarketPhase.CLOSED, MarketPhase.HOLIDAY, MarketPhase.WEEKEND),
+)
+def test_non_live_card_labels_the_headline_as_last_close(bundle, phase):
+    result = replace(
+        bundle.result,
+        market_phase=phase,
+        request=replace(bundle.result.request, market_phase=phase),
+        data_quality=replace(bundle.result.data_quality, live_available=False),
+        price=replace(bundle.result.price, last=None, quote_timestamp=None),
+    )
+    payload = build_card_payload(result, bundle.narrative)
+    assert payload.price_rows[0] == ("آخر إغلاق", "92.40 EGP")
+
+
+def test_live_unavailable_uses_last_close_even_during_continuous_session(bundle):
+    result = replace(
+        bundle.result,
+        data_quality=replace(bundle.result.data_quality, live_available=False),
+    )
+    payload = build_card_payload(result, bundle.narrative)
+    assert payload.price_rows[0] == ("آخر إغلاق", "92.40 EGP")
 
 
 def test_card_chart_carries_only_supplied_numbers(bundle):
@@ -301,6 +356,49 @@ def test_a_very_long_narrative_never_overruns_the_card(bundle):
                       narrative_headline="عنوان طويل جداً يتجاوز عرض البطاقة بكثير " * 6)
     data = render_card_png(payload, build_card_chart(bundle.result))
     assert Image.open(io.BytesIO(data)).size == (1080, 1350)
+
+
+def test_public_narrative_is_limited_to_two_lines(bundle, monkeypatch):
+    import core.analysis_card_generator as card
+
+    requested_limits = []
+    original = card._Canvas.wrap_rtl
+
+    def recording_wrap(self, text, size, max_width, max_lines):
+        requested_limits.append(max_lines)
+        return original(self, text, size, max_width, max_lines)
+
+    monkeypatch.setattr(card._Canvas, "wrap_rtl", recording_wrap)
+    payload = replace(
+        build_card_payload(bundle.result, bundle.narrative),
+        narrative_headline="عنوان طويل " * 20,
+        narrative_summary="ملخص طويل " * 80,
+    )
+    render_card_png(payload, build_card_chart(bundle.result))
+    assert requested_limits[:2] == [1, 1]
+
+
+def test_full_analysis_scale_uses_every_displayed_numeric_level():
+    chart = CardChartData(
+        low=1.82, high=1.87, open=1.83, close=1.86,
+        support=1.78, support_2=1.74,
+        resistance=1.95, resistance_2=2.02,
+        trigger=1.95, target=2.12, stop=1.72,
+    )
+    assert chart.analysis_bounds() == (1.72, 2.12)
+
+
+def test_rtl_axis_positions_are_numerically_proportional():
+    from core.analysis_card_generator import _proportional_axis_x
+
+    axis_low, axis_high = 1.72, 2.12
+    left, right = 100.0, 900.0
+    assert _proportional_axis_x(axis_low, axis_low, axis_high, left, right) == right
+    assert _proportional_axis_x(axis_high, axis_low, axis_high, left, right) == left
+    session_low_x = _proportional_axis_x(1.82, axis_low, axis_high, left, right)
+    session_high_x = _proportional_axis_x(1.87, axis_low, axis_high, left, right)
+    assert session_low_x == pytest.approx(700.0)
+    assert session_high_x == pytest.approx(600.0)
 
 
 def test_auction_phase_keeps_the_live_print_off_the_session_range(bundle):
