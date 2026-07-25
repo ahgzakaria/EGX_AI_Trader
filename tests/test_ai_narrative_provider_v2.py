@@ -709,6 +709,69 @@ def test_regenerate_narrative_touches_layer_two_only():
     assert refreshed.narrative.provenance.source == SOURCE_AI
 
 
+# Every engine and data path the regenerate button must NOT touch: research router
+# (EODHD), Rubix, the data provider/router, the evidence engine and its indicator /
+# key-level / scenario builders, and the symbol-universe loader.
+_FORBIDDEN_ON_REGENERATE = (
+    ("core.research_router", "get_current_research_history"),
+    ("core.data_provider", "load_history"),
+    ("core.symbols", "load_symbols"),
+    ("core.ai_analysis_evidence", "build_evidence"),
+    ("core.ai_analysis_evidence", "_sma"),
+    ("core.ai_analysis_evidence", "_ema"),
+    ("core.ai_analysis_evidence", "_rsi_wilder"),
+    ("core.ai_analysis_evidence", "_key_levels"),
+    ("core.ai_analysis_evidence", "_scenarios"),
+    ("core.ai_analysis_evidence", "_recommendation"),
+)
+
+
+def test_regenerate_narrative_calls_no_provider_router_or_engine(monkeypatch):
+    """The manual regenerate button re-runs Layer 2 and nothing else."""
+    import importlib
+
+    response = analyze_symbol("COMI", history_loader=lambda symbol: _uptrend(),
+                              include_live=False)
+    evidence_hash_before = response.result.evidence_hash
+
+    def _explode(name):
+        def _boom(*args, **kwargs):
+            raise AssertionError(f"narrative regeneration must not call {name}")
+        return _boom
+
+    for module_name, attribute in _FORBIDDEN_ON_REGENERATE:
+        module = importlib.import_module(module_name)
+        if hasattr(module, attribute):
+            monkeypatch.setattr(module, attribute,
+                                _explode(f"{module_name}.{attribute}"), raising=True)
+    # Rubix is read-only and injectable, but must not be constructed here at all.
+    import providers.rubix_sqlite_provider as rubix
+    monkeypatch.setattr(rubix, "RubixSQLiteProvider",
+                        _explode("providers.rubix_sqlite_provider.RubixSQLiteProvider"))
+
+    mock = _json_provider(_valid_sections(response.result))
+    refreshed = regenerate_narrative(response, narrative_config=EXTERNAL_CONFIG,
+                                     narrative_provider=mock)
+
+    assert mock.calls == 1
+    assert refreshed.narrative.provenance.source == SOURCE_AI
+    # The evidence object — and therefore its hash — is reused unchanged.
+    assert refreshed.result is response.result
+    assert refreshed.result.evidence_hash == evidence_hash_before
+    assert refreshed.narrative.provenance.evidence_hash == evidence_hash_before
+
+
+def test_regenerate_narrative_keeps_the_evidence_hash_on_fallback():
+    response = analyze_symbol("COMI", history_loader=lambda symbol: _uptrend(),
+                              include_live=False)
+    refreshed = regenerate_narrative(
+        response, narrative_config=replace(EXTERNAL_CONFIG, max_retries=0),
+        narrative_provider=MockProvider([ProviderTimeout()]))
+    assert refreshed.result.evidence_hash == response.result.evidence_hash
+    assert refreshed.narrative.provenance.source == SOURCE_FALLBACK
+    assert refreshed.narrative.provenance.fallback_reason == "timeout"
+
+
 # --------------------------------------------------------------------------- #
 # History: append-only, metadata recorded, no secrets
 # --------------------------------------------------------------------------- #

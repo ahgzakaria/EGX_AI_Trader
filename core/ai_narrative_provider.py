@@ -111,6 +111,11 @@ class ProviderMalformedResponse(NarrativeProviderError):
     reason = "malformed_response"
 
 
+class ProviderRefused(NarrativeProviderError):
+    """The model declined to answer (a Structured-Outputs refusal, never narrative)."""
+    reason = "model_refusal"
+
+
 # --------------------------------------------------------------------------- #
 # Provider interface
 # --------------------------------------------------------------------------- #
@@ -198,8 +203,8 @@ def register_provider(name: str, factory: ProviderFactory) -> None:
 
 
 def _openai_factory(config: NarrativeConfig) -> AINarrativeProvider:
-    from core.ai_narrative_openai import OpenAICompatibleProvider
-    return OpenAICompatibleProvider(model=config.model)
+    from core.ai_narrative_openai import OpenAIResponsesProvider
+    return OpenAIResponsesProvider(model=config.model)
 
 
 register_provider("openai", _openai_factory)
@@ -454,6 +459,7 @@ __all__ = [
     "NARRATIVE_CACHE", "NarrativeProviderError", "ProviderNotConfigured",
     "UnsupportedProvider", "ProviderTimeout", "ProviderRateLimited",
     "ProviderTransportError", "ProviderEmptyResponse", "ProviderMalformedResponse",
+    "ProviderRefused",
     "register_provider", "build_provider", "build_narrative", "decode_response",
     "narrative_generator_from_config",
 ]

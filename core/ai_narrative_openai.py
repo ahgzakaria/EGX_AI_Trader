@@ -1,19 +1,25 @@
-"""OpenAI-compatible chat-completions adapter for the AI narrative layer.
+"""OpenAI **Responses API** adapter with strict Structured Outputs.
 
-Deliberately thin and dependency-free (stdlib ``urllib`` only): it posts the already-built,
-already-sanitized messages and returns the model's raw text. It performs no calculation, no
-retry policy (the provider layer owns that), no logging, and no market-data access.
+The narrative contract is enforced at three levels, not one:
 
-Secret handling:
-  * the API key is read from the environment at call time — never from settings JSON,
-    never from a constructor default, never written anywhere;
-  * :meth:`is_configured` reports only presence, never the value;
-  * every failure is converted to a typed error whose ``reason`` is a fixed token or an
-    HTTP status code, so a provider message that happened to echo a header or key fragment
-    can never propagate into a UI, a history record, or a log line.
+  1. **Transport-level schema** — the request carries a strict JSON Schema
+     (``text.format.type = "json_schema"``, ``strict: true``,
+     ``additionalProperties: false``, every section listed in ``required``), so the model
+     is constrained to the eight Arabic sections rather than merely asked for them.
+  2. **Refusal detection** — a Structured-Outputs refusal arrives as a ``refusal`` content
+     item, not as prose. It is detected explicitly and turned into a typed error so a
+     refusal can never be mistaken for a narrative.
+  3. **The evidence validator** — everything that survives here is still re-validated
+     against the numeric allow-list and wording rules before a user sees it.
 
-The adapter works with any OpenAI-compatible ``/chat/completions`` endpoint via
-``AI_NARRATIVE_BASE_URL``.
+The request is deliberately minimal and stateless: no tools, no web search, no file
+search, no conversation persistence (``store: false``), no ``previous_response_id``, and no
+context beyond the two messages built from the sanitized evidence payload.
+
+Secret handling: the API key is read from the environment at call time, sent only in the
+``Authorization`` header, and never stored, returned, logged, or included in an error.
+Every failure is a typed error whose ``reason`` is a fixed token or an HTTP status code —
+provider error bodies are read for status only and are never propagated.
 """
 
 from __future__ import annotations
@@ -24,23 +30,28 @@ import socket
 import urllib.error
 import urllib.request
 
+from core.ai_narrative_prompt import REQUIRED_SECTIONS
 from core.ai_narrative_provider import (
+    NarrativeProviderError,
     ProviderEmptyResponse,
     ProviderMalformedResponse,
     ProviderNotConfigured,
     ProviderRateLimited,
+    ProviderRefused,
     ProviderTimeout,
     ProviderTransportError,
-    NarrativeProviderError,
 )
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
-DEFAULT_MODEL = "gpt-4o-mini"
-API_KEY_ENVS = ("AI_NARRATIVE_API_KEY", "OPENAI_API_KEY")
+DEFAULT_MODEL = "gpt-4.1-mini"
+RESPONSES_PATH = "/responses"
 
-# Conservative generation settings: deterministic-leaning, short, JSON-only.
-TEMPERATURE = 0.2
+# Standard key first; the project-specific name is a documented, optional alias.
+API_KEY_ENVS = ("OPENAI_API_KEY", "AI_NARRATIVE_API_KEY")
+
+SCHEMA_NAME = "egx_ai_narrative"
 MAX_OUTPUT_TOKENS = 1100
+TEMPERATURE = 0.2
 
 
 def _api_key() -> str:
@@ -51,8 +62,21 @@ def _api_key() -> str:
     return ""
 
 
-class OpenAICompatibleProvider:
-    """Adapter for an OpenAI-compatible chat-completions endpoint."""
+def build_response_schema() -> dict:
+    """The strict JSON Schema the model must satisfy: exactly the eight Arabic sections."""
+    return {
+        "type": "object",
+        "properties": {
+            name: {"type": "string", "description": f"Concise Arabic text for {name}."}
+            for name in REQUIRED_SECTIONS
+        },
+        "required": list(REQUIRED_SECTIONS),
+        "additionalProperties": False,
+    }
+
+
+class OpenAIResponsesProvider:
+    """Adapter for the OpenAI Responses API (``POST /v1/responses``)."""
 
     name = "openai"
 
@@ -62,11 +86,43 @@ class OpenAICompatibleProvider:
         self.base_url = str(base_url or os.environ.get("AI_NARRATIVE_BASE_URL", "")
                             or DEFAULT_BASE_URL).strip().rstrip("/")
 
+    @property
+    def endpoint(self) -> str:
+        return f"{self.base_url}{RESPONSES_PATH}"
+
     # -- credential ---------------------------------------------------------- #
 
     def is_configured(self) -> bool:
         """True when an API key is present in the environment. Never returns the key."""
         return bool(_api_key())
+
+    # -- request ------------------------------------------------------------- #
+
+    def build_request_body(self, messages: list[dict]) -> dict:
+        """Compose the Responses API payload. Stateless, tool-free, strictly typed."""
+        system = "\n\n".join(str(m.get("content", "")) for m in messages
+                             if m.get("role") == "system")
+        turns = [{"role": str(m.get("role")), "content": str(m.get("content", ""))}
+                 for m in messages if m.get("role") != "system"]
+        return {
+            "model": self.model,
+            "instructions": system,
+            "input": turns,
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": SCHEMA_NAME,
+                    "strict": True,
+                    "schema": build_response_schema(),
+                },
+            },
+            "max_output_tokens": MAX_OUTPUT_TOKENS,
+            "temperature": TEMPERATURE,
+            # No tools of any kind: no function calling, no web search, no file search.
+            "tools": [],
+            # No conversation persistence and no prior context.
+            "store": False,
+        }
 
     # -- transport ----------------------------------------------------------- #
 
@@ -75,7 +131,7 @@ class OpenAICompatibleProvider:
         if not key:
             raise ProviderNotConfigured()
         request = urllib.request.Request(
-            f"{self.base_url}/chat/completions",
+            self.endpoint,
             data=json.dumps(body).encode("utf-8"),
             headers={"Content-Type": "application/json",
                      "Authorization": f"Bearer {key}"},
@@ -84,7 +140,7 @@ class OpenAICompatibleProvider:
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 payload = response.read().decode("utf-8", errors="replace")
-        except urllib.error.HTTPError as error:      # status only — body is never read out
+        except urllib.error.HTTPError as error:      # status only — the body is discarded
             status = int(getattr(error, "code", 0) or 0)
             if status == 429:
                 raise ProviderRateLimited() from None
@@ -110,26 +166,49 @@ class OpenAICompatibleProvider:
             raise ProviderMalformedResponse("unexpected_envelope") from None
         return decoded
 
-    # -- provider interface -------------------------------------------------- #
+    # -- response extraction -------------------------------------------------- #
 
-    def complete(self, messages: list[dict], *, timeout: float) -> str:
-        """Return the model's raw text answer, or raise a typed provider error."""
-        envelope = self._post(
-            {
-                "model": self.model,
-                "messages": messages,
-                "temperature": TEMPERATURE,
-                "max_tokens": MAX_OUTPUT_TOKENS,
-                "response_format": {"type": "json_object"},
-                "n": 1,
-            },
-            timeout=timeout,
-        )
-        try:
-            content = envelope["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError):
-            raise ProviderMalformedResponse("missing_choice") from None
-        text = str(content or "").strip()
+    @staticmethod
+    def extract_output_text(envelope: dict) -> str:
+        """Return the structured JSON text, or raise a typed error.
+
+        Only assistant message text is read. A ``refusal`` item raises
+        :class:`ProviderRefused`; an incomplete or empty response raises rather than
+        returning partial content. Provider internals (``id``, ``usage``, model metadata)
+        are never carried out of this function.
+        """
+        if envelope.get("status") == "incomplete":
+            raise ProviderMalformedResponse("incomplete_response")
+
+        chunks: list[str] = []
+        for item in envelope.get("output") or ():
+            if not isinstance(item, dict) or item.get("type") != "message":
+                continue                                   # ignore any non-message item
+            for block in item.get("content") or ():
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") == "refusal":
+                    # A model refusal is never treated as narrative content.
+                    raise ProviderRefused()
+                if block.get("type") in ("output_text", "text"):
+                    chunks.append(str(block.get("text") or ""))
+
+        text = "".join(chunks).strip()
+        if not text:
+            fallback = envelope.get("output_text")
+            text = "".join(fallback).strip() if isinstance(fallback, list) else \
+                str(fallback or "").strip()
         if not text:
             raise ProviderEmptyResponse()
         return text
+
+    # -- provider interface -------------------------------------------------- #
+
+    def complete(self, messages: list[dict], *, timeout: float) -> str:
+        """Return the model's structured JSON text, or raise a typed provider error."""
+        envelope = self._post(self.build_request_body(messages), timeout=timeout)
+        return self.extract_output_text(envelope)
+
+
+# Backwards-compatible alias for the previous chat-completions class name.
+OpenAICompatibleProvider = OpenAIResponsesProvider

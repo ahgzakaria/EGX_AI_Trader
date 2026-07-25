@@ -8,11 +8,11 @@ narrative.
   * **Schema** — a JSON object with exactly the eight required Arabic sections, each a
     non-empty, length-capped string.
   * **Format** — no markdown tables, no pipes, no code fences, no HTML.
-  * **Numeric traceability** — every numeric token, after Arabic/Western numeral and
-    separator normalization, must be a rendering of a value that already exists in the
-    evidence (see :func:`core.ai_analysis_narrative.allowed_numbers`). Matching uses fixed
-    0–4 dp renderings plus a 0.05 absolute epsilon only; there is deliberately no relative
-    tolerance, so a fabricated figure can never "match" a large volume or turnover value.
+  * **Numeric traceability** — every numeric token must be an approved *textual rendering*
+    of a typed evidence value (see :mod:`core.ai_narrative_numbers`). Matching is exact
+    string identity on a normalized key: there is **no absolute and no relative
+    tolerance**, so a stock evidenced at 1.84 rejects 1.85, 1.89 and 1.80, and nothing can
+    ever "match" a large volume or turnover value by proximity.
   * **Wording** — no unconditional buy/sell/enter/size command, no certainty claim.
 
 Rejection reasons are safe by construction: they name a rule and, for numeric failures,
@@ -25,7 +25,11 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
-from core.ai_analysis_narrative import allowed_numbers, validate_no_original_numbers
+from core.ai_narrative_numbers import (
+    build_number_allowlist,
+    normalize_text,
+    validate_numbers,
+)
 from core.ai_narrative_prompt import REQUIRED_SECTIONS
 from core.ai_stock_analysis_contract import AnalysisResult
 
@@ -44,22 +48,9 @@ MAX_TOTAL_CHARS = 4000
 # Numeral / script normalization
 # --------------------------------------------------------------------------- #
 
-# Arabic-Indic (٠-٩) and Extended Arabic-Indic (۰-۹) digits → ASCII.
-_DIGIT_MAP = {ord("٠") + i: str(i) for i in range(10)}
-_DIGIT_MAP.update({ord("۰") + i: str(i) for i in range(10)})
-_SEPARATOR_MAP = {
-    ord("٫"): ".",   # Arabic decimal separator
-    ord("٬"): ",",   # Arabic thousands separator
-    ord("٪"): "%",   # Arabic percent sign
-    ord("−"): "-",   # minus sign
-    0x200E: " ", 0x200F: " ",       # left-to-right / right-to-left marks
-}
-
-
 def normalize_numerals(text: str) -> str:
-    """Render Arabic numerals/separators in Western form so numbers can be compared."""
-    return unicodedata.normalize("NFKC", str(text or "")).translate(
-        {**_DIGIT_MAP, **_SEPARATOR_MAP})
+    """Render Arabic numerals/separators in Western form (see ai_narrative_numbers)."""
+    return normalize_text(text)
 
 
 def _normalize_arabic(text: str) -> str:
@@ -159,7 +150,7 @@ def validate_response(payload, result: AnalysisResult) -> ValidationReport:
     if sum(len(v) for v in sections.values()) > MAX_TOTAL_CHARS:
         return _reject(SCHEMA_INVALID, "response exceeded the total length budget")
 
-    allowed = allowed_numbers(result)
+    allowlist = build_number_allowlist(result)
     for name, text in sections.items():
         rule = check_format(text)
         if rule is not None:
@@ -167,10 +158,10 @@ def validate_response(payload, result: AnalysisResult) -> ValidationReport:
         rule = check_forbidden_wording(text)
         if rule is not None:
             return _reject(FORBIDDEN_RECOMMENDATION, f"{rule} in {name}")
-        ok, offending = validate_no_original_numbers(normalize_numerals(text), allowed)
+        ok, offending = validate_numbers(text, allowlist)
         if not ok:
-            tokens = ", ".join(f"{value:g}" for value in offending[:4])
+            # Only the offending numeric tokens are reported — never the rejected prose.
             return _reject(NUMERIC_HALLUCINATION,
-                           f"untraceable number(s) in {name}: {tokens}")
+                           f"untraceable number(s) in {name}: {', '.join(offending[:4])}")
 
     return ValidationReport(ok=True, status=VALIDATED, sections=sections)
