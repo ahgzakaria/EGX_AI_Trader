@@ -1,8 +1,14 @@
 import pandas as pd
 import logging
+from datetime import datetime, timezone
 
 from core.data_provider import load_history, provider_purpose, symbol_data_coverage
+from core.egx_session import session_close_datetime
 from core.live_actionability import actionability_fields
+from core.level_status import (
+    classic_levels_engine_version,
+    classic_snapshot_evidence_hash,
+)
 from indicators.technical import calculate_indicators
 from core.paper_trading import PaperTradingTracker
 from config.settings_manager import settings
@@ -84,6 +90,16 @@ def scan_symbols(source, data_purpose="scanner"):
             breakout_result = _safe_breakout_evaluation(
                 breakout_strategy, df, i, symbol
             )
+            frozen_price = float(last["Close"])
+            completed_session = pd.Timestamp(df.index[i]).date()
+            completed_timestamp = session_close_datetime(
+                completed_session
+            ).isoformat()
+            evidence_hash = classic_snapshot_evidence_hash(symbol, df, result)
+            levels_engine = classic_levels_engine_version()
+            # Recorded after the frozen decision exists.  It is metadata only;
+            # the timestamp is not passed to strategy or used by sorting.
+            signal_timestamp = datetime.now(timezone.utc).isoformat()
 
             # ==========================
             # Rating
@@ -110,7 +126,33 @@ def scan_symbols(source, data_purpose="scanner"):
 
                 "Rating": rating,
 
-                "Price": round(float(last["Close"]), 2),
+                # ``Price`` remains the backward-compatible completed-candle
+                # display value.  The additive raw/provenance fields below stop
+                # the details page from mistaking it for a live quote.
+                "Price": round(frozen_price, 2),
+                "FrozenSnapshotPrice": frozen_price,
+                "FrozenDataTimestamp": completed_timestamp,
+                "SignalTimestamp": signal_timestamp,
+                "LastCompletedSession": completed_timestamp,
+                "CompletedSessionClose": frozen_price,
+                "CompletedSessionTimestamp": completed_timestamp,
+                "CompletedSessionProvider": provider_metadata.get("provider"),
+                "LevelsCalculationVersion": levels_engine,
+                "EvidenceHash": evidence_hash,
+                "HistoricalProvider": provider_metadata.get("provider"),
+                "DataDomain": provider_metadata.get("data_domain"),
+                "LivePrice": provider_metadata.get("live_quote_last"),
+                "LivePriceTimestamp": provider_metadata.get("live_quote_timestamp"),
+                "LivePriceReceivedTimestamp": provider_metadata.get(
+                    "live_quote_received_timestamp"
+                ),
+                "LivePriceStatus": provider_metadata.get("live_quote_freshness"),
+                "LiveProvider": provider_metadata.get("live_quote_provider"),
+                "SnapshotStatus": (
+                    "FROZEN + LIVE OVERLAY"
+                    if provider_metadata.get("live_quote_available")
+                    else "FROZEN"
+                ),
 
                 "Signal": result["Signal"],
                 "Stars": result["Stars"],
