@@ -61,6 +61,12 @@ def show_dashboard():
                     "data/symbols.csv", data_purpose="dashboard"
                 )
                 st.session_state.live_scan_completed = bool(st.session_state.results)
+                # Archiving happens after the scan is already complete. If the
+                # dataset could not be published, the scan itself is still valid
+                # evidence — report it concisely instead of discarding the run.
+                st.session_state.archive_warning = _archive_warning(
+                    st.session_state.results
+                )
                 # Phase 9 is a post-decision advisory snapshot. Failures are
                 # disclosed but can never invalidate or rewrite scanner rows.
                 if st.session_state.results:
@@ -81,6 +87,10 @@ def show_dashboard():
             disabled=True,
             use_container_width=True,
         )
+
+    archive_warning = st.session_state.get("archive_warning")
+    if archive_warning:
+        st.warning(archive_warning)
 
     if st.session_state.results is None:
         empty_state(
@@ -479,6 +489,38 @@ def _format_ai_probability(frame):
             )
         )
     return formatted
+
+
+def _archive_warning(results) -> str:
+    """Return a concise archival warning for the finished scan, or ``""``.
+
+    Reads only the typed finalization fields the run recorded. A completed scan is
+    never hidden or discarded because its dataset could not be published, and a
+    traceback is never shown here — it stays in the log.
+    """
+    import json
+    from pathlib import Path
+
+    if not results:
+        return ""
+    run_id = str((results[0] or {}).get("RunID") or "").strip()
+    if not run_id:
+        return ""
+    metadata_path = Path("reports") / run_id / "run_metadata.json"
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if metadata.get("dataset_finalization_ok", True):
+        return ""
+    status = metadata.get("dataset_finalization") or "UNKNOWN"
+    detail = str(metadata.get("dataset_finalization_detail") or "").strip()
+    return (
+        f"Scan results are complete and saved. The dataset archive was not "
+        f"published ({status}). Nothing was lost — the staged data is preserved "
+        f"under reports/{run_id} and can be published again without rescanning."
+        + (f" Detail: {detail}" if detail else "")
+    )
 
 
 def _render_provider_status(summary):

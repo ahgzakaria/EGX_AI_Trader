@@ -6,6 +6,11 @@ import pandas as pd
 import streamlit as st
 
 from services.experiment_tracking import REPORTS_ROOT, RunRepository
+from services.run_status import (
+    COMPLETED,
+    RECOVERED_COMPLETED,
+    status_label,
+)
 from dashboard.ui import empty_state, page_header, section_header
 
 
@@ -29,7 +34,10 @@ def _history_frame(runs):
             "Win Rate": flat.get("WinRate"),
             "AI Mode": run.get("ai_mode"),
             "Walk Forward Status": run.get("walk_forward_status"),
-            "Status": run.get("status"),
+            # The effective status shows a run whose archive was published after an
+            # interrupted save as Recovered Completed, never as still running.
+            "Status": status_label(
+                run.get("effective_status") or run.get("status"))[1],
         })
     return pd.DataFrame(rows)
 
@@ -51,13 +59,26 @@ def show_run_history():
         )
         return
 
-    completed = sum(run.get("status") == "COMPLETED" for run in runs)
-    failed = sum(run.get("status") == "FAILED" for run in runs)
+    # A recovered run finished its work; counting it as completed is the honest
+    # summary, and the per-run row still says exactly how it completed.
+    effective = [run.get("effective_status") or run.get("status") for run in runs]
+    completed = sum(status in (COMPLETED, RECOVERED_COMPLETED) for status in effective)
+    recovered = sum(status == RECOVERED_COMPLETED for status in effective)
+    failed = sum(status == "FAILED" for status in effective)
     metrics = st.columns(4)
     metrics[0].metric("Total Runs", len(runs))
-    metrics[1].metric("Completed", completed)
+    metrics[1].metric(
+        "Completed", completed,
+        help=(f"{recovered} recovered after an interrupted archive save"
+              if recovered else None))
     metrics[2].metric("Failed", failed)
     metrics[3].metric("Backtests", sum(run.get("run_type") == "BACKTEST" for run in runs))
+    if recovered:
+        st.caption(
+            f"{recovered} run(s) show **Recovered Completed** · تم الاستكمال بعد انقطاع "
+            "الحفظ — the scan finished and its dataset was published afterwards from the "
+            "intact staging directory. The original run metadata is preserved unchanged."
+        )
 
     section_header("Experiments", "Select a run to inspect, compare or export")
     history = _history_frame(runs)
@@ -65,7 +86,12 @@ def show_run_history():
     run_mode = type_col.selectbox(
         "Mode", ["ALL"] + sorted(history["Mode"].dropna().astype(str).unique().tolist())
     )
-    run_status = status_col.selectbox("Status", ["ALL", "COMPLETED", "FAILED", "RUNNING"])
+    # Options come from the rendered labels, so a recovered run is filterable and no
+    # option can silently match nothing.
+    run_status = status_col.selectbox(
+        "Status",
+        ["ALL"] + sorted(history["Status"].dropna().astype(str).unique().tolist()),
+    )
     visible = history.copy()
     if run_mode != "ALL":
         visible = visible[visible["Mode"] == run_mode]

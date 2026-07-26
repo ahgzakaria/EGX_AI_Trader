@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import logging
 import os
 import platform
 import shutil
@@ -29,11 +30,15 @@ import pandas as pd
 from config.settings_manager import settings
 from services.dataset_archive import (
     DatasetArchive,
+    FinalizationResult,
     activate_archive,
     deactivate_archive,
     sha256_file,
 )
+from services.run_status import annotate_metadata
 
+
+logger = logging.getLogger(__name__)
 
 REPORTS_ROOT = Path("reports")
 RUN_PREFIX = "RUN_"
@@ -350,9 +355,20 @@ class ExperimentRun:
                 predictions = pd.read_csv(prediction_path)
             except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError):
                 predictions = None
-        dataset_manifest = self.dataset_archive.finalize(
-            failure_rows, ai_predictions=predictions
-        )
+        # Archiving is evidence capture that happens AFTER the scan is finished.
+        # A storage fault here must never discard a completed run: record the
+        # typed outcome, keep every artifact, and let the caller surface it.
+        try:
+            finalization = self.dataset_archive.finalize(
+                failure_rows, ai_predictions=predictions
+            )
+        except Exception as error:                      # noqa: BLE001 - reported below
+            logger.exception("Dataset archive finalization failed")
+            finalization = FinalizationResult(
+                status="INVALID_MANIFEST", manifest=None, dataset_path=None,
+                detail=f"{type(error).__name__}: {error}",
+            )
+        dataset_manifest = dict(finalization.manifest or {})
         self._close_archive()
         self.metadata.update({
             "status": "COMPLETED",
@@ -364,6 +380,11 @@ class ExperimentRun:
             "metrics": _json_value(metrics or {}),
             "dataset_hash": dataset_manifest.get("dataset_hash"),
             "dataset_archive_status": dataset_manifest.get("status"),
+            # Typed publication outcome, kept beside the manifest status so a
+            # storage fault is auditable without reading the log.
+            "dataset_finalization": finalization.status,
+            "dataset_finalization_detail": finalization.detail,
+            "dataset_finalization_ok": bool(finalization.ok),
             "replay_ready": bool(dataset_manifest.get("symbols_archived")),
         })
         if walk_forward_status:
@@ -483,7 +504,8 @@ class RunRepository:
                 continue
             metadata = _load_json(directory / "run_metadata.json")
             if metadata:
-                runs.append(metadata)
+                # In-memory only: the stored metadata is never rewritten.
+                runs.append(annotate_metadata(directory, metadata))
         return sorted(runs, key=lambda item: item.get("created_at", ""), reverse=True)
 
     @staticmethod
@@ -492,7 +514,7 @@ class RunRepository:
         metadata = _load_json(directory / "run_metadata.json")
         if not metadata:
             raise FileNotFoundError(f"Run metadata unavailable: {run_id}")
-        return metadata
+        return annotate_metadata(directory, metadata)
 
     @staticmethod
     def compare(first_id: str, second_id: str) -> dict:
