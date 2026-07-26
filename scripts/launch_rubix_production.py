@@ -32,6 +32,8 @@ PRODUCTION_DB = PROJECT_ROOT / "data" / "rubix_live_market.db"
 DEFAULT_ADAPTER = Path.home() / "OneDrive" / "Documents" / "Scrapping" / "rubix_feed"
 FEED_URL = "wss://eg-feed3.mubashertrade.com/websocket/price"
 AUTH_MAX_AGE_MINUTES = 15
+# Tracked application defaults, READ-ONLY at runtime. Local settings and volatile runtime
+# state live in their own ignored files — see services/rubix_launcher_config.py.
 LAUNCHER_CONFIG = PROJECT_ROOT / "config" / "rubix_launcher_settings.json"
 LAUNCHER_LOG = PROJECT_ROOT / "logs" / "rubix_launcher.log"
 SUPERVISOR_LOG = PROJECT_ROOT / "logs" / "rubix_supervisor.log"
@@ -47,10 +49,17 @@ from services.rubix_auth_assistant import (  # noqa: E402 - project root above
     AUTH_MISSING,
     AUTH_VALID,
     inspect_auth_frame,
-    load_launcher_preferences,
     run_preflight,
-    save_launcher_preferences,
     validate_auth_frame_or_raise,
+)
+from services.rubix_launcher_config import (  # noqa: E402 - project root above
+    DEFAULT_WINDOW_GEOMETRY,
+    append_recent_launch,
+    load_runtime_state,
+    migrate_legacy_settings,
+    resolve_effective_settings,
+    save_local_overrides,
+    save_window_geometry,
 )
 from scripts.launcher_process_utils import (  # noqa: E402 - project root above
     InstanceAlreadyRunning,
@@ -730,19 +739,25 @@ class RubixAuthenticationAssistantUI(LauncherUI):
 
         self.tk = tk
         self.ttk = ttk
-        self.preferences = load_launcher_preferences(LAUNCHER_CONFIG)
+        # Three layers: tracked defaults → ignored local settings → environment. Runtime
+        # state (geometry, launch history) lives in its own ignored file and is never
+        # merged into settings, so nothing the launcher does can dirty a tracked file.
+        migrate_legacy_settings()
+        self.settings = resolve_effective_settings()
+        self.runtime, runtime_warning = load_runtime_state()
+        self._runtime_warning = runtime_warning
         enable_windows_dpi_awareness()
         self.root = tk.Tk()
         self.root.title("EGX AI Trader — Rubix Production Launcher")
         self.root.update_idletasks()
         self._last_good_geometry = safe_window_geometry(
-            self.preferences.get("window_geometry", "1080x820"),
+            self.runtime.get("window_geometry", DEFAULT_WINDOW_GEOMETRY),
             self.root.winfo_screenwidth(),
             self.root.winfo_screenheight(),
         )
         self.root.minsize(900, 650)
         self.root.geometry(self._last_good_geometry)
-        theme = self.preferences.get("theme", "System")
+        theme = self.settings.get("theme", "System")
         if theme != "System" and theme in ttk.Style().theme_names():
             ttk.Style().theme_use(theme)
 
@@ -750,9 +765,9 @@ class RubixAuthenticationAssistantUI(LauncherUI):
         self.auth_var = tk.StringVar()
         self.auth_status_var = tk.StringVar(value=AUTH_MISSING)
         self.auth_message_var = tk.StringVar(value="No authentication file selected.")
-        self.adapter_var = tk.StringVar(value=self.preferences.get("adapter_path", str(DEFAULT_ADAPTER)))
-        self.db_var = tk.StringVar(value=self.preferences.get("database_path", str(os.getenv("RUBIX_DB_PATH") or PRODUCTION_DB)))
-        self.port_var = tk.StringVar(value=str(self.preferences.get("streamlit_port", 8501)))
+        self.adapter_var = tk.StringVar(value=self.settings.get("adapter_path", str(DEFAULT_ADAPTER)))
+        self.db_var = tk.StringVar(value=self.settings.get("database_path", str(os.getenv("RUBIX_DB_PATH") or PRODUCTION_DB)))
+        self.port_var = tk.StringVar(value=str(self.settings.get("streamlit_port", 8501)))
         self.theme_var = tk.StringVar(value=theme)
         self.delete_auth_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value="Ready — complete the assistant, then run Self Check.")
@@ -901,12 +916,12 @@ class RubixAuthenticationAssistantUI(LauncherUI):
 
         selected = filedialog.askopenfilename(
             title="Select the fresh Rubix authentication-frame file",
-            initialdir=self.preferences.get("last_auth_folder") or str(Path.home()),
+            initialdir=self.settings.get("last_auth_folder") or str(Path.home()),
             filetypes=(("Text or JSON files", "*.txt *.json"), ("All files", "*.*")),
         )
         if selected:
             self.auth_var.set(selected)
-            self.preferences["last_auth_folder"] = str(Path(selected).parent)
+            self.settings["last_auth_folder"] = str(Path(selected).parent)
             self._apply_auth_inspection(inspect_auth_frame(selected))
             self._save_preferences()
 
@@ -1379,22 +1394,27 @@ class RubixAuthenticationAssistantUI(LauncherUI):
             os.startfile(guide)
 
     def _record_launch(self, mode, result):
-        recent = list(self.preferences.get("recent_launches", []))
-        recent.append({"time": datetime.now(timezone.utc).isoformat(), "mode": mode, "result": result})
-        self.preferences["recent_launches"] = recent[-10:]
+        """Append one launch record — to the ignored runtime-state file only."""
+        self.runtime = append_recent_launch(mode, result)
 
     def _save_preferences(self):
+        """Persist user settings and window geometry to the two IGNORED files.
+
+        ``config/rubix_launcher_settings.json`` holds tracked defaults and is never
+        written here: settings go to the local override file, geometry to the runtime
+        state file.
+        """
         try:
             port = self._port()
         except ValueError:
             port = 8501
-        self.preferences.update({
+        self.settings.update({
             "adapter_path": self.adapter_var.get(), "database_path": self.db_var.get(),
-            "window_geometry": self._last_good_geometry, "theme": self.theme_var.get(),
-            "streamlit_port": port,
+            "theme": self.theme_var.get(), "streamlit_port": port,
         })
         # The selected auth file and its contents are deliberately omitted.
-        save_launcher_preferences(self.preferences, LAUNCHER_CONFIG)
+        save_local_overrides(self.settings)
+        self.runtime = save_window_geometry(self._last_good_geometry)
 
     def close(self):
         self.stop()
