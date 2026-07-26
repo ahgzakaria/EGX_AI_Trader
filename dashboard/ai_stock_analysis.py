@@ -20,6 +20,11 @@ import streamlit as st
 
 from core.ai_analysis_evidence import EVIDENCE_ENGINE_VERSION
 from core.analysis_card_generator import CARD_SIZES, DEFAULT_CARD_SIZE
+from core.symbols import (
+    ApprovedSymbol,
+    load_approved_symbol_options,
+    resolve_approved_symbol,
+)
 from dashboard.ai_stock_analysis_components import (
     CARD_SIZE_LABELS,
     EM_DASH,
@@ -71,12 +76,8 @@ STATE_SYMBOL = "_ai_analysis_symbol"
 STATE_CARD = "_ai_analysis_card"
 STATE_CARD_KEY = "_ai_analysis_card_key"
 STATE_HISTORY_OPEN = "_ai_analysis_history_open"
-
-# A short, static picker list. This is a convenience list of well-known EGX tickers for the
-# selector only — the page never iterates it, scans it, or analyses more than the single
-# symbol the user chose.
-SUGGESTED_SYMBOLS = ("COMI", "HRHO", "TMGH", "SWDY", "EFIH", "ETEL", "ABUK", "ESRS",
-                     "MFPC", "ORWE", "JUFO", "EAST")
+STATE_SELECTED = "_ai_analysis_selected_symbol"
+STATE_PICKER = "_ai_analysis_symbol_picker"
 
 PAGE_TITLE_AR = "تحليل سهم بالذكاء الاصطناعي"
 PAGE_TITLE_EN = "AI Stock Analysis"
@@ -173,20 +174,45 @@ def _confidence_bar(label_ar, label_en, score_text, value, supplied):
 # --------------------------------------------------------------------------- #
 
 def _symbol_selector():
-    """Symbol input. Returns (symbol, analyze_pressed). Nothing runs without the button."""
+    """Return one approved symbol and button state without touching market data.
+
+    Streamlit 1.58 performs fuzzy client-side filtering for every keystroke.
+    The complete approved list is supplied to that one control; accepting typed
+    text only lets us validate exact ticker/name input and never forwards an
+    arbitrary value to Core.
+    """
+
     section_header("اختيار السهم", "Symbol Selection — one symbol per analysis")
-    left, middle, right = st.columns([2, 2, 1.2])
-    with left:
-        picked = st.selectbox("اختر رمزاً · Select symbol", SUGGESTED_SYMBOLS, index=0,
-                              key="_ai_analysis_pick")
-    with middle:
-        typed = st.text_input("أو اكتب الرمز · Or type a symbol", value="",
-                              placeholder="COMI", key="_ai_analysis_typed").strip()
-    with right:
+    options = load_approved_symbol_options()
+    picker_col, button_col = st.columns([4.8, 1.2])
+    with picker_col:
+        picked = st.selectbox(
+            "اختر أو ابحث عن سهم · Search or select a symbol",
+            options,
+            index=None,
+            format_func=lambda option: (
+                option.display_label
+                if isinstance(option, ApprovedSymbol)
+                else str(option)
+            ),
+            placeholder="اكتب رمز السهم أو اسم الشركة",
+            key=STATE_PICKER,
+            accept_new_options=True,
+            filter_mode="fuzzy",
+            width="stretch",
+        )
+    selected = resolve_approved_symbol(picked, options)
+    if picked not in (None, "") and selected is None:
+        st.warning("لم يتم العثور على سهم مطابق · No matching symbol found")
+    if selected is not None:
+        st.session_state[STATE_SELECTED] = selected.ticker
+
+    with button_col:
         st.markdown('<div style="height:1.75rem"></div>', unsafe_allow_html=True)
         pressed = st.button("▶ تحليل السهم · Analyze Stock", type="primary",
-                            use_container_width=True, key="_ai_analysis_go")
-    return (typed or picked), pressed
+                            use_container_width=True, key="_ai_analysis_go",
+                            disabled=selected is None)
+    return (selected.ticker if selected else None), bool(pressed and selected)
 
 
 def _status_section(result):
@@ -648,7 +674,7 @@ def show_ai_stock_analysis(runner=None):
 
     symbol, pressed = _symbol_selector()
 
-    if pressed:
+    if pressed and symbol:
         try:
             bundle = run_analysis(symbol, runner)
         except ValueError as error:

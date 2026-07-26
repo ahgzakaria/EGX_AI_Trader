@@ -1,4 +1,4 @@
-Ticker
+Ticker,EnglishName,ArabicName
 AALR.CA
 ABUK.CA
 ACAMD.CA
@@ -53,7 +53,7 @@ CIEB.CA
 CIRA.CA
 CLHO.CA
 CNFN.CA
-COMI.CA
+COMI.CA,Commercial International Bank,البنك التجاري الدولي
 COPR.CA
 COSG.CA
 CPCI.CA
@@ -177,7 +177,7 @@ MOIL.CA
 MOIN.CA
 MOSC.CA
 MPCI.CA
-MPCO.CA
+MPCO.CA,Mansoura Poultry,المنصورة للدواجن
 MPRC.CA
 MTIE.CA
 NAHO.CA
