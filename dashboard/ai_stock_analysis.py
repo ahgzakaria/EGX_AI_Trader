@@ -18,6 +18,7 @@ import html
 
 import streamlit as st
 
+from core.ai_analysis_evidence import EVIDENCE_ENGINE_VERSION
 from core.analysis_card_generator import CARD_SIZES, DEFAULT_CARD_SIZE
 from dashboard.ai_stock_analysis_components import (
     CARD_SIZE_LABELS,
@@ -55,6 +56,12 @@ from dashboard.ui import (
     page_header,
     section_header,
     status_bar,
+)
+from dashboard.provenance_panel import (
+    FROZEN,
+    MIXED,
+    Provenance,
+    render_provenance_panel,
 )
 
 # Session-state keys. Analysis and the rendered card both live here so a Streamlit rerun
@@ -197,6 +204,28 @@ def _status_section(result):
         st.info("مزاد الإغلاق (14:15–14:25): تُعرض بيانات المزاد منفصلة ولا تُدمج مع نطاق الجلسة "
                 "المستمرة. · Closing auction — auction data is shown separately and is never "
                 "merged into the continuous-session range.")
+
+
+def analysis_provenance(result):
+    """Return the typed AI snapshot provenance without deriving market values."""
+
+    quality = result.data_quality
+    live = bool(quality.live_available and result.price.last is not None)
+    data_timestamp = (
+        result.price.quote_timestamp
+        if live
+        else result.price.session_date or quality.latest_completed_session
+    )
+    return Provenance(
+        data_timestamp=str(data_timestamp or ""),
+        signal_timestamp=str(result.generated_at or ""),
+        session=str(quality.latest_completed_session or result.price.session_date or ""),
+        provider=str(quality.provider or ""),
+        live_provider=str(quality.live_provider or "") if live else "",
+        engine=EVIDENCE_ENGINE_VERSION,
+        evidence_hash=str(result.evidence_hash or result.evidence_version or ""),
+        status=MIXED if live else FROZEN,
+    )
 
 
 def _price_section(result):
@@ -653,6 +682,7 @@ def show_ai_stock_analysis(runner=None):
                    "fixture — no provider was contacted.")
 
     _status_section(result)
+    render_provenance_panel(analysis_provenance(result))
     _price_section(result)
     _chart_section(result)
     _technical_section(result)
