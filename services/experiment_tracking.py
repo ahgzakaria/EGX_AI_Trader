@@ -35,6 +35,7 @@ from services.dataset_archive import (
     deactivate_archive,
     sha256_file,
 )
+from services.run_status import annotate_metadata
 
 
 logger = logging.getLogger(__name__)
@@ -503,7 +504,8 @@ class RunRepository:
                 continue
             metadata = _load_json(directory / "run_metadata.json")
             if metadata:
-                runs.append(metadata)
+                # In-memory only: the stored metadata is never rewritten.
+                runs.append(annotate_metadata(directory, metadata))
         return sorted(runs, key=lambda item: item.get("created_at", ""), reverse=True)
 
     @staticmethod
@@ -512,7 +514,7 @@ class RunRepository:
         metadata = _load_json(directory / "run_metadata.json")
         if not metadata:
             raise FileNotFoundError(f"Run metadata unavailable: {run_id}")
-        return metadata
+        return annotate_metadata(directory, metadata)
 
     @staticmethod
     def compare(first_id: str, second_id: str) -> dict:

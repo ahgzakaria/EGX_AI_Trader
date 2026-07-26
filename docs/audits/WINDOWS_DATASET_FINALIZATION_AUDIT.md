@@ -148,6 +148,31 @@ because the original `complete()` died before updating it. Rewriting it now woul
 invalidate the run-integrity record and rewrite history; the honest record is that this run
 was interrupted during finalization and its dataset was published later.
 
+## Effective status without rewriting history
+
+The correction is recorded *beside* the metadata, never inside it. `services/run_status.py`
+writes an immutable sidecar `finalization_recovery.json` — run id, original status,
+`effective_status: RECOVERED_COMPLETED`, finalization result, `recovered_at`, dataset path,
+manifest SHA-256, staging/destination presence, reason, and the SHA-256 of the original
+metadata. It carries no dataset contents.
+
+`resolve_effective_status()` decides what a reader shows, in this order: a **valid** sidecar
+→ `RECOVERED_COMPLETED`; otherwise a completed metadata status; otherwise the original
+status as recorded; otherwise `UNKNOWN`. A `RUNNING` run is never silently promoted — the
+sidecar only counts when the finalized dataset exists, its manifest validates, the run id
+matches the directory, and the recorded manifest hash still matches the manifest on disk. A
+stale, forged or mismatched sidecar is ignored, and a conflicting sidecar is preserved and
+reported, never overwritten. `annotate_metadata()` adds the effective status to an
+in-memory copy only, so `RunRepository`, Run History, Compare and Open Run render
+"Recovered Completed" / "تم الاستكمال بعد انقطاع الحفظ" while every file on disk stays as it
+was.
+
+Applied to `RUN_20260726_212722`: `RECOVERY_CREATED`; sidecar SHA-256
+`ade221de2eec1abf9cb90018e5f8da98292a5c6a7fee9842494252546162460f`; `run_metadata.json`
+SHA-256 `63193b7efee241a36554ea47fd988049d146367d7fa9983bb10e6aa29a89562e` **identical before
+and after**; dataset 891 files unchanged. `tests/test_run_status_recovery.py` — 22 tests,
+`tmp_path` only, same autouse guard on the real `reports/` directory.
+
 ## Tests
 
 `tests/test_dataset_finalization.py` — 28 tests, `tmp_path` only, with an autouse fixture
