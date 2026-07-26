@@ -56,6 +56,14 @@ secure-temp/
 *.sqlite
 *.sqlite3
 
+# Rubix launcher: local machine settings and volatile session state. The tracked
+# defaults file (config/rubix_launcher_settings.json) stays in Git; these two never do,
+# so launching or closing the launcher can no longer dirty the working tree.
+config/rubix_launcher_settings.local.json
+config/rubix_launcher_settings.local.json.lock
+config/rubix_launcher_settings.local.json.tmp*
+data/runtime/
+
 # Logs, backups, generated binaries and runtime capture
 logs/
 backups/
