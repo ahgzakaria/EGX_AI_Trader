@@ -651,7 +651,16 @@ class _FakeStreamlit(types.SimpleNamespace):
         return [_FakeColumn() for _ in range(count)]
 
     def selectbox(self, label, options, index=0, **kwargs):
-        return list(options)[index or 0]
+        values = list(options)
+        # The production picker starts empty. This recording fake explicitly
+        # chooses COMI only for end-to-end render tests that press Analyze.
+        if index is None:
+            return next(
+                (option for option in values
+                 if getattr(option, "ticker", None) == "COMI"),
+                None,
+            )
+        return values[index or 0]
 
     def text_input(self, label, value="", **kwargs):
         return value
