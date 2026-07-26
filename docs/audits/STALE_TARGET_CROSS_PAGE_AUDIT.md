@@ -1,10 +1,15 @@
 # Final Pre-Merge Audit: Stale Targets and Cross-Page Provenance
 
-Audit date: 2026-07-26 (Africa/Cairo)  
-Repository: `D:\EGX_AI_Trader`  
-Branch: `fix/stale-target-cross-page-consistency`  
-Base `main`: `c86d8abebfa2b98cb6d38946a0301a8a317c3877`  
-Implementation commit: recorded after the validated change is committed  
+Audit date: 2026-07-26 (Africa/Cairo)
+
+Repository: `D:\EGX_AI_Trader`
+
+Branch: `fix/stale-target-cross-page-consistency`
+
+Base `main`: `c86d8abebfa2b98cb6d38946a0301a8a317c3877`
+
+Implementation commit: `ea83565c9457ab1cf0e213c1ca857cbd0d61a3b5`
+
 Merge/push status: not merged; not pushed
 
 ## Verdict
@@ -319,7 +324,8 @@ AI Stock Analysis shows:
 
 Both pages display:
 
-> قد تنتج المحركات ولقطات الأدلة المختلفة مستويات صحيحة مختلفة.  
+> قد تنتج المحركات ولقطات الأدلة المختلفة مستويات صحيحة مختلفة.
+>
 > Different engines and evidence snapshots may produce different valid levels.
 
 The AI page continues to render typed Core fields; no scenario value is
