@@ -306,9 +306,10 @@ def scan_symbols(source, data_purpose="scanner"):
             if row.get("Signal") != "BUY" or row.get("Actionable", False)
         ])
 
-    except Exception as e:
-
-        print(f"Paper Trading Tracker Error -> {e}")
+    except Exception:
+        # Paper tracking is intentionally non-fatal to a completed market scan,
+        # but unexpected failures must retain their traceback for diagnosis.
+        logger.exception("Paper Trading Tracker failed")
 
     # Store a serializable result view without the price frames required by
     # the live details page. Existing UI code selects named columns, so RunID
