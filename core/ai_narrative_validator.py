@@ -14,7 +14,10 @@ partially displayed — and the caller falls back to the deterministic narrative
     analysis AND be permitted in the citing section, so a target cannot be cited from the
     technical read and a stop cannot headline the positive scenario.
   * **Format** — no markdown tables, no pipes, no code fences, no HTML.
-  * **Wording** — no unconditional buy/sell/enter/size command, no certainty claim.
+  * **Wording** — no unconditional buy/sell/enter/size command, no certainty claim. The
+    technical term for a scenario becoming invalid is normalized onto the application's
+    own word (الإبطال) in the three sections that discuss it; see
+    :func:`normalize_invalidation_wording`.
   * **Defence in depth** — the COMPOSED section (model prose + deterministic fact lines)
     is re-checked against the exact numeric allow-list, so even a rendering bug cannot put
     an untraceable number on screen.
@@ -116,6 +119,65 @@ _FORBIDDEN_PATTERNS = (
      r"|\bبالتاكيد\s+(?:سي\w+|سوف)\b|\bسي\w+\s+بالتاكيد\b"),
 )
 _FORBIDDEN = tuple((rule, re.compile(pattern)) for rule, pattern in _FORBIDDEN_PATTERNS)
+
+# --------------------------------------------------------------------------- #
+# Invalidation terminology
+# --------------------------------------------------------------------------- #
+#
+# The application labels one concept الإبطال everywhere — the "مستوى الإبطال" fact, the
+# "شروط الإبطال" scenario heading and the narrative's invalidation card. A model that
+# reaches for الإلغاء instead puts a second word for the same thing on the same page.
+#
+# The system prompt asks for الإبطال. This is the deterministic backstop for when it does
+# not comply. Rejecting the whole narrative over one word would drop a fully valid,
+# fact-bound answer to the deterministic fallback for a purely cosmetic reason, so the
+# wording is repaired instead — by a closed table of exact technical phrases, never by
+# free-text rewriting.
+#
+# Scope is deliberately narrow on two axes:
+#   * only the three sections that discuss scenario invalidation;
+#   * only إلغاء in a technical collocation (after a level/condition head word, or before
+#     السيناريو). The ordinary Arabic word survives untouched everywhere else — "إلغاء
+#     الجلسة" and "إلغاء الاشتراك" are correct Arabic and are not this concept.
+INVALIDATION_SECTIONS = frozenset({
+    "negative_scenario_ar",
+    "invalidation_conditions_ar",
+    "risk_notes_ar",
+})
+
+# Head words that make the following الإلغاء a scenario-invalidation term.
+_INVALIDATION_HEADS = "مستوى|مستويات|نقطة|نقاط|شروط|شرط|حد|حدود|سعر|منطقة"
+
+# The objects whose إلغاء is this same technical concept.
+_INVALIDATION_OBJECTS = "السيناريو|الصفقة|الفرصة"
+
+# ``ال`` followed by alef in any hamza form, so "الإلغاء" and "الالغاء" both match.
+_AL_ILGHA = "ال[إأا]لغاء"
+
+_INVALIDATION_REWRITES = (
+    # مستوى/شروط/نقطة/… الإلغاء → … الإبطال
+    (re.compile(rf"({_INVALIDATION_HEADS})(\s+){_AL_ILGHA}"), r"\1\2الإبطال"),
+    # إلغاء السيناريو → إبطال السيناريو  (and the definite form)
+    (re.compile(rf"{_AL_ILGHA}(\s+)({_INVALIDATION_OBJECTS})"), r"الإبطال\1\2"),
+    (re.compile(rf"(?<!ال)[إأا]لغاء(\s+)({_INVALIDATION_OBJECTS})"), r"إبطال\1\2"),
+    # يُلغى/يلغي السيناريو → يبطل السيناريو
+    (re.compile(rf"ي[ُ]?لغ[يى](\s+)({_INVALIDATION_OBJECTS})"), r"يبطل\1\2"),
+)
+
+
+def normalize_invalidation_wording(text: str) -> str:
+    """Rewrite technical invalidation phrases onto the application's own term, الإبطال.
+
+    Phrase-level and closed: each pattern requires the surrounding technical collocation,
+    so a standalone إلغاء in an unrelated sentence is never touched. Digits, fact lines,
+    section keys and every other word are left exactly as they were — the replacement is
+    also the same length, so nothing shifts.
+    """
+    result = str(text or "")
+    for pattern, replacement in _INVALIDATION_REWRITES:
+        result = pattern.sub(replacement, result)
+    return result
+
 
 # Markup that must never reach the card or the page.
 _FORMAT_PATTERNS = (
@@ -237,6 +299,10 @@ def validate_response(payload, result: AnalysisResult,
         if not isinstance(text, str) or not text.strip():
             return _reject(SCHEMA_INVALID, f"missing or empty prose: {section}")
         text = text.strip()
+        if section in INVALIDATION_SECTIONS:
+            # Wording only, before every other check, so what is validated is exactly what
+            # will be displayed. No number, fact ref or section key is involved.
+            text = normalize_invalidation_wording(text)
         if len(text) > MAX_SECTION_CHARS:
             return _reject(SCHEMA_INVALID, f"section too long: {section}")
 

@@ -27,7 +27,7 @@ import unicodedata
 
 from core.ai_stock_analysis_contract import AnalysisResult
 
-PROMPT_VERSION = "ai_narrative_prompt@3.0.0"
+PROMPT_VERSION = "ai_narrative_prompt@3.1.0"
 
 # Hard caps on any free-text value copied out of evidence into the prompt.
 _MAX_TEXT = 240
@@ -318,8 +318,16 @@ thousands separators, no currency amounts, no dates and no years.
 fact_id in that section's fact_refs list. The application then prints the exact value, \
 its label and its unit beneath your text. Write the sentence so it still reads correctly \
 with those lines printed below it.
-- Refer to values in words only: مستوى التفعيل, الهدف المحسوب, مستوى الإلغاء, نسبة \
+- Refer to values in words only: مستوى التفعيل, الهدف المحسوب, مستوى الإبطال, نسبة \
 العائد إلى المخاطرة.
+
+TERMINOLOGY — INVALIDATION
+- For the technical concept of a scenario becoming invalid, always write الإبطال. Use \
+مستوى الإبطال, شروط الإبطال, يبطل السيناريو, or يصبح السيناريو غير صالح.
+- Never write مستوى الإلغاء, شروط الإلغاء or نقطة الإلغاء for this concept — the rest of \
+the application labels it الإبطال, and two words for one concept confuse the reader.
+- This applies to the technical sense only. The ordinary word إلغاء remains correct \
+elsewhere (for example a cancelled session) and is not being banned.
 
 CITING FACTS
 - fact_refs may contain ONLY ids listed in citable_facts for that section. Each fact \
@@ -338,7 +346,7 @@ them. A value that is missing is unknown: say it is unavailable, never infer it.
 sectors, other companies, other symbols or indices.
 - Nothing is certain. Every scenario stays conditional: يحتاج إلى تأكيد · في انتظار \
 التأكيد · يتطلب تأكيدًا فنيًا · تتحسن شروط التأكيد · تكتمل شروط التفعيل · السيناريو يظل \
-مشروطًا · تتم المراقبة عند المستوى المحسوب · يبطل السيناريو عند مستوى الإلغاء المحسوب.
+مشروطًا · تتم المراقبة عند المستوى المحسوب · يبطل السيناريو عند مستوى الإبطال المحسوب.
 - NEVER call an outcome certain or guaranteed. These words are forbidden and discard the \
 whole answer: مؤكد / مؤكدة / مؤكدًا, مضمون / مضمونة, حتمي, حتمًا, بالتأكيد, لا بد أن, \
 لا شك — and any equivalent such as "سيرتفع بالتأكيد", "سيصل حتمًا", "الهدف مضمون".

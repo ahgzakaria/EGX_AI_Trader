@@ -28,6 +28,7 @@ from core.symbols import (
 from dashboard.ai_stock_analysis_components import (
     CARD_SIZE_LABELS,
     EM_DASH,
+    NARRATIVE_CSS,
     RECOMMENDATION_LABELS,
     SAFETY_BADGES,
     VOLUME_UNAVAILABLE_LABELS,
@@ -40,11 +41,13 @@ from dashboard.ai_stock_analysis_components import (
     include_live_in_session_range,
     indicator_groups,
     is_auction,
+    isolate_ltr,
     key_level_rows,
     market_phase_labels,
     momentum_reading,
-    local_ai_status,
-    narrative_source,
+    narrative_section_views,
+    narrative_source_block,
+    narrative_summary_cells,
     narrative_technical_rows,
     normalize_symbol,
     price_summary_rows,
@@ -136,16 +139,6 @@ def _page_style():
         .egx-scenario { background:var(--surface); border:1px solid var(--border);
             border-left:3px solid var(--blue); border-radius:12px; padding:.8rem .95rem; }
         .egx-scenario .t { font-weight:800; font-size:.98rem; direction:rtl; }
-        .egx-narr { background:var(--surface-2); border:1px solid var(--border);
-            border-right:3px solid var(--amber); border-radius:12px; padding:.85rem 1rem;
-            direction:rtl; }
-        .egx-narr h4 { margin:0 0 .4rem; font-size:1.02rem; }
-        .egx-narr p { margin:.25rem 0; color:var(--muted); font-size:.88rem; line-height:1.75; }
-        .egx-facts { display:flex; flex-wrap:wrap; gap:.3rem .55rem; margin:.1rem 0 .5rem;
-            padding-right:.2rem; }
-        .egx-facts .f { background:var(--surface); border:1px solid var(--border);
-            border-radius:8px; padding:.12rem .5rem; font-size:.8rem; font-weight:650;
-            color:var(--text); font-variant-numeric:tabular-nums; }
         .egx-conf { display:flex; align-items:center; gap:.6rem; margin:.28rem 0; }
         .egx-conf .lbl { min-width:150px; font-size:.8rem; direction:rtl; }
         .egx-conf .bar { flex:1; height:8px; border-radius:999px; background:var(--surface-2);
@@ -465,18 +458,6 @@ def _scenario_section(result):
         st.markdown("<div style='height:.5rem'></div>", unsafe_allow_html=True)
 
 
-SECTION_LABELS_AR = {
-    "executive_summary_ar": "الخلاصة التنفيذية",
-    "technical_read_ar": "القراءة الفنية",
-    "positive_scenario_ar": "السيناريو الإيجابي",
-    "negative_scenario_ar": "السيناريو السلبي",
-    "confirmation_conditions_ar": "شروط التأكيد",
-    "invalidation_conditions_ar": "شروط الإبطال",
-    "risk_notes_ar": "ملاحظات المخاطر",
-    "data_limitations_ar": "حدود البيانات",
-}
-
-
 def _regenerate_narrative_only(bundle):
     """Re-run Layer 2 ONLY. No indicator, provider or full analysis is re-executed."""
     from core.ai_stock_analysis_service import regenerate_narrative
@@ -484,66 +465,121 @@ def _regenerate_narrative_only(bundle):
     return regenerate_narrative(bundle, force_refresh=True)
 
 
-def _narrative_section(narrative, bundle=None, regenerator=None):
-    section_header("السرد التحليلي", "AI Narrative")
+# Tone → the theme colour used for the summary strip and the source state. Status is always
+# spelled out in words as well, so nothing is communicated by colour alone.
+_TONE_COLORS = {
+    "green": "var(--green)", "amber": "var(--amber)", "red": "var(--red)",
+    "blue": "var(--blue)", "gray": "var(--text)",
+}
 
-    if bundle is not None:
-        # Narrative-only regeneration. The evidence object is reused unchanged: no
-        # indicator is recomputed, no provider is contacted, no analysis is re-run.
-        if st.button("♻ إعادة توليد الشرح بالذكاء الاصطناعي",
-                     key="_ai_analysis_regen_narrative",
-                     help="يعيد توليد الشرح فقط دون إعادة حساب المؤشرات أو استدعاء أي مزود بيانات."):
-            with st.spinner("جارٍ إعادة توليد الشرح… · Regenerating narrative only…"):
-                try:
-                    refreshed = (regenerator or _regenerate_narrative_only)(bundle)
-                except Exception as error:
-                    # The provider layer already degrades safely; this guards the call
-                    # itself. Only the exception TYPE is shown — never a provider message.
-                    st.warning("تعذر توليد شرح جديد؛ يبقى الشرح الحتمي معروضاً. · "
-                               f"Narrative regeneration failed: {type(error).__name__}")
-                else:
-                    st.session_state[STATE_BUNDLE] = refreshed
-                    narrative = refreshed.narrative
 
-    source_ar, source_en, tone = narrative_source(narrative)
-    badges = [badge_html(f"{source_ar} · {source_en}", tone)]
-    # Local-model readiness. Absent unless a local provider is configured, and never
-    # allowed to raise — the deterministic analysis must not depend on this probe.
-    try:
-        status = local_ai_status()
-    except Exception:
-        status = None
-    if status is not None:
-        _, status_ar, status_en, status_tone = status
-        badges.append(badge_html(f"{status_ar} · {status_en}", status_tone))
-    st.markdown(" ".join(badges), unsafe_allow_html=True)
+def _narrative_source_html(narrative):
+    """The one source block: who wrote it, on what model, and whether it validated."""
+    block = narrative_source_block(narrative)
+    color = _TONE_COLORS.get(block["state_tone"], "var(--text)")
+    detail = (f'<span class="meta">{isolate_ltr(block["detail"])}</span>'
+              if block["detail"] else "")
+    return (
+        '<div class="egx-narrative"><div class="egx-narr-source">'
+        f'<span class="who">{isolate_ltr(block["title_ar"])}'
+        f'<span class="en">{isolate_ltr(block["title_en"])}</span></span>{detail}'
+        f'<span class="state" style="color:{color}">'
+        f'<span class="dot" style="background:{color}" aria-hidden="true"></span>'
+        f'{isolate_ltr(block["state_ar"])}'
+        f'<span class="en">{isolate_ltr(block["state_en"])}</span></span>'
+        '</div></div>')
+
+
+def _narrative_summary_html(result):
+    """Four separate cells — the crowded one-line headline is never rebuilt here."""
+    cells = "".join(
+        f'<div class="cell"><div class="k">{isolate_ltr(label_ar)}'
+        f'<span class="en">{isolate_ltr(label_en)}</span></div>'
+        f'<div class="v" style="color:{_TONE_COLORS.get(tone, "var(--text)")}">'
+        f'{isolate_ltr(value)}</div></div>'
+        for label_ar, label_en, value, tone in narrative_summary_cells(result))
+    return f'<div class="egx-narrative"><div class="egx-narr-strip">{cells}</div></div>'
+
+
+def _narrative_card_html(view):
+    """One section card: header, then AI prose, then deterministic facts — never mixed."""
+    english = (f'<span class="en">{isolate_ltr(view["title_en"])}</span>'
+               if view["title_en"] else "")
+    parts = [f'<h3>{isolate_ltr(view["title_ar"])}{english}</h3>',
+             f'<div class="accent" style="background:{view["accent_color"]}" '
+             'aria-hidden="true"></div>']
+    if view["prose"]:
+        parts.append(f'<p class="prose">{isolate_ltr(view["prose"])}</p>')
+    if view["rows"]:
+        rows = "".join(
+            f'<div class="row"><span class="lbl">{isolate_ltr(label)}</span>'
+            f'<span class="val">{isolate_ltr(value)}</span></div>'
+            for label, value in view["rows"])
+        parts.append(f'<div class="egx-narr-facts">{rows}</div>')
+    if view["chips"]:
+        chips = "".join(f'<span class="chip">{isolate_ltr(chip)}</span>'
+                        for chip in view["chips"])
+        parts.append(f'<div class="egx-narr-chips">{chips}</div>')
+    return f'<article class="egx-narr-card {view["width"]}">{"".join(parts)}</article>'
+
+
+def _narrative_section(narrative, result, bundle=None, regenerator=None):
+    """Render the narrative as one card per section — presentation only.
+
+    Nothing here generates, re-derives or re-formats a value: the model's prose and the
+    application's fact lines arrive already composed, and this only lays them out. No
+    provider, model or health probe is reached, so a plain rerender costs nothing.
+    """
+    st.markdown(NARRATIVE_CSS, unsafe_allow_html=True)
+    title_column, action_column = st.columns([2.4, 1.6])
+    with title_column:
+        st.markdown(
+            '<div class="egx-narrative"><h2 class="egx-narr-title">السرد التحليلي'
+            '<span class="en">AI Narrative</span></h2></div>',
+            unsafe_allow_html=True)
+    with action_column:
+        if bundle is not None:
+            # Narrative-only regeneration. The evidence object is reused unchanged: no
+            # indicator is recomputed, no provider is contacted, no analysis is re-run.
+            st.markdown('<div style="height:.85rem"></div>', unsafe_allow_html=True)
+            if st.button(
+                    "♻ إعادة توليد الشرح بالذكاء الاصطناعي",
+                    key="_ai_analysis_regen_narrative", use_container_width=True,
+                    help="يعيد توليد الشرح فقط دون إعادة حساب المؤشرات أو استدعاء أي "
+                         "مزود بيانات."):
+                with st.spinner("جارٍ إعادة توليد الشرح… · Regenerating narrative only…"):
+                    try:
+                        refreshed = (regenerator or _regenerate_narrative_only)(bundle)
+                    except Exception as error:
+                        # The provider layer already degrades safely; this guards the call
+                        # itself. Only the exception TYPE is shown — never a provider
+                        # message.
+                        st.warning("تعذر توليد شرح جديد؛ يبقى الشرح الحتمي معروضاً. · "
+                                   f"Narrative regeneration failed: {type(error).__name__}")
+                    else:
+                        st.session_state[STATE_BUNDLE] = refreshed
+                        narrative = refreshed.narrative
+
+    st.markdown(_narrative_source_html(narrative), unsafe_allow_html=True)
     if narrative is None:
         empty_state("السرد غير متاح", "No narrative was produced for this analysis.")
         return
-    body = [f'<h4>{html.escape(str(narrative.headline))}</h4>']
-    sections = tuple(getattr(narrative, "sections", ()) or ())
-    if sections:
-        # Validated external narrative. Each section is model prose followed by fact lines
-        # the application rendered: the numbers, labels, units and order are deterministic.
-        for name, text in sections:
-            label = SECTION_LABELS_AR.get(name, name)
-            prose, *fact_lines = str(text).split("\n")
-            body.append(f'<p><b>{html.escape(label)}:</b> {html.escape(prose)}</p>')
-            if fact_lines:
-                facts = "".join(f'<span class="f">{html.escape(line)}</span>'
-                                for line in fact_lines if line.strip())
-                body.append(f'<div class="egx-facts">{facts}</div>')
-    else:
-        body.append(f'<p>{html.escape(str(narrative.summary))}</p>')
-        body.append(f'<p>{html.escape(str(narrative.rationale))}</p>')
-        body.append(f'<p><b>المخاطر · Risks:</b> {html.escape(str(narrative.risks))}</p>')
-    body.append(f'<p style="opacity:.7">{html.escape(str(narrative.disclaimer))}</p>')
-    st.markdown(f'<div class="egx-narr">{"".join(body)}</div>', unsafe_allow_html=True)
-    st.caption(f"derived from evidence {narrative.derived_from_evidence_version} · numbers "
-               "are renderings of evidence fields, never new facts.")
+    st.markdown(_narrative_summary_html(result), unsafe_allow_html=True)
 
-    with st.expander("تفاصيل توليد الشرح · Narrative technical details"):
+    cards = "".join(_narrative_card_html(view)
+                    for view in narrative_section_views(narrative))
+    st.markdown(f'<div class="egx-narrative"><div class="egx-narr-grid">{cards}</div></div>',
+                unsafe_allow_html=True)
+    st.markdown(f'<div class="egx-narrative"><p class="egx-narr-note">'
+                f'{isolate_ltr(str(narrative.disclaimer))}</p></div>',
+                unsafe_allow_html=True)
+
+    # Everything below is audit material, not reading material: it stays collapsed.
+    with st.expander("تفاصيل تقنية للسرد · Narrative technical details", expanded=False):
+        st.markdown('<span class="egx-narr-tech"></span>', unsafe_allow_html=True)
         _kv_table(narrative_technical_rows(narrative))
+        st.caption(f"derived from evidence {narrative.derived_from_evidence_version} · "
+                   "numbers are renderings of evidence fields, never new facts.")
         st.caption("لا تُعرض المفاتيح ولا نص التعليمات ولا رسائل المزود الخام. · API keys, "
                    "prompt text and raw provider messages are never shown.")
 
@@ -714,7 +750,7 @@ def show_ai_stock_analysis(runner=None):
     _technical_section(result)
     _levels_section(result)
     _scenario_section(result)
-    _narrative_section(narrative, bundle=bundle)
+    _narrative_section(narrative, result, bundle=bundle)
     _confidence_section(result)
     _warnings_section(result)
     _card_section(result, narrative)

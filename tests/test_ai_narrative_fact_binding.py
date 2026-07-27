@@ -633,3 +633,168 @@ def test_disabled_mode_is_untouched_by_fact_binding(result):
     assert narrative.sections == ()
     assert narrative.provenance.fallback_reason == "ai_disabled"
     assert narrative.headline == replace(narrative).headline
+
+
+# --------------------------------------------------------------------------- #
+# Invalidation terminology — one Arabic word for one concept
+# --------------------------------------------------------------------------- #
+#
+# The UI labels invalidation الإبطال everywhere (the "مستوى الإبطال" fact, the scenario
+# section's "شروط الإبطال" heading, the narrative's invalidation card). These tests pin the
+# prompt rule that asks the model for that word and the deterministic backstop that repairs
+# it when the model reaches for الإلغاء instead. Wording only: no number, fact reference,
+# section key or evidence hash may move.
+
+_ILGHA_LEVEL = "مستوى الإلغاء"
+_ILGHA_CONDITIONS = "شروط الإلغاء"
+_IBTAL_LEVEL = "مستوى الإبطال"
+_IBTAL_CONDITIONS = "شروط الإبطال"
+
+
+def test_the_prompt_asks_for_the_applications_invalidation_term():
+    from core.ai_narrative_prompt import SYSTEM_PROMPT
+
+    assert _IBTAL_LEVEL in SYSTEM_PROMPT
+    assert "يبطل السيناريو" in SYSTEM_PROMPT
+    assert "يصبح السيناريو غير صالح" in SYSTEM_PROMPT
+    # the prompt names the discouraged forms so the model is told what NOT to write…
+    assert _ILGHA_LEVEL in SYSTEM_PROMPT and _ILGHA_CONDITIONS in SYSTEM_PROMPT
+    # …but never as an example of how to refer to a value
+    guidance = SYSTEM_PROMPT.split("TERMINOLOGY — INVALIDATION")[0]
+    assert "الإلغاء" not in guidance
+
+
+def test_the_prompt_version_moved_with_the_wording_rule():
+    from core.ai_narrative_prompt import PROMPT_VERSION
+
+    # The cache key carries the prompt version, so narratives written under the old
+    # wording rule cannot be served from cache after this change.
+    assert PROMPT_VERSION == "ai_narrative_prompt@3.1.0"
+
+
+def test_invalidation_level_wording_is_normalized_in_the_invalidation_section(result):
+    answer = _answer(result, invalidation_conditions_ar=_section(
+        "invalidation_conditions_ar",
+        f"يبطل السيناريو عند كسر {_ILGHA_LEVEL} المحسوب.", ["scenario.primary.stop"]))
+    report = _validate(result, answer)
+    assert report.ok and report.status == validator.VALIDATED
+    prose = report.sections["invalidation_conditions_ar"].split("\n")[0]
+    assert _IBTAL_LEVEL in prose
+    assert "الإلغاء" not in prose
+
+
+def test_invalidation_conditions_wording_is_normalized_in_the_negative_scenario(result):
+    answer = _answer(result, negative_scenario_ar=_section(
+        "negative_scenario_ar",
+        f"تُراجع {_ILGHA_CONDITIONS} إذا كسر السعر الدعم الأول.",
+        ["scenario.primary.stop"]))
+    report = _validate(result, answer)
+    assert report.ok
+    prose = report.sections["negative_scenario_ar"].split("\n")[0]
+    assert _IBTAL_CONDITIONS in prose
+    assert "الإلغاء" not in prose
+
+
+def test_risk_notes_referencing_scenario_invalidation_are_normalized(result):
+    answer = _answer(result, risk_notes_ar=_section(
+        "risk_notes_ar", f"قد يقترب السعر من {_ILGHA_LEVEL} فيزداد الخطر.",
+        ["indicator.atr_14"]))
+    report = _validate(result, answer)
+    assert report.ok
+    assert _IBTAL_LEVEL in report.sections["risk_notes_ar"]
+
+
+@pytest.mark.parametrize("phrase", [
+    "مستوى الإبطال",
+    "شروط الإبطال",
+    "يبطل السيناريو",
+    "يصبح السيناريو غير صالح",
+])
+def test_the_preferred_invalidation_phrases_pass_through_untouched(result, phrase):
+    text = f"{phrase} عند كسر الدعم الأول."
+    assert validator.normalize_invalidation_wording(text) == text
+
+    answer = _answer(result, invalidation_conditions_ar=_section(
+        "invalidation_conditions_ar", text, ["scenario.primary.stop"]))
+    report = _validate(result, answer)
+    assert report.ok
+    assert report.sections["invalidation_conditions_ar"].split("\n")[0] == text
+
+
+@pytest.mark.parametrize("text", [
+    "تم إلغاء الجلسة بقرار من البورصة.",
+    "قد يؤدي إلغاء الاشتراك إلى فقدان البيانات.",
+    "الإلغاء المفاجئ للتداول أمر نادر.",
+])
+def test_an_unrelated_use_of_the_word_is_never_rewritten(result, text):
+    """إلغاء is ordinary Arabic. Only the technical collocation is normalized."""
+    assert validator.normalize_invalidation_wording(text) == text
+
+    answer = _answer(result, risk_notes_ar=_section(
+        "risk_notes_ar", text, ["indicator.atr_14"]))
+    report = _validate(result, answer)
+    assert report.ok
+    assert report.sections["risk_notes_ar"].split("\n")[0] == text
+
+
+def test_normalization_is_scoped_to_the_three_invalidation_sections(result):
+    """A section that does not discuss scenario invalidation is left alone."""
+    assert validator.INVALIDATION_SECTIONS == {
+        "negative_scenario_ar", "invalidation_conditions_ar", "risk_notes_ar"}
+
+    text = f"يرتبط السيناريو الإيجابي بتجاوز {_ILGHA_LEVEL} المحسوب."
+    answer = _answer(result, positive_scenario_ar=_section(
+        "positive_scenario_ar", text, ["scenario.primary.trigger"]))
+    report = _validate(result, answer)
+    assert report.ok
+    assert report.sections["positive_scenario_ar"].split("\n")[0] == text
+
+
+def test_normalization_moves_no_number_fact_line_or_evidence_hash(result, registry):
+    """The repair is wording-only: facts, order, values and provenance are identical."""
+    stale = _answer(result, invalidation_conditions_ar=_section(
+        "invalidation_conditions_ar", f"يبطل السيناريو عند {_ILGHA_LEVEL}.",
+        ["scenario.primary.stop"]))
+    fixed = _answer(result, invalidation_conditions_ar=_section(
+        "invalidation_conditions_ar", f"يبطل السيناريو عند {_IBTAL_LEVEL}.",
+        ["scenario.primary.stop"]))
+
+    stale_report, fixed_report = _validate(result, stale), _validate(result, fixed)
+    assert stale_report.ok and fixed_report.ok
+    assert stale_report.sections == fixed_report.sections
+    assert stale_report.fact_refs == fixed_report.fact_refs
+
+    # every fact line is byte-identical to what the registry renders
+    rendered = {f"{registry.get(f).label_ar}: {registry.get(f).formatted}"
+                for f in registry.fact_ids}
+    for text in stale_report.sections.values():
+        for line in text.split("\n")[1:]:
+            assert line in rendered, line
+
+    narrative, _ = _run(result, stale)
+    assert narrative.provenance.evidence_hash == (result.evidence_hash or "")
+    assert narrative.derived_from_evidence_version == result.evidence_version
+
+
+def test_the_deterministic_fallback_is_untouched_by_the_wording_rule(result):
+    """The evidence-only writer already says يبطل; normalization never runs on it."""
+    from core.ai_analysis_narrative import build_fallback_narrative
+
+    fallback = build_fallback_narrative(result)
+    narrative = build_narrative(result, config=NarrativeConfig(enabled=False))
+    assert narrative.sections == ()
+    assert narrative.summary == fallback.summary
+    assert narrative.rationale == fallback.rationale
+    assert narrative.risks == fallback.risks
+    assert narrative.headline == fallback.headline
+    assert "الإلغاء" not in f"{fallback.summary}{fallback.rationale}{fallback.risks}"
+
+
+def test_a_normalized_narrative_still_passes_every_other_gate(result):
+    """Wording repair happens before the numeric, format and certainty checks."""
+    narrative, _ = _run(result, _answer(result))
+    assert narrative.provenance.validation_status == validator.VALIDATED
+    joined = "\n".join(text for _, text in narrative.sections)
+    assert "الإلغاء" not in joined
+    ok, offending = validate_numbers(joined, build_number_allowlist(result))
+    assert ok, offending
