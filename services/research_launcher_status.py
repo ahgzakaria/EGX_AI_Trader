@@ -80,19 +80,34 @@ def current_research_status(*, online: bool = False) -> dict:
     if not configured:
         status["cache_status"] = "No EODHD token"
         return status
-    # Cache-only freshness probe against a known EODHD-supported symbol (no network
-    # required if cached). Failure never falls back to Yahoo — it reports UNAVAILABLE.
+    # Direct cache inspection against a known EODHD-supported symbol. This path is
+    # *strictly* offline: stale/missing cache is reported and never triggers the
+    # EODHD retry policy. Refreshing market data belongs to explicit research work,
+    # not launcher construction or status refresh.
     try:
         import core.research_router as router
+        from providers.eodhd_client import EODHDClient
+
         expected = router._expected_completed_session()
         status["expected_completed_session"] = expected.isoformat() if expected else None
-        frame = router.eodhd_history("COMI", min_bars=1)
-        latest = frame.index[-1].date()
+        rows, cache = EODHDClient(max_live_calls=0).peek_json(
+            "eod/COMI.EGX", {"period": "d", "order": "a"}
+        )
+        usable = [
+            row for row in (rows or [])
+            if isinstance(row, dict) and row.get("date") and row.get("close") is not None
+        ]
+        if not usable:
+            raise LookupError("EODHD launcher cache is unavailable")
+        from datetime import date
+
+        latest = date.fromisoformat(str(usable[-1]["date"])[:10])
         fresh = router._freshness(latest, expected)
         status["latest_completed_session"] = latest.isoformat()
         status["freshness"] = fresh.get("status")
         current = expected is not None and latest >= expected
         status["cache_status"] = "Current" if current else "Behind expected session"
+        status["cache_age_seconds"] = cache.get("age_seconds")
         status["data_mode"] = ("LIVE" if auth["mode"] == "LIVE" and current
                                else "CACHE_MODE" if current else "STALE")
     except Exception as error:
