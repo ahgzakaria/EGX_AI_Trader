@@ -109,6 +109,29 @@ class EODHDClient:
                 return None
         return payload.get("data")
 
+    def peek_json(self, path, params=None):
+        """Return cached data and safe cache metadata without any network call.
+
+        Launcher health/status code uses this method so a stale or absent cache
+        can be reported immediately instead of triggering the client's retry
+        policy on the desktop UI path.
+        """
+
+        params = dict(params or {})
+        params.setdefault("fmt", "json")
+        cache_path = self._cache_path(path, params)
+        if not cache_path.is_file():
+            return None, {"available": False, "age_seconds": None}
+        try:
+            payload = json.loads(cache_path.read_text(encoding="utf-8"))
+            fetched = float(payload.get("_fetched_epoch", 0))
+        except (OSError, ValueError, json.JSONDecodeError):
+            return None, {"available": False, "age_seconds": None}
+        return payload.get("data"), {
+            "available": payload.get("data") is not None,
+            "age_seconds": max(0.0, time.time() - fetched) if fetched else None,
+        }
+
     def _write_cache(self, cache_path, data):
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         tmp = cache_path.with_suffix(cache_path.suffix + ".tmp")

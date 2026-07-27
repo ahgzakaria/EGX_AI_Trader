@@ -7,6 +7,10 @@ path to the independent collector, and never logs or persists its contents.
 
 from __future__ import annotations
 
+import time
+
+LAUNCHER_IMPORT_STARTED = time.monotonic()
+
 import atexit
 import argparse
 from datetime import datetime, timezone
@@ -20,7 +24,6 @@ import re
 import subprocess
 import sys
 import threading
-import time
 import traceback
 import webbrowser
 
@@ -60,6 +63,15 @@ from services.rubix_launcher_config import (  # noqa: E402 - project root above
     resolve_effective_settings,
     save_local_overrides,
     save_window_geometry,
+)
+from services.launcher_startup import (  # noqa: E402 - project root above
+    AsyncJobRunner,
+    HealthCache,
+    PhaseTimeline,
+    StartupState,
+    WorkerEvent,
+    lightweight_rubix_health,
+    phase_record_json,
 )
 from scripts.launcher_process_utils import (  # noqa: E402 - project root above
     InstanceAlreadyRunning,
@@ -190,26 +202,34 @@ def stop_process(process, timeout=5):
     pid = getattr(process, "pid", None)
     log_event("stop", f"Stopping process tree PID {pid}.")
     if os.name == "nt" and pid:
-        subprocess.run(
-            ["taskkill", "/PID", str(pid), "/T"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=timeout,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except subprocess.TimeoutExpired:
+            log_event("stop_timeout", f"Graceful taskkill timed out for PID {pid}.")
     else:
         process.terminate()
     try:
         process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         if os.name == "nt" and pid:
-            subprocess.run(
-                ["taskkill", "/PID", str(pid), "/T", "/F"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
+            try:
+                subprocess.run(
+                    ["taskkill", "/PID", str(pid), "/T", "/F"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                    timeout=timeout,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+            except subprocess.TimeoutExpired:
+                log_event("stop_timeout", f"Forced taskkill timed out for PID {pid}.")
         else:
             process.kill()
         process.wait(timeout=timeout)
@@ -339,13 +359,19 @@ class ProductionSupervisor:
         ).start()
         return "started"
 
-    def wait_until_streamlit_ready(self, port=8501, timeout=45):
+    def wait_until_streamlit_ready(
+        self, port=8501, timeout=45, *, cancel_event=None, progress=None
+    ):
         if self.streamlit is None:
             if streamlit_is_ready(port):
                 return True, f"Existing dashboard is ready on port {int(port)}."
             return False, "Streamlit process was not started."
         ready, detail = wait_for_streamlit(
-            int(port), self.streamlit, timeout=float(timeout)
+            int(port),
+            self.streamlit,
+            timeout=float(timeout),
+            cancel_event=cancel_event,
+            progress=progress,
         )
         log_event(
             "streamlit_ready" if ready else "streamlit_failed",
@@ -367,14 +393,26 @@ class ProductionSupervisor:
             expected_symbols=load_symbols(PROJECT_ROOT / "data" / "symbols.csv"),
         ).health()
 
-    def wait_until_healthy(self, timeout=90):
+    def wait_until_healthy(
+        self,
+        timeout=90,
+        *,
+        cancel_event=None,
+        progress=None,
+        poll_interval=0.75,
+        quote_after_rowid=None,
+    ):
         deadline = time.monotonic() + float(timeout)
         latest = {}
         while time.monotonic() < deadline:
+            if cancel_event is not None and cancel_event.is_set():
+                return False, {"reason": "Rubix readiness wait was cancelled", "code": "CANCELLED"}
             if self.collector is not None and self.collector.poll() is not None:
                 return False, latest or {"reason": "collector exited"}
             try:
-                latest = self.health()
+                latest = lightweight_rubix_health(
+                    self.database, quote_after_rowid=quote_after_rowid
+                )
             except Exception as error:
                 latest = {
                     "reason": f"health check failed: {type(error).__name__}: {error}"
@@ -388,8 +426,20 @@ class ProductionSupervisor:
             )
             if healthy:
                 return True, latest
-            time.sleep(2)
-        return False, latest or {"reason": "collector health timeout"}
+            if progress is not None:
+                progress(float(timeout) - max(0.0, deadline - time.monotonic()), latest)
+            if cancel_event is not None:
+                cancel_event.wait(float(poll_interval))
+            else:
+                time.sleep(float(poll_interval))
+        result = dict(latest or {})
+        result.update(
+            {
+                "reason": result.get("reason") or "collector health timeout",
+                "code": "RUBIX_READINESS_TIMEOUT",
+            }
+        )
+        return False, result
 
     def stop(self):
         if self._owns_streamlit:
@@ -592,7 +642,9 @@ class LauncherUI:
         healthy, health = self.supervisor.wait_until_healthy()
         self.root.after(0, lambda: self._apply_start_result(healthy, health))
 
-    def _apply_start_result(self, healthy, health):
+    def _apply_start_result(
+        self, healthy, health, report=None, eodhd_configured=True
+    ):
         """Apply worker results on Tk's UI thread."""
 
         from tkinter import messagebox
@@ -699,6 +751,7 @@ class RubixAuthenticationAssistantUI(LauncherUI):
             ("Latest Session", "research_latest_session"),
             ("Freshness", "research_freshness"),
             ("Cache", "research_cache"),
+            ("Status Age", "research_age"),
         )),
         ("Live Intraday", (
             ("Provider", "live_provider"),
@@ -709,22 +762,27 @@ class RubixAuthenticationAssistantUI(LauncherUI):
             ("Latest Quote", "latest_quote"),
             ("Quote Freshness", "quote_freshness"),
             ("Value Progression", "value_progression"),
+            ("Status Age", "rubix_age"),
         )),
         ("Application", (
             ("Streamlit", "app_status"),
             ("Dashboard URL", "dashboard_url"),
             ("Process PID", "app_pid"),
             ("Health", "app_health"),
+            ("Local AI", "local_ai"),
+            ("Status Age", "app_age"),
         )),
         ("Market", (
             ("Session", "market_session"),
             ("Phase", "market_phase"),
             ("Next Session", "market_next"),
+            ("Status Age", "market_age"),
         )),
         ("Safety", (
             ("Paper Mode", "paper_mode"),
             ("Production", "production"),
             ("Broker Execution", "broker"),
+            ("Status Age", "safety_age"),
         )),
     )
     # Flattened (label, key) list used to allocate the status variables.
@@ -739,17 +797,43 @@ class RubixAuthenticationAssistantUI(LauncherUI):
 
         self.tk = tk
         self.ttk = ttk
+        self._main_thread_ident = threading.get_ident()
+        self._launcher_started = LAUNCHER_IMPORT_STARTED
+        self._mainloop_started = False
+        self._destroyed = False
+        self._closing = False
+        self._after_stop_action = None
+        self._stage_started = time.monotonic()
+        self._status_checked_at = {}
+        self._last_health_check = 0.0
+        self._last_health_result = 0.0
+        self._full_ui_ready = False
+        self._ui_events = queue.Queue()
+        self.jobs = AsyncJobRunner(self._ui_events)
+        self.health_cache = HealthCache()
+        self.timeline = PhaseTimeline(
+            lambda record: log_event("startup_timing", phase_record_json(record))
+        )
         # Three layers: tracked defaults → ignored local settings → environment. Runtime
         # state (geometry, launch history) lives in its own ignored file and is never
         # merged into settings, so nothing the launcher does can dirty a tracked file.
-        migrate_legacy_settings()
-        self.settings = resolve_effective_settings()
-        self.runtime, runtime_warning = load_runtime_state()
+        self.settings = self.timeline.measure(
+            "config_loading",
+            resolve_effective_settings,
+            before_mainloop=True,
+            paths=(str(LAUNCHER_CONFIG.resolve()),),
+        )
+        self.runtime, runtime_warning = self.timeline.measure(
+            "runtime_state_loading",
+            load_runtime_state,
+            before_mainloop=True,
+        )
         self._runtime_warning = runtime_warning
         enable_windows_dpi_awareness()
-        self.root = tk.Tk()
+        self.root = self.timeline.measure(
+            "tk_construction", tk.Tk, before_mainloop=True
+        )
         self.root.title("EGX AI Trader — Rubix Production Launcher")
-        self.root.update_idletasks()
         self._last_good_geometry = safe_window_geometry(
             self.runtime.get("window_geometry", DEFAULT_WINDOW_GEOMETRY),
             self.root.winfo_screenwidth(),
@@ -770,18 +854,54 @@ class RubixAuthenticationAssistantUI(LauncherUI):
         self.port_var = tk.StringVar(value=str(self.settings.get("streamlit_port", 8501)))
         self.theme_var = tk.StringVar(value=theme)
         self.delete_auth_var = tk.BooleanVar(value=False)
-        self.status_var = tk.StringVar(value="Ready — complete the assistant, then run Self Check.")
-        self.status_values = {key: tk.StringVar(value="Not started") for _label, key in self.STATUS_FIELDS}
-        self._ui_events = queue.Queue()
+        self.status_var = tk.StringVar(value="UI ready — background status checks will begin after the first frame.")
+        self.stage_var = tk.StringVar(value=StartupState.UI_READY.value)
+        self.elapsed_var = tk.StringVar(value="Elapsed 0.0s")
+        self.status_values = {
+            key: tk.StringVar(value="Not checked yet")
+            for _label, key in self.STATUS_FIELDS
+        }
         self._launch_in_progress = False
         self._pending_port = 8501
-        self._last_health_check = 0.0
-        self._build_assistant_window()
+        self._build_initial_shell()
         self.root.bind("<Configure>", self._remember_window_geometry, add="+")
-        self._apply_auth_inspection(inspect_auth_frame(""))
         self.root.protocol("WM_DELETE_WINDOW", self.close)
-        self.root.after(500, self._refresh)
-        atexit.register(self.supervisor.stop)
+        self.root.after(50, self._refresh)
+        self.root.after_idle(self._after_first_frame)
+        atexit.register(self._atexit_stop)
+
+    def _build_initial_shell(self):
+        """Construct only enough Tk for Windows to paint the first frame."""
+
+        self._initial_shell = self.ttk.Frame(self.root, padding=24)
+        self._initial_shell.pack(fill="both", expand=True)
+        self.ttk.Label(
+            self._initial_shell,
+            text="EGX AI Trader — Rubix Production",
+            font=("Segoe UI", 18, "bold"),
+        ).pack(anchor="w")
+        self.ttk.Label(
+            self._initial_shell,
+            textvariable=self.stage_var,
+            font=("Segoe UI", 11, "bold"),
+        ).pack(anchor="w", pady=(18, 4))
+        self.ttk.Label(
+            self._initial_shell,
+            textvariable=self.status_var,
+            wraplength=900,
+        ).pack(anchor="w")
+        self.ttk.Label(
+            self._initial_shell,
+            text="The launcher remains usable while background checks complete.",
+        ).pack(anchor="w", pady=(8, 0))
+
+    def _build_deferred_ui(self):
+        if self._destroyed or self._full_ui_ready:
+            return
+        self._initial_shell.destroy()
+        self.timeline.measure("deferred_ui_construction", self._build_assistant_window)
+        self._apply_auth_inspection(inspect_auth_frame(""))
+        self._full_ui_ready = True
 
     def _build_assistant_window(self):
         outer = self.ttk.Frame(self.root, padding=14)
@@ -865,8 +985,22 @@ class RubixAuthenticationAssistantUI(LauncherUI):
             buttons, text="Start Research Only", command=self.start_research_only)
         self.research_button.pack(side="left", padx=8)
         self.ttk.Button(buttons, text="Stop", command=self.stop).pack(side="left")
-        self.ttk.Button(buttons, text="Refresh Status", command=self.refresh_status).pack(side="left", padx=8)
+        self.ttk.Button(
+            buttons,
+            text="Refresh Status",
+            command=lambda: self.refresh_status(force=True),
+        ).pack(side="left", padx=8)
+        self.ttk.Button(
+            buttons,
+            text="Run Deep Diagnostics",
+            command=self.run_deep_diagnostics,
+        ).pack(side="left")
         self.ttk.Button(buttons, text="Open Dashboard", command=self._open_dashboard).pack(side="left")
+        stage = self.ttk.Frame(frame)
+        stage.pack(fill="x", pady=(10, 0))
+        self.ttk.Label(stage, text="Stage:", font=("Segoe UI", 10, "bold")).pack(side="left")
+        self.ttk.Label(stage, textvariable=self.stage_var).pack(side="left", padx=(5, 16))
+        self.ttk.Label(stage, textvariable=self.elapsed_var).pack(side="left")
         self.ttk.Label(frame, textvariable=self.status_var, font=("Segoe UI", 11, "bold"), wraplength=1000).pack(anchor="w", pady=10)
 
         panel = self.ttk.Frame(frame)
@@ -898,7 +1032,8 @@ class RubixAuthenticationAssistantUI(LauncherUI):
         self.status_values["research_provider"].set("EODHD")
         self.status_values["live_provider"].set("Rubix")
         self.status_values["dashboard_url"].set(f"http://localhost:{self._safe_port()}")
-        self.refresh_status()
+        self.status_values["production"].set("Disabled")
+        self.status_values["broker"].set("Disabled")
 
     def _safe_port(self):
         try:
@@ -922,7 +1057,13 @@ class RubixAuthenticationAssistantUI(LauncherUI):
         if selected:
             self.auth_var.set(selected)
             self.settings["last_auth_folder"] = str(Path(selected).parent)
-            self._apply_auth_inspection(inspect_auth_frame(selected))
+            self.auth_status_var.set("CHECKING")
+            self.auth_message_var.set(
+                "Checking the selected file in the background…"
+            )
+            self.jobs.submit(
+                "auth_inspection", lambda: inspect_auth_frame(selected)
+            )
             self._save_preferences()
 
     def _select_adapter(self):
@@ -954,69 +1095,269 @@ class RubixAuthenticationAssistantUI(LauncherUI):
         self.auth_badge.configure(background=background, foreground=foreground)
         self.status_values["rubix_auth"].set(inspection.status)
 
-    def run_self_check(self):
-        inspection = inspect_auth_frame(self.auth_var.get())
-        self._apply_auth_inspection(inspection)
-        results = run_preflight(
-            PROJECT_ROOT, self.adapter_var.get(), self.db_var.get(),
-            self.auth_var.get(), self.port_var.get(),
+    def _startup_inputs(self):
+        """Capture Tk values once; workers must never read Tk variables."""
+
+        return {
+            "adapter": self.adapter_var.get(),
+            "database": self.db_var.get(),
+            "auth": self.auth_var.get(),
+            "port_text": self.port_var.get(),
+            "port": self._port(),
+        }
+
+    def _set_state(self, state, message=None):
+        state = state if isinstance(state, StartupState) else StartupState(str(state))
+        self.stage_var.set(state.value)
+        self._stage_started = time.monotonic()
+        if message:
+            self.status_var.set(str(message))
+        log_event("startup_state", state.value)
+
+    def _publish_state(self, state, message):
+        self.jobs.publish(
+            "state",
+            "startup",
+            {"state": StartupState(state), "message": str(message)},
         )
+
+    def _apply_preflight(self, results):
         for row in self.preflight.get_children():
             self.preflight.delete(row)
         for item in results:
-            self.preflight.insert("", "end", values=("PASS" if item.ok else "FAIL", item.name, item.message))
+            self.preflight.insert(
+                "",
+                "end",
+                values=("PASS" if item.ok else "FAIL", item.name, item.message),
+            )
         failed = [item.name for item in results if not item.ok]
         self.status_var.set(
             "Self Check needs attention: " + ", ".join(failed)
-            if failed else "Self Check passed. You can start Rubix safely."
+            if failed
+            else "Self Check passed. You can start Rubix safely."
         )
-        self._save_preferences()
-        return results
+        return failed
+
+    def run_self_check(self):
+        """Schedule the lightweight self-check; duplicate clicks are coalesced."""
+
+        try:
+            inputs = self._startup_inputs()
+        except ValueError as error:
+            self.status_var.set(str(error))
+            return False
+        self._set_state(
+            StartupState.PREFLIGHT_RUNNING,
+            "Self Check running in the background…",
+        )
+        started = self.jobs.submit(
+            "self_check", lambda: self._self_check_worker(inputs)
+        )
+        if not started:
+            self.status_var.set("Self Check is already running.")
+        return started
+
+    def _self_check_worker(self, inputs):
+        return self.timeline.measure(
+            "self_check",
+            lambda: run_preflight(
+                PROJECT_ROOT,
+                inputs["adapter"],
+                inputs["database"],
+                inputs["auth"],
+                inputs["port_text"],
+            ),
+            filesystem_traversal=False,
+            paths=(
+                str(PROJECT_ROOT),
+                str(inputs["adapter"]),
+                str(inputs["database"]),
+            ),
+        )
 
     def start(self):
-        from tkinter import messagebox
+        """Begin the whole Rubix/Streamlit sequence in one cancellable worker."""
 
-        results = self.run_self_check()
-        if any(not item.ok for item in results):
-            messagebox.showwarning("Self Check incomplete", "Fix the failed items shown in Self Check before starting Rubix.")
+        if self._launch_in_progress or self.jobs.is_active("rubix_start"):
+            self.status_var.set("Rubix startup is already running.")
             return
-        self._pending_port = self._port()
-        # Startup flow: load env + verify EODHD token + central calendar before Rubix.
-        from core.environment import load_project_environment
-        load_project_environment()
-        self.refresh_status()
-        if not self._eodhd_configured():
-            self.log.insert(
-                "end",
-                "Note: EODHD_API_TOKEN is not configured — Rubix live intraday can still "
-                "start, but current research (EODHD) will be unavailable. Configure .env.\n",
-            )
-            self.log.see("end")
+        try:
+            inputs = self._startup_inputs()
+        except ValueError as error:
+            self.status_var.set(str(error))
+            return
+        self._pending_port = inputs["port"]
+        self.jobs.reset_cancel()
         self._launch_in_progress = True
         self.start_button.configure(state="disabled")
         self.research_button.configure(state="disabled")
-        self.status_var.set("Starting Rubix supervisor — waiting for collector health...")
+        self._set_state(
+            StartupState.PREFLIGHT_RUNNING,
+            "Checking startup requirements in the background…",
+        )
         log_event("rubix_start", f"Rubix startup requested on dashboard port {self._pending_port}.")
-        super().start()
-        if self.supervisor.collector is None and self.supervisor.streamlit is None:
+        if not self.jobs.submit(
+            "rubix_start", lambda: self._start_rubix_worker(inputs)
+        ):
             self._launch_in_progress = False
             self._enable_start_buttons()
 
-    def _finish_start(self):
-        """Complete collector and Streamlit readiness waits off Tk's UI thread."""
+    def _start_rubix_worker(self, inputs):
+        """Worker-only Rubix sequence. It never reads or writes a Tk object."""
 
-        healthy, health = self.supervisor.wait_until_healthy(timeout=90)
-        if healthy:
+        results = self.timeline.measure(
+            "self_check",
+            lambda: run_preflight(
+                PROJECT_ROOT,
+                inputs["adapter"],
+                inputs["database"],
+                inputs["auth"],
+                inputs["port_text"],
+            ),
+            filesystem_traversal=False,
+            paths=(
+                str(PROJECT_ROOT),
+                str(inputs["adapter"]),
+                str(inputs["database"]),
+            ),
+        )
+        self.jobs.publish("preflight", "rubix_start", results)
+        if any(not item.ok for item in results):
+            return {"kind": "preflight_failed", "results": results}
+        if self.jobs.cancel_event.is_set():
+            return {"kind": "cancelled"}
+
+        self._publish_state(
+            StartupState.PREFLIGHT_READY, "Self Check passed. Preparing Rubix…"
+        )
+        from config.settings_manager import settings
+        from core.environment import load_project_environment
+        from providers.rubix_subscription import build_rubix_subscription_plan
+
+        self.timeline.measure("environment_loading", load_project_environment)
+        eodhd_configured = self.timeline.measure(
+            "eodhd_token_check", self._eodhd_configured
+        )
+        self._publish_state(
+            StartupState.STARTING_RUBIX, "Preparing launcher-owned processes…"
+        )
+        self.timeline.measure("owned_process_stop", self.supervisor.stop)
+        supervisor = ProductionSupervisor(inputs["adapter"], inputs["database"])
+        self.supervisor = supervisor
+        self.timeline.measure(
+            "rubix_authentication_check",
+            lambda: validate_auth_frame(inputs["auth"]),
+            paths=(str(inputs["auth"]),),
+        )
+        cfg = settings.get("market_data")
+        plan = self.timeline.measure(
+            "subscription_plan",
+            lambda: build_rubix_subscription_plan(
+                PROJECT_ROOT / "data" / "symbols.csv",
+                cfg.get("rubix_subscription_batch_size", 100),
+            ),
+            paths=(str(PROJECT_ROOT / "data" / "symbols.csv"),),
+        )
+        plan_report = self.timeline.measure(
+            "subscription_report",
+            lambda: save_operational_report(
+                "SUBSCRIPTION_PLAN",
+                {
+                    **plan.as_report(),
+                    "database": str(supervisor.database),
+                    "requested": list(plan.requested),
+                    "subscriptions": list(plan.subscriptions),
+                },
+            ),
+            paths=(str(PROJECT_ROOT / "reports" / "rubix"),),
+        )
+        self.jobs.publish(
+            "log",
+            "rubix_start",
+            f"Subscription report: {plan_report}",
+        )
+        self._publish_state(
+            StartupState.STARTING_COLLECTOR,
+            f"Starting Rubix collector for {len(plan.subscriptions)} symbols…",
+        )
+        baseline = self.timeline.measure(
+            "rubix_database_discovery",
+            lambda: lightweight_rubix_health(supervisor.database),
+            paths=(str(supervisor.database),),
+            rows_queried=260,
+        )
+        baseline_rowid = baseline.get("latest_quote_rowid") or 0
+        try:
+            self.timeline.measure(
+                "rubix_collector_startup",
+                lambda: supervisor.start_collector(
+                    inputs["auth"],
+                    plan.subscriptions,
+                    cfg.get("rubix_subscription_batch_size", 100),
+                ),
+                launches_subprocess=True,
+            )
+        except InstanceAlreadyRunning as error:
+            return {
+                "kind": "already_running",
+                "reason": redact_log(str(error)),
+                "eodhd_configured": eodhd_configured,
+            }
+        self._publish_state(
+            StartupState.WAITING_FOR_AUTH,
+            "Waiting for Rubix authentication and the first quote…",
+        )
+
+        def rubix_progress(elapsed, health):
+            if health.get("authentication_status") == "ACKNOWLEDGED":
+                state = StartupState.WAITING_FOR_READINESS
+                message = f"Rubix authenticated; waiting for a fresh quote ({elapsed:.1f}s)…"
+            else:
+                state = StartupState.WAITING_FOR_AUTH
+                message = f"Waiting for Rubix authentication ({elapsed:.1f}s)…"
+            self._publish_state(state, message)
+
+        healthy, health = self.timeline.measure(
+            "rubix_readiness_polling",
+            lambda: supervisor.wait_until_healthy(
+                timeout=90,
+                cancel_event=self.jobs.cancel_event,
+                progress=rubix_progress,
+                quote_after_rowid=baseline_rowid,
+            ),
+            paths=(str(supervisor.database),),
+            rows_queried=257,
+        )
+        if self.jobs.cancel_event.is_set():
+            return {"kind": "cancelled"}
+        if healthy and not self.jobs.cancel_event.is_set():
             try:
-                self._ui_events.put(
-                    ("status", "Rubix collector is healthy. Starting Streamlit dashboard...")
+                self._publish_state(
+                    StartupState.STARTING_STREAMLIT,
+                    "Rubix is ready. Starting Streamlit dashboard…",
                 )
-                self.supervisor.start_streamlit(self._pending_port)
-                self._ui_events.put(
-                    ("status", f"Waiting for localhost:{self._pending_port} to become ready...")
+                self.timeline.measure(
+                    "streamlit_startup",
+                    lambda: supervisor.start_streamlit(inputs["port"]),
+                    launches_subprocess=True,
                 )
-                ready, detail = self.supervisor.wait_until_streamlit_ready(
-                    self._pending_port, timeout=45
+                self._publish_state(
+                    StartupState.WAITING_FOR_READINESS,
+                    f"Waiting for localhost:{inputs['port']}…",
+                )
+                ready, detail = self.timeline.measure(
+                    "streamlit_readiness_polling",
+                    lambda: supervisor.wait_until_streamlit_ready(
+                        inputs["port"],
+                        timeout=45,
+                        cancel_event=self.jobs.cancel_event,
+                        progress=lambda elapsed: self._publish_state(
+                            StartupState.WAITING_FOR_READINESS,
+                            f"Waiting for Streamlit readiness ({elapsed:.1f}s)…",
+                        ),
+                    ),
+                    endpoint=f"http://127.0.0.1:{inputs['port']}/_stcore/health",
+                    subprocess_timeout_seconds=45,
                 )
                 health = dict(health)
                 health["dashboard_ready"] = ready
@@ -1037,23 +1378,55 @@ class RubixAuthenticationAssistantUI(LauncherUI):
                     level=logging.ERROR,
                     exc_info=True,
                 )
-        self._ui_events.put(("rubix_start_result", (healthy, health)))
+        if not healthy:
+            health = dict(health)
+            health["is_trading_day"] = self.timeline.measure(
+                "egx_calendar_check", self._is_trading_day_today
+            )
+        report = self.timeline.measure(
+            "operational_report",
+            lambda: save_operational_report("COLLECTOR_HEALTH", health),
+            paths=(str(PROJECT_ROOT / "reports" / "rubix"),),
+        )
+        return {
+            "kind": "rubix_start_result",
+            "healthy": healthy,
+            "health": health,
+            "report": str(report),
+            "eodhd_configured": eodhd_configured,
+        }
 
-    def _apply_start_result(self, healthy, health):
+    def _apply_start_result(
+        self, healthy, health, report=None, eodhd_configured=True
+    ):
         from tkinter import messagebox
 
         self._launch_in_progress = False
         self._enable_start_buttons()
-        report = save_operational_report("COLLECTOR_HEALTH", health)
-        self.log.insert("end", f"Health report saved: {report}\n")
+        if report:
+            self.log.insert("end", f"Health report saved: {report}\n")
+        if not eodhd_configured:
+            self.log.insert(
+                "end",
+                "EODHD token is not configured. Rubix can run, but current "
+                "research remains unavailable; Yahoo is not used.\n",
+            )
+        if not eodhd_configured:
+            self.log.insert(
+                "end",
+                "EODHD token is not configured. Rubix can run, but current "
+                "research remains unavailable; Yahoo is not used.\n",
+            )
         self._apply_health(health)
         if not healthy:
             # On a non-trading day (EGX weekend or configured holiday) a connected,
             # authenticated collector with no fresh quotes is EXPECTED — there are no
             # live ticks to receive. Do not nag with a pointless Rubix retry.
-            if should_suppress_retry(health, self._is_trading_day_today()):
-                self.supervisor.stop()
+            if should_suppress_retry(
+                health, bool(health.get("is_trading_day", True))
+            ):
                 self._record_launch("rubix", "market_closed")
+                self._schedule_stop()
                 self.status_var.set(
                     "Market closed today (EGX weekend/holiday) — no live quotes expected. "
                     "Current research (EODHD) is available in Research Only mode."
@@ -1072,17 +1445,19 @@ class RubixAuthenticationAssistantUI(LauncherUI):
                 "Rubix is not ready",
                 f"{reason}\n\nYes: retry Rubix\nNo: continue with Research Only (EODHD)\nCancel: stop launch",
             )
-            self.supervisor.stop()
             self._record_launch("rubix", "failed")
             if choice is True:
-                self.root.after(100, self.start)
+                self._after_stop_action = "rubix"
             elif choice is False:
-                self.start_research_only()
+                # _apply_stopped dispatches this choice to start_research_only.
+                self._after_stop_action = "research"
             else:
                 self.status_var.set("Launch cancelled. No process is running.")
+            self._schedule_stop()
             return
+        self._set_state(StartupState.READY)
         self.status_var.set(
-            f"Rubix and dashboard are ready — {health.get('symbols_received', 0)} symbols received."
+            "Rubix and dashboard are ready."
         )
         self._record_launch("rubix", "ready")
         self._save_preferences()
@@ -1131,7 +1506,14 @@ class RubixAuthenticationAssistantUI(LauncherUI):
             and self.supervisor.collector.poll() is None else "Stopped")
         self.status_values["collector"].set(health.get("collector_status") or "Not available")
         self.status_values["rubix_auth"].set(health.get("authentication_status") or self.auth_status_var.get())
-        self.status_values["coverage"].set(f"{received}/{requested}" + (f" ({coverage:.1f}%)" if coverage is not None else ""))
+        self.status_values["coverage"].set(
+            (
+                f"{received}/{requested}"
+                + (f" ({coverage:.1f}%)" if coverage is not None else "")
+            )
+            if requested
+            else ("Receiving" if received else "Waiting")
+        )
         self.status_values["latest_quote"].set(str(latest or "Not available"))
         self.status_values["quote_freshness"].set(health.get("freshness") or "Waiting")
         self.status_values["value_progression"].set(
@@ -1141,6 +1523,9 @@ class RubixAuthenticationAssistantUI(LauncherUI):
             self.status_values["app_status"].set("Running")
             self.status_values["app_pid"].set(str(self.supervisor.streamlit.pid))
         self.status_values["app_health"].set("Healthy" if fresh else "Live intraday unavailable")
+        self._status_checked_at["rubix"] = time.monotonic()
+        if self.supervisor.streamlit is not None:
+            self._status_checked_at["app"] = time.monotonic()
 
     def _eodhd_configured(self):
         try:
@@ -1154,61 +1539,94 @@ class RubixAuthenticationAssistantUI(LauncherUI):
         if self._launch_in_progress:
             return
         try:
-            self._pending_port = self._port()
+            inputs = self._startup_inputs()
         except ValueError as error:
             self.status_var.set(str(error))
             return
-        from core.environment import load_project_environment
-        load_project_environment()
-        self.refresh_status()
-        if not self._eodhd_configured():
-            from tkinter import messagebox
-            self.status_var.set("EODHD token missing — configure EODHD_API_TOKEN in .env.")
-            self.log.insert(
-                "end",
-                "Research Only blocked: EODHD_API_TOKEN is not configured. Add it to the "
-                "project .env file. Yahoo is never used as a substitute.\n",
-            )
-            self.log.see("end")
-            messagebox.showerror(
-                "EODHD token missing",
-                "Current research needs EODHD_API_TOKEN in the project .env file.\n\n"
-                "The dashboard can still open in diagnostics mode, but current analysis "
-                "will show DATA_UNAVAILABLE. Yahoo is never used as a fallback.",
-            )
-            # Still allow opening the app in diagnostics mode (analysis blocked).
+        self.refresh_status(force=True)
+        self._pending_port = inputs["port"]
+        self.jobs.reset_cancel()
         self._launch_in_progress = True
         self.start_button.configure(state="disabled")
         self.research_button.configure(state="disabled")
-        self.status_var.set("Starting dashboard in Research Only mode (EODHD current research)...")
+        self._set_state(
+            StartupState.STARTING_STREAMLIT,
+            "Starting dashboard in Research Only mode…",
+        )
         log_event("research_start", f"Research-only dashboard requested on port {self._pending_port}.")
-        threading.Thread(
-            target=self._finish_research_start,
-            args=(self._pending_port,),
-            daemon=True,
-        ).start()
+        if not self.jobs.submit(
+            "research_start", lambda: self._finish_research_start(inputs)
+        ):
+            self._launch_in_progress = False
+            self._enable_start_buttons()
 
-    def _finish_research_start(self, port):
+    def _finish_research_start(self, inputs):
+        """Worker-only Research mode start."""
+
         try:
-            self.supervisor.stop()
-            self.supervisor = ProductionSupervisor(self.adapter_var.get(), self.db_var.get())
-            self.supervisor.start_streamlit(port)
-            ready, detail = self.supervisor.wait_until_streamlit_ready(port, timeout=45)
-            self._ui_events.put(("research_start_result", (ready, detail)))
+            from core.environment import load_project_environment
+
+            self.timeline.measure("environment_loading", load_project_environment)
+            eodhd_configured = self.timeline.measure(
+                "eodhd_token_check", self._eodhd_configured
+            )
+            self.timeline.measure("owned_process_stop", self.supervisor.stop)
+            supervisor = ProductionSupervisor(
+                inputs["adapter"], inputs["database"]
+            )
+            self.supervisor = supervisor
+            self.timeline.measure(
+                "streamlit_startup",
+                lambda: supervisor.start_streamlit(inputs["port"]),
+                launches_subprocess=True,
+            )
+            self._publish_state(
+                StartupState.WAITING_FOR_READINESS,
+                f"Waiting for localhost:{inputs['port']}…",
+            )
+            ready, detail = self.timeline.measure(
+                "streamlit_readiness_polling",
+                lambda: supervisor.wait_until_streamlit_ready(
+                    inputs["port"],
+                    timeout=45,
+                    cancel_event=self.jobs.cancel_event,
+                    progress=lambda elapsed: self._publish_state(
+                        StartupState.WAITING_FOR_READINESS,
+                        f"Waiting for Streamlit readiness ({elapsed:.1f}s)…",
+                    ),
+                ),
+                endpoint=f"http://127.0.0.1:{inputs['port']}/_stcore/health",
+                subprocess_timeout_seconds=45,
+            )
+            if not ready:
+                supervisor.stop()
+            return {
+                "ready": ready,
+                "detail": detail,
+                "eodhd_configured": eodhd_configured,
+            }
         except Exception as error:
             reason = f"{type(error).__name__}: {error}"
             log_event(
                 "research_start_failed", reason, level=logging.ERROR, exc_info=True
             )
-            self._ui_events.put(("research_start_result", (False, reason)))
+            try:
+                self.supervisor.stop()
+            except Exception:
+                pass
+            return {
+                "ready": False,
+                "detail": reason,
+                "eodhd_configured": False,
+            }
 
-    def _apply_research_start_result(self, ready, detail):
+    def _apply_research_start_result(self, ready, detail, eodhd_configured=True):
         from tkinter import messagebox
 
         self._launch_in_progress = False
         self._enable_start_buttons()
         if not ready:
-            self.supervisor.stop()
+            self._set_state(StartupState.FAILED)
             self.status_var.set(f"Research Only could not start — {detail}")
             self.log.insert("end", f"Research Only could not start: {detail}\n")
             self.log.see("end")
@@ -1218,6 +1636,18 @@ class RubixAuthenticationAssistantUI(LauncherUI):
                 f"{detail}\n\nFull details: {LAUNCHER_LOG}",
             )
             return
+        if not eodhd_configured:
+            self.log.insert(
+                "end",
+                "EODHD token is missing; the dashboard opened in diagnostics mode. "
+                "Yahoo is never used as a substitute.\n",
+            )
+            messagebox.showwarning(
+                "EODHD token missing",
+                "The dashboard is running in diagnostics mode. Current research "
+                "needs EODHD_API_TOKEN; Yahoo is never used as a fallback.",
+            )
+        self._set_state(StartupState.READY)
         self.status_var.set(
             "Research Only started — current research uses EODHD. Live data unavailable; "
             "intraday opportunities disabled."
@@ -1241,116 +1671,393 @@ class RubixAuthenticationAssistantUI(LauncherUI):
         log_event("startup_success", f"Research-only Streamlit ready on port {self._pending_port}.")
         self._open_dashboard()
 
-    def refresh_status(self):
-        """Refresh Current Research / Market / Safety cards. Starts no process."""
-        try:
-            from services.research_launcher_status import (
-                current_research_status, market_status, safety_status)
-        except Exception as error:
-            self.status_values["research_provider"].set(f"EODHD (status error: {type(error).__name__})")
-            return
-        try:
-            research = current_research_status(online=False)
+    def refresh_status(self, *, force=True):
+        """Start one bounded background refresh and retain old values meanwhile."""
+
+        self.status_values["dashboard_url"].set(f"http://localhost:{self._safe_port()}")
+        if not self.jobs.submit(
+            "status_refresh", lambda: self._status_refresh_worker(force=force)
+        ):
+            self.status_var.set(
+                "Status refresh is already running; current values remain visible."
+            )
+            return False
+        self.status_var.set("Refreshing status in the background…")
+        return True
+
+    def _status_refresh_worker(self, *, force):
+        from core.ai_narrative_ollama import check_health
+        from services.research_launcher_status import (
+            current_research_status,
+            market_status,
+            safety_status,
+        )
+
+        result = {}
+        checks = (
+            (
+                "research",
+                "eodhd_cache_session_check",
+                lambda: current_research_status(online=False),
+                30,
+                {"paths": (str(PROJECT_ROOT / "data" / "eodhd_cache"),)},
+            ),
+            ("market", "egx_calendar_check", market_status, 60, {}),
+            ("safety", "safety_check", safety_status, 60, {}),
+            (
+                "ollama",
+                "ollama_health_model_check",
+                lambda: check_health(timeout=3.0),
+                15,
+                {
+                    "endpoint": "http://127.0.0.1:11434/api/tags",
+                    "subprocess_timeout_seconds": 3.0,
+                },
+            ),
+        )
+        for key, phase, function, ttl, metadata in checks:
+            if self.jobs.cancel_event.is_set():
+                break
+            cached = None if force else self.health_cache.get(key, ttl)
+            if cached is not None and not cached[1]:
+                result[key] = {"value": cached[0], "stale": False, "cached": True}
+                continue
+            try:
+                value = self.timeline.measure(phase, function, **metadata)
+                self.health_cache.success(key, value)
+                result[key] = {"value": value, "stale": False}
+            except Exception as error:
+                reason = f"{type(error).__name__}: {error}"
+                self.health_cache.failure(key, reason)
+                cached = self.health_cache.get(key, 0)
+                result[key] = {
+                    "value": cached[0] if cached else None,
+                    "stale": True,
+                    "error": reason,
+                }
+                log_event(
+                    f"{key}_status_failed",
+                    reason,
+                    level=logging.WARNING,
+                    exc_info=True,
+                )
+        return result
+
+    def _apply_status_refresh(self, result):
+        now = time.monotonic()
+        research = (result.get("research") or {}).get("value")
+        if research:
             self.status_values["research_provider"].set(research["provider"])
             self.status_values["eodhd_token"].set(research["token"])
             self.status_values["eodhd_auth"].set(research["authentication"])
             self.status_values["research_latest_session"].set(
-                str(research.get("latest_completed_session") or "Unknown"))
-            self.status_values["research_freshness"].set(str(research.get("freshness") or "Unknown"))
-            self.status_values["research_cache"].set(str(research.get("cache_status") or "Unknown"))
-        except Exception as error:
-            log_event("research_status_failed", f"{type(error).__name__}: {error}",
-                      level=logging.WARNING)
-        try:
-            market = market_status()
+                str(research.get("latest_completed_session") or "Unknown")
+            )
+            self.status_values["research_freshness"].set(
+                str(research.get("freshness") or "Unknown")
+            )
+            cache_text = str(research.get("cache_status") or "Unknown")
+            if (result["research"]).get("stale"):
+                cache_text += " (stale)"
+            self.status_values["research_cache"].set(cache_text)
+            self._status_checked_at["research"] = now
+        market = (result.get("market") or {}).get("value")
+        if market:
             self.status_values["market_session"].set(market["day_kind"])
             self.status_values["market_phase"].set(
-                str(market.get("phase") or "Unknown").replace("_", " ").title())
-            self.status_values["market_next"].set(str(market.get("next_session") or "Unknown"))
-        except Exception as error:
-            log_event("market_status_failed", f"{type(error).__name__}: {error}",
-                      level=logging.WARNING)
-        try:
-            safety = safety_status()
-            self.status_values["paper_mode"].set("On" if safety["paper_mode"] else "Off")
+                str(market.get("phase") or "Unknown").replace("_", " ").title()
+            )
+            self.status_values["market_next"].set(
+                str(market.get("next_session") or "Unknown")
+            )
+            self._status_checked_at["market"] = now
+        safety = (result.get("safety") or {}).get("value")
+        if safety:
+            self.status_values["paper_mode"].set(
+                "On" if safety["paper_mode"] else "Off"
+            )
             self.status_values["production"].set(
-                "Disabled" if not safety["production_enabled"] else "ENABLED")
+                "Disabled" if not safety["production_enabled"] else "ENABLED"
+            )
             self.status_values["broker"].set(
-                "Disabled" if not safety["broker_orders_enabled"] else "ENABLED")
-        except Exception as error:
-            log_event("safety_status_failed", f"{type(error).__name__}: {error}",
-                      level=logging.WARNING)
-        self.status_values["dashboard_url"].set(f"http://localhost:{self._safe_port()}")
+                "Disabled" if not safety["broker_orders_enabled"] else "ENABLED"
+            )
+            self._status_checked_at["safety"] = now
+        ollama = (result.get("ollama") or {}).get("value")
+        if ollama:
+            self.status_values["local_ai"].set(
+                "Ready"
+                if ollama.reachable and ollama.model_installed
+                else "Model missing"
+                if ollama.reachable
+                else "Unavailable"
+            )
+            self._status_checked_at["app"] = now
+        self.status_var.set("Status refresh complete.")
+
+    def run_deep_diagnostics(self):
+        """Run explicitly requested full diagnostics outside Tk."""
+
+        if not self.jobs.submit("deep_diagnostics", self._deep_diagnostics_worker):
+            self.status_var.set("Deep diagnostics are already running.")
+            return
+        self.status_var.set(
+            "Deep diagnostics running in the background; the launcher remains usable…"
+        )
+
+    def _deep_diagnostics_worker(self):
+        from services.system_health import collect_system_health
+
+        return self.timeline.measure(
+            "deep_diagnostics",
+            collect_system_health,
+            filesystem_traversal=False,
+            detail="Explicit user action; may include SQLite integrity checks.",
+        )
 
     def stop(self):
+        """Cancel startup and stop only launcher-owned processes in a worker."""
+
         selected = self.auth_var.get()
-        self.supervisor.stop()
+        delete_auth = bool(self.delete_auth_var.get())
+        self._after_stop_action = None
+        self._schedule_stop(selected=selected, delete_auth=delete_auth)
+
+    def _schedule_stop(self, *, selected="", delete_auth=False):
+        self.jobs.cancel()
         self._launch_in_progress = False
-        self._enable_start_buttons()
-        self.status_var.set("Stopped. Only launcher-managed processes were closed.")
+        self._set_state(
+            StartupState.STOPPING,
+            "Stopping launcher-owned processes in the background…",
+        )
+        supervisor = self.supervisor
+        self.jobs.submit(
+            "stop",
+            lambda: self._stop_worker(supervisor, selected, delete_auth),
+        )
+
+    def _stop_worker(self, supervisor, selected, delete_auth):
+        self.timeline.measure("owned_process_stop", supervisor.stop)
+        deleted = False
+        delete_error = ""
+        if delete_auth and selected:
+            try:
+                Path(selected).unlink(missing_ok=True)
+                deleted = True
+            except OSError as error:
+                delete_error = type(error).__name__
+        return {"auth_deleted": deleted, "delete_error": delete_error}
+
+    def _apply_stopped(self, payload=None):
+        payload = payload or {}
+        self._set_state(StartupState.STOPPED)
+        self.status_var.set(
+            "Stopped. Only launcher-managed processes were closed."
+        )
         self.status_values["collector"].set("Stopped")
         self.status_values["supervisor"].set("Stopped")
         self.status_values["app_status"].set("Stopped")
         self.status_values["app_health"].set("Stopped")
-        if self.delete_auth_var.get() and selected:
-            try:
-                Path(selected).unlink(missing_ok=True)
-                self.auth_var.set("")
-                self._apply_auth_inspection(inspect_auth_frame(""))
-                self.log.insert("end", "Temporary authentication file deleted after collector stop.\n")
-            except OSError:
-                self.log.insert("end", "Could not delete the temporary authentication file; delete it manually.\n")
+        if payload.get("auth_deleted"):
+            self.auth_var.set("")
+            self._apply_auth_inspection(inspect_auth_frame(""))
+            self.log.insert(
+                "end",
+                "Temporary authentication file deleted after collector stop.\n",
+            )
+        elif payload.get("delete_error"):
+            self.log.insert(
+                "end",
+                "Could not delete the temporary authentication file; delete it manually.\n",
+            )
         self._save_preferences()
+        self._enable_start_buttons()
+        action, self._after_stop_action = self._after_stop_action, None
+        if self._closing:
+            self._finish_close_when_idle()
+        elif action == "rubix":
+            self.root.after(100, self.start)
+        elif action == "research":
+            self.root.after(100, self.start_research_only)
+
+    def _after_first_frame(self):
+        if self._destroyed:
+            return
+        self._mainloop_started = True
+        first_frame = time.monotonic() - self._launcher_started
+        log_event("first_frame", f"First rendered frame in {first_frame:.3f}s.")
+        self._set_state(
+            StartupState.UI_READY,
+            "Launcher ready. Background status checks are running…",
+        )
+        self.root.after(1, self._build_deferred_ui)
+        self.jobs.submit(
+            "config_migration",
+            lambda: self.timeline.measure(
+                "local_override_loading",
+                migrate_legacy_settings,
+                paths=(str(LAUNCHER_CONFIG.resolve()),),
+            ),
+        )
+        self.refresh_status(force=False)
+
+    def _handle_worker_result(self, event):
+        payload = event.payload
+        if event.job == "self_check":
+            failed = self._apply_preflight(payload)
+            self._set_state(
+                StartupState.DEGRADED if failed else StartupState.PREFLIGHT_READY
+            )
+            self._save_preferences()
+        elif event.job == "rubix_start":
+            kind = payload.get("kind")
+            if kind == "preflight_failed":
+                self._launch_in_progress = False
+                self._enable_start_buttons()
+                self._set_state(
+                    StartupState.DEGRADED,
+                    "Self Check needs attention before Rubix can start.",
+                )
+            elif kind == "cancelled":
+                self.status_var.set("Rubix startup cancelled.")
+            elif kind == "already_running":
+                from tkinter import messagebox
+
+                self._launch_in_progress = False
+                self._enable_start_buttons()
+                reason = payload["reason"]
+                self.status_var.set(f"Rubix already running — {reason}")
+                open_it = messagebox.askyesno(
+                    "Rubix supervisor already running",
+                    f"{reason}\n\nA second live session was not started. "
+                    "Open the dashboard for the running instance?",
+                )
+                if open_it:
+                    self._open_dashboard()
+            elif kind == "rubix_start_result":
+                self._apply_start_result(
+                    payload["healthy"],
+                    payload["health"],
+                    payload.get("report"),
+                    payload.get("eodhd_configured", True),
+                )
+        elif event.job == "research_start":
+            self._apply_research_start_result(
+                payload["ready"],
+                payload["detail"],
+                payload.get("eodhd_configured", True),
+            )
+        elif event.job == "status_refresh":
+            self._apply_status_refresh(payload)
+        elif event.job == "auth_inspection":
+            self._apply_auth_inspection(payload)
+        elif event.job == "rubix_health":
+            self._last_health_result = time.monotonic()
+            self._status_checked_at["rubix"] = self._last_health_result
+            self._apply_health(payload)
+        elif event.job == "stop":
+            self._apply_stopped(payload)
+        elif event.job == "deep_diagnostics":
+            state = str(payload.get("state") or "complete")
+            self.status_var.set(f"Deep diagnostics complete — {state}.")
+            self.log.insert(
+                "end", f"Deep diagnostics complete. Full details: {LAUNCHER_LOG}\n"
+            )
+
+    def _handle_worker_error(self, event):
+        payload = event.payload or {}
+        reason = f"{payload.get('type', 'Error')}: {payload.get('message', 'operation failed')}"
+        log_event(
+            f"{event.job}_failed", reason, level=logging.ERROR
+        )
+        if event.job in {"rubix_start", "research_start"}:
+            self._launch_in_progress = False
+            self._enable_start_buttons()
+            self._set_state(StartupState.FAILED, f"{event.job.replace('_', ' ').title()} failed.")
+            self._schedule_stop()
+        elif event.job == "status_refresh":
+            self.status_var.set("Status check timed out or failed; previous values are stale.")
+        elif event.job == "rubix_health":
+            self.status_values["rubix_age"].set("Stale — refresh failed")
+        elif event.job == "stop" and self._closing:
+            self._finish_close_when_idle(force=True)
 
     def _refresh(self):
+        """Drain worker queues and perform only constant-time UI/process polling."""
+
+        if self._destroyed:
+            return
         while True:
             try:
-                event, payload = self._ui_events.get_nowait()
+                event = self._ui_events.get_nowait()
             except queue.Empty:
                 break
-            if event == "rubix_start_result":
-                self._apply_start_result(*payload)
-            elif event == "research_start_result":
-                self._apply_research_start_result(*payload)
-            elif event == "status":
-                self.status_var.set(str(payload))
+            if not isinstance(event, WorkerEvent):
+                continue
+            if event.kind == "state":
+                self._set_state(
+                    event.payload["state"], event.payload["message"]
+                )
+            elif event.kind == "preflight":
+                if self._full_ui_ready:
+                    self._apply_preflight(event.payload)
+            elif event.kind == "log":
+                if self._full_ui_ready:
+                    self.log.insert("end", redact_log(event.payload) + "\n")
+                    self.log.see("end")
+            elif event.kind == "result":
+                self._handle_worker_result(event)
+            elif event.kind == "error":
+                self._handle_worker_error(event)
         while True:
             try:
                 message = self.supervisor.messages.get_nowait()
             except queue.Empty:
                 break
-            self.log.insert("end", redact_log(message) + "\n")
-            self.log.see("end")
-        inspection = inspect_auth_frame(self.auth_var.get())
-        if inspection.status != self.auth_status_var.get():
-            self._apply_auth_inspection(inspection)
+            if self._full_ui_ready:
+                self.log.insert("end", redact_log(message) + "\n")
+                self.log.see("end")
         now = time.monotonic()
-        if now - self._last_health_check >= 2 and self.supervisor.collector is not None:
+        self.elapsed_var.set(f"Elapsed {now - self._stage_started:.1f}s")
+        for group, key in (
+            ("research", "research_age"),
+            ("rubix", "rubix_age"),
+            ("app", "app_age"),
+            ("market", "market_age"),
+            ("safety", "safety_age"),
+        ):
+            checked = self._status_checked_at.get(group)
+            self.status_values[key].set(
+                f"{now - checked:.0f}s" if checked else "Not checked yet"
+            )
+        collector = self.supervisor.collector
+        if collector is not None and collector.poll() is not None:
+            self.status_values["collector"].set("Disconnected")
+            self.status_values["live_provider"].set("Rubix (stopped)")
+            self.status_values["app_health"].set("Live intraday unavailable")
+        elif (
+            collector is not None
+            and now - self._last_health_check >= 15
+            and not self.jobs.is_active("rubix_health")
+        ):
             self._last_health_check = now
-            if self.supervisor.collector.poll() is not None:
-                self.status_var.set("The collector stopped unexpectedly. Live intraday unavailable; EODHD research still available.")
-                self.status_values["collector"].set("Disconnected")
-                self.status_values["live_provider"].set("Rubix (stopped)")
-                self.status_values["app_health"].set("Live intraday unavailable")
-            else:
-                try:
-                    health = self.supervisor.health()
-                    self._apply_health(health)
-                    self.status_var.set(
-                        f"Rubix {self.status_values['live_provider'].get()} — coverage {self.status_values['coverage'].get()} — "
-                        f"latest quote {self.status_values['latest_quote'].get()}"
-                    )
-                except Exception as error:
-                    self.status_var.set("Waiting for the Rubix database health check.")
-                    log_event(
-                        "health_check_failed",
-                        f"{type(error).__name__}: {error}",
-                        level=logging.WARNING,
-                    )
-        if self.supervisor.streamlit is not None and self.supervisor.streamlit.poll() is not None:
-            self.status_var.set("The dashboard stopped unexpectedly. Press Start again.")
+            supervisor = self.supervisor
+            self.jobs.submit(
+                "rubix_health",
+                lambda: self._rubix_health_worker(supervisor),
+            )
+        streamlit = self.supervisor.streamlit
+        if streamlit is not None and streamlit.poll() is not None:
             self.status_values["app_health"].set("Dashboard stopped")
-        self.root.after(500, self._refresh)
+        self.root.after(50, self._refresh)
+
+    def _rubix_health_worker(self, supervisor):
+        return self.timeline.measure(
+            "rubix_full_health_background",
+            supervisor.health,
+            paths=(str(supervisor.database),),
+            detail="Background cached status; never executed by Tk.",
+        )
 
     def _enable_start_buttons(self):
         if hasattr(self, "start_button"):
@@ -1367,8 +2074,14 @@ class RubixAuthenticationAssistantUI(LauncherUI):
         return value
 
     def _open_dashboard(self):
-        log_event("browser_launch", f"Opening http://localhost:{self._port()} once.")
-        webbrowser.open(f"http://localhost:{self._port()}")
+        try:
+            port = self._port()
+        except ValueError as error:
+            self.status_var.set(str(error))
+            return
+        url = f"http://localhost:{port}"
+        log_event("browser_launch", f"Opening {url} once.")
+        self.jobs.submit("open_dashboard", lambda: webbrowser.open(url))
 
     def _remember_window_geometry(self, _event=None):
         """Remember geometry only while the window is normal and visibly sized."""
@@ -1391,11 +2104,14 @@ class RubixAuthenticationAssistantUI(LauncherUI):
             / "AUTHENTICATION_ASSISTANT_GUIDE.md"
         )
         if guide.is_file():
-            os.startfile(guide)
+            self.jobs.submit("open_guide", lambda: os.startfile(guide))
 
     def _record_launch(self, mode, result):
         """Append one launch record — to the ignored runtime-state file only."""
-        self.runtime = append_recent_launch(mode, result)
+        self.jobs.submit(
+            f"persist_launch_{time.monotonic_ns()}",
+            lambda: append_recent_launch(str(mode), str(result)),
+        )
 
     def _save_preferences(self):
         """Persist user settings and window geometry to the two IGNORED files.
@@ -1408,17 +2124,58 @@ class RubixAuthenticationAssistantUI(LauncherUI):
             port = self._port()
         except ValueError:
             port = 8501
-        self.settings.update({
-            "adapter_path": self.adapter_var.get(), "database_path": self.db_var.get(),
-            "theme": self.theme_var.get(), "streamlit_port": port,
+        settings = dict(self.settings)
+        settings.update({
+            "adapter_path": self.adapter_var.get(),
+            "database_path": self.db_var.get(),
+            "theme": self.theme_var.get(),
+            "streamlit_port": port,
         })
+        geometry = self._last_good_geometry
+        self.settings = settings
         # The selected auth file and its contents are deliberately omitted.
-        save_local_overrides(self.settings)
-        self.runtime = save_window_geometry(self._last_good_geometry)
+        self.jobs.submit(
+            f"save_preferences_{time.monotonic_ns()}",
+            lambda: (
+                save_local_overrides(settings),
+                save_window_geometry(geometry),
+            ),
+        )
 
     def close(self):
-        self.stop()
+        if self._closing:
+            return
+        self._closing = True
+        self._close_deadline = time.monotonic() + 6
+        self._save_preferences()
+        self._schedule_stop(
+            selected=self.auth_var.get(),
+            delete_auth=bool(self.delete_auth_var.get()),
+        )
+
+    def _finish_close_when_idle(self, force=False):
+        if self._destroyed:
+            return
+        active_start = any(
+            self.jobs.is_active(name)
+            for name in ("rubix_start", "research_start", "stop")
+        )
+        if active_start and not force and time.monotonic() < self._close_deadline:
+            self.root.after(50, self._finish_close_when_idle)
+            return
+        self._destroyed = True
         self.root.destroy()
+
+    def _atexit_stop(self):
+        try:
+            self.jobs.cancel()
+            self.supervisor.stop()
+        except Exception:
+            pass
+
+    def run(self):
+        self._mainloop_started = True
+        self.root.mainloop()
 
 
 def _show_fatal_error(title, message):
@@ -1468,10 +2225,25 @@ def build_argument_parser():
 def main(argv=None):
     args = build_argument_parser().parse_args(argv)
     configure_logging(args.debug)
+    log_event(
+        "startup_timing",
+        json.dumps(
+            {
+                "name": "python_imports",
+                "duration_s": round(time.monotonic() - LAUNCHER_IMPORT_STARTED, 6),
+                "thread": threading.current_thread().name,
+                "before_mainloop": True,
+                "filesystem_traversal": False,
+                "launches_subprocess": False,
+            },
+            sort_keys=True,
+        ),
+    )
     if args.check:
         return _check_installation()
 
     log_event("launcher_entered", f"Launcher entered; project={PROJECT_ROOT}")
+    lock_started = time.monotonic()
     try:
         claim_pid_file(LAUNCHER_PID_FILE, label="Rubix production launcher")
     except InstanceAlreadyRunning as error:
@@ -1480,6 +2252,21 @@ def main(argv=None):
             webbrowser.open("http://localhost:8501")
         _show_fatal_error("EGX AI Trader is already open", str(error))
         return 2
+    log_event(
+        "startup_timing",
+        json.dumps(
+            {
+                "name": "single_instance_lock",
+                "duration_s": round(time.monotonic() - lock_started, 6),
+                "thread": threading.current_thread().name,
+                "before_mainloop": True,
+                "paths": [str(LAUNCHER_PID_FILE)],
+                "filesystem_traversal": False,
+                "launches_subprocess": False,
+            },
+            sort_keys=True,
+        ),
+    )
 
     try:
         os.chdir(PROJECT_ROOT)

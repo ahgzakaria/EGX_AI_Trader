@@ -410,14 +410,24 @@ def wait_for_streamlit(
     timeout: float = 45,
     probe=streamlit_is_ready,
     sleep=time.sleep,
+    cancel_event=None,
+    progress=None,
 ) -> tuple[bool, str]:
-    """Bounded readiness wait that fails immediately if the child exits."""
+    """Bounded, cancellable readiness wait that never needs the Tk thread."""
 
+    started = time.monotonic()
     deadline = time.monotonic() + float(timeout)
     while time.monotonic() < deadline:
+        if cancel_event is not None and cancel_event.is_set():
+            return False, "Streamlit readiness wait was cancelled."
         if process is not None and process.poll() is not None:
             return False, f"Streamlit exited with code {process.returncode}."
         if probe(int(port)):
             return True, f"Dashboard is ready on http://127.0.0.1:{int(port)}"
-        sleep(0.25)
+        if progress is not None:
+            progress(time.monotonic() - started)
+        if cancel_event is not None:
+            cancel_event.wait(0.5)
+        else:
+            sleep(0.5)
     return False, f"Streamlit did not become ready within {float(timeout):.0f} seconds."
