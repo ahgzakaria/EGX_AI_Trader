@@ -602,7 +602,13 @@ def narrative_source(narrative: NarrativeResult | None):
 
 
 def narrative_technical_rows(narrative: NarrativeResult | None):
-    """Technical provenance rows for the UI expander. Never exposes a key or a prompt."""
+    """Technical provenance rows for the UI expander. Never exposes a key or a prompt.
+
+    When a model was called and its answer was rejected, the provider and model are still
+    reported here for diagnosis — but labelled as an ATTEMPT, next to the source that
+    actually produced the visible text. The rejected prose itself is never stored, never
+    returned and never shown; only the sanitized rejection reason is.
+    """
     provenance = getattr(narrative, "provenance", None) if narrative else None
     if provenance is None:
         return (("المصدر", "Narrative Source", narrative_source_token(narrative)),
@@ -617,10 +623,18 @@ def narrative_technical_rows(narrative: NarrativeResult | None):
         endpoint = (os.environ.get("AI_NARRATIVE_OLLAMA_URL", "").strip()
                     or "http://127.0.0.1:11434")
         endpoint_rows = (("نقطة الاتصال المحلية", "Local Endpoint", endpoint),)
+    # A provider recorded against a fallback was tried and not used.
+    attempted = (narrative_source_token(narrative) not in NARRATIVE_SOURCES_WITH_A_MODEL
+                 and provider not in ("", "none"))
+    provider_label = (("المزود المُحاوَل", "Attempted Provider") if attempted
+                      else ("المزود", "Provider"))
+    model_label = (("النموذج المُحاوَل", "Attempted Model") if attempted
+                   else ("النموذج", "Model"))
     return (
-        ("المصدر", "Narrative Source", str(provenance.source or EM_DASH)),
-        ("المزود", "Provider", str(provenance.provider or EM_DASH)),
-        ("النموذج", "Model", str(provenance.model or EM_DASH)),
+        ("المصدر النهائي" if attempted else "المصدر", "Narrative Source",
+         str(provenance.source or EM_DASH)),
+        (*provider_label, str(provenance.provider or EM_DASH)),
+        (*model_label, str(provenance.model or EM_DASH)),
         *endpoint_rows,
         ("إصدار التعليمات", "Prompt Version", str(provenance.prompt_version or EM_DASH)),
         ("بصمة الأدلة", "Evidence Hash", str(provenance.evidence_hash or EM_DASH)),
@@ -681,10 +695,18 @@ NARRATIVE_FALLBACK_FIELDS = (
 # Card header for the one source block shown above the cards (never repeated per card).
 NARRATIVE_SOURCE_TITLES = {
     "LOCAL_AI_NARRATIVE": ("ذكاء اصطناعي محلي", "Local AI", "blue"),
-    "AI_NARRATIVE": ("ذكاء اصطناعي خارجي", "AI Narrative", "blue"),
+    "AI_NARRATIVE": ("سرد بالذكاء الاصطناعي", "AI Narrative", "blue"),
     "DETERMINISTIC_FALLBACK": ("شرح حتمي", "Deterministic Fallback", "amber"),
-    "AI_UNAVAILABLE": ("السرد غير متاح", "AI Unavailable", "red"),
+    "AI_UNAVAILABLE": ("الذكاء الاصطناعي غير متاح", "AI Unavailable", "red"),
 }
+
+# Only these sources actually wrote the narrative the reader is looking at, so only these
+# may name a provider and a model in the source strip. A rejected answer is not a source:
+# when validation fails the deterministic writer produced every word on the page, and
+# printing "Ollama · qwen3:4b" beside "Deterministic Fallback" would credit a model for
+# text it did not write. The attempted provider is still recorded — in the technical
+# expander, labelled as an attempt.
+NARRATIVE_SOURCES_WITH_A_MODEL = frozenset({"LOCAL_AI_NARRATIVE", "AI_NARRATIVE"})
 
 NARRATIVE_STATE_VALIDATED = ("جاهز وتم التحقق من السرد", "Validated", "green")
 NARRATIVE_STATE_UNVERIFIED = ("لم يكتمل التحقق من السرد", "Not Validated", "amber")
@@ -816,7 +838,11 @@ def narrative_summary_cells(result: AnalysisResult):
 
 
 def narrative_source_block(narrative: NarrativeResult | None):
-    """The single source header shown above the cards — provider and model appear once.
+    """The single source header shown above the cards — who actually wrote this text.
+
+    The provider and model shown here describe the ACCEPTED narrative, not whatever was
+    attempted. A model whose answer was rejected did not write the visible text, so it is
+    not named here; ``narrative_technical_rows`` records the attempt instead.
 
     Reads the provenance the narrative already carries. It performs no health probe and
     contacts nothing, so a plain UI rerender never reaches a model or a provider.
@@ -824,12 +850,15 @@ def narrative_source_block(narrative: NarrativeResult | None):
     token = narrative_source_token(narrative)
     title_ar, title_en, tone = NARRATIVE_SOURCE_TITLES[token]
     provenance = getattr(narrative, "provenance", None) if narrative else None
-    provider = str(getattr(provenance, "provider", "") or "").strip().lower()
-    model = str(getattr(provenance, "model", "") or "").strip()
-    if not model and narrative is not None and token != "DETERMINISTIC_FALLBACK":
-        model = str(narrative.model or "").strip()
-    provider_name = PROVIDER_DISPLAY_NAMES.get(provider, provider.title() if provider else "")
-    detail = " · ".join(part for part in (provider_name, model) if part)
+    detail = ""
+    if token in NARRATIVE_SOURCES_WITH_A_MODEL:
+        provider = str(getattr(provenance, "provider", "") or "").strip().lower()
+        model = str(getattr(provenance, "model", "") or "").strip()
+        if not model and narrative is not None:
+            model = str(narrative.model or "").strip()
+        provider_name = PROVIDER_DISPLAY_NAMES.get(
+            provider, provider.title() if provider else "")
+        detail = " · ".join(part for part in (provider_name, model) if part)
 
     validation = str(getattr(provenance, "validation_status", "") or "").strip().upper()
     if token == "AI_UNAVAILABLE":
