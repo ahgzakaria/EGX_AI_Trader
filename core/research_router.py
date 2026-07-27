@@ -327,22 +327,36 @@ def eodhd_history(symbol, *, min_bars=250, force_refresh=False, client=None,
         EODHDTimeout,
     )
 
+    breaker = None if scan_budget is None else scan_budget.get("breaker")
     bounded = {} if scan_budget is None else {
         "deadline_seconds": scan_budget.get("deadline_seconds", SCAN_TOTAL_DEADLINE),
         "max_attempts": scan_budget.get("max_attempts", SCAN_RETRIES),
         "cancel": scan_budget.get("cancel"),
     }
+    # An open breaker stops NEW network refreshes. Valid local cache still serves, so a
+    # provider outage degrades coverage instead of failing the whole universe — and it
+    # never reaches for Yahoo.
+    if force_refresh and breaker is not None and breaker.is_open:
+        raise ResearchDataUnavailable(
+            base, "EODHD_PROVIDER_UNAVAILABLE",
+            f"circuit breaker open: {breaker.reason}")
     try:
         raw = client.eod(f"{base}.EGX", order="a", cache_ttl_seconds=6 * 3600,
                          force=force_refresh, **bounded)
     except EODHDCancelled:
         raise
-    except (EODHDTimeout, EODHDConnectionFailed, EODHDRateLimited, EODHDAuthFailed):
+    except (EODHDTimeout, EODHDConnectionFailed, EODHDRateLimited,
+            EODHDAuthFailed) as error:
         # Typed network conditions keep their class so the scanner can report the real
-        # cause instead of collapsing into a generic unavailable-data status.
+        # cause. Only these BROAD provider failures move the breaker.
+        if breaker is not None:
+            breaker.record_broad_failure(error)
         raise
     except EODHDError as error:
         raise ResearchDataUnavailable(base, DATA_UNAVAILABLE, str(error)) from error
+    if force_refresh and breaker is not None:
+        # Only a real network request proves the provider is reachable again.
+        breaker.record_success()
     rows = [r for r in (raw or []) if isinstance(r, dict) and r.get("close")]
     if not rows:
         raise ResearchDataUnavailable(base, DATA_UNAVAILABLE, "EODHD returned no bars")

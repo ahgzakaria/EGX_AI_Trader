@@ -54,6 +54,8 @@ class ScanDataContext:
     # Bounds for any refresh this scan performs. ``None`` means use the module default.
     request_deadline_seconds: float = None
     max_refresh_attempts: int = None
+    #: Optional CircuitBreaker. When open, no NEW network refresh is started.
+    breaker: object = None
     _owns_client: bool = False
 
     # -- cancellation ------------------------------------------------------- #
@@ -85,6 +87,7 @@ class ScanDataContext:
             "deadline_seconds": self.request_deadline_seconds or SCAN_TOTAL_DEADLINE,
             "max_attempts": self.max_refresh_attempts or SCAN_RETRIES,
             "cancel": self.cancellation_event.is_set,
+            "breaker": self.breaker,
         }
 
     # -- live quote overlay ------------------------------------------------- #
@@ -124,7 +127,7 @@ class ScanDataContext:
 
 
 def build_scan_context(symbols, *, rubix_provider=None, eodhd_client=None,
-                       cancellation_event=None, load_overlays=True):
+                       cancellation_event=None, load_overlays=True, breaker=None):
     """Resolve every once-per-scan answer and return the context.
 
     ``symbols`` is the approved universe in its original order. The Rubix overlay map is
@@ -136,6 +139,7 @@ def build_scan_context(symbols, *, rubix_provider=None, eodhd_client=None,
 
     context = ScanDataContext(
         cancellation_event=cancellation_event or threading.Event())
+    context.breaker = breaker
 
     if eodhd_client is None:
         from providers.eodhd_client import EODHDClient
