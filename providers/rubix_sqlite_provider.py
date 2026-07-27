@@ -68,6 +68,9 @@ class RubixSQLiteProvider(MarketDataProvider):
         self._history_loader = history_loader
         self._now = now or (lambda: datetime.now(timezone.utc))
         self.expected_symbols = tuple(to_rubix_symbol(item) for item in (expected_symbols or ()))
+        # Bounded wait for the collector's writer lock. A busy database must degrade to a
+        # typed read failure, never to an unbounded stall inside a scan.
+        self.read_timeout_ms = int(os.getenv("RUBIX_READ_TIMEOUT_MS", "5000") or 5000)
 
     @staticmethod
     def map_symbol(symbol):
@@ -203,6 +206,166 @@ class RubixSQLiteProvider(MarketDataProvider):
         normalized.attrs["market_data"] = metadata
         return normalized
 
+    # -- batched overlay --------------------------------------------------- #
+
+    # The adapter is the sole writer and stores normalized uppercase tickers, so the
+    # hot predicates compare the column directly and stay on ``idx_quotes_ticker_time``.
+    # Wrapping the column in ``UPPER()`` makes SQLite unable to use that index and turns
+    # every lookup into a full scan of the quotes table. Unexpected non-normalized rows
+    # are reported as a data-quality warning instead of silently broadening every query.
+    QUOTE_TICKER_NOT_NORMALIZED = "RUBIX_TICKER_NOT_NORMALIZED"
+
+    def load_latest_quote_overlays(self, symbols):
+        """Return ``{symbol: overlay}`` for a whole universe in one bounded read.
+
+        This is the scan-time replacement for calling :meth:`quote_overlay` once per
+        symbol. It opens ONE read-only connection, runs ONE bounded read transaction,
+        and performs no write of any kind — no schema change, no index creation, no
+        checkpoint, no vacuum, no WAL operation.
+
+        Every value matches :meth:`quote_overlay` exactly: the counts and timestamps are
+        the same aggregates, not approximations. A symbol with no quote yields a typed
+        missing overlay so one absent ticker can never fail the universe.
+        """
+        requested = [str(symbol) for symbol in symbols or ()]
+        mapped_by_symbol = {symbol: self.map_symbol(symbol) for symbol in requested}
+        wanted = sorted({mapped.upper() for mapped in mapped_by_symbol.values()})
+        if not wanted:
+            return {}
+
+        self._validate_path()
+        connection = self._connect()
+        try:
+            connection.execute(f"PRAGMA busy_timeout={int(self.read_timeout_ms)}")
+            self._validate_schema(connection)
+            # One bounded read transaction: every aggregate and every point lookup below
+            # observes the same consistent snapshot of the collector's database.
+            connection.execute("BEGIN")
+            try:
+                quote_times = {
+                    str(row[0]): row[1] for row in connection.execute(
+                        "SELECT ticker, MAX(market_timestamp) FROM quotes GROUP BY ticker")
+                }
+                received = {
+                    str(row[0]): (row[1], row[2]) for row in connection.execute(
+                        "SELECT ticker, MAX(received_at), COUNT(*) FROM quotes "
+                        "GROUP BY ticker")
+                }
+                candles = {
+                    str(row[0]): (row[1], row[2]) for row in connection.execute(
+                        "SELECT ticker, MAX(minute), COUNT(*) FROM candles_1m "
+                        "GROUP BY ticker")
+                }
+                latest = {}
+                for ticker in wanted:
+                    latest[ticker] = connection.execute(
+                        "SELECT last_price, bid, ask, volume, market_timestamp, "
+                        "received_at FROM quotes WHERE ticker=? "
+                        "ORDER BY market_timestamp DESC LIMIT 1",
+                        (ticker,),
+                    ).fetchone()
+            finally:
+                connection.rollback()          # read-only: never leave a write intent
+        except sqlite3.Error as error:
+            raise ProviderConnectionError(
+                f"cannot batch-read Rubix quotes: {error}") from error
+        finally:
+            connection.close()
+
+        # Defensive contract check — surfaced, never worked around silently.
+        unnormalized = sorted(
+            key for key in quote_times if key != key.upper())[:5]
+
+        overlays = {}
+        for symbol, mapped in mapped_by_symbol.items():
+            ticker = mapped.upper()
+            row = latest.get(ticker)
+            exchange_time = quote_times.get(ticker)
+            received_time, quote_count = received.get(ticker, (None, 0))
+            candle_time, bar_count = candles.get(ticker, (None, 0))
+            if row is None or not exchange_time or not received_time or not quote_count:
+                overlays[symbol] = self._missing_overlay(
+                    mapped, f"{self.SYMBOL_MISSING}: Rubix SQLite has no quote for {mapped}")
+                continue
+            snapshot = self._snapshot_from_batch(
+                exchange_time, received_time, quote_count, candle_time, bar_count)
+            overlays[symbol] = self._overlay_from_row(mapped, row, snapshot)
+            if unnormalized:
+                overlays[symbol]["data_quality_warning"] = (
+                    f"{self.QUOTE_TICKER_NOT_NORMALIZED}: {','.join(unnormalized)}")
+        return overlays
+
+    def _snapshot_from_batch(self, exchange_time, received_time, quote_count,
+                             candle_time, bar_count):
+        """Build the exact snapshot shape ``_symbol_snapshot`` returns, from batch rows."""
+        received_ts = _utc_timestamp(received_time)
+        latest_candle = _utc_timestamp(candle_time) if candle_time else None
+        return {
+            "latest_exchange_timestamp": _utc_timestamp(exchange_time).isoformat(),
+            "latest_received_timestamp": received_ts.isoformat(),
+            "quote_count": int(quote_count or 0),
+            "latest_candle_timestamp": (
+                latest_candle.isoformat() if latest_candle is not None else None),
+            "minute_bar_count": int(bar_count or 0),
+            "age_seconds": max(0.0, (self._utc_now() - received_ts).total_seconds()),
+            "bar_age_seconds": (
+                max(0.0, (self._utc_now() - latest_candle).total_seconds())
+                if latest_candle is not None else None),
+        }
+
+    def _missing_overlay(self, mapped, reason):
+        """A typed absent-quote result. One missing symbol never fails the universe."""
+        return {
+            "provider": self.name,
+            "mapped_symbol": mapped,
+            "available": False,
+            "freshness": "UNAVAILABLE",
+            "operational_state": self.UNAVAILABLE,
+            "freshness_warning": reason,
+            "session_phase": egx_session_phase(),
+            "quote_count": 0,
+            "minute_bars_available": False,
+            "minute_bar_count": 0,
+            "latest_minute_bar": None,
+        }
+
+    def _overlay_from_row(self, mapped, row, snapshot):
+        """Compose one overlay from a latest-quote row and its snapshot."""
+        freshness = assess_quote_freshness(
+            snapshot["latest_received_timestamp"],
+            snapshot["latest_exchange_timestamp"],
+            value=self._now(),
+            open_stale_after_minutes=self.stale_after_minutes,
+        )
+        state, reason = self._state_from_snapshot(snapshot, freshness)
+        bid = _optional_number(row[1])
+        ask = _optional_number(row[2])
+        spread = None
+        if bid is not None and ask is not None and bid > 0 and ask >= bid:
+            spread = (ask - bid) / bid * 100
+        return {
+            "provider": self.name,
+            "mapped_symbol": mapped,
+            "available": True,
+            "last": _optional_number(row[0]),
+            "bid": bid,
+            "ask": ask,
+            "volume": _optional_number(row[3]),
+            "quote_timestamp": _utc_timestamp(row[4]).isoformat(),
+            "received_timestamp": _utc_timestamp(row[5]).isoformat(),
+            "spread_percent": spread,
+            "freshness": state.replace("RUBIX_", ""),
+            "operational_state": state,
+            "freshness_warning": reason,
+            "session_phase": freshness.phase,
+            "session_lag": freshness.session_lag,
+            "age_seconds": snapshot.get("age_seconds"),
+            "quote_count": snapshot.get("quote_count", 0),
+            "minute_bars_available": bool(snapshot.get("latest_candle_timestamp")),
+            "minute_bar_count": snapshot.get("minute_bar_count", 0),
+            "latest_minute_bar": snapshot.get("latest_candle_timestamp"),
+        }
+
     def quote_overlay(self, symbol):
         """Read the latest quote as metadata; never manufacture a daily candle."""
 
@@ -220,7 +383,7 @@ class RubixSQLiteProvider(MarketDataProvider):
                 row = connection.execute(
                     """
                     SELECT last_price, bid, ask, volume, market_timestamp, received_at
-                    FROM quotes WHERE UPPER(ticker)=?
+                    FROM quotes WHERE ticker=?
                     ORDER BY received_at DESC LIMIT 1
                     """,
                     (mapped.upper(),),
@@ -336,11 +499,11 @@ class RubixSQLiteProvider(MarketDataProvider):
             with self._connect() as connection:
                 row = connection.execute(
                     """SELECT MAX(market_timestamp), MAX(received_at), COUNT(*)
-                       FROM quotes WHERE UPPER(ticker)=?""",
+                       FROM quotes WHERE ticker=?""",
                     (mapped.upper(),),
                 ).fetchone()
                 candle = connection.execute(
-                    "SELECT MAX(minute), COUNT(*) FROM candles_1m WHERE UPPER(ticker)=?",
+                    "SELECT MAX(minute), COUNT(*) FROM candles_1m WHERE ticker=?",
                     (mapped.upper(),),
                 ).fetchone()
         except sqlite3.Error as error:
@@ -385,7 +548,7 @@ class RubixSQLiteProvider(MarketDataProvider):
         """Report every omitted/stale symbol instead of silently hiding it."""
 
         rows = connection.execute(
-            "SELECT UPPER(ticker), MAX(received_at) FROM quotes GROUP BY UPPER(ticker)"
+            "SELECT ticker, MAX(received_at) FROM quotes GROUP BY ticker"
         ).fetchall()
         latest = {str(row[0]): _utc_timestamp(row[1]) for row in rows if row[0] and row[1]}
         expected = tuple(dict.fromkeys(self.expected_symbols))
@@ -490,7 +653,7 @@ class RubixSQLiteProvider(MarketDataProvider):
             rows = connection.execute(
                 """SELECT minute AS Date, open AS Open, high AS High,
                           low AS Low, close AS Close, volume AS Volume
-                   FROM candles_1m WHERE UPPER(ticker)=? ORDER BY minute""",
+                   FROM candles_1m WHERE ticker=? ORDER BY minute""",
                 (mapped.upper(),),
             ).fetchall()
         if not rows:
@@ -522,31 +685,38 @@ class RubixSQLiteProvider(MarketDataProvider):
         combined = pd.concat([seed, overlay])
         return combined[~combined.index.duplicated(keep="last")].sort_index()
 
-    def _validate_database(self):
+    def _validate_path(self):
         if self.db_path is None:
             raise ProviderConfigurationError("RUBIX_DB_PATH is not configured")
         if not self.db_path.is_file():
             raise ProviderConnectionError(f"Rubix SQLite not found: {self.db_path}")
+
+    def _validate_database(self):
+        self._validate_path()
         try:
             with self._connect() as connection:
-                tables = {
-                    row[0] for row in connection.execute(
-                        "SELECT name FROM sqlite_master WHERE type='table'"
-                    )
-                }
-                missing_tables = self.REQUIRED_TABLES - tables
-                if missing_tables:
-                    raise ProviderSchemaError(
-                        "Rubix SQLite missing tables: " + ", ".join(sorted(missing_tables))
-                    )
-                quote_columns = {
-                    row[1] for row in connection.execute("PRAGMA table_info(quotes)")
-                }
-                candle_columns = {
-                    row[1] for row in connection.execute("PRAGMA table_info(candles_1m)")
-                }
+                self._validate_schema(connection)
         except sqlite3.Error as error:
             raise ProviderConnectionError(f"cannot validate Rubix SQLite: {error}") from error
+
+    def _validate_schema(self, connection):
+        """Schema check on an EXISTING connection, so a batch read opens only one."""
+        tables = {
+            row[0] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        missing_tables = self.REQUIRED_TABLES - tables
+        if missing_tables:
+            raise ProviderSchemaError(
+                "Rubix SQLite missing tables: " + ", ".join(sorted(missing_tables))
+            )
+        quote_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(quotes)")
+        }
+        candle_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(candles_1m)")
+        }
         missing_quotes = self.REQUIRED_QUOTE_COLUMNS - quote_columns
         missing_candles = self.REQUIRED_CANDLE_COLUMNS - candle_columns
         if missing_quotes or missing_candles:

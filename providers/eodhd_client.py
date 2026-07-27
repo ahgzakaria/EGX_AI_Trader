@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import socket
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,6 +35,48 @@ class EODHDError(RuntimeError):
 
 class EODHDNotConfigured(EODHDError):
     pass
+
+
+# Typed failures. A scan classifies a symbol from the exception CLASS, so a bounded
+# network condition is never reported as an internal defect.
+class EODHDTimeout(EODHDError):
+    """The request exceeded its per-attempt timeout or its total deadline."""
+
+
+class EODHDConnectionFailed(EODHDError):
+    """The endpoint could not be reached (DNS, refused, reset, unreachable)."""
+
+
+class EODHDRateLimited(EODHDError):
+    """The provider answered 429."""
+
+
+class EODHDAuthFailed(EODHDError):
+    """The provider rejected the credential (401/403)."""
+
+
+class EODHDCancelled(EODHDError):
+    """The scan was cancelled; no further request was attempted."""
+
+
+# Bounded network policy.
+#
+# ``SCAN_ATTEMPT_TIMEOUT`` is the socket timeout for one attempt: an EODHD EOD document
+# for a single EGX symbol is a few hundred kilobytes from a CDN-backed REST endpoint, so
+# a healthy response lands well inside one second. Eight seconds is generous enough to
+# absorb a slow link while being far below anything an operator would call a stall.
+#
+# ``SCAN_TOTAL_DEADLINE`` bounds the whole refresh for one symbol including any retry.
+# Twelve seconds allows one full attempt plus a short margin, so a single symbol can add
+# at most ~12 s to a scan instead of the previous worst case of three 25-second attempts
+# separated by exponential backoff (~80 s).
+#
+# ``SCAN_RETRIES = 1`` implements "at most one refresh attempt per symbol": inside a scan
+# there is no retry cascade across 265 symbols. Non-scan callers keep the original
+# retrying defaults.
+SCAN_ATTEMPT_TIMEOUT = 8
+SCAN_TOTAL_DEADLINE = 12
+SCAN_RETRIES = 1
 
 
 @dataclass
@@ -141,10 +184,15 @@ class EODHDClient:
 
     # -- request -------------------------------------------------------------
 
-    def get_json(self, path, params=None, *, cache_ttl_seconds=86400, force=False):
+    def get_json(self, path, params=None, *, cache_ttl_seconds=86400, force=False,
+                 deadline_seconds=None, max_attempts=None, cancel=None):
         """GET {BASE}/{path} with caching. Returns parsed JSON (list/dict).
 
         cache_ttl_seconds=None caches forever; force=True bypasses the cache read.
+
+        ``deadline_seconds`` bounds the TOTAL time for this request including retries
+        and backoff; ``max_attempts`` caps attempts (a scan passes 1); ``cancel`` is a
+        predicate checked immediately before and after the bounded network call.
         """
         params = dict(params or {})
         params.setdefault("fmt", "json")
@@ -164,32 +212,83 @@ class EODHDClient:
         query["api_token"] = token
         url = f"{BASE_URL}/{path}?{urlparse.urlencode(query)}"
 
+        retries = self.retries if max_attempts is None else max(1, int(max_attempts))
+        started = time.monotonic()
+
+        def remaining():
+            """Seconds left in the total deadline, or ``None`` when unbounded."""
+            if deadline_seconds is None:
+                return None
+            return deadline_seconds - (time.monotonic() - started)
+
+        def check_cancelled():
+            if cancel is not None and cancel():
+                raise EODHDCancelled(f"cancelled before EODHD request '{path}'")
+
         last_error = None
-        for attempt in range(1, self.retries + 1):
+        last_class = EODHDError
+        for attempt in range(1, retries + 1):
+            # Cancellation is checked immediately BEFORE the bounded request…
+            check_cancelled()
+            left = remaining()
+            if left is not None and left <= 0:
+                self.stats.errors += 1
+                raise EODHDTimeout(
+                    f"EODHD deadline exceeded for '{path}' after "
+                    f"{deadline_seconds:g}s")
+            attempt_timeout = self.timeout if left is None else max(0.5, min(self.timeout, left))
             try:
                 req = urlrequest.Request(url, headers={"User-Agent": "EGX-Trader-EODHD/1.0"})
-                with urlrequest.urlopen(req, timeout=self.timeout) as resp:  # noqa: S310
+                with urlrequest.urlopen(req, timeout=attempt_timeout) as resp:  # noqa: S310
                     body = resp.read().decode("utf-8", errors="replace")
                 data = json.loads(body)
                 self.stats.live_calls += 1
                 self.stats._bump("live", path)
                 self._write_cache(cache_path, data)
+                # …and immediately AFTER it returns, so a cancelled scan stops here.
+                check_cancelled()
                 return data
+            except EODHDCancelled:
+                raise
             except urlerror.HTTPError as e:
                 code = e.code
                 last_error = _redact(f"HTTP {code}", token)
-                if code in (429, 500, 502, 503, 504) and attempt < self.retries:
-                    time.sleep(min(2 ** attempt, 8))
+                if code == 429:
+                    last_class = EODHDRateLimited
+                elif code in (401, 403):
+                    # Deterministic credential rejection: retrying cannot fix it.
+                    self.stats.errors += 1
+                    raise EODHDAuthFailed(
+                        f"EODHD rejected the credential for '{path}': {last_error}")
+                else:
+                    last_class = EODHDConnectionFailed
+                if code in (429, 500, 502, 503, 504) and attempt < retries:
+                    backoff = min(2 ** attempt, 8)
+                    left = remaining()
+                    if left is not None and backoff >= left:
+                        break              # a backoff that would blow the deadline
+                    time.sleep(backoff)
                     continue
                 break
-            except (urlerror.URLError, TimeoutError, json.JSONDecodeError) as e:
+            except (TimeoutError, socket.timeout) as e:
                 last_error = _redact(f"{type(e).__name__}: {e}", token)
-                if attempt < self.retries:
-                    time.sleep(min(2 ** attempt, 8))
+                last_class = EODHDTimeout
+                break                       # a timeout is already the bound; do not retry
+            except (urlerror.URLError, json.JSONDecodeError) as e:
+                last_error = _redact(f"{type(e).__name__}: {e}", token)
+                last_class = (EODHDTimeout
+                              if isinstance(getattr(e, "reason", None), (TimeoutError,))
+                              else EODHDConnectionFailed)
+                if attempt < retries:
+                    backoff = min(2 ** attempt, 8)
+                    left = remaining()
+                    if left is not None and backoff >= left:
+                        break
+                    time.sleep(backoff)
                     continue
                 break
         self.stats.errors += 1
-        raise EODHDError(f"EODHD request failed for '{path}': {last_error}")
+        raise last_class(f"EODHD request failed for '{path}': {last_error}")
 
     # -- typed endpoints -----------------------------------------------------
 
@@ -204,11 +303,13 @@ class EODHDClient:
         return self.get_json(f"search/{query}", {"limit": limit}, cache_ttl_seconds=7 * 86400)
 
     def eod(self, symbol, *, from_date=None, to_date=None, period="d", order="a",
-            cache_ttl_seconds=43200, force=False):
+            cache_ttl_seconds=43200, force=False, deadline_seconds=None,
+            max_attempts=None, cancel=None):
         params = {"period": period, "order": order}
         if from_date:
             params["from"] = str(from_date)
         if to_date:
             params["to"] = str(to_date)
         return self.get_json(f"eod/{symbol}", params, cache_ttl_seconds=cache_ttl_seconds,
-                             force=force)
+                             force=force, deadline_seconds=deadline_seconds,
+                             max_attempts=max_attempts, cancel=cancel)

@@ -121,7 +121,7 @@ def provider_name_for(purpose):
 
 def load_history(
     symbol, period=None, interval=None, purpose=None,
-    require_positive_volume=True, min_bars=None,
+    require_positive_volume=True, min_bars=None, scan_context=None,
 ):
     """Load validated candles using configured routing and transparent fallback."""
 
@@ -176,6 +176,7 @@ def load_history(
         finalized = _load_swing_daily_history(
             symbol, period, interval, min_bars, require_positive_volume,
             cache, providers["yahoo"], providers["rubix"], purpose,
+            scan_context=scan_context,
         )
         capture_active(symbol, finalized, "normalized")
         return finalized
@@ -207,9 +208,14 @@ def load_history(
 
 def _load_swing_daily_history(
     symbol, period, interval, min_bars, require_positive_volume,
-    cache, yahoo, rubix, purpose,
+    cache, yahoo, rubix, purpose, scan_context=None,
 ):
-    """Load completed daily history first, then attach a non-candle quote overlay."""
+    """Load completed daily history first, then attach a non-candle quote overlay.
+
+    Inside a scan the live overlay comes from ``scan_context`` — one batched read for the
+    whole universe — so this path opens no per-symbol Rubix connection. Outside a scan the
+    single-symbol overlay is used exactly as before.
+    """
 
     # CURRENT_RESEARCH_V2: EODHD (per routing tier) or validated local history +
     # Rubix Daily Bridge for EODHD-unsupported symbols. Yahoo is NEVER used for
@@ -221,7 +227,8 @@ def _load_swing_daily_history(
 
     try:
         history = get_current_research_history(
-            symbol, period=period, interval=interval, min_bars=min_bars
+            symbol, period=period, interval=interval, min_bars=min_bars,
+            scan_context=scan_context,
         )
     except ResearchDataUnavailable as error:
         # Blocked symbols fail loudly (never silently omitted, never Yahoo-substituted).
@@ -247,18 +254,36 @@ def _load_swing_daily_history(
     completed = pd.Timestamp(frame.index[-1]).isoformat()
     metadata = dict(frame.attrs.get("market_data", {}))
     overlay_error = None
-    try:
-        overlay = rubix.quote_overlay(symbol)
-    except Exception as error:  # Live evidence must never erase valid history.
-        logger.warning("Rubix quote overlay unavailable for %s: %s", symbol, error)
-        overlay_error = str(error)
-        overlay = {
-            "provider": "rubix",
-            "available": False,
-            "freshness": "UNAVAILABLE",
-            "operational_state": "RUBIX_UNAVAILABLE",
-            "session_phase": egx_session_phase(),
-        }
+    if scan_context is not None:
+        # Scan path: the overlay was already read for the whole universe in one bounded
+        # batch. No connection is opened here, and a missing quote stays typed-missing —
+        # it is never substituted from another provider.
+        overlay = scan_context.overlay_for(symbol)
+        if overlay is None:
+            overlay = {
+                "provider": "rubix",
+                "available": False,
+                "freshness": "UNAVAILABLE",
+                "operational_state": scan_context.rubix_batch_status,
+                "session_phase": egx_session_phase(),
+            }
+            overlay_error = (scan_context.rubix_batch_detail
+                             or "no batched Rubix quote for this symbol")
+        elif not overlay.get("available"):
+            overlay_error = overlay.get("freshness_warning")
+    else:
+        try:
+            overlay = rubix.quote_overlay(symbol)
+        except Exception as error:  # Live evidence must never erase valid history.
+            logger.warning("Rubix quote overlay unavailable for %s: %s", symbol, error)
+            overlay_error = str(error)
+            overlay = {
+                "provider": "rubix",
+                "available": False,
+                "freshness": "UNAVAILABLE",
+                "operational_state": "RUBIX_UNAVAILABLE",
+                "session_phase": egx_session_phase(),
+            }
 
     metadata.update({
         "data_domain": research_md.get("data_domain"),
