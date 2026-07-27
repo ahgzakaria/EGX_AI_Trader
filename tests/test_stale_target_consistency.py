@@ -538,7 +538,9 @@ def test_scanner_provenance_is_additive_to_frozen_golden_output(monkeypatch):
     ]
     provider_calls = []
 
-    def load_history(symbol, purpose=None):
+    def load_history(symbol, purpose=None, **kwargs):
+        # ``**kwargs`` absorbs the scan-scoped context the scanner now threads through;
+        # this double still asserts on the symbol and purpose it was called with.
         provider_calls.append((symbol, purpose))
         if symbol == "BLOCKED.CA":
             raise RuntimeError("DATA_INSUFFICIENT")

@@ -37,6 +37,10 @@ from scripts.launcher_process_utils import (  # noqa: E402 - project root above
 
 ARCHIVE_SCHEMA_VERSION = "1.0"
 DATASET_FORMAT = "npz"
+#: Set only for the duration of one market scan; ``capture_active`` prefers it so the
+#: scanner's serialization runs on the archive writer thread instead of inline.
+_ACTIVE_QUEUED_SESSION: ContextVar[object] = ContextVar(
+    "active_queued_archive_session", default=None)
 _ACTIVE_ARCHIVE: ContextVar["DatasetArchive | None"] = ContextVar(
     "active_dataset_archive", default=None
 )
@@ -137,24 +141,35 @@ def _exact_frame_hash(frame: pd.DataFrame) -> str:
     return digest.hexdigest()
 
 
-def _write_frame(path: Path, frame: pd.DataFrame) -> tuple[str, int]:
-    payload = canonical_frame_bytes(frame)
+def _publish_bytes(path: Path, blob: bytes) -> str:
+    """Write ``blob`` atomically and return its SHA-256, hashed without re-reading.
+
+    The archive previously wrote each artifact and then re-opened it to hash the bytes
+    it had just produced. Building the payload in memory first lets the same bytes be
+    hashed once and written once: the file on disk, its size and its digest are
+    byte-for-byte what the previous implementation produced, because these ARE the same
+    bytes. Temporary-file naming, flush, fsync and atomic replace are unchanged.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    # mtime=0 makes the compressed bytes reproducible as well as the content.
-    with temporary.open("wb") as raw:
-        with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as zipped:
-            zipped.write(payload)
-        raw.flush()
-        os.fsync(raw.fileno())
+    with temporary.open("wb") as handle:
+        handle.write(blob)
+        handle.flush()
+        os.fsync(handle.fileno())
     os.replace(temporary, path)
-    return hashlib.sha256(payload).hexdigest(), len(payload)
+    return hashlib.sha256(blob).hexdigest()
 
 
-def _write_exact_frame(path: Path, frame: pd.DataFrame) -> str:
-    """Write a lossless, compressed NumPy archive without pickle objects."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
+def canonical_gzip_bytes(payload: bytes) -> bytes:
+    """Deterministic gzip container for ``payload`` (mtime=0, no embedded filename)."""
+    buffer = io.BytesIO()
+    with gzip.GzipFile(filename="", mode="wb", fileobj=buffer, mtime=0) as zipped:
+        zipped.write(payload)
+    return buffer.getvalue()
+
+
+def exact_frame_npz_bytes(frame: pd.DataFrame) -> bytes:
+    """The lossless NumPy archive payload for ``frame``, as bytes."""
     index = pd.DatetimeIndex(frame.index)
     payload = {
         "index_ns": index.asi8,
@@ -170,12 +185,35 @@ def _write_exact_frame(path: Path, frame: pd.DataFrame) -> str:
         if values.dtype.kind not in "biufcMm":
             raise TypeError(f"Unsupported non-numeric OHLCV dtype: {column}={values.dtype}")
         payload[f"column_{position}"] = values
-    with temporary.open("wb") as handle:
-        np.savez_compressed(handle, **payload)
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(temporary, path)
+    buffer = io.BytesIO()
+    np.savez_compressed(buffer, **payload)
+    return buffer.getvalue()
+
+
+def _write_frame(path: Path, frame: pd.DataFrame) -> tuple[str, int]:
+    """Human-readable artifact. Returns ``(content_sha256, uncompressed_bytes)``."""
+    payload = canonical_frame_bytes(frame)
+    _publish_bytes(path, canonical_gzip_bytes(payload))
+    return hashlib.sha256(payload).hexdigest(), len(payload)
+
+
+def _write_frame_hashed(path: Path, frame: pd.DataFrame) -> tuple[str, int, str]:
+    """As :func:`_write_frame`, also returning the FILE digest computed while writing."""
+    payload = canonical_frame_bytes(frame)
+    file_digest = _publish_bytes(path, canonical_gzip_bytes(payload))
+    return hashlib.sha256(payload).hexdigest(), len(payload), file_digest
+
+
+def _write_exact_frame(path: Path, frame: pd.DataFrame) -> str:
+    """Write a lossless, compressed NumPy archive without pickle objects."""
+    _publish_bytes(path, exact_frame_npz_bytes(frame))
     return _exact_frame_hash(frame)
+
+
+def _write_exact_frame_hashed(path: Path, frame: pd.DataFrame) -> tuple[str, str]:
+    """As :func:`_write_exact_frame`, also returning the FILE digest."""
+    file_digest = _publish_bytes(path, exact_frame_npz_bytes(frame))
+    return _exact_frame_hash(frame), file_digest
 
 
 def _read_exact_frame(path: Path) -> pd.DataFrame:
@@ -582,8 +620,12 @@ class DatasetArchive:
             return
         relative = Path(stage) / f"{_safe_symbol(symbol)}.{DATASET_FORMAT}"
         csv_relative = Path(stage) / f"{_safe_symbol(symbol)}.csv.gz"
-        saved_hash = _write_exact_frame(self.staging / relative, frame)
-        _, uncompressed_bytes = _write_frame(self.staging / csv_relative, frame)
+        # Both digests come from the bytes as they are written, so the artifact is not
+        # re-read from disk purely to hash what was just produced.
+        saved_hash, npz_file_hash = _write_exact_frame_hashed(
+            self.staging / relative, frame)
+        _, uncompressed_bytes, csv_file_hash = _write_frame_hashed(
+            self.staging / csv_relative, frame)
         provider = dict(frame.attrs.get("market_data", {}))
         provider.update(metadata or {})
         self.records[key] = {
@@ -598,8 +640,8 @@ class DatasetArchive:
             "start": pd.Timestamp(frame.index.min()).isoformat(),
             "end": pd.Timestamp(frame.index.max()).isoformat(),
             "content_sha256": saved_hash,
-            "file_sha256": sha256_file(self.staging / relative),
-            "human_readable_file_sha256": sha256_file(self.staging / csv_relative),
+            "file_sha256": npz_file_hash,
+            "human_readable_file_sha256": csv_file_hash,
             "uncompressed_bytes": uncompressed_bytes,
             "provider_metadata": _json_value(provider),
         }
@@ -706,7 +748,24 @@ def deactivate_archive(token) -> None:
     _ACTIVE_ARCHIVE.set(None)
 
 
+def activate_queued_session(session):
+    """Route ``capture_active`` through a queued writer for the current scan only.
+
+    Non-scan callers, recovery tools and tests keep the synchronous path; only the
+    market scanner opts in, and it drains and clears the session before publication.
+    """
+    return _ACTIVE_QUEUED_SESSION.set(session)
+
+
+def deactivate_queued_session(token=None) -> None:
+    _ACTIVE_QUEUED_SESSION.set(None)
+
+
 def capture_active(symbol: str, frame: pd.DataFrame, stage: str, metadata=None) -> None:
+    session = _ACTIVE_QUEUED_SESSION.get()
+    if session is not None:
+        session.capture(symbol, frame, stage, metadata)
+        return
     archive = _ACTIVE_ARCHIVE.get()
     if archive is not None:
         archive.capture(symbol, frame, stage, metadata)

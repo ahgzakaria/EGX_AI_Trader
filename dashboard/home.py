@@ -4,14 +4,120 @@ import logging
 import pandas as pd
 import streamlit as st
 
-from core.scanner import scan_symbols
+from core import scan_job_manager as job_manager
 from core.data_provider import summarize_frames
+from dashboard.scan_status_panel import coverage_view, scan_status_view
 from decision_support.service import DecisionSupportService
 from dashboard.stock_details import show_stock_details
-from dashboard.ui import empty_state, page_header, section_header
+from dashboard.ui import empty_state, page_header, section_header, status_bar
 
 
 logger = logging.getLogger(__name__)
+
+SCAN_SOURCE = "data/symbols.csv"
+#: Poll interval for the progress fragment. Fast enough to feel live, slow enough that
+#: the page is not re-running constantly while a scan works.
+SCAN_POLL_SECONDS = 0.75
+
+
+def _format_duration(seconds):
+    if seconds is None:
+        return "—"
+    seconds = int(max(0, seconds))
+    return f"{seconds // 60:02d}:{seconds % 60:02d}"
+
+
+def _render_scan_status(job_progress, expected_session=None, result_metadata=None):
+    """The honest three-line provider banner."""
+    view = scan_status_view(job_progress, expected_session=expected_session,
+                            result_metadata=result_metadata)
+    coverage = coverage_view(job_progress)
+    status_bar([
+        ("Historical analysis source", view["historical_source"], "blue"),
+        ("Latest completed candle", view["latest_completed_candle"], "gray"),
+        ("Live quote overlay", view["live_overlay"],
+         "green" if view["live_overlay"] == "Rubix Fresh"
+         else "amber" if "Partially" in view["live_overlay"]
+         or "Stale" in view["live_overlay"] else "gray"),
+    ])
+    return coverage
+
+
+def _render_scan_job(job):
+    """Render the background job, polling only while it is still active."""
+
+    def _body():
+        snapshot = job.progress()
+        state, total = snapshot.state, max(1, snapshot.total)
+        st.markdown(f"**{snapshot.stage}** · scan `{snapshot.scan_id}` · `{state}`")
+        st.progress(min(1.0, snapshot.completed / total),
+                    text=f"{snapshot.completed} / {snapshot.total}")
+
+        row = st.columns(4)
+        row[0].metric("Elapsed", _format_duration(snapshot.elapsed_seconds))
+        row[1].metric("Remaining (est.)",
+                      _format_duration(snapshot.estimated_remaining_seconds))
+        row[2].metric("Current symbol", snapshot.current_symbol or "—")
+        row[3].metric("Last symbol",
+                      f"{snapshot.last_completed_symbol or '—'}"
+                      + (f" · {snapshot.last_symbol_seconds:.2f}s"
+                         if snapshot.last_symbol_seconds else ""))
+
+        row = st.columns(4)
+        row[0].metric("Successful", snapshot.success)
+        row[1].metric("Skipped", snapshot.skipped)
+        row[2].metric("Failed", snapshot.failed)
+        coverage = coverage_view(snapshot)
+        row[3].metric("Coverage", f"{coverage['coverage_percent']:.1f}%",
+                      help="Analytical coverage — successful results / approved symbols. "
+                           "Progress is a different number.")
+
+        row = st.columns(4)
+        row[0].metric("EODHD cache hits", snapshot.eodhd_cache_hits)
+        row[1].metric("EODHD refreshes", snapshot.eodhd_refresh_attempts)
+        row[2].metric("Rubix overlays",
+                      f"{snapshot.rubix_overlay_available}/{snapshot.total}")
+        row[3].metric("Circuit breaker", snapshot.circuit_breaker_state)
+
+        if snapshot.status_breakdown:
+            st.caption("Typed outcome breakdown")
+            st.dataframe(
+                pd.DataFrame(sorted(snapshot.status_breakdown.items(),
+                                    key=lambda item: -item[1]),
+                             columns=["Status", "Symbols"]),
+                hide_index=True, use_container_width=True)
+        if job.sanitized_error:
+            st.error(job.sanitized_error)
+
+    # ``run_every`` re-runs only this fragment on a bounded schedule — no busy loop and
+    # no sleep on the script thread. A terminal job renders once and stops polling.
+    if job.is_active:
+        st.fragment(_body, run_every=SCAN_POLL_SECONDS)()
+    else:
+        _body()
+
+
+def _adopt_finished_job(job):
+    """Publish a terminal job's result into session state exactly once."""
+    if st.session_state.get("adopted_scan_id") == job.scan_id:
+        return
+    st.session_state.adopted_scan_id = job.scan_id
+    result = job.final_result
+    if result is None:
+        return
+    st.session_state.results = result
+    st.session_state.live_scan_completed = bool(result) and not job.cancelled
+    st.session_state.archive_warning = _archive_warning(result)
+    if result and not job.cancelled:
+        # Phase 9 is a post-decision advisory snapshot. Failures are disclosed but can
+        # never invalidate or rewrite scanner rows.
+        try:
+            advisory = DecisionSupportService().analyze(result)
+            st.session_state.decision_support_report = advisory.get("daily_report")
+            st.session_state.decision_support_error = None
+        except Exception as error:
+            logger.exception("Decision-support snapshot failed")
+            st.session_state.decision_support_error = str(error)
 
 
 def show_dashboard():
@@ -36,11 +142,15 @@ def show_dashboard():
     if "results" not in st.session_state:
         st.session_state.results = None
 
+    # The provider banner reads the configured operational route and the live job — it
+    # never infers a Yahoo fallback from Rubix quote health.
+    job = job_manager.REGISTRY.get(job_manager.workspace_key_for("dashboard", SCAN_SOURCE))
     provider_placeholder = st.empty()
     with provider_placeholder.container():
-        _render_provider_status(summarize_frames([], purpose="dashboard"))
+        _render_scan_status(job.progress() if job is not None else None)
 
     scan_col, status_col = st.columns([3, 1])
+    active = job is not None and job.is_active
     scan_completed = st.session_state.get("live_scan_completed", False)
     # A zero-result run is a recorded failed experiment, not a completed live
     # scan. Keep the evidence, but allow the operator to retry after repairing
@@ -53,40 +163,36 @@ def show_dashboard():
             "🔍 Run Market Scan",
             type="primary",
             use_container_width=True,
-            disabled=scan_completed,
+            disabled=active or scan_completed,
             help="One immutable market scan is recorded per application session.",
+            key="run_market_scan",
         ):
-            with st.spinner("Scanning EGX symbols and recording the forward session..."):
-                st.session_state.results = scan_symbols(
-                    "data/symbols.csv", data_purpose="dashboard"
-                )
-                st.session_state.live_scan_completed = bool(st.session_state.results)
-                # Archiving happens after the scan is already complete. If the
-                # dataset could not be published, the scan itself is still valid
-                # evidence — report it concisely instead of discarding the run.
-                st.session_state.archive_warning = _archive_warning(
-                    st.session_state.results
-                )
-                # Phase 9 is a post-decision advisory snapshot. Failures are
-                # disclosed but can never invalidate or rewrite scanner rows.
-                if st.session_state.results:
-                    try:
-                        advisory = DecisionSupportService().analyze(
-                            st.session_state.results
-                        )
-                        st.session_state.decision_support_report = advisory.get(
-                            "daily_report"
-                        )
-                        st.session_state.decision_support_error = None
-                    except Exception as error:
-                        logger.exception("Decision-support snapshot failed")
-                        st.session_state.decision_support_error = str(error)
+            # Atomic: a double click, a rerun or a second tab attaches to the job that
+            # already owns this workspace instead of starting a second scan.
+            job, created = job_manager.start_scan_job(SCAN_SOURCE, "dashboard")
+            if not created:
+                st.info(f"A market scan is already running (scan {job.scan_id}).")
+            st.rerun()
     with status_col:
-        st.button(
-            "● Session recorded" if scan_completed else "○ Ready to scan",
-            disabled=True,
-            use_container_width=True,
-        )
+        if active:
+            if st.button("⏹ إيقاف الفحص · Stop Scan", use_container_width=True,
+                         key=f"stop_scan_{job.scan_id}"):
+                job.request_cancel()          # idempotent
+                st.rerun()
+        else:
+            st.button(
+                "● Session recorded" if scan_completed else "○ Ready to scan",
+                disabled=True,
+                use_container_width=True,
+            )
+
+    if job is not None:
+        _render_scan_job(job)
+        if job.is_active:
+            # An active scan owns the page: results are published only once the worker
+            # reaches a terminal state.
+            return
+        _adopt_finished_job(job)
 
     archive_warning = st.session_state.get("archive_warning")
     if archive_warning:

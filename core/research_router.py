@@ -105,11 +105,171 @@ def unresolved_action_date(symbol):
 # --- EODHD current-research history -----------------------------------------
 
 
+# --------------------------------------------------------------------------- #
+# Scan-scoped reuse
+# --------------------------------------------------------------------------- #
+#
+# A universe scan asked the same three questions 265 times over: it built a new EODHD
+# client per symbol, recomputed the expected completed session per symbol, and re-parsed
+# and re-adjusted the same unchanged ten-year cache file per symbol. None of that changes
+# between symbols within one scan, so it is computed once and reused.
+#
+# Nothing here alters a value: the adjusted frame handed back is the same frame the engine
+# received before, and the cache is keyed on the identity of the source file so a refreshed
+# cache file is never served from a stale entry.
+
+ADJUSTED_HISTORY_CACHE_VERSION = "eodhd_adjusted@1"
+
+# A ten-year adjusted frame is roughly 3 000 rows; the bound keeps the cache to a
+# predictable ceiling instead of growing with every symbol ever requested. Both limits
+# are configurable so an operator can trade memory for warm-scan speed deliberately.
+_DEFAULT_CACHE_MAX_ENTRIES = 300
+_DEFAULT_CACHE_MAX_BYTES = 256 * 1024 * 1024
+
+
+def _cache_limit(name, default):
+    import os
+    try:
+        value = int(os.getenv(name, "") or default)
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+class _BoundedFrameCache:
+    """A small LRU of adjusted frames with an entry bound AND a byte-estimate bound.
+
+    Entries are evicted least-recently-used first. Callers never receive the stored
+    object: :meth:`get` returns an isolated shallow copy with its own ``attrs`` mapping,
+    so a caller mutating the frame it was handed cannot corrupt the cached entry.
+    """
+
+    def __init__(self, max_entries=None, max_bytes=None):
+        from collections import OrderedDict
+        self._entries = OrderedDict()
+        self._bytes = 0
+        self.max_entries = max_entries or _cache_limit(
+            "EODHD_HISTORY_CACHE_MAX_ENTRIES", _DEFAULT_CACHE_MAX_ENTRIES)
+        self.max_bytes = max_bytes or _cache_limit(
+            "EODHD_HISTORY_CACHE_MAX_BYTES", _DEFAULT_CACHE_MAX_BYTES)
+        self.hits = 0
+        self.misses = 0
+        self.evictions = 0
+
+    @staticmethod
+    def _isolate(frame):
+        copy = frame.copy(deep=False)
+        copy.attrs = {key: dict(value) if isinstance(value, dict) else value
+                      for key, value in frame.attrs.items()}
+        return copy
+
+    @staticmethod
+    def _estimate_bytes(frame):
+        try:
+            return int(frame.memory_usage(index=True, deep=False).sum())
+        except Exception:
+            return 0
+
+    def get(self, key):
+        entry = self._entries.get(key)
+        if entry is None:
+            self.misses += 1
+            return None
+        self._entries.move_to_end(key)
+        self.hits += 1
+        return self._isolate(entry[0])
+
+    def put(self, key, frame):
+        size = self._estimate_bytes(frame)
+        if key in self._entries:
+            self._bytes -= self._entries[key][1]
+            del self._entries[key]
+        self._entries[key] = (self._isolate(frame), size)
+        self._bytes += size
+        while self._entries and (len(self._entries) > self.max_entries
+                                 or self._bytes > self.max_bytes):
+            _, evicted = self._entries.popitem(last=False)
+            self._bytes -= evicted[1]
+            self.evictions += 1
+
+    def clear(self):
+        self._entries.clear()
+        self._bytes = 0
+
+    def stats(self):
+        """Safe metrics only — no symbol data, no file paths."""
+        return {
+            "entries": len(self._entries),
+            "retained_bytes": int(self._bytes),
+            "max_entries": self.max_entries,
+            "max_bytes": self.max_bytes,
+            "hits": self.hits,
+            "misses": self.misses,
+            "evictions": self.evictions,
+        }
+
+
+_SHARED_CLIENT = {"client": None}
+_EXPECTED_SESSION_CACHE = {"value": None, "set": False}
+_ADJUSTED_HISTORY_CACHE = _BoundedFrameCache()
+
+
+def adjusted_history_cache_stats():
+    """Bounded-cache metrics for diagnostics and the scan report."""
+    return _ADJUSTED_HISTORY_CACHE.stats()
+
+
+def shared_eodhd_client():
+    """A process-level EODHD client for NON-SCAN callers (diagnostics, one-off reads).
+
+    A scan must not use this: it builds its own client through
+    :class:`core.scan_context.ScanDataContext` so that each scan observes current
+    configuration and owns the lifetime of its session. This accessor exists only so
+    callers outside a scan keep working unchanged.
+    """
+    from providers.eodhd_client import EODHDClient
+
+    if _SHARED_CLIENT["client"] is None:
+        _SHARED_CLIENT["client"] = EODHDClient()
+    return _SHARED_CLIENT["client"]
+
+
+def reset_research_caches():
+    """Drop scan-scoped reuse. Called at the start of a scan and by tests."""
+    _SHARED_CLIENT["client"] = None
+    _EXPECTED_SESSION_CACHE.update({"value": None, "set": False})
+    _ADJUSTED_HISTORY_CACHE.clear()
+
+
 def _expected_completed_session():
+    """The expected completed EGX session, resolved once per scan."""
+    if _EXPECTED_SESSION_CACHE["set"]:
+        return _EXPECTED_SESSION_CACHE["value"]
+    value = _compute_expected_completed_session()
+    _EXPECTED_SESSION_CACHE.update({"value": value, "set": True})
+    return value
+
+
+def _compute_expected_completed_session():
     from core.egx_calendar import effective_holidays
     from core.egx_session import expected_latest_completed_session
     try:
         return expected_latest_completed_session(holidays=effective_holidays())
+    except Exception:
+        return None
+
+
+def _cache_identity(client, base):
+    """Identity of the EODHD cache file backing ``base`` — path, size and mtime.
+
+    A changed or refreshed cache file produces a different identity, so an adjusted frame
+    is reused only while its source bytes are unchanged.
+    """
+    try:
+        path = client._cache_path(f"eod/{base}.EGX",
+                                 {"period": "d", "order": "a", "fmt": "json"})
+        stat = path.stat()
+        return (str(path), int(stat.st_size), int(stat.st_mtime_ns))
     except Exception:
         return None
 
@@ -129,30 +289,97 @@ def _freshness(available_date, expected=None):
                 else "HISTORY_STALE", "lag": lag}
 
 
-def eodhd_history(symbol, *, min_bars=250, force_refresh=False):
-    """Split-adjusted EODHD daily history in the load_history frame contract."""
+def eodhd_history(symbol, *, min_bars=250, force_refresh=False, client=None,
+                  scan_budget=None):
+    """Split-adjusted EODHD daily history in the load_history frame contract.
+
+    Adjustment is unchanged: the same split-adjusted prices and the same event-specific
+    operational volume as before. What changed is that the client is supplied by the
+    caller (a scan passes its own scan-scoped session), the parsed and adjusted result is
+    reused while the source cache file is byte-identical, and a stale series triggers AT
+    MOST ONE bounded refresh instead of an open recursion.
+    """
     from core.history_frame_adapter import to_load_history_frame
     from providers.eodhd_adjustment import adjust
-    from providers.eodhd_client import EODHDClient, EODHDError
+    from providers.eodhd_client import EODHDError
 
     base = _base(symbol)
-    client = EODHDClient()
+    client = client if client is not None else shared_eodhd_client()
+    bars = max(1, int(min_bars))
+
+    identity = None if force_refresh else _cache_identity(client, base)
+    if identity is not None:
+        cached = _ADJUSTED_HISTORY_CACHE.get(
+            (base, bars, identity, ADJUSTED_HISTORY_CACHE_VERSION))
+        if cached is not None:
+            return cached
+
+    # A refresh inside a scan is bounded: one attempt, a total deadline, and
+    # cancellation checked either side of the network call. Reads served from the local
+    # cache are unaffected — the bound only applies when bytes actually move.
+    from providers.eodhd_client import (
+        SCAN_RETRIES,
+        SCAN_TOTAL_DEADLINE,
+        EODHDAuthFailed,
+        EODHDCancelled,
+        EODHDConnectionFailed,
+        EODHDRateLimited,
+        EODHDTimeout,
+    )
+
+    breaker = None if scan_budget is None else scan_budget.get("breaker")
+    bounded = {} if scan_budget is None else {
+        "deadline_seconds": scan_budget.get("deadline_seconds", SCAN_TOTAL_DEADLINE),
+        "max_attempts": scan_budget.get("max_attempts", SCAN_RETRIES),
+        "cancel": scan_budget.get("cancel"),
+    }
+    # An open breaker stops NEW network refreshes. Valid local cache still serves, so a
+    # provider outage degrades coverage instead of failing the whole universe — and it
+    # never reaches for Yahoo.
+    if force_refresh and breaker is not None and breaker.is_open:
+        raise ResearchDataUnavailable(
+            base, "EODHD_PROVIDER_UNAVAILABLE",
+            f"circuit breaker open: {breaker.reason}")
     try:
         raw = client.eod(f"{base}.EGX", order="a", cache_ttl_seconds=6 * 3600,
-                         force=force_refresh)
+                         force=force_refresh, **bounded)
+    except EODHDCancelled:
+        raise
+    except (EODHDTimeout, EODHDConnectionFailed, EODHDRateLimited,
+            EODHDAuthFailed) as error:
+        # Typed network conditions keep their class so the scanner can report the real
+        # cause. Only these BROAD provider failures move the breaker.
+        if breaker is not None:
+            breaker.record_broad_failure(error)
+        raise
     except EODHDError as error:
         raise ResearchDataUnavailable(base, DATA_UNAVAILABLE, str(error)) from error
+    if force_refresh and breaker is not None:
+        # Only a real network request proves the provider is reachable again.
+        breaker.record_success()
     rows = [r for r in (raw or []) if isinstance(r, dict) and r.get("close")]
     if not rows:
         raise ResearchDataUnavailable(base, DATA_UNAVAILABLE, "EODHD returned no bars")
-    frame = pd.DataFrame([{"Date": pd.to_datetime(r["date"]).date(), "Open": r["open"],
-                           "High": r["high"], "Low": r["low"], "Close": r["close"],
-                           "Volume": r.get("volume", 0)} for r in rows])
-    # refresh once if the cached series is behind the expected completed session
+    # One vectorised date parse for the whole series. The previous form called
+    # ``pd.to_datetime`` once per row — roughly three thousand scalar conversions per
+    # symbol — which was 96% of the cost of loading a symbol. The resulting column is
+    # identical: the same ``datetime.date`` values in the same order.
+    frame = pd.DataFrame({
+        "Date": pd.to_datetime([r["date"] for r in rows]).date,
+        "Open": [r["open"] for r in rows],
+        "High": [r["high"] for r in rows],
+        "Low": [r["low"] for r in rows],
+        "Close": [r["close"] for r in rows],
+        "Volume": [r.get("volume", 0) for r in rows],
+    })
+    # At most ONE bounded refresh when the cached series is behind the expected completed
+    # session. ``force_refresh`` is the terminal branch, so a symbol whose data simply has
+    # not been published yet costs one attempt, never a retry cascade across the universe.
     expected = _expected_completed_session()
     if (not force_refresh and expected and not frame.empty
             and frame["Date"].max() < expected):
-        return eodhd_history(symbol, min_bars=min_bars, force_refresh=True)
+        return eodhd_history(symbol, min_bars=min_bars, force_refresh=True,
+                             client=client, scan_budget=scan_budget)
     try:
         splits = client.get_json(f"splits/{base}.EGX", cache_ttl_seconds=7 * 86400)
     except Exception:
@@ -168,9 +395,15 @@ def eodhd_history(symbol, *, min_bars=250, force_refresh=False):
     out = to_load_history_frame(adjusted, symbol=symbol, purpose="current_research")
     out.attrs.setdefault("market_data", {})
     out.attrs["volume_meta"] = vmeta
-    if len(out) < max(1, int(min_bars)):
+    if len(out) < bars:
         raise ResearchDataUnavailable(base, DATA_INSUFFICIENT,
                                       f"{len(out)} bars < required {min_bars}")
+
+    # Cache against the identity of the file the result was actually derived from.
+    final_identity = _cache_identity(client, base)
+    if final_identity is not None:
+        _ADJUSTED_HISTORY_CACHE.put(
+            (base, bars, final_identity, ADJUSTED_HISTORY_CACHE_VERSION), out)
     return out
 
 
@@ -253,7 +486,8 @@ def clean_window_status(symbol, *, min_bars=250):
 # --- the router --------------------------------------------------------------
 
 
-def get_current_research_history(symbol, *, period="10y", interval="1d", min_bars=250):
+def get_current_research_history(symbol, *, period="10y", interval="1d", min_bars=250,
+                                 scan_context=None):
     """CURRENT_RESEARCH_V2 history. Never a Yahoo network call. Raises when unusable.
 
     A stale local seed does NOT masquerade as fresh: it raises ResearchDataUnavailable
@@ -275,7 +509,11 @@ def get_current_research_history(symbol, *, period="10y", interval="1d", min_bar
             state, detail = clean_window_status(base, min_bars=min_bars)
             if state != EODHD_OPERATIONAL_CLEAN_WINDOW:
                 raise ResearchDataUnavailable(base, state, detail)
-        frame = eodhd_history(base, min_bars=min_bars)
+        frame = eodhd_history(
+            base, min_bars=min_bars,
+            client=getattr(scan_context, "eodhd_client", None),
+            scan_budget=(scan_context.request_budget()
+                         if scan_context is not None else None))
         volume_meta = dict(frame.attrs.get("volume_meta", {}))
         provider, series = "eodhd", "SPLIT_ADJUSTED"
         effective = pd.Timestamp(frame.index[-1]).date()

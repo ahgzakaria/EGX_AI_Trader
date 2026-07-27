@@ -18,12 +18,22 @@ COVERAGE_COLUMNS = [
 
 
 class ScanResults(list):
-    """List-compatible scan output carrying non-strategy coverage evidence."""
+    """List-compatible scan output carrying non-strategy coverage evidence.
 
-    def __init__(self, values=(), *, coverage=None, failures=None):
+    ``status`` distinguishes a finished scan from one the operator stopped. A
+    ``CANCELLED`` result carries partial diagnostic rows and is never finalized as a
+    completed immutable forward session.
+    """
+
+    def __init__(self, values=(), *, coverage=None, failures=None, status="COMPLETED"):
         super().__init__(values)
         self.coverage = list(coverage or [])
         self.failures = list(failures or [])
+        self.status = str(status)
+
+    @property
+    def cancelled(self) -> bool:
+        return self.status == "CANCELLED"
 
 
 def successful_coverage_row(symbol, frame, final_status, required_lookback):
