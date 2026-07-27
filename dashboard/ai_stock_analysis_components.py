@@ -15,7 +15,9 @@ so the mapping logic can be unit-tested without a Streamlit runtime.
 
 from __future__ import annotations
 
+import html
 import json
+import re
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -628,6 +630,339 @@ def narrative_technical_rows(narrative: NarrativeResult | None):
         ("من الذاكرة المؤقتة", "Served From Cache", "نعم / yes" if provenance.cached else "لا / no"),
         ("سبب التراجع", "Fallback Reason", str(provenance.fallback_reason or EM_DASH)),
     )
+
+
+# --------------------------------------------------------------------------- #
+# Narrative presentation — one readable card per section
+# --------------------------------------------------------------------------- #
+#
+# Presentation only. Nothing below generates, re-orders, re-rounds or re-labels a fact:
+# the model still writes the prose, the fact binder still owns every number, its label,
+# its unit and its print order. These helpers only split what the composer already joined
+# so the page can lay prose and facts out as separate, readable blocks.
+
+CURRENCY_AR = "جنيه"
+
+# Section order, bilingual titles, subtle accent, and desktop grid width.
+# ``full`` = one card per row; ``half`` = two cards side by side on desktop.
+NARRATIVE_SECTION_META = (
+    ("executive_summary_ar", "الخلاصة التنفيذية", "Executive Summary", "blue", "full"),
+    ("technical_read_ar", "القراءة الفنية", "Technical Read", "violet", "full"),
+    ("positive_scenario_ar", "السيناريو الإيجابي", "Positive Scenario", "green", "half"),
+    ("negative_scenario_ar", "السيناريو السلبي", "Negative Scenario", "red", "half"),
+    ("confirmation_conditions_ar", "شروط التأكيد", "Confirmation Conditions", "cyan", "half"),
+    ("invalidation_conditions_ar", "شروط الإلغاء", "Invalidation Conditions", "orange", "half"),
+    ("risk_notes_ar", "ملاحظات المخاطر", "Risk Notes", "amber", "half"),
+    ("data_limitations_ar", "حدود البيانات", "Data Limitations", "slate", "half"),
+)
+
+NARRATIVE_SECTION_ORDER = tuple(key for key, _, _, _, _ in NARRATIVE_SECTION_META)
+
+# Subtle accents — an accent line per card, never a saturated card background.
+NARRATIVE_ACCENTS = {
+    "blue": "#60a5fa",
+    "violet": "#a78bfa",
+    "green": "#34d399",
+    "red": "#f87171",
+    "cyan": "#22d3ee",
+    "orange": "#fb923c",
+    "amber": "#fbbf24",
+    "slate": "#94a3b8",
+}
+
+# The deterministic fallback has no structured sections. Its three prose fields are shown
+# in exactly the same cards, so an unavailable model never brings the old text panel back.
+NARRATIVE_FALLBACK_FIELDS = (
+    ("executive_summary_ar", "summary"),
+    ("technical_read_ar", "rationale"),
+    ("risk_notes_ar", "risks"),
+)
+
+# Card header for the one source block shown above the cards (never repeated per card).
+NARRATIVE_SOURCE_TITLES = {
+    "LOCAL_AI_NARRATIVE": ("ذكاء اصطناعي محلي", "Local AI", "blue"),
+    "AI_NARRATIVE": ("ذكاء اصطناعي خارجي", "AI Narrative", "blue"),
+    "DETERMINISTIC_FALLBACK": ("شرح حتمي", "Deterministic Fallback", "amber"),
+    "AI_UNAVAILABLE": ("السرد غير متاح", "AI Unavailable", "red"),
+}
+
+NARRATIVE_STATE_VALIDATED = ("جاهز وتم التحقق من السرد", "Validated", "green")
+NARRATIVE_STATE_UNVERIFIED = ("لم يكتمل التحقق من السرد", "Not Validated", "amber")
+NARRATIVE_STATE_EVIDENCE_ONLY = ("مبني على الأدلة وحدها", "Evidence Only", "amber")
+NARRATIVE_STATE_MISSING = ("لا يوجد سرد", "No Narrative", "red")
+
+PROVIDER_DISPLAY_NAMES = {"ollama": "Ollama", "openai": "OpenAI", "none": ""}
+
+# A run of Latin text (EMA, RSI, MACD, "Ollama · qwen3:4b", "Local AI") that must not flip
+# Arabic direction. Adjacent Latin words joined only by spaces or a middot stay one run, so
+# a two-word English label is isolated as a phrase rather than word by word.
+_LTR_RUN = re.compile(
+    r"[A-Za-z][A-Za-z0-9_.:/@\-]*(?:[ ·]+[A-Za-z0-9][A-Za-z0-9_.:/@\-]*)*")
+
+# The longest categorical state still readable as a chip. Anything longer, and anything
+# carrying a digit, becomes an aligned label/value row instead.
+CHIP_MAX_LENGTH = 34
+
+
+def isolate_ltr(text) -> str:
+    """HTML-escape ``text``, wrapping each Latin run in a direction-isolated span.
+
+    Arabic prose that mentions ``RSI`` or ``MACD`` keeps its own direction: the abbreviation
+    renders left-to-right inside its own isolate, and the sentence around it stays RTL.
+    """
+    raw = str(text)
+    pieces, cursor = [], 0
+    for match in _LTR_RUN.finditer(raw):
+        pieces.append(html.escape(raw[cursor:match.start()]))
+        pieces.append(f'<span class="ltr" dir="ltr">{html.escape(match.group())}</span>')
+        cursor = match.end()
+    pieces.append(html.escape(raw[cursor:]))
+    return "".join(pieces)
+
+
+def split_fact_line(line):
+    """One composed fact line → ``(label, value)``.
+
+    The fact binder prints every line as ``label: value``; this reverses that single join
+    so the label and the value can sit in their own aligned columns.
+    """
+    text = str(line).strip()
+    label, separator, value = text.partition(": ")
+    return (label.strip(), value.strip()) if separator else ("", text)
+
+
+def fact_is_categorical(value) -> bool:
+    """True when a fact value is a short categorical state, so a chip is honest.
+
+    Prices, indicators, ratios, scores and percentages all carry digits and are therefore
+    never chips — they belong in aligned rows where they can be compared.
+    """
+    text = str(value).strip()
+    return bool(text) and len(text) <= CHIP_MAX_LENGTH and not any(
+        character.isdigit() for character in text)
+
+
+def _section_card(key, prose, fact_lines, meta_by_key):
+    title_ar, title_en, accent, width = meta_by_key.get(
+        key, (str(key), "", "slate", "full"))
+    rows, chips = [], []
+    for line in fact_lines:
+        if not str(line).strip():
+            continue
+        label, value = split_fact_line(line)
+        if label and fact_is_categorical(value):
+            chips.append(value)
+        else:
+            rows.append((label, value))
+    return {
+        "key": key,
+        "title_ar": title_ar,
+        "title_en": title_en,
+        "accent": accent,
+        "accent_color": NARRATIVE_ACCENTS.get(accent, NARRATIVE_ACCENTS["slate"]),
+        "width": width,
+        "prose": str(prose).strip(),
+        "rows": tuple(rows),
+        "chips": tuple(chips),
+    }
+
+
+def narrative_section_views(narrative: NarrativeResult | None):
+    """Ordered per-section card views: header, AI prose, deterministic facts — separated.
+
+    Returns one dict per card. ``prose`` is the model's qualitative sentence exactly as it
+    was validated, and ``rows``/``chips`` are the application's own fact lines split back
+    into label and value. No value is reformatted here and no fact is invented.
+    """
+    if narrative is None:
+        return ()
+    meta_by_key = {key: (title_ar, title_en, accent, width)
+                   for key, title_ar, title_en, accent, width in NARRATIVE_SECTION_META}
+    sections = tuple(getattr(narrative, "sections", ()) or ())
+    if sections:
+        supplied = {str(name): str(text) for name, text in sections}
+        ordered = [name for name in NARRATIVE_SECTION_ORDER if name in supplied]
+        ordered += [name for name in supplied if name not in meta_by_key]
+        cards = []
+        for name in ordered:
+            prose, *fact_lines = supplied[name].split("\n")
+            cards.append(_section_card(name, prose, fact_lines, meta_by_key))
+        return tuple(cards)
+
+    # Deterministic fallback: the same cards, fed from the evidence-only writer's fields.
+    cards = []
+    for key, attribute in NARRATIVE_FALLBACK_FIELDS:
+        text = str(getattr(narrative, attribute, "") or "").strip()
+        if text:
+            cards.append(_section_card(key, text, (), meta_by_key))
+    return tuple(cards)
+
+
+def narrative_summary_cells(result: AnalysisResult):
+    """The four summary-strip cells — separate cells, never one crowded RTL sentence.
+
+    Every value is read from a typed evidence field, never parsed out of the headline.
+    """
+    recommendation_ar, recommendation_en, tone = RECOMMENDATION_LABELS.get(
+        result.recommendation, ("البيانات غير كافية", "Data Insufficient", "red"))
+    close = result.price.close
+    return (
+        ("السهم", "Symbol", str(result.request.symbol), "gray"),
+        ("التوصية", "Recommendation", f"{recommendation_ar} · {recommendation_en}", tone),
+        ("آخر إغلاق", "Last Close",
+         EM_DASH if close is None else f"{fmt_price(close)} {CURRENCY_AR}", "gray"),
+        ("الثقة", "Confidence", f"{fmt_score(result.confidence.overall, 0)} / 100", "blue"),
+    )
+
+
+def narrative_source_block(narrative: NarrativeResult | None):
+    """The single source header shown above the cards — provider and model appear once.
+
+    Reads the provenance the narrative already carries. It performs no health probe and
+    contacts nothing, so a plain UI rerender never reaches a model or a provider.
+    """
+    token = narrative_source_token(narrative)
+    title_ar, title_en, tone = NARRATIVE_SOURCE_TITLES[token]
+    provenance = getattr(narrative, "provenance", None) if narrative else None
+    provider = str(getattr(provenance, "provider", "") or "").strip().lower()
+    model = str(getattr(provenance, "model", "") or "").strip()
+    if not model and narrative is not None and token != "DETERMINISTIC_FALLBACK":
+        model = str(narrative.model or "").strip()
+    provider_name = PROVIDER_DISPLAY_NAMES.get(provider, provider.title() if provider else "")
+    detail = " · ".join(part for part in (provider_name, model) if part)
+
+    validation = str(getattr(provenance, "validation_status", "") or "").strip().upper()
+    if token == "AI_UNAVAILABLE":
+        state = NARRATIVE_STATE_MISSING
+    elif token == "DETERMINISTIC_FALLBACK":
+        state = NARRATIVE_STATE_EVIDENCE_ONLY
+    elif validation == "VALIDATED":
+        state = NARRATIVE_STATE_VALIDATED
+    else:
+        state = NARRATIVE_STATE_UNVERIFIED
+    return {
+        "token": token,
+        "title_ar": title_ar,
+        "title_en": title_en,
+        "tone": tone,
+        "detail": detail,
+        "state_ar": state[0],
+        "state_en": state[1],
+        "state_tone": state[2],
+    }
+
+
+# The narrative block's own stylesheet. Kept here (not inline in the page) so the layout
+# contract — reading width, Arabic font stack, sizes, RTL, the desktop two-column grid and
+# the tablet single-column collapse — is inspectable without a Streamlit runtime.
+NARRATIVE_FONT_STACK = '"Segoe UI", Tahoma, Arial, sans-serif'
+
+NARRATIVE_CSS = f"""
+<style>
+.egx-narrative {{
+    direction: rtl; text-align: right;
+    font-family: {NARRATIVE_FONT_STACK};
+    max-width: 1080px; margin: 0 auto;
+}}
+/* Streamlit's theme sets its own font on every heading with a higher-specificity selector
+   than anything scoped here can reach, so the Arabic-capable stack has to be restated for
+   each descendant and marked important — otherwise card headings silently fall back. */
+.egx-narrative * {{ font-family: {NARRATIVE_FONT_STACK} !important; }}
+.egx-narrative .ltr {{ direction: ltr; unicode-bidi: isolate; }}
+
+/* Keep the Streamlit widgets that belong to this block (the title/regenerate row and the
+   technical-details expander) inside the same centred reading column as the cards. */
+[data-testid="stHorizontalBlock"]:has(.egx-narr-title),
+[data-testid="stExpander"]:has(.egx-narr-tech) {{
+    max-width: 1080px; margin-inline: auto;
+}}
+.egx-narr-tech {{ display: none; }}
+
+/* The selector carries the element name so it outranks Streamlit's own heading sizing. */
+.egx-narrative h2.egx-narr-title {{ margin: .2rem 0 .1rem; font-size: 26px; font-weight: 800;
+    color: var(--text); letter-spacing: -.01em; padding: 0; }}
+.egx-narrative h2.egx-narr-title .en {{ display: block; font-size: 13px; font-weight: 600;
+    color: var(--muted); direction: ltr; text-align: right; letter-spacing: .04em;
+    text-transform: uppercase; }}
+
+/* one source block — provider and model are never repeated inside a card */
+.egx-narr-source {{ display: flex; flex-wrap: wrap; align-items: center; gap: .55rem .9rem;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: .7rem .95rem; margin: .55rem 0 .7rem; }}
+.egx-narr-source .who {{ font-size: 18px; font-weight: 700; color: var(--text); }}
+.egx-narr-source .who .en {{ display: block; font-size: 13px; font-weight: 600;
+    color: var(--muted); direction: ltr; text-align: right; }}
+.egx-narr-source .meta {{ font-size: 13px; color: var(--muted); direction: ltr; }}
+.egx-narr-source .state {{ margin-inline-start: auto; display: inline-flex; align-items: center;
+    gap: .4rem; font-size: 15px; font-weight: 700; }}
+.egx-narr-source .state .dot {{ width: 9px; height: 9px; border-radius: 50%; }}
+.egx-narr-source .state .en {{ font-size: 13px; font-weight: 600; color: var(--muted);
+    direction: ltr; }}
+
+/* summary strip — four separate cells, never one run-on sentence */
+.egx-narr-strip {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .6rem; margin: 0 0 .8rem; }}
+.egx-narr-strip .cell {{ background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 11px; padding: .55rem .8rem; }}
+.egx-narr-strip .k {{ font-size: 14px; font-weight: 600; color: var(--muted); }}
+.egx-narr-strip .k .en {{ display: block; font-size: 12px; direction: ltr; text-align: right;
+    text-transform: uppercase; letter-spacing: .04em; opacity: .8; }}
+.egx-narr-strip .v {{ margin-top: .18rem; font-size: 19px; font-weight: 700; color: var(--text);
+    font-variant-numeric: tabular-nums; }}
+
+/* the cards */
+.egx-narr-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .8rem; align-items: start; }}
+.egx-narr-card {{ background: var(--surface); border: 1px solid var(--border);
+    border-radius: 13px; padding: .85rem 1.05rem 1rem; height: 100%; }}
+.egx-narr-card.full {{ grid-column: 1 / -1; }}
+.egx-narr-card h3 {{ margin: 0; font-size: 19px; font-weight: 700; color: var(--text);
+    padding-inline-start: .1rem; }}
+.egx-narr-card h3 .en {{ display: block; font-size: 13px; font-weight: 600; color: var(--muted);
+    direction: ltr; text-align: right; letter-spacing: .03em; }}
+.egx-narr-card .accent {{ height: 3px; width: 58px; border-radius: 999px; margin: .5rem 0 .65rem; }}
+.egx-narr-card p.prose {{ margin: 0; font-size: 17px; font-weight: 400; line-height: 1.8;
+    color: var(--text); max-width: 78ch; }}
+
+/* deterministic facts — a subtle secondary box, aligned label/value rows */
+.egx-narr-facts {{ margin-top: .8rem; background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: .5rem .7rem; }}
+.egx-narr-facts .row {{ display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    gap: .5rem 1rem; align-items: baseline; padding: .3rem .1rem;
+    border-bottom: 1px solid var(--border); }}
+.egx-narr-facts .row:last-child {{ border-bottom: 0; }}
+.egx-narr-facts .lbl {{ font-size: 15px; font-weight: 500; color: var(--muted); }}
+.egx-narr-facts .val {{ font-size: 16px; font-weight: 700; color: var(--text);
+    font-variant-numeric: tabular-nums; unicode-bidi: isolate; white-space: nowrap; }}
+.egx-narr-chips {{ display: flex; flex-wrap: wrap; gap: .35rem .4rem; margin-top: .55rem; }}
+.egx-narr-chips .chip {{ font-size: 14px; font-weight: 650; color: var(--text);
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 999px; padding: .16rem .6rem; }}
+
+.egx-narrative p.egx-narr-note {{ font-size: 13px; line-height: 1.7; color: var(--muted);
+    margin: .75rem 0 .2rem; max-width: 78ch; }}
+
+/* tablet and below — every card becomes a single column, nothing scrolls sideways.
+   The threshold is the viewport width at which a two-column split would leave each Arabic
+   paragraph too narrow to read comfortably, not a device class. */
+@media (max-width: 1150px) {{
+    .egx-narr-grid {{ grid-template-columns: 1fr; }}
+    .egx-narr-card.full {{ grid-column: auto; }}
+    .egx-narr-strip {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+    /* the title and the regenerate button stack, so the button keeps a full-width hit
+       area instead of being squeezed into a narrow column */
+    [data-testid="stHorizontalBlock"]:has(.egx-narr-title) {{ flex-wrap: wrap; }}
+    [data-testid="stHorizontalBlock"]:has(.egx-narr-title) > div {{
+        flex: 1 1 100%; min-width: 100%; }}
+}}
+@media (max-width: 520px) {{
+    .egx-narr-strip {{ grid-template-columns: 1fr; }}
+    .egx-narr-source .state {{ margin-inline-start: 0; }}
+    .egx-narr-facts .row {{ grid-template-columns: 1fr; }}
+    .egx-narr-facts .val {{ white-space: normal; }}
+}}
+</style>
+"""
 
 
 FROZEN_SEED_LABEL = "Frozen historical bootstrap seed"
