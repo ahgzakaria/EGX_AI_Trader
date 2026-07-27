@@ -110,9 +110,30 @@ def test_the_eight_sections_render_as_eight_separate_cards(local_ai_narrative, r
 def test_every_required_arabic_section_title_is_present(local_ai_narrative, result):
     markup = _render(local_ai_narrative, result).grid_html()
     for title in ("الخلاصة التنفيذية", "القراءة الفنية", "السيناريو الإيجابي",
-                  "السيناريو السلبي", "شروط التأكيد", "شروط الإلغاء",
+                  "السيناريو السلبي", "شروط التأكيد", "شروط الإبطال",
                   "ملاحظات المخاطر", "حدود البيانات"):
         assert title in markup
+
+
+def test_invalidation_uses_the_one_arabic_term_the_application_already_uses(
+        local_ai_narrative, fallback_narrative, result):
+    """One concept, one word: the page says الإبطال for invalidation everywhere.
+
+    الإلغاء would read as a second, competing term next to the scenario section's
+    "شروط الإبطال" and the "مستوى الإبطال" fact label. The section key is unaffected.
+    """
+    titles = dict((key, title_ar) for key, title_ar, _, _, _ in NARRATIVE_SECTION_META)
+    assert titles["invalidation_conditions_ar"] == "شروط الإبطال"
+
+    page = _page_source()
+    components = _components_source()
+    assert "شروط الإبطال" in page, "the scenario section's own wording moved"
+    for source in (page, components):
+        assert "الإلغاء" not in source
+
+    for narrative in (local_ai_narrative, fallback_narrative):
+        markup = _render(narrative, result).visible_html()
+        assert "الإلغاء" not in markup
 
 
 def test_the_cards_keep_the_contract_section_order(local_ai_narrative):
@@ -533,6 +554,12 @@ def _page_source() -> str:
     from pathlib import Path
     import dashboard.ai_stock_analysis as page
     return Path(page.__file__).read_text(encoding="utf-8")
+
+
+def _components_source() -> str:
+    from pathlib import Path
+    import dashboard.ai_stock_analysis_components as components
+    return Path(components.__file__).read_text(encoding="utf-8")
 
 
 def _strip_media_queries(css: str) -> str:

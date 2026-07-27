@@ -651,7 +651,7 @@ NARRATIVE_SECTION_META = (
     ("positive_scenario_ar", "السيناريو الإيجابي", "Positive Scenario", "green", "half"),
     ("negative_scenario_ar", "السيناريو السلبي", "Negative Scenario", "red", "half"),
     ("confirmation_conditions_ar", "شروط التأكيد", "Confirmation Conditions", "cyan", "half"),
-    ("invalidation_conditions_ar", "شروط الإلغاء", "Invalidation Conditions", "orange", "half"),
+    ("invalidation_conditions_ar", "شروط الإبطال", "Invalidation Conditions", "orange", "half"),
     ("risk_notes_ar", "ملاحظات المخاطر", "Risk Notes", "amber", "half"),
     ("data_limitations_ar", "حدود البيانات", "Data Limitations", "slate", "half"),
 )
