@@ -33,6 +33,7 @@ from dashboard.ai_stock_analysis_components import (
     narrative_section_views,
     narrative_source_block,
     narrative_summary_cells,
+    narrative_technical_rows,
     split_fact_line,
 )
 
@@ -443,6 +444,180 @@ def test_a_missing_narrative_still_shows_an_honest_badge(result):
     fake = _render(None, result)
     assert "السرد غير متاح" in fake.visible_html()
     assert narrative_source_block(None)["title_en"] == "AI Unavailable"
+
+
+# --------------------------------------------------------------------------- #
+# The source strip names who WROTE the text, not who was tried
+# --------------------------------------------------------------------------- #
+#
+# A model whose answer failed validation contributed no word to the visible narrative: the
+# deterministic writer produced all of it. Naming that model beside a "Deterministic
+# Fallback" badge credits it for text it did not write, so the strip is driven by the
+# accepted source and the attempt is recorded in the collapsed expander instead.
+
+def _with_provenance(narrative, **fields):
+    defaults = dict(prompt_version="ai-narrative@2", evidence_hash="deadbeef",
+                    generated_at="2026-07-27T10:00:00+03:00")
+    return replace(narrative, provenance=NarrativeProvenance(**{**defaults, **fields}))
+
+
+@pytest.fixture
+def rejected_ollama_narrative(bundle):
+    """Ollama answered, the validator rejected the answer, the fallback text is shown.
+
+    This is provenance only — no provider is contacted and no generation happens.
+    """
+    return _with_provenance(
+        replace(bundle.narrative, sections=()),
+        source="DETERMINISTIC_FALLBACK", provider="ollama", model="qwen3:4b",
+        validation_status="RAW_NUMBER_IN_PROSE", latency_ms=33022, cached=False,
+        fallback_reason="rejected:digit U+0031 in positive_scenario_ar")
+
+
+def test_an_accepted_local_ai_narrative_names_its_model(local_ai_narrative, result):
+    block = narrative_source_block(local_ai_narrative)
+    assert (block["title_ar"], block["title_en"]) == ("ذكاء اصطناعي محلي", "Local AI")
+    assert block["detail"] == "Ollama · qwen3:4b"
+    assert block["state_en"] == "Validated"
+
+    visible = _render(local_ai_narrative, result).visible_html()
+    assert visible.count("Ollama") == 1 and visible.count("qwen3:4b") == 1
+
+
+def test_an_accepted_external_ai_narrative_names_its_provider_and_model(bundle):
+    narrative = _with_provenance(
+        bundle.narrative, source="AI_NARRATIVE", provider="openai", model="gpt-x",
+        validation_status="VALIDATED", latency_ms=900)
+    block = narrative_source_block(narrative)
+    assert (block["title_ar"], block["title_en"]) == ("سرد بالذكاء الاصطناعي", "AI Narrative")
+    assert block["detail"] == "OpenAI · gpt-x"
+    assert block["state_en"] == "Validated"
+
+
+def test_a_disabled_provider_fallback_claims_no_model(bundle, result):
+    narrative = _with_provenance(
+        replace(bundle.narrative, sections=()), source="DETERMINISTIC_FALLBACK",
+        provider="none", model="", validation_status="NOT_ATTEMPTED",
+        fallback_reason="ai_disabled")
+    block = narrative_source_block(narrative)
+    assert (block["title_ar"], block["title_en"]) == ("شرح حتمي", "Deterministic Fallback")
+    assert (block["state_ar"], block["state_en"]) == ("مبني على الأدلة وحدها", "Evidence Only")
+    assert block["detail"] == ""
+
+    visible = _render(narrative, result).visible_html()
+    assert "Ollama" not in visible and "qwen3:4b" not in visible
+
+
+def test_a_rejected_model_is_not_credited_in_the_source_strip(rejected_ollama_narrative,
+                                                              result):
+    """The reported defect: a rejected Ollama answer was still labelled Ollama · qwen3:4b."""
+    block = narrative_source_block(rejected_ollama_narrative)
+    assert (block["title_ar"], block["title_en"]) == ("شرح حتمي", "Deterministic Fallback")
+    assert (block["state_ar"], block["state_en"]) == ("مبني على الأدلة وحدها", "Evidence Only")
+    assert block["detail"] == "", "a rejected model must not be named as the author"
+
+    fake = _render(rejected_ollama_narrative, result)
+    visible = fake.visible_html()
+    for claim in ("Ollama", "qwen3:4b", "ollama"):
+        assert claim not in visible, f"the main strip still claims {claim}"
+
+
+def test_a_rejected_attempt_is_still_diagnosable_in_the_collapsed_details(
+        rejected_ollama_narrative, result):
+    rows = dict((label_en, str(value))
+                for _, label_en, value in narrative_technical_rows(rejected_ollama_narrative))
+    assert rows["Narrative Source"] == "DETERMINISTIC_FALLBACK"
+    assert rows["Attempted Provider"] == "ollama"
+    assert rows["Attempted Model"] == "qwen3:4b"
+    assert "Provider" not in rows and "Model" not in rows, (
+        "an attempted provider must not be labelled as the provider")
+    assert rows["Validation Result"] == "RAW_NUMBER_IN_PROSE"
+    assert rows["Latency"] == "33022 ms"
+    assert "digit U+0031" in rows["Fallback Reason"]
+
+    collapsed = _render(rejected_ollama_narrative, result).collapsed_html()
+    assert "ollama" in collapsed and "qwen3:4b" in collapsed
+
+
+def test_an_accepted_narrative_labels_its_provider_plainly(local_ai_narrative):
+    """Only a rejected attempt gets the "Attempted" wording."""
+    rows = dict((label_en, str(value))
+                for _, label_en, value in narrative_technical_rows(local_ai_narrative))
+    assert rows["Provider"] == "ollama" and rows["Model"] == "qwen3:4b"
+    assert "Attempted Provider" not in rows and "Attempted Model" not in rows
+
+
+def test_no_rejected_model_prose_is_ever_rendered(rejected_ollama_narrative, result):
+    """The rejected text is never stored on the narrative, so it cannot reach the page."""
+    assert rejected_ollama_narrative.sections == (), (
+        "a rejected answer must leave no structured sections behind")
+
+    fake = _render(rejected_ollama_narrative, result)
+    # Every rendered card comes from the deterministic writer's own fields.
+    prose = PROSE_PATTERN.findall(fake.grid_html())
+    assert prose and all(text.strip() for text in prose)
+    assert rejected_ollama_narrative.summary.strip()[:40] in fake.grid_html()
+
+    # The reason is a sanitized rule name, not the offending sentence.
+    reason = dict((label_en, str(value)) for _, label_en, value
+                  in narrative_technical_rows(rejected_ollama_narrative))["Fallback Reason"]
+    assert reason.startswith("rejected:") and len(reason) < 120
+
+    everything = fake.visible_html() + fake.collapsed_html()
+    for secret in ("qualitative_text_ar", "fact_refs", "api_key", "Authorization",
+                   "Bearer ", "sk-", "SYSTEM_PROMPT"):
+        assert secret not in everything
+
+
+def test_an_unavailable_narrative_claims_no_author(result):
+    block = narrative_source_block(None)
+    assert (block["title_ar"], block["title_en"]) == ("الذكاء الاصطناعي غير متاح",
+                                                      "AI Unavailable")
+    assert block["detail"] == ""
+    assert (block["state_ar"], block["state_en"]) == ("لا يوجد سرد", "No Narrative")
+
+    visible = _render(None, result).visible_html()
+    assert "Ollama" not in visible and "qwen3:4b" not in visible
+
+
+@pytest.mark.parametrize("token,names_a_model", [
+    ("LOCAL_AI_NARRATIVE", True),
+    ("AI_NARRATIVE", True),
+    ("DETERMINISTIC_FALLBACK", False),
+    ("AI_UNAVAILABLE", False),
+])
+def test_only_an_accepted_ai_source_may_name_a_model(token, names_a_model):
+    from dashboard.ai_stock_analysis_components import NARRATIVE_SOURCES_WITH_A_MODEL
+
+    assert (token in NARRATIVE_SOURCES_WITH_A_MODEL) is names_a_model
+
+
+def test_the_fallback_view_still_keeps_the_layout_and_collapsed_details(
+        rejected_ollama_narrative, result):
+    fake = _render(rejected_ollama_narrative, result)
+    assert CARD_PATTERN.findall(fake.grid_html())
+    assert fake.visible_html().count('<div class="cell">') == 4
+    assert len(fake.expanders) == 1 and fake.expanders[0][1] is False
+
+
+def test_the_source_strip_contacts_nothing(rejected_ollama_narrative, local_ai_narrative,
+                                           result, bundle, monkeypatch):
+    """Drawing a badge must not probe a model, call a provider or re-run an analysis."""
+    import socket
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("the source strip opened a network socket")
+
+    monkeypatch.setattr(socket.socket, "connect", _boom)
+    monkeypatch.setattr(socket, "create_connection", _boom)
+
+    def _never(*args, **kwargs):
+        raise AssertionError("the source strip re-ran the narrative generator")
+
+    for narrative in (rejected_ollama_narrative, local_ai_narrative, None):
+        narrative_source_block(narrative)
+        narrative_technical_rows(narrative)
+        _render(narrative, result, bundle=bundle, regenerator=_never)
 
 
 # --------------------------------------------------------------------------- #
