@@ -200,6 +200,14 @@ phase timings go to `logs/rubix_launcher.log`; the main panel does not render tr
   The isolated worktree was seeded with a copy of main's ignored frozen market-data
   cache because worktrees do not inherit ignored runtime files; no source/provider
   behavior was changed.
+- Exact skip reasons (all are missing optional EODHD cache prerequisites):
+  - `tests/test_current_research_correctness.py:277`: COMI EODHD data not cached.
+  - `tests/test_current_research_correctness.py:277`: EAST EODHD data not cached.
+  - `tests/test_current_research_correctness.py:277`: SWDY EODHD data not cached.
+  - `tests/test_current_research_correctness.py:277`: KZPC EODHD data not cached.
+  - `tests/test_current_research_correctness.py:277`: UNIP EODHD data not cached.
+  - `tests/test_current_research_correctness.py:277`: ORAS EODHD data not cached.
+  - `tests/test_current_research_correctness.py:305`: KZPC not cached.
 - Real Tk responsiveness probe: passed.
 - Separate-port Streamlit smoke: passed.
 - `git diff --check`: passed.
