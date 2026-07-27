@@ -119,6 +119,41 @@ def classify_symbol_failure(error):
     return SYMBOL_INTERNAL_ERROR
 
 
+def _open_archive_session(experiment, scan_ctx):
+    """Start the run-scoped archive writer, or fall back to synchronous capture.
+
+    A run without a dataset archive (or an environment where the session cannot be
+    created) keeps the previous inline behaviour rather than losing evidence.
+    """
+    archive = getattr(experiment, "dataset_archive", None)
+    if archive is None:
+        return None, None
+    try:
+        from services.archive_capture_session import QueuedArchiveCaptureSession
+        from services.dataset_archive import activate_queued_session
+
+        session = QueuedArchiveCaptureSession(
+            archive, cancellation_event=scan_ctx.cancellation_event)
+        return session, activate_queued_session(session)
+    except Exception:
+        logger.exception("Queued archive session unavailable; capturing inline")
+        return None, None
+
+
+def _close_archive_session(session, token, *, cancelled):
+    """Drain and clear the writer. Returns a sanitized failure, or ``None``."""
+    if session is None:
+        return None
+    from services.dataset_archive import deactivate_queued_session
+
+    try:
+        if cancelled:
+            session.cancel()
+        return session.close_and_drain()
+    finally:
+        deactivate_queued_session(token)
+
+
 def scan_symbols(source, data_purpose="scanner", scan_context=None, *,
                  progress=None, cancellation_event=None, job=None):
 
@@ -185,6 +220,11 @@ def scan_symbols(source, data_purpose="scanner", scan_context=None, *,
          missing=len(symbols) - scan_ctx.rubix_available_count,
          status=scan_ctx.rubix_batch_status)
     emit("SCAN_STARTING", total=len(symbols))
+
+    # Immutable evidence is still captured for every symbol, but its serialization runs
+    # on ONE archive writer thread so it overlaps analysis instead of blocking it. The
+    # session is drained and cleared before any run is published.
+    archive_session, archive_token = _open_archive_session(experiment, scan_ctx)
 
     for symbol in symbols:
 
@@ -457,6 +497,7 @@ def scan_symbols(source, data_purpose="scanner", scan_context=None, *,
     # rows are returned as diagnostic evidence only.
     if cancelled:
         emit("SCAN_CANCELLED", completed=len(results) + len(failures))
+        _close_archive_session(archive_session, archive_token, cancelled=True)
         if owns_context:
             scan_ctx.close()
         experiment.cancel() if hasattr(experiment, "cancel") else experiment.fail(
@@ -466,6 +507,17 @@ def scan_symbols(source, data_purpose="scanner", scan_context=None, *,
 
     # Finalization is claimed exactly once, keyed on the job's scan_id. A Streamlit
     # rerun observes the published result; it can never re-enter this block.
+    # Drain and join the writer before publication: a completed immutable archive may
+    # never be published while artifacts are still in flight, and an archive failure is
+    # a job failure rather than a quietly degraded scan.
+    archive_failure = _close_archive_session(archive_session, archive_token,
+                                             cancelled=False)
+    if archive_failure is not None:
+        experiment.fail(RuntimeError(archive_failure))
+        if owns_context:
+            scan_ctx.close()
+        raise RuntimeError(f"Dataset archive capture failed: {archive_failure}")
+
     if job is not None and not job.begin_finalization():
         if owns_context:
             scan_ctx.close()

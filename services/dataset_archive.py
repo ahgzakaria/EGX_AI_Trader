@@ -37,6 +37,10 @@ from scripts.launcher_process_utils import (  # noqa: E402 - project root above
 
 ARCHIVE_SCHEMA_VERSION = "1.0"
 DATASET_FORMAT = "npz"
+#: Set only for the duration of one market scan; ``capture_active`` prefers it so the
+#: scanner's serialization runs on the archive writer thread instead of inline.
+_ACTIVE_QUEUED_SESSION: ContextVar[object] = ContextVar(
+    "active_queued_archive_session", default=None)
 _ACTIVE_ARCHIVE: ContextVar["DatasetArchive | None"] = ContextVar(
     "active_dataset_archive", default=None
 )
@@ -744,7 +748,24 @@ def deactivate_archive(token) -> None:
     _ACTIVE_ARCHIVE.set(None)
 
 
+def activate_queued_session(session):
+    """Route ``capture_active`` through a queued writer for the current scan only.
+
+    Non-scan callers, recovery tools and tests keep the synchronous path; only the
+    market scanner opts in, and it drains and clears the session before publication.
+    """
+    return _ACTIVE_QUEUED_SESSION.set(session)
+
+
+def deactivate_queued_session(token=None) -> None:
+    _ACTIVE_QUEUED_SESSION.set(None)
+
+
 def capture_active(symbol: str, frame: pd.DataFrame, stage: str, metadata=None) -> None:
+    session = _ACTIVE_QUEUED_SESSION.get()
+    if session is not None:
+        session.capture(symbol, frame, stage, metadata)
+        return
     archive = _ACTIVE_ARCHIVE.get()
     if archive is not None:
         archive.capture(symbol, frame, stage, metadata)
