@@ -15,6 +15,30 @@ IMPLEMENTED
 
 **Config version:** `DAILY_HISTORICAL_SELECTION_CONFIG_V1`
 
+## Phase 2A validation correction
+
+This checkpoint has been superseded for selector-readiness counts by
+`SCALPING_DAILY_SELECTOR_VALIDATION.md`. Provider coverage and selector
+populations must not be conflated:
+
+| Population | Result at 2026-07-27 cutoff |
+|---|---:|
+| Original universe | 265 |
+| Original catalogue-unresolved set | 40 |
+| Direct EODHD daily endpoints recovered from that set | 16 |
+| Remaining outside normal coverage | 24 (13 inactive, 1 non-equity, 10 unavailable) |
+| EODHD endpoint data-bearing coverage | **241 / 265** |
+| Original verified population used for strict selector validation | 225 |
+| Current-ready in that verified population | **219 / 225** |
+| Preferred 60-session depth among current-ready histories | **215 / 219** |
+| Current-ready and scoreable | **211 / 225** |
+
+The 16 direct-endpoint recoveries are valid historical endpoint recoveries, but
+their latest positive-volume sessions range from 2011-12-15 through 2026-02-11.
+All 16 therefore fail the Phase 2A ten-calendar-day freshness rule at the
+2026-07-27 cutoff. They are reported as a separate expanded endpoint analysis
+and do not silently enter the current selector population.
+
 ## Decision
 
 The baseline historical selector can run now from completed EODHD daily OHLCV.
@@ -129,7 +153,7 @@ The weights are stored together in `DailyHistoricalScoreWeights`:
 
 No live or current-session term is present.
 
-## Verified 225-symbol depth
+## Verified 225-symbol depth (Phase 2A strict result)
 
 The checkpoint used the 225-symbol verified mapping in
 `reports/eodhd/full_universe_symbol_results.csv`, the existing complete EODHD
@@ -138,13 +162,13 @@ read 450 cached EOD and split documents and made zero network requests.
 
 | Result | Symbols |
 |---|---:|
-| EODHD daily history loaded | 225 / 225 |
-| At least 30 valid sessions | **225 / 225** |
-| At least 60 valid sessions | **221 / 225** |
-| Composite score available | **216 / 225** |
+| EODHD daily endpoint returned history | 225 / 225 |
+| Current-ready positive-volume history | **219 / 225** |
+| Preferred 60-session depth among current-ready | **215 / 219** |
+| Current-ready composite score available | **211 / 225** |
 | Recent volume policy blocks liquidity/composite | **9 / 225** |
 
-The four histories below the preferred 60-session depth are:
+The four current-ready histories below the preferred 60-session depth remain:
 
 | Symbol | Valid sessions |
 |---|---:|
@@ -152,6 +176,11 @@ The four histories below the preferred 60-session depth are:
 | UTOP | 54 |
 | TWSA | 57 |
 | TYCN | 57 |
+
+Strict validation additionally identifies four stale histories (`GPPL`,
+`SAIB`, `SIMO`, `SPHT`), one insufficient history (`DEIN`, 24 valid sessions),
+and one unavailable positive-volume history (`MEGM`). `DEIN` also appears in
+the nine-symbol volume-policy set, so the categories are not additive.
 
 The nine score-blocked symbols and latest blocking events are:
 
@@ -187,7 +216,7 @@ The exact reason categories are:
 
 | Category | Count | Symbols |
 |---|---:|---|
-| Current daily endpoint works under the existing `.EGX` symbol despite catalogue omission | 16 | ACRO, ALEX, APPC, DCRC, EITP, GOCO, GTHE, IRAX, NBKE, NCGC, PACH, RMTV, SMPP, SUCE, TORA, UASG |
+| Direct daily endpoint returns historical data under the existing `.EGX` symbol despite catalogue omission | 16 | ACRO, ALEX, APPC, DCRC, EITP, GOCO, GTHE, IRAX, NBKE, NCGC, PACH, RMTV, SMPP, SUCE, TORA, UASG |
 | Inactive/historical endpoint; latest bar is no longer current | 13 | ADRI, AMPI, BIDI, BIGP, ESRS, FIRE, FNAR, IBCT, INEG, MKIT, RKAZ, UPMS, VERT |
 | Non-equity exclusion | 1 | EGX30ETF |
 | True absent or empty EODHD daily endpoint | 10 | AIFI, AIHC, DIFC, ELWA, ESAC, FCMD, HCFI, MISR, MMAT, SNFI |
@@ -200,18 +229,23 @@ The inactive endpoint dates were:
 | 2025-01-06 | ADRI, AMPI, BIDI, BIGP, FIRE, FNAR, IBCT, INEG, MKIT, RKAZ, UPMS, VERT |
 | 2025-03-12 | ESRS |
 
-Consequently, current EODHD daily data-bearing coverage is **241/265**, not
-225/265: the verified 225 plus 16 directly recoverable current symbols. All
-241 have at least 30 sessions and 237 have at least 60. The 16 recoveries are
-the same provider and suffix, but they are not silently inserted into the
-existing verified mapping: an explicit mapping/universe update is required
-before an operational artifact includes them.
+Consequently, EODHD daily **endpoint data-bearing coverage** is **241/265**, not
+225/265: the verified 225 plus 16 directly recoverable symbols. This is not a
+claim that all 241 are current or selector-ready. Strict Phase 2A validation
+finds all 16 recoveries stale by positive-volume recency. The recoveries use the
+same provider and suffix, but they are not silently inserted into the existing
+verified mapping: an explicit mapping/universe update and a current-readiness
+pass are required before an operational artifact includes them.
 
 The 13 inactive symbols, one non-equity instrument and ten truly absent/empty
 symbols are not eligible current equities. A genuinely unavailable input is
 represented as `HISTORICAL_DAILY_DATA_UNAVAILABLE`, with no rank and no score.
 
-## Requested distributions on the verified 225
+## Exploratory distributions on the verified 225
+
+This table records the pre-Phase-2A exploratory calculation. The strict
+selector-ready distribution and exclusions are authoritative in
+`SCALPING_DAILY_SELECTOR_VALIDATION.md`.
 
 The percentile table uses the latest 60 valid sessions through 2026-07-27
 (or all available sessions when 30–59). Liquidity and composite distributions
@@ -257,30 +291,31 @@ are statistically optimal.
 The offline checkpoint snapshot ID is:
 
 ```text
-7cac64ec24a87b589202d7832e59a681aecbd7cf20fe14c22d4e1ea40c56e26c
+deddfda21bcc6518114d329e207984a10d187eb7b7dd33f74ec2d8d062a38790
 ```
 
-The rank is the rank among all 216 scoreable histories; eligibility gates are
+The rank is the Phase 2A rank among all 211 current-ready, scoreable histories;
+eligibility gates are
 then applied without re-ranking:
 
 | Historical rank | Symbol | Score | Median range % | 2% frequency | Stability | Zone | Liquidity |
 |---:|---|---:|---:|---:|---:|---:|---:|
-| 4 | ARAB | 80.9488 | 4.7619 | 0.7500 | 69.2109 | 62.7306 | 97.3333 |
-| 5 | ZMID | 80.3976 | 3.2058 | 0.9000 | 84.9132 | 46.2187 | 99.3333 |
-| 11 | VALU | 79.5668 | 3.3237 | 0.9167 | 82.8283 | 47.7976 | 87.5782 |
-| 16 | MPRC | 78.8507 | 3.3321 | 0.9167 | 83.0069 | 47.8597 | 81.2759 |
-| 20 | GBCO | 78.3625 | 3.2116 | 0.9000 | 79.1904 | 46.3265 | 96.9776 |
-| 31 | COSG | 77.2167 | 3.1749 | 0.8667 | 77.5209 | 46.1743 | 94.3248 |
-| 48 | CERA | 74.6455 | 2.9852 | 0.8667 | 81.6375 | 47.5763 | 81.9624 |
-| 68 | RTVC | 72.6003 | 3.0651 | 0.8833 | 77.9886 | 51.1828 | 64.4088 |
-| 75 | UNIP | 70.8209 | 3.0777 | 0.7167 | 64.4524 | 57.0253 | 77.5723 |
-| 77 | KRDI | 70.5766 | 2.8571 | 0.7333 | 62.1166 | 69.8462 | 83.7965 |
-| 78 | MENA | 70.4892 | 3.2522 | 0.8667 | 63.4350 | 51.3086 | 62.1631 |
-| 83 | SIPC | 70.3024 | 2.7616 | 0.7833 | 79.0680 | 48.0963 | 77.0725 |
-| 86 | DSCW | 70.0703 | 2.6181 | 0.7500 | 74.8876 | 46.8586 | 95.6764 |
-| 112 | IRON | 67.0084 | 2.7428 | 0.7333 | 77.3582 | 46.7267 | 64.8596 |
-| 125 | SPMD | 65.4170 | 2.5641 | 0.9667 | 57.0013 | 52.8472 | 83.8158 |
-| 129 | SDTI | 65.1472 | 2.5648 | 0.8000 | 77.2149 | 45.7903 | 63.6072 |
+| 5 | ARAB | 80.9488 | 4.7619 | 0.7500 | 69.2109 | 62.7306 | 97.3333 |
+| 6 | ZMID | 80.3976 | 3.2058 | 0.9000 | 84.9132 | 46.2187 | 99.3333 |
+| 12 | VALU | 79.5668 | 3.3237 | 0.9167 | 82.8283 | 47.7976 | 87.5782 |
+| 18 | MPRC | 78.8507 | 3.3321 | 0.9167 | 83.0069 | 47.8597 | 81.2759 |
+| 22 | GBCO | 78.3625 | 3.2116 | 0.9000 | 79.1904 | 46.3265 | 96.9776 |
+| 32 | COSG | 77.2167 | 3.1749 | 0.8667 | 77.5209 | 46.1743 | 94.3248 |
+| 49 | CERA | 74.6455 | 2.9852 | 0.8667 | 81.6375 | 47.5763 | 81.9624 |
+| 70 | RTVC | 72.6003 | 3.0651 | 0.8833 | 77.9886 | 51.1828 | 64.4088 |
+| 78 | UNIP | 70.8209 | 3.0777 | 0.7167 | 64.4524 | 57.0253 | 77.5723 |
+| 81 | KRDI | 70.5766 | 2.8571 | 0.7333 | 62.1166 | 69.8462 | 83.7965 |
+| 82 | MENA | 70.4892 | 3.2522 | 0.8667 | 63.4350 | 51.3086 | 62.1631 |
+| 86 | SIPC | 70.3024 | 2.7616 | 0.7833 | 79.0680 | 48.0963 | 77.0725 |
+| 89 | DSCW | 70.0703 | 2.6181 | 0.7500 | 74.8876 | 46.8586 | 95.6764 |
+| 115 | IRON | 67.0084 | 2.7428 | 0.7333 | 77.3582 | 46.7267 | 64.8596 |
+| 128 | SPMD | 65.4170 | 2.5641 | 0.9667 | 57.0013 | 52.8472 | 83.8158 |
+| 132 | SDTI | 65.1472 | 2.5648 | 0.8000 | 77.2149 | 45.7903 | 63.6072 |
 
 The checkpoint calculation does not write or activate this candidate list as a
 runtime artifact. An explicit future rebuild action is still required.
@@ -321,6 +356,16 @@ Only these enrichment metrics remain unavailable:
 The baseline daily ranking is not blocked.
 
 ## Validation
+
+Phase 2A supersedes the focused-only results below with:
+
+```text
+1436 passed, 7 documented skips
+```
+
+See `SCALPING_DAILY_SELECTOR_VALIDATION.md` for the exact skip reasons, scoped
+suites, invariance, no-lookahead, sensitivity, walk-forward, corporate-action
+and smoke-test evidence.
 
 Focused daily selector tests:
 
