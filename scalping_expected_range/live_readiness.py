@@ -826,15 +826,6 @@ class LiveEntryReadinessEngine:
                 LIVE_DATA_UNAVAILABLE,
                 "A trustworthy 10:00 session-open bar is unavailable",
             )
-        if (
-            len(bars) < cfg.minimum_structure_bars
-            or len(opening_bars) < cfg.minimum_opening_bars
-        ):
-            return _blocked(
-                base,
-                LIVE_DATA_UNAVAILABLE,
-                "Minute structure is too sparse for an opening-range claim",
-            )
         if crossed_quote:
             return _blocked(
                 base,
@@ -856,24 +847,9 @@ class LiveEntryReadinessEngine:
                 LIQUIDITY_INSUFFICIENT,
                 "Cumulative volume is below the research executability gate",
             )
-        invalidation = (
-            opening_low is not None
-            and current
-            < opening_low
-            * (1 - cfg.invalidation_below_opening_range_percent / 100)
-        )
-        if invalidation:
-            return _replace_result(
-                _blocked(
-                    base,
-                    OPPORTUNITY_INVALIDATED,
-                    "Price broke materially below the opening-range low",
-                ),
-                invalidation_condition=(
-                    f"Long thesis invalid below {opening_low:.4f} "
-                    f"minus {cfg.invalidation_below_opening_range_percent:.2f}%"
-                ),
-            )
+        # Safety can be established without claiming a complete breakout
+        # structure. A clearly exhausted +5% move must remain no-chase even when
+        # sparse Rubix minutes also prevent entry readiness.
         upper_consumption = (
             max(0.0, change_open) / float(member["median_upper_excursion"])
             if change_open is not None and member["median_upper_excursion"] > 0
@@ -892,6 +868,33 @@ class LiveEntryReadinessEngine:
                     no_chase[0],
                 ),
                 no_chase_reason="; ".join(no_chase),
+            )
+        if (
+            len(bars) < cfg.minimum_structure_bars
+            or len(opening_bars) < cfg.minimum_opening_bars
+        ):
+            return _blocked(
+                base,
+                LIVE_DATA_UNAVAILABLE,
+                "Minute structure is too sparse for an opening-range claim",
+            )
+        invalidation = (
+            opening_low is not None
+            and current
+            < opening_low
+            * (1 - cfg.invalidation_below_opening_range_percent / 100)
+        )
+        if invalidation:
+            return _replace_result(
+                _blocked(
+                    base,
+                    OPPORTUNITY_INVALIDATED,
+                    "Price broke materially below the opening-range low",
+                ),
+                invalidation_condition=(
+                    f"Long thesis invalid below {opening_low:.4f} "
+                    f"minus {cfg.invalidation_below_opening_range_percent:.2f}%"
+                ),
             )
         target = current * (1 + cfg.take_profit_percent / 100)
         stop = current * (1 - cfg.stop_loss_percent / 100)
