@@ -32,11 +32,251 @@ from scalping.database import ScalpingDatabase
 from scalping.models import Opportunity, SetupType
 from scalping.paper_portfolio import ScalpingPaperPortfolio
 from scalping.scanner import ScalpingScanner, intraday_evidence_description
+from scalping_expected_range.frozen_watchlist import (
+    CONFIG_VERSION_MISMATCH,
+    GENERATION_FAILED,
+    INSUFFICIENT_DAILY_HISTORY,
+    NO_ELIGIBLE_SYMBOLS,
+    PROVENANCE_REJECTED,
+    SOURCE_FINGERPRINT_CHANGED,
+    SOURCE_UNAVAILABLE,
+    WATCHLIST_NOT_GENERATED,
+    WATCHLIST_READY,
+    FrozenHistoricalWatchlistService,
+)
 
 
 def _context():
     config = ScalpingConfig.from_mapping(settings.get("scalping"))
     return config, ScalpingDatabase(config.database_path)
+
+
+def _historical_watchlist_service():
+    return FrozenHistoricalWatchlistService()
+
+
+def _historical_watchlist_frame(record, *, displayed_only):
+    members = record.displayed if displayed_only else record.members
+    rows = []
+    for member in members:
+        rows.append(
+            {
+                "rank": member["historical_rank"],
+                "symbol": member["symbol"],
+                "historical_score": member["historical_score"],
+                "movement_potential": member["movement_potential_score"],
+                "range_stability": member["range_stability_score"],
+                "zone_consistency": member["combined_zone_consistency_score"],
+                "zone_confidence": member["zone_confidence_label"],
+                "liquidity_score": member["liquidity_score"],
+                "median_daily_range": member["median_daily_range"],
+                "normal_range_band": (
+                    f"{member['normal_range_lower']:.2f}%–"
+                    f"{member['normal_range_upper']:.2f}%"
+                ),
+                "range_hit_2pct_frequency": member["range_hit_2pct_frequency"],
+                "typical_lower_excursion": member["median_lower_excursion"],
+                "typical_upper_excursion": member["median_upper_excursion"],
+                "primary_60_state": member["primary_readiness_status"],
+                "recent_30_state": member["recent_confirmation_status"],
+                "historical_explanation": member["historical_explanation"],
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _historical_watchlist_panel(service=None):
+    """Render READY history only; this function never rebuilds on presentation."""
+
+    service = service or _historical_watchlist_service()
+    target, proposed_cutoff = service.target_and_cutoff()
+    section_header(
+        "HISTORICAL SCALPING WATCHLIST",
+        "قائمة السكالبنج التاريخية الثابتة · completed EODHD Daily history only",
+    )
+    controls = st.columns((1, 3))
+    load_clicked = controls[0].button(
+        "Load frozen watchlist",
+        key="load_frozen_historical_watchlist",
+        width="stretch",
+    )
+    controls[1].caption(
+        f"Target session {target.isoformat()} · proposed historical cutoff "
+        f"{proposed_cutoff.isoformat()} · loading is read-only"
+    )
+    result = service.get_for_session(target)
+    if load_clicked:
+        result = service.get_for_session(target)
+
+    with st.expander("Research Rebuild · إعادة بناء بحثية صريحة"):
+        st.warning(
+            "Research-only. This creates a new immutable identity only when "
+            "the cutoff, source fingerprint, selector version, universe, or "
+            "Top-N changes. It never overwrites a READY watchlist."
+        )
+        st.write(
+            f"Proposed target: **{target.isoformat()}**  \n"
+            f"Maximum historical cutoff: **{proposed_cutoff.isoformat()}**"
+        )
+        confirmed = st.checkbox(
+            "I confirm an authorized research rebuild",
+            key=f"historical_rebuild_confirm_{target.isoformat()}",
+        )
+        if st.button(
+            "Run Research Rebuild",
+            disabled=not confirmed,
+            key=f"historical_rebuild_{target.isoformat()}",
+        ):
+            with st.spinner(
+                "Loading EODHD Daily history and publishing an immutable watchlist..."
+            ):
+                result = service.rebuild_for_research(
+                    target,
+                    authorized=True,
+                )
+
+    if result.status != WATCHLIST_READY or result.record is None:
+        messages = {
+            WATCHLIST_NOT_GENERATED: (
+                "No frozen historical watchlist has been generated for this "
+                "session. Presentation does not start generation."
+            ),
+            INSUFFICIENT_DAILY_HISTORY: (
+                "The historical source does not contain enough completed daily "
+                "history to publish a watchlist."
+            ),
+            SOURCE_UNAVAILABLE: "EODHD Daily history is unavailable.",
+            PROVENANCE_REJECTED: (
+                "Historical source provenance was rejected. Yahoo, unknown and "
+                "mixed-provider histories are not accepted."
+            ),
+            CONFIG_VERSION_MISMATCH: (
+                "The stored selector version is incompatible with the current "
+                "approved configuration."
+            ),
+            SOURCE_FINGERPRINT_CHANGED: (
+                "The source fingerprint changed; an explicit research rebuild "
+                "is required."
+            ),
+            GENERATION_FAILED: (
+                "Historical watchlist generation failed closed. No partial "
+                "READY list is available."
+            ),
+            NO_ELIGIBLE_SYMBOLS: (
+                "No symbol passed the hard historical data and safety gates."
+            ),
+        }
+        st.info(messages.get(result.status, result.detail or result.status))
+        if result.detail:
+            st.caption(result.detail)
+        st.caption(
+            "No fallback to legacy ERS, Range Scanner, Yahoo, Rubix movers, "
+            "or current-session percentage change is permitted."
+        )
+        return result
+
+    record = result.record
+    header = record.header
+    st.session_state["_historical_scalping_watchlist_id"] = header["watchlist_id"]
+    cards = st.columns(4)
+    cards[0].metric("Target session", header["target_session_date"])
+    cards[1].metric("Historical cutoff", header["historical_data_cutoff"])
+    cards[2].metric("Eligible universe", header["eligible_count"])
+    cards[3].metric("Displayed candidates", header["displayed_count"])
+    st.caption(
+        f"ID {header['watchlist_id']} · {header['provider']} · "
+        f"{header['metric_version']} / {header['config_version']} · "
+        f"60-session primary / 30-session confirmation · Top {header['top_n']} · "
+        f"generated {header['generated_at']} · "
+        f"{header['source_fingerprint_status']} · FROZEN / IMMUTABLE"
+    )
+    st.success(
+        "This list is based only on completed EODHD Daily history and is "
+        "frozen for the session."
+    )
+    st.caption(
+        "Daily candles may include official closing-auction effects. "
+        "Intraday historical enrichment is currently unavailable/not ready."
+    )
+
+    top = _historical_watchlist_frame(record, displayed_only=True)
+    st.dataframe(top, use_container_width=True, hide_index=True)
+
+    with st.expander(
+        f"Complete hard-eligible universe ({header['eligible_count']})"
+    ):
+        sort_columns = {
+            "Historical rank": "rank",
+            "Historical score": "historical_score",
+            "Movement potential": "movement_potential",
+            "Range Stability": "range_stability",
+            "Zone Consistency": "zone_consistency",
+            "Liquidity": "liquidity_score",
+            "Median daily range": "median_daily_range",
+            "2% hit frequency": "range_hit_2pct_frequency",
+        }
+        sort_controls = st.columns((2, 1))
+        sort_label = sort_controls[0].selectbox(
+            "Sort historical universe",
+            tuple(sort_columns),
+            key=f"historical_sort_{header['watchlist_id']}",
+        )
+        descending = sort_controls[1].toggle(
+            "Descending",
+            value=sort_columns[sort_label] != "rank",
+            key=f"historical_sort_desc_{header['watchlist_id']}",
+        )
+        complete = _historical_watchlist_frame(
+            record, displayed_only=False
+        ).sort_values(
+            sort_columns[sort_label],
+            ascending=not descending,
+            kind="mergesort",
+        )
+        st.dataframe(complete, use_container_width=True, hide_index=True)
+
+    previous = service.repository.ready_before(header["target_session_date"])
+    if previous is not None:
+        comparison = service.compare_watchlists(
+            previous.header["watchlist_id"], header["watchlist_id"]
+        )
+        with st.expander("Stored watchlist comparison · مقارنة القوائم"):
+            comparison_cards = st.columns(4)
+            comparison_cards[0].metric(
+                "Previous target", comparison.previous_target_session
+            )
+            comparison_cards[1].metric(
+                "Candidate overlap", len(comparison.candidate_overlap)
+            )
+            comparison_cards[2].metric(
+                "Additions / removals",
+                f"{len(comparison.additions)} / {len(comparison.removals)}",
+            )
+            comparison_cards[3].metric(
+                "Top-N turnover", f"{comparison.top_n_turnover:.1%}"
+            )
+            st.caption(
+                f"Cutoff {comparison.previous_data_cutoff} → "
+                f"{comparison.current_data_cutoff} · eligible count change "
+                f"{comparison.eligible_count_change:+d} · metric version changed "
+                f"{comparison.metric_version_changed} · config version changed "
+                f"{comparison.config_version_changed}"
+            )
+            if comparison.additions:
+                st.write("Additions:", ", ".join(comparison.additions))
+            if comparison.removals:
+                st.write("Removals:", ", ".join(comparison.removals))
+            if comparison.rank_changes:
+                st.dataframe(
+                    pd.DataFrame(comparison.rank_changes),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            st.caption(
+                "Additions, removals and rank changes are historical list "
+                "comparisons, not trade signals."
+            )
+    return result
 
 
 def _today_summary(database, config):
@@ -93,6 +333,7 @@ def show_scalping_dashboard():
                 icon="⚡", badge="SCALPING V3")
 
     egx_holiday_banner()
+    _historical_watchlist_panel()
     _dash_status_bar(cfg, _session_phase())
     _dash_health_panel(cfg)
     _dash_paper_panel(cfg)
