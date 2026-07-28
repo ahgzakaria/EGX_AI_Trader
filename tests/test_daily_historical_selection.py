@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import fields
+from dataclasses import fields, replace
 from datetime import datetime, timezone
 
 import numpy as np
@@ -12,6 +12,7 @@ import pytest
 from scalping_expected_range.config import (
     DailyHistoricalScoreWeights,
     DailyHistoricalSelectionConfig,
+    DailyZoneConsistencyConfig,
     ExpectedRangeConfig,
 )
 from scalping_expected_range.daily_historical_selection import (
@@ -23,8 +24,10 @@ from scalping_expected_range.daily_historical_selection import (
     DAILY_SELECTION_UNAVAILABLE,
     EODHD_DAILY,
     INTRADAY_ENRICHMENT_NOT_READY,
+    VERY_STABLE_ZONE,
     VOLUME_HISTORY_READY,
     VOLUME_HISTORY_UNRESOLVED,
+    ZONE_SAFETY_READY,
     analyze_daily_history,
     assess_intraday_enrichment,
     build_frozen_daily_watchlist,
@@ -75,6 +78,28 @@ def _history(
 def _stable(n=60, value=3.0):
     values = [value - 0.2, value - 0.1, value, value + 0.1, value + 0.2]
     return _history((values * ((n + 4) // 5))[:n])
+
+
+def _zone_history(upper_values, lower_values, *, volume=1_000_000):
+    upper_values = list(upper_values)
+    lower_values = list(lower_values)
+    assert len(upper_values) == len(lower_values)
+    frame = pd.DataFrame(
+        {
+            "Open": 100.0,
+            "High": [100.0 + float(value) for value in upper_values],
+            "Low": [100.0 - float(value) for value in lower_values],
+            "Close": 100.0,
+            "Volume": float(volume),
+        },
+        index=pd.bdate_range(end=CUTOFF, periods=len(upper_values)),
+    )
+    frame.attrs["market_data"] = {
+        "provider": "eodhd",
+        "volume_safe_for_lookback": True,
+        "corporate_action_policy_version": "test",
+    }
+    return frame
 
 
 class _FakeEODHDClient:
@@ -299,6 +324,254 @@ def test_zone_consistency_is_separate_from_range_stability():
         consistent.metrics.daily_volatility_zone_consistency_score
         > unstable_zone.metrics.daily_volatility_zone_consistency_score
     )
+
+
+def test_stable_upper_and_lower_zones_score_highly_and_disclose_profiles():
+    result = analyze_daily_history(
+        "BALANCED",
+        _zone_history([1.5] * 60, [1.5] * 60),
+        data_cutoff=CUTOFF,
+    )
+    profile = result.zone_profile_60
+
+    assert profile.upper.consistency_score > 90
+    assert profile.lower.consistency_score > 90
+    assert profile.combined_score > 90
+    assert profile.confidence_label == VERY_STABLE_ZONE
+    assert profile.safety_status == ZONE_SAFETY_READY
+    assert profile.upper.normal_zone_lower_percent <= 1.5
+    assert profile.upper.normal_zone_upper_percent >= 1.5
+
+
+def test_one_stable_side_cannot_hide_a_highly_erratic_side():
+    stable = analyze_daily_history(
+        "STABLE",
+        _zone_history([1.5] * 60, [1.5] * 60),
+        data_cutoff=CUTOFF,
+    )
+    erratic_lower = [0.0, 0.1, 0.2, 1.0, 3.0, 6.0] * 10
+    asymmetric = analyze_daily_history(
+        "ASYMMETRIC",
+        _zone_history([1.5] * 60, erratic_lower),
+        data_cutoff=CUTOFF,
+    )
+
+    assert asymmetric.zone_profile_60.upper.consistency_score > 90
+    assert asymmetric.zone_profile_60.lower.consistency_score < 60
+    assert (
+        asymmetric.zone_profile_60.combined_score
+        < asymmetric.zone_profile_60.upper.consistency_score
+    )
+    assert (
+        asymmetric.zone_profile_60.combined_score
+        < stable.zone_profile_60.combined_score - 20
+    )
+
+
+@pytest.mark.parametrize("side", ["upper", "lower"])
+def test_one_extreme_zone_outlier_does_not_dominate(side):
+    upper = [1.5] * 60
+    lower = [1.5] * 60
+    if side == "upper":
+        upper[-1] = 40.0
+    else:
+        lower[-1] = 40.0
+    baseline = analyze_daily_history(
+        "BASE",
+        _zone_history([1.5] * 60, [1.5] * 60),
+        data_cutoff=CUTOFF,
+    )
+    changed = analyze_daily_history(
+        "OUTLIER",
+        _zone_history(upper, lower),
+        data_cutoff=CUTOFF,
+    )
+
+    assert changed.zone_profile_60.safety_status == ZONE_SAFETY_READY
+    assert (
+        baseline.zone_profile_60.combined_score
+        - changed.zone_profile_60.combined_score
+        < 5
+    )
+
+
+def test_two_event_sessions_do_not_dominate_sixty_normal_sessions():
+    upper = [1.5] * 58 + [20.0, 1.5]
+    lower = [1.5] * 59 + [20.0]
+    result = analyze_daily_history(
+        "TWO_EVENTS",
+        _zone_history(upper, lower),
+        data_cutoff=CUTOFF,
+    )
+
+    assert result.zone_profile_60.combined_score > 85
+    assert result.zone_profile_60.safety_status == ZONE_SAFETY_READY
+
+
+def test_event_dominated_quantized_zone_is_typed_and_hard_excluded():
+    result = analyze_daily_history(
+        "EVENT_DOMINATED",
+        _zone_history(
+            [0.0] * 45 + [10.0] * 15,
+            [0.0] * 45 + [25.0] * 15,
+        ),
+        data_cutoff=CUTOFF,
+    )
+
+    assert result.zone_profile_60.safety_status != ZONE_SAFETY_READY
+    assert "ZONE_EVENT_DOMINATED" in result.zone_profile_60.safety_reasons
+    assert result.eligible is False
+    assert "ZONE_EVENT_DOMINATED" in result.eligibility_reasons
+
+
+def test_zone_side_combination_is_monotonic():
+    from scalping_expected_range.daily_historical_selection import (
+        _combine_zone_sides,
+    )
+
+    cfg = DailyHistoricalSelectionConfig()
+
+    assert _combine_zone_sides(60, 70, cfg) > _combine_zone_sides(50, 70, cfg)
+    assert _combine_zone_sides(60, 80, cfg) > _combine_zone_sides(60, 70, cfg)
+
+
+def test_ordinary_completed_session_moves_zone_score_gradually():
+    upper = [1.3, 1.5, 1.7, 1.4, 1.6] * 12
+    lower = [1.2, 1.4, 1.6, 1.3, 1.5] * 12
+    history = _zone_history(upper, lower)
+    ordinary = pd.DataFrame(
+        [
+            {
+                "Open": 100.0,
+                "High": 101.5,
+                "Low": 98.6,
+                "Close": 100.0,
+                "Volume": 1_000_000,
+            }
+        ],
+        index=[pd.Timestamp("2026-07-28")],
+    )
+    extended = pd.concat([history, ordinary])
+    extended.attrs = dict(history.attrs)
+    before = analyze_daily_history("X", history, data_cutoff=CUTOFF)
+    after = analyze_daily_history("X", extended, data_cutoff="2026-07-28")
+
+    assert (
+        abs(
+            after.zone_profile_60.combined_score
+            - before.zone_profile_60.combined_score
+        )
+        < 2
+    )
+
+
+def test_recent_improvement_cannot_overwrite_long_term_profile():
+    unstable_upper = [0.1, 0.3, 1.5, 4.0, 8.0] * 6
+    unstable_lower = [8.0, 4.0, 1.5, 0.3, 0.1] * 6
+    frame = _zone_history(
+        unstable_upper + [1.5] * 30,
+        unstable_lower + [1.5] * 30,
+    )
+    result = analyze_daily_history("X", frame, data_cutoff=CUTOFF)
+
+    assert result.zone_profile_30.combined_score > result.zone_profile_60.combined_score
+    assert (
+        result.metrics.daily_volatility_zone_consistency_score
+        == result.zone_profile_60.combined_score
+    )
+    assert (
+        result.confirmed_historical_scalping_potential
+        <= result.historical_scalping_potential
+    )
+    assert result.zone_confidence_penalty == 0
+
+
+def test_hard_eligibility_and_top_n_selection_are_separate():
+    histories = {
+        f"S{index:02d}": _stable(value=2.5 + index / 100.0)
+        for index in range(25)
+    }
+    snapshot = build_frozen_daily_watchlist(
+        histories,
+        data_cutoff=CUTOFF,
+        generated_at=GENERATED,
+    )
+
+    assert sum(result.eligible for result in snapshot.results) == 25
+    assert sum(result.selected_candidate for result in snapshot.results) == 20
+    assert len(snapshot.candidate_symbols) == 20
+    assert all(
+        result.eligible_rank <= 20
+        for result in snapshot.results
+        if result.selected_candidate
+    )
+
+
+def test_small_severe_floor_change_does_not_reshuffle_normal_candidates():
+    histories = {
+        f"S{index:02d}": _stable(value=2.5 + index / 100.0)
+        for index in range(25)
+    }
+    base_cfg = DailyHistoricalSelectionConfig()
+    stricter_cfg = replace(
+        base_cfg,
+        zone=replace(
+            base_cfg.zone,
+            severe_combined_floor=base_cfg.zone.severe_combined_floor + 1,
+            severe_side_floor=base_cfg.zone.severe_side_floor + 1,
+        ),
+    )
+    base = build_frozen_daily_watchlist(
+        histories, data_cutoff=CUTOFF, generated_at=GENERATED, config=base_cfg
+    )
+    stricter = build_frozen_daily_watchlist(
+        histories,
+        data_cutoff=CUTOFF,
+        generated_at=GENERATED,
+        config=stricter_cfg,
+    )
+
+    assert stricter.candidate_symbols == base.candidate_symbols
+
+
+def test_zone_score_and_snapshot_are_deterministic():
+    histories = {"A": _stable(), "B": _history([2.2, 3.1, 2.7] * 20)}
+
+    first = build_frozen_daily_watchlist(
+        histories, data_cutoff=CUTOFF, generated_at=GENERATED
+    )
+    second = build_frozen_daily_watchlist(
+        histories, data_cutoff=CUTOFF, generated_at=GENERATED
+    )
+
+    assert first.as_dict() == second.as_dict()
+
+
+def test_nine_unresolved_volume_histories_remain_hard_excluded():
+    histories = {}
+    for index in range(9):
+        frame = _stable()
+        frame.attrs["market_data"]["volume_safe_for_lookback"] = False
+        histories[f"V{index}"] = frame
+
+    snapshot = build_frozen_daily_watchlist(
+        histories, data_cutoff=CUTOFF, generated_at=GENERATED
+    )
+
+    assert snapshot.candidate_symbols == ()
+    assert all(not result.eligible for result in snapshot.results)
+    assert all(
+        result.volume_history_status == VOLUME_HISTORY_UNRESOLVED
+        for result in snapshot.results
+    )
+
+
+def test_zone_config_rejects_non_monotonic_default_weights():
+    with pytest.raises(ValueError, match="combination weights"):
+        DailyZoneConsistencyConfig(
+            conservative_minimum_weight=0.50,
+            balanced_geometric_weight=0.40,
+        )
 
 
 def test_live_rubix_state_and_today_move_cannot_change_snapshot():
