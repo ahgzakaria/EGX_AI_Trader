@@ -392,6 +392,11 @@ scoring, separate zone consistency, immutable live-independent ranking, no
 Yahoo fallback, no first-touch claim, auction disclosure and disabled
 production/broker execution.
 
+## Phase 2B cross-reference
+
+The Zone Consistency formula, hard-safety/ranking split and 60/30 confirmation
+rule are finalized in `SCALPING_ZONE_CONSISTENCY_HARDENING.md`.
+
 ## Stop condition
 
 This branch stops at the revised daily-data checkpoint. It does not implement:

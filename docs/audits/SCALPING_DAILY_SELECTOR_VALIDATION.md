@@ -481,6 +481,15 @@ classification, closing-auction contamination in daily highs/lows, unresolved
 volume conventions for nine symbols, stale direct-endpoint recoveries, and the
 absence of approved first-touch/continuous-session intraday evidence.
 
+## Phase 2B resolution
+
+The Zone threshold sensitivity identified here is resolved by the robust,
+continuous-ranking design in
+`SCALPING_ZONE_CONSISTENCY_HARDENING.md`. That document supersedes only the
+Phase 2A Zone formula, Zone gate, provisional list and related sensitivity
+finding; all provenance, cutoff, volume and provider evidence here remains
+controlling.
+
 ## Stop condition
 
 Phase 2A stops here. It does not implement or approve frozen-watchlist
