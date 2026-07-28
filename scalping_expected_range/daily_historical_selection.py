@@ -37,6 +37,22 @@ VOLUME_HISTORY_UNAVAILABLE = "VOLUME_HISTORY_UNAVAILABLE"
 # Backward-compatible name for callers of the checkpoint module.
 DAILY_LIQUIDITY_UNAVAILABLE = VOLUME_HISTORY_UNRESOLVED
 
+ZONE_SAFETY_READY = "ZONE_SAFETY_READY"
+ZONE_SAFETY_SEVERE = "ZONE_SAFETY_SEVERE"
+
+VERY_STABLE_ZONE = "VERY_STABLE_ZONE"
+STABLE_ZONE = "STABLE_ZONE"
+MODERATE_ZONE = "MODERATE_ZONE"
+UNSTABLE_ZONE = "UNSTABLE_ZONE"
+SEVERELY_ERRATIC_ZONE = "SEVERELY_ERRATIC_ZONE"
+
+LONG_TERM_AND_RECENT_STABLE = "LONG_TERM_AND_RECENT_STABLE"
+LONG_TERM_STABLE_RECENT_WEAKENING = "LONG_TERM_STABLE_RECENT_WEAKENING"
+LONG_TERM_MODERATE_RECENT_IMPROVING = "LONG_TERM_MODERATE_RECENT_IMPROVING"
+LONG_TERM_MODERATE_RECENT_STEADY = "LONG_TERM_MODERATE_RECENT_STEADY"
+LONG_TERM_UNSTABLE = "LONG_TERM_UNSTABLE"
+INSUFFICIENT_PREFERRED_DEPTH = "INSUFFICIENT_PREFERRED_DEPTH"
+
 INTRADAY_ENRICHMENT_READY = "INTRADAY_HISTORICAL_ENRICHMENT_READY"
 INTRADAY_ENRICHMENT_NOT_READY = "INTRADAY_HISTORICAL_ENRICHMENT_NOT_READY"
 
@@ -86,6 +102,40 @@ class EODHDDailyLoadResult:
 
 
 @dataclass(frozen=True)
+class ZoneSideProfile:
+    median_excursion_percent: float
+    p25_excursion_percent: float
+    p75_excursion_percent: float
+    iqr_excursion_percent: float
+    mad_excursion_percent: float
+    normal_zone_lower_percent: float
+    normal_zone_upper_percent: float
+    in_zone_frequency: float
+    outlier_rate: float
+    mean_median_divergence_ratio: float
+    normalized_mad_quality: float
+    normalized_iqr_quality: float
+    robust_dispersion_score: float
+    expected_zone_coverage_score: float
+    outlier_quality_score: float
+    divergence_quality_score: float
+    consistency_score: float
+
+
+@dataclass(frozen=True)
+class ZoneConsistencyProfile:
+    lookback_sessions: int
+    valid_sessions: int
+    upper: ZoneSideProfile
+    lower: ZoneSideProfile
+    combined_score: float
+    side_asymmetry_points: float
+    confidence_label: str
+    safety_status: str
+    safety_reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class DailyHistoricalMetrics:
     valid_session_count: int
     mean_daily_range_percent: float
@@ -121,6 +171,8 @@ class DailyHistoricalMetrics:
     maximum_absolute_open_gap_percent: float
     daily_movement_potential_score: float
     daily_range_stability_score: float
+    upper_zone_consistency_score: float
+    lower_zone_consistency_score: float
     daily_volatility_zone_consistency_score: float
     daily_liquidity_score: float | None
 
@@ -144,6 +196,14 @@ class DailySelectionResult:
     eligible: bool
     eligibility_reasons: tuple[str, ...]
     overlap_validation_status: str
+    zone_profile_60: ZoneConsistencyProfile | None = None
+    zone_profile_30: ZoneConsistencyProfile | None = None
+    zone_confirmation_status: str = INSUFFICIENT_PREFERRED_DEPTH
+    zone_confidence_penalty: float = 0.0
+    confirmed_historical_scalping_potential: float | None = None
+    primary_historical_rank: int | None = None
+    eligible_rank: int | None = None
+    selected_candidate: bool = False
     auction_disclosure: str = DAILY_AUCTION_DISCLOSURE
     path_disclosure: str = DAILY_PATH_DISCLOSURE
     first_touch_available: bool = False
@@ -435,7 +495,33 @@ def analyze_daily_history(
             ),
         )
 
-    metrics = _compute_metrics(selected, cfg)
+    primary_zone = _zone_consistency_profile(
+        selected,
+        lookback_sessions=cfg.lookback_sessions,
+        cfg=cfg,
+    )
+    metrics = _compute_metrics(selected, cfg, zone_profile=primary_zone)
+    recent_zone = (
+        _zone_consistency_profile(
+            selected.tail(cfg.recent_confirmation_sessions),
+            lookback_sessions=cfg.recent_confirmation_sessions,
+            cfg=cfg,
+        )
+        if len(selected) >= cfg.recent_confirmation_sessions
+        else None
+    )
+    confirmation_status = _zone_confirmation_status(
+        primary_zone,
+        recent_zone,
+        preferred_ready=readiness.preferred_ready,
+        cfg=cfg,
+    )
+    confidence_penalty = _zone_confidence_penalty(
+        primary_zone,
+        recent_zone,
+        preferred_ready=readiness.preferred_ready,
+        cfg=cfg,
+    )
     volume_safe = _volume_safe(daily, cutoff)
     volume_history_status = (
         VOLUME_HISTORY_READY if volume_safe else VOLUME_HISTORY_UNRESOLVED
@@ -449,6 +535,7 @@ def analyze_daily_history(
         )
 
     score = None
+    confirmed_score = None
     if readiness.status == DAILY_SELECTION_READY and metrics.daily_liquidity_score is not None:
         weights = cfg.weights
         score = _round(
@@ -459,8 +546,15 @@ def analyze_daily_history(
             + metrics.daily_liquidity_score * weights.liquidity,
             4,
         )
+        confirmed_score = _round(score - confidence_penalty, 4)
 
-    eligible, reasons = _eligibility(metrics, score, readiness, volume_safe, cfg)
+    eligible, reasons = _eligibility(
+        metrics,
+        readiness,
+        volume_safe,
+        primary_zone,
+        cfg,
+    )
     return DailySelectionResult(
         base,
         cfg.source_provider,
@@ -479,6 +573,11 @@ def analyze_daily_history(
         eligible,
         reasons,
         overlap_validation_status,
+        primary_zone,
+        recent_zone,
+        confirmation_status,
+        confidence_penalty,
+        confirmed_score,
     )
 
 
@@ -520,22 +619,60 @@ def build_frozen_daily_watchlist(
         for symbol in symbols
     ]
 
-    scored = sorted(
-        (result for result in raw_results if result.historical_scalping_potential is not None),
+    primary_scored = sorted(
+        (
+            result
+            for result in raw_results
+            if result.historical_scalping_potential is not None
+        ),
         key=lambda result: (
             -float(result.historical_scalping_potential),
             result.symbol,
         ),
     )
-    ranks = {result.symbol: index + 1 for index, result in enumerate(scored)}
+    primary_ranks = {
+        result.symbol: index + 1
+        for index, result in enumerate(primary_scored)
+    }
+    confirmed_scored = sorted(
+        (
+            result
+            for result in raw_results
+            if result.confirmed_historical_scalping_potential is not None
+        ),
+        key=lambda result: (
+            -float(result.confirmed_historical_scalping_potential),
+            result.symbol,
+        ),
+    )
+    confirmed_ranks = {
+        result.symbol: index + 1
+        for index, result in enumerate(confirmed_scored)
+    }
+    eligible_scored = [
+        result for result in confirmed_scored if result.eligible
+    ]
+    eligible_ranks = {
+        result.symbol: index + 1
+        for index, result in enumerate(eligible_scored)
+    }
+    selected = {
+        result.symbol
+        for result in eligible_scored[: cfg.candidate_display_limit]
+    }
     ranked = tuple(
         DailySelectionResult(
             **{
                 **asdict(result),
                 "readiness": result.readiness,
                 "metrics": result.metrics,
+                "zone_profile_60": result.zone_profile_60,
+                "zone_profile_30": result.zone_profile_30,
                 "eligibility_reasons": result.eligibility_reasons,
-                "historical_rank": ranks.get(result.symbol),
+                "historical_rank": confirmed_ranks.get(result.symbol),
+                "primary_historical_rank": primary_ranks.get(result.symbol),
+                "eligible_rank": eligible_ranks.get(result.symbol),
+                "selected_candidate": result.symbol in selected,
             }
         )
         for result in raw_results
@@ -551,7 +688,7 @@ def build_frozen_daily_watchlist(
         )
     )
     candidates = tuple(
-        result.symbol for result in ranked if result.eligible
+        result.symbol for result in ranked if result.selected_candidate
     )
     stamp = _iso_timestamp(generated_at)
     snapshot_payload = {
@@ -564,8 +701,11 @@ def build_frozen_daily_watchlist(
                 result.symbol,
                 result.source_data_fingerprint,
                 result.historical_scalping_potential,
+                result.confirmed_historical_scalping_potential,
                 result.historical_rank,
                 result.eligible,
+                result.eligible_rank,
+                result.selected_candidate,
             )
             for result in ranked
         ],
@@ -588,7 +728,10 @@ def build_frozen_daily_watchlist(
 
 
 def _compute_metrics(
-    daily: pd.DataFrame, cfg: DailyHistoricalSelectionConfig
+    daily: pd.DataFrame,
+    cfg: DailyHistoricalSelectionConfig,
+    *,
+    zone_profile: ZoneConsistencyProfile | None = None,
 ) -> DailyHistoricalMetrics:
     open_ = daily["Open"].astype(float)
     high = daily["High"].astype(float)
@@ -629,7 +772,9 @@ def _compute_metrics(
         hit[1.5],
         cfg,
     )
-    zone_score = _zone_consistency_score(upper, lower_magnitude, cfg)
+    zone_profile = zone_profile or _zone_consistency_profile(
+        daily, lookback_sessions=cfg.lookback_sessions, cfg=cfg
+    )
     liquidity_score, volume_consistency = _liquidity_score(volume, turnover)
 
     # close_change is deliberately calculated as part of the per-session baseline
@@ -678,7 +823,9 @@ def _compute_metrics(
         ),
         daily_movement_potential_score=_round(movement_score),
         daily_range_stability_score=_round(stability_score),
-        daily_volatility_zone_consistency_score=_round(zone_score),
+        upper_zone_consistency_score=zone_profile.upper.consistency_score,
+        lower_zone_consistency_score=zone_profile.lower.consistency_score,
+        daily_volatility_zone_consistency_score=zone_profile.combined_score,
         daily_liquidity_score=_round(liquidity_score),
     )
 
@@ -737,38 +884,255 @@ def _zone_consistency_score(
     lower_magnitude: pd.Series,
     cfg: DailyHistoricalSelectionConfig,
 ) -> float:
-    upper_consistency, upper_envelope, upper_outliers = _zone_side(upper, cfg)
-    lower_consistency, lower_envelope, lower_outliers = _zone_side(
-        lower_magnitude, cfg
-    )
-    envelope = math.sqrt(max(0.0, upper_envelope * lower_envelope))
-    outlier_score = _unit(1.0 - max(upper_outliers, lower_outliers) / 0.20)
-    return 100.0 * (
-        0.30 * upper_consistency
-        + 0.30 * lower_consistency
-        + 0.25 * envelope
-        + 0.15 * outlier_score
+    """Backward-compatible score helper using the hardened hybrid formula."""
+
+    ranges = upper.astype(float) + lower_magnitude.astype(float)
+    range_scale = max(float(ranges.median()), 0.50)
+    upper_profile = _zone_side_profile(upper, range_scale, cfg)
+    lower_profile = _zone_side_profile(lower_magnitude, range_scale, cfg)
+    return _combine_zone_sides(
+        upper_profile.consistency_score,
+        lower_profile.consistency_score,
+        cfg,
     )
 
 
-def _zone_side(
-    values: pd.Series, cfg: DailyHistoricalSelectionConfig
-) -> tuple[float, float, float]:
+def _zone_consistency_profile(
+    daily: pd.DataFrame,
+    *,
+    lookback_sessions: int,
+    cfg: DailyHistoricalSelectionConfig,
+) -> ZoneConsistencyProfile:
+    open_ = daily["Open"].astype(float)
+    upper = (daily["High"].astype(float) - open_) / open_ * 100.0
+    lower = ((open_ - daily["Low"].astype(float)) / open_ * 100.0).clip(
+        lower=0.0
+    )
+    ranges = upper + lower
+    range_scale = max(float(ranges.median()), 0.50)
+    upper_profile = _zone_side_profile(upper, range_scale, cfg)
+    lower_profile = _zone_side_profile(lower, range_scale, cfg)
+    combined = _combine_zone_sides(
+        upper_profile.consistency_score,
+        lower_profile.consistency_score,
+        cfg,
+    )
+    asymmetry = abs(
+        upper_profile.consistency_score - lower_profile.consistency_score
+    )
+    gap_rate = 0.0
+    if len(daily) > 1:
+        gaps = ((open_ / daily["Close"].astype(float).shift(1) - 1.0) * 100.0).abs()
+        gap_rate = float((gaps.dropna() >= cfg.abnormal_gap_percent).mean())
+    reasons = []
+    zone_cfg = cfg.zone
+    if combined < zone_cfg.severe_combined_floor:
+        reasons.append("COMBINED_ZONE_BELOW_SEVERE_FLOOR")
+    if (
+        min(
+            upper_profile.consistency_score,
+            lower_profile.consistency_score,
+        )
+        < zone_cfg.severe_side_floor
+    ):
+        reasons.append("ONE_ZONE_SIDE_BELOW_SEVERE_FLOOR")
+    if (
+        max(upper_profile.outlier_rate, lower_profile.outlier_rate)
+        > zone_cfg.severe_outlier_rate
+    ):
+        reasons.append("ZONE_OUTLIER_RATE_SEVERE")
+    maximum_divergence = max(
+        upper_profile.mean_median_divergence_ratio,
+        lower_profile.mean_median_divergence_ratio,
+    )
+    minimum_coverage = min(
+        upper_profile.in_zone_frequency,
+        lower_profile.in_zone_frequency,
+    )
+    if (
+        maximum_divergence > zone_cfg.event_divergence_ratio
+        and (
+            minimum_coverage < 0.85
+            or gap_rate > zone_cfg.event_gap_rate
+        )
+    ):
+        reasons.append("ZONE_EVENT_DOMINATED")
+    return ZoneConsistencyProfile(
+        lookback_sessions=int(lookback_sessions),
+        valid_sessions=int(len(daily)),
+        upper=upper_profile,
+        lower=lower_profile,
+        combined_score=_round(combined),
+        side_asymmetry_points=_round(asymmetry),
+        confidence_label=_zone_confidence_label(combined, cfg),
+        safety_status=ZONE_SAFETY_SEVERE if reasons else ZONE_SAFETY_READY,
+        safety_reasons=tuple(reasons),
+    )
+
+
+def _zone_side_profile(
+    values: pd.Series,
+    range_scale: float,
+    cfg: DailyHistoricalSelectionConfig,
+) -> ZoneSideProfile:
+    """Calculate one side independently using robust, range-scaled inputs."""
+
     median = float(values.median())
     mad = _mad(values)
     p25 = float(values.quantile(0.25))
     p75 = float(values.quantile(0.75))
-    scale = max(abs(median), 0.25)
-    dispersion = (
-        0.55 * _unit(1.0 - (mad / scale) / 0.75)
-        + 0.45 * _unit(1.0 - ((p75 - p25) / scale) / 1.50)
+    iqr = p75 - p25
+    zone_cfg = cfg.zone
+    mad_quality = _unit(
+        1.0 - (mad / range_scale) / zone_cfg.dispersion_mad_ratio_limit
     )
-    half_width = max(cfg.robust_band_mad_multiplier * mad, 0.25)
-    envelope = float(
-        ((values >= median - half_width) & (values <= median + half_width)).mean()
+    iqr_quality = _unit(
+        1.0 - (iqr / range_scale) / zone_cfg.dispersion_iqr_ratio_limit
     )
-    outlier_rate = float(_outlier_mask(values, cfg.outlier_mad_z).mean())
-    return dispersion, envelope, outlier_rate
+    dispersion = 0.55 * mad_quality + 0.45 * iqr_quality
+    half_width = max(
+        zone_cfg.expected_zone_mad_multiplier * mad,
+        zone_cfg.expected_zone_minimum_range_fraction * range_scale,
+    )
+    zone_low = max(0.0, median - half_width)
+    zone_high = median + half_width
+    coverage = float(
+        ((values >= zone_low) & (values <= zone_high)).mean()
+    )
+    # A range-scaled minimum prevents the MAD=IQR=0 branch from suddenly
+    # reclassifying an entire quantized side when one observation crosses the
+    # empirical quartile boundary.
+    outlier_half_width = max(
+        (cfg.outlier_mad_z / 0.67448975) * mad,
+        0.50 * range_scale,
+    )
+    outlier_rate = float(
+        (
+            (values < max(0.0, median - outlier_half_width))
+            | (values > median + outlier_half_width)
+        ).mean()
+    )
+    outlier_quality = _unit(
+        1.0 - outlier_rate / zone_cfg.outlier_rate_scale
+    )
+    divergence_ratio = abs(float(values.mean()) - median) / range_scale
+    divergence_quality = _unit(
+        1.0 - divergence_ratio / zone_cfg.divergence_ratio_scale
+    )
+    score = 100.0 * (
+        zone_cfg.dispersion_weight * dispersion
+        + zone_cfg.coverage_weight * coverage
+        + zone_cfg.outlier_weight * outlier_quality
+        + zone_cfg.divergence_weight * divergence_quality
+    )
+    return ZoneSideProfile(
+        median_excursion_percent=_round(median),
+        p25_excursion_percent=_round(p25),
+        p75_excursion_percent=_round(p75),
+        iqr_excursion_percent=_round(iqr),
+        mad_excursion_percent=_round(mad),
+        normal_zone_lower_percent=_round(zone_low),
+        normal_zone_upper_percent=_round(zone_high),
+        in_zone_frequency=_round(coverage, 6),
+        outlier_rate=_round(outlier_rate, 6),
+        mean_median_divergence_ratio=_round(divergence_ratio, 6),
+        normalized_mad_quality=_round(mad_quality, 6),
+        normalized_iqr_quality=_round(iqr_quality, 6),
+        robust_dispersion_score=_round(100.0 * dispersion),
+        expected_zone_coverage_score=_round(100.0 * coverage),
+        outlier_quality_score=_round(100.0 * outlier_quality),
+        divergence_quality_score=_round(100.0 * divergence_quality),
+        consistency_score=_round(score),
+    )
+
+
+def _combine_zone_sides(
+    upper_score: float,
+    lower_score: float,
+    cfg: DailyHistoricalSelectionConfig,
+) -> float:
+    """Monotonic conservative combination; neither side can be hidden."""
+
+    zone_cfg = cfg.zone
+    lower = min(float(upper_score), float(lower_score))
+    balanced = math.sqrt(max(0.0, float(upper_score) * float(lower_score)))
+    combined = (
+        zone_cfg.conservative_minimum_weight * lower
+        + zone_cfg.balanced_geometric_weight * balanced
+    )
+    # Kept as an explicit sensitivity control. The selected default is zero so
+    # increasing either side cannot decrease the combined score.
+    if zone_cfg.asymmetry_penalty_strength:
+        asymmetry = abs(float(upper_score) - float(lower_score)) / 100.0
+        combined *= 1.0 - zone_cfg.asymmetry_penalty_strength * asymmetry
+    return combined
+
+
+def _zone_confidence_label(
+    score: float,
+    cfg: DailyHistoricalSelectionConfig,
+) -> str:
+    zone_cfg = cfg.zone
+    if score >= zone_cfg.very_stable_threshold:
+        return VERY_STABLE_ZONE
+    if score >= zone_cfg.stable_threshold:
+        return STABLE_ZONE
+    if score >= zone_cfg.moderate_threshold:
+        return MODERATE_ZONE
+    if score >= zone_cfg.unstable_threshold:
+        return UNSTABLE_ZONE
+    return SEVERELY_ERRATIC_ZONE
+
+
+def _zone_confirmation_status(
+    primary: ZoneConsistencyProfile,
+    recent: ZoneConsistencyProfile | None,
+    *,
+    preferred_ready: bool,
+    cfg: DailyHistoricalSelectionConfig,
+) -> str:
+    if not preferred_ready or recent is None:
+        return INSUFFICIENT_PREFERRED_DEPTH
+    if primary.confidence_label in {
+        UNSTABLE_ZONE,
+        SEVERELY_ERRATIC_ZONE,
+    }:
+        return LONG_TERM_UNSTABLE
+    change = recent.combined_score - primary.combined_score
+    transition = cfg.zone.confirmation_transition_points
+    if change <= -transition:
+        return LONG_TERM_STABLE_RECENT_WEAKENING
+    if (
+        primary.confidence_label == MODERATE_ZONE
+        and change >= transition
+    ):
+        return LONG_TERM_MODERATE_RECENT_IMPROVING
+    if primary.confidence_label in {VERY_STABLE_ZONE, STABLE_ZONE}:
+        return LONG_TERM_AND_RECENT_STABLE
+    return LONG_TERM_MODERATE_RECENT_STEADY
+
+
+def _zone_confidence_penalty(
+    primary: ZoneConsistencyProfile,
+    recent: ZoneConsistencyProfile | None,
+    *,
+    preferred_ready: bool,
+    cfg: DailyHistoricalSelectionConfig,
+) -> float:
+    if not preferred_ready or recent is None:
+        return 0.0
+    deterioration = (
+        primary.combined_score
+        - recent.combined_score
+        - cfg.zone.recent_deterioration_tolerance
+    )
+    return _round(
+        min(
+            cfg.zone.maximum_recent_penalty,
+            max(0.0, deterioration)
+            * cfg.zone.recent_penalty_per_zone_point,
+        )
+    )
 
 
 def _liquidity_score(
@@ -791,37 +1155,32 @@ def _liquidity_score(
 
 def _eligibility(
     metrics: DailyHistoricalMetrics,
-    score: float | None,
     readiness: DailyReadiness,
     volume_safe: bool,
+    zone_profile: ZoneConsistencyProfile,
     cfg: DailyHistoricalSelectionConfig,
 ) -> tuple[bool, tuple[str, ...]]:
+    """Return hard historical eligibility, never ordinary quality cliffs."""
+
     reasons = []
     threshold = cfg.eligibility
     if readiness.status != DAILY_SELECTION_READY:
         reasons.append(readiness.status)
+    elif (
+        cfg.require_preferred_depth_for_candidates
+        and not readiness.preferred_ready
+    ):
+        reasons.append(INSUFFICIENT_PREFERRED_DEPTH)
     if not volume_safe or metrics.daily_liquidity_score is None:
         reasons.append(VOLUME_HISTORY_UNRESOLVED)
-    if score is None or score < threshold.minimum_historical_score:
-        reasons.append("HISTORICAL_SCORE_BELOW_MINIMUM")
     if metrics.median_daily_range_percent < threshold.minimum_median_range_percent:
         reasons.append("MEDIAN_DAILY_RANGE_BELOW_MINIMUM")
     if metrics.range_hit_2pct_frequency < threshold.minimum_two_percent_frequency:
         reasons.append("TWO_PERCENT_RANGE_FREQUENCY_BELOW_MINIMUM")
-    if metrics.daily_range_stability_score < threshold.minimum_range_stability_score:
-        reasons.append("DAILY_RANGE_STABILITY_BELOW_MINIMUM")
-    if (
-        metrics.daily_volatility_zone_consistency_score
-        < threshold.minimum_zone_consistency_score
-    ):
-        reasons.append("DAILY_ZONE_CONSISTENCY_BELOW_MINIMUM")
-    if (
-        metrics.daily_liquidity_score is None
-        or metrics.daily_liquidity_score < threshold.minimum_liquidity_score
-    ):
-        reasons.append("DAILY_LIQUIDITY_SCORE_BELOW_MINIMUM")
     if metrics.median_turnover_egp < threshold.minimum_median_turnover_egp:
         reasons.append("MEDIAN_TURNOVER_BELOW_MINIMUM")
+    if zone_profile.safety_status != ZONE_SAFETY_READY:
+        reasons.extend(zone_profile.safety_reasons)
     return not reasons, tuple(reasons)
 
 
