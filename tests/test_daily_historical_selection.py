@@ -19,9 +19,12 @@ from scalping_expected_range.daily_historical_selection import (
     DAILY_PATH_DISCLOSURE,
     DAILY_SELECTION_INSUFFICIENT,
     DAILY_SELECTION_READY,
+    DAILY_SELECTION_STALE,
     DAILY_SELECTION_UNAVAILABLE,
     EODHD_DAILY,
     INTRADAY_ENRICHMENT_NOT_READY,
+    VOLUME_HISTORY_READY,
+    VOLUME_HISTORY_UNRESOLVED,
     analyze_daily_history,
     assess_intraday_enrichment,
     build_frozen_daily_watchlist,
@@ -38,10 +41,14 @@ def _history(
     *,
     upper_share=0.5,
     volume=1_000_000,
-    start="2026-04-01",
+    start=None,
 ):
     ranges = list(ranges)
-    index = pd.bdate_range(start=start, periods=len(ranges))
+    index = (
+        pd.bdate_range(start=start, periods=len(ranges))
+        if start is not None
+        else pd.bdate_range(end=CUTOFF, periods=len(ranges))
+    )
     rows = []
     for i, value in enumerate(ranges):
         share = upper_share[i] if isinstance(upper_share, (list, tuple, np.ndarray)) else upper_share
@@ -71,8 +78,9 @@ def _stable(n=60, value=3.0):
 
 
 class _FakeEODHDClient:
-    def __init__(self, rows):
+    def __init__(self, rows, splits=None):
         self.rows = rows
+        self.splits = splits or []
         self.calls = []
 
     def eod(self, symbol, **kwargs):
@@ -81,7 +89,7 @@ class _FakeEODHDClient:
 
     def get_json(self, path, **kwargs):
         self.calls.append(("get_json", path, kwargs))
-        return []
+        return self.splits
 
 
 def test_daily_loader_uses_direct_eodhd_and_corporate_action_pipeline_only():
@@ -113,6 +121,85 @@ def test_daily_loader_uses_direct_eodhd_and_corporate_action_pipeline_only():
     assert metadata["corporate_action_policy_version"]
     assert metadata["fallback_used"] is False
     assert metadata["yahoo_network_used"] is False
+
+
+def test_split_adjustment_does_not_create_false_daily_volatility():
+    dates = pd.bdate_range("2026-05-01", periods=35)
+    split_date = dates[20]
+    rows = []
+    for day in dates:
+        scale = 100.0 if day < split_date else 10.0
+        rows.append(
+            {
+                "date": day.strftime("%Y-%m-%d"),
+                "open": scale,
+                "high": scale * 1.03,
+                "low": scale * 0.99,
+                "close": scale * 1.01,
+                "adjusted_close": scale * 1.01,
+                "volume": 1_000_000,
+            }
+        )
+    client = _FakeEODHDClient(
+        rows,
+        splits=[{"date": split_date.strftime("%Y-%m-%d"), "split": "10/1"}],
+    )
+
+    loaded = load_eodhd_daily_history("TEST", client=client)
+    result = analyze_daily_history("TEST", loaded.frame, data_cutoff=CUTOFF)
+
+    assert result.metrics.maximum_daily_range_percent == pytest.approx(4.0)
+    assert result.metrics.median_daily_range_percent == pytest.approx(4.0)
+
+
+def test_dividend_adjusted_close_cannot_create_artificial_daily_range():
+    dates = pd.bdate_range("2026-05-01", periods=35)
+    rows = [
+        {
+            "date": day.strftime("%Y-%m-%d"),
+            "open": 100.0,
+            "high": 103.0,
+            "low": 99.0,
+            "close": 101.0,
+            "adjusted_close": 40.0 + index,
+            "volume": 1_000_000,
+        }
+        for index, day in enumerate(dates)
+    ]
+
+    loaded = load_eodhd_daily_history("TEST", client=_FakeEODHDClient(rows))
+    result = analyze_daily_history("TEST", loaded.frame, data_cutoff=CUTOFF)
+
+    assert result.metrics.median_daily_range_percent == pytest.approx(4.0)
+    assert result.metrics.maximum_daily_range_percent == pytest.approx(4.0)
+
+
+def test_loader_cutoff_excludes_future_bar_and_future_corporate_action():
+    dates = pd.bdate_range(end="2026-07-28", periods=35)
+    rows = [
+        {
+            "date": day.strftime("%Y-%m-%d"),
+            "open": 100.0,
+            "high": 103.0,
+            "low": 99.0,
+            "close": 101.0,
+            "volume": 1_000_000,
+        }
+        for day in dates
+    ]
+    client = _FakeEODHDClient(
+        rows,
+        splits=[{"date": "2026-07-28", "split": "10/1"}],
+    )
+
+    loaded = load_eodhd_daily_history(
+        "TEST", client=client, data_cutoff="2026-07-27"
+    )
+    metadata = loaded.frame.attrs["market_data"]
+
+    assert loaded.frame.index.max().date().isoformat() == "2026-07-27"
+    assert metadata["normalization_data_cutoff"] == "2026-07-27"
+    assert metadata["true_split_events"] == []
 
 
 def test_empty_eodhd_response_is_unavailable_without_fallback():
@@ -257,7 +344,7 @@ def test_stock_rising_strongly_today_cannot_enter_frozen_list():
     assert "WEAK" not in snapshot.candidate_symbols
 
     today = pd.DataFrame(
-        [{"Open": 100.0, "High": 150.0, "Low": 100.0, "Close": 149.0, "Volume": 1e9}],
+        [{"Open": 100.0, "High": 105.0, "Low": 100.0, "Close": 105.0, "Volume": 1e9}],
         index=[pd.Timestamp("2026-07-28")],
     )
     moved = pd.concat([weak, today])
@@ -307,6 +394,37 @@ def test_yahoo_tagged_frame_is_rejected_even_with_default_source_argument():
     assert "provider provenance" in result.eligibility_reasons[-1]
 
 
+def test_missing_provider_metadata_is_rejected():
+    frame = _stable()
+    frame.attrs.clear()
+
+    result = analyze_daily_history("X", frame, data_cutoff=CUTOFF)
+
+    assert result.readiness.status == DAILY_SELECTION_UNAVAILABLE
+    assert result.source_data_fingerprint is None
+    assert result.historical_scalping_potential is None
+
+
+def test_frame_normalized_after_historical_cutoff_cannot_be_scored():
+    frame = _stable()
+    frame.attrs["market_data"]["normalization_data_cutoff"] = "2026-07-28"
+
+    result = analyze_daily_history("X", frame, data_cutoff="2026-07-27")
+
+    assert result.volume_history_status == VOLUME_HISTORY_UNRESOLVED
+    assert result.historical_scalping_potential is None
+    assert result.metrics.median_daily_range_percent is not None
+
+
+def test_result_fingerprint_is_derived_not_trusted_from_input_metadata():
+    frame = _stable()
+    assert "source_data_fingerprint" not in frame.attrs["market_data"]
+
+    result = analyze_daily_history("X", frame, data_cutoff=CUTOFF)
+
+    assert result.source_data_fingerprint.startswith("sha256:")
+
+
 def test_daily_ohlc_makes_no_first_touch_claim():
     result = analyze_daily_history("X", _stable(), data_cutoff=CUTOFF)
 
@@ -353,6 +471,11 @@ def test_weights_are_typed_daily_only_and_sum_to_one():
     }.isdisjoint(config_fields)
 
 
+def test_configuration_cannot_relabel_selector_as_yahoo():
+    with pytest.raises(ValueError, match="EODHD_DAILY"):
+        DailyHistoricalSelectionConfig(source_provider="YAHOO")
+
+
 def test_frozen_snapshot_has_required_provenance():
     snapshot = build_frozen_daily_watchlist(
         {"X": _stable()}, data_cutoff=CUTOFF, generated_at=GENERATED
@@ -366,6 +489,237 @@ def test_frozen_snapshot_has_required_provenance():
     assert result.raw_adjusted_mode
     assert result.source_data_fingerprint.startswith("sha256:")
     assert result.metric_version == snapshot.metric_version
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("current_quote", 99.5),
+        ("current_price_change", 4.9),
+        ("current_high", 105.0),
+        ("current_low", 98.0),
+        ("current_volume", 9_999_999),
+        ("live_rvol", 8.2),
+        ("spread", 0.12),
+        ("vwap_state", "ABOVE"),
+        ("breakout_state", "BREAKOUT"),
+        ("momentum_state", "STRONG"),
+        ("rubix_freshness", "FRESH"),
+    ],
+)
+def test_each_live_field_is_independently_invariant(field, value):
+    histories = {"A": _stable(value=3.0), "B": _stable(value=1.0)}
+    reference = build_frozen_daily_watchlist(
+        histories, data_cutoff=CUTOFF, generated_at=GENERATED
+    )
+    changed = {}
+    for symbol, frame in histories.items():
+        mutated = frame.copy()
+        mutated.attrs["rubix_live"] = {field: value}
+        changed[symbol] = mutated
+
+    result = build_frozen_daily_watchlist(
+        changed, data_cutoff=CUTOFF, generated_at=GENERATED
+    )
+
+    assert result.as_dict() == reference.as_dict()
+
+
+def test_session_d_is_excluded_then_becomes_available_for_d_plus_one():
+    history = _stable(30)
+    session_d = pd.DataFrame(
+        [{"Open": 100.0, "High": 108.0, "Low": 99.0, "Close": 107.0, "Volume": 2e6}],
+        index=[pd.Timestamp("2026-07-28")],
+    )
+    extended = pd.concat([history, session_d])
+    extended.attrs = dict(history.attrs)
+
+    prepared_for_d = analyze_daily_history("X", extended, data_cutoff="2026-07-27")
+    reference = analyze_daily_history("X", history, data_cutoff="2026-07-27")
+    prepared_for_d_plus_one = analyze_daily_history(
+        "X", extended, data_cutoff="2026-07-28"
+    )
+
+    assert prepared_for_d.source_data_fingerprint == reference.source_data_fingerprint
+    assert prepared_for_d.historical_scalping_potential == reference.historical_scalping_potential
+    assert prepared_for_d_plus_one.metrics.valid_session_count == 31
+    assert prepared_for_d_plus_one.source_data_fingerprint != reference.source_data_fingerprint
+
+
+def test_weekend_gap_does_not_admit_next_session_early():
+    history = _stable(30)
+    history.index = pd.bdate_range(end="2026-07-23", periods=30)
+    monday = pd.DataFrame(
+        [{"Open": 100.0, "High": 110.0, "Low": 99.0, "Close": 109.0, "Volume": 2e6}],
+        index=[pd.Timestamp("2026-07-27")],
+    )
+    extended = pd.concat([history, monday])
+    extended.attrs = dict(history.attrs)
+
+    weekend_snapshot = analyze_daily_history(
+        "X", extended, data_cutoff="2026-07-26"
+    )
+    reference = analyze_daily_history("X", history, data_cutoff="2026-07-26")
+
+    assert weekend_snapshot.source_data_fingerprint == reference.source_data_fingerprint
+    assert weekend_snapshot.metrics.valid_session_count == 30
+
+
+def test_cairo_timezone_boundary_excludes_cairo_next_day():
+    history = _stable(30)
+    history.index = pd.bdate_range(end="2026-07-27", periods=30, tz="UTC") + pd.Timedelta(
+        hours=12
+    )
+    cairo_next_day = pd.DataFrame(
+        [{"Open": 100.0, "High": 110.0, "Low": 99.0, "Close": 109.0, "Volume": 2e6}],
+        index=[pd.Timestamp("2026-07-27 22:30:00", tz="UTC")],
+    )
+    extended = pd.concat([history, cairo_next_day])
+    extended.attrs = dict(history.attrs)
+
+    result = analyze_daily_history("X", extended, data_cutoff="2026-07-27")
+    reference = analyze_daily_history("X", history, data_cutoff="2026-07-27")
+
+    assert result.source_data_fingerprint == reference.source_data_fingerprint
+    assert result.metrics.valid_session_count == 30
+
+
+def test_stale_cache_remains_lookahead_free():
+    stale = _stable(30)
+    stale.index = pd.bdate_range(end="2026-07-09", periods=30)
+    current = pd.DataFrame(
+        [{"Open": 100.0, "High": 120.0, "Low": 95.0, "Close": 118.0, "Volume": 2e6}],
+        index=[pd.Timestamp("2026-07-28")],
+    )
+    extended = pd.concat([stale, current])
+    extended.attrs = dict(stale.attrs)
+
+    result = analyze_daily_history("X", extended, data_cutoff="2026-07-27")
+    reference = analyze_daily_history("X", stale, data_cutoff="2026-07-27")
+
+    assert result.latest_session == "2026-07-09"
+    assert result.source_data_fingerprint == reference.source_data_fingerprint
+    assert result.readiness.status == DAILY_SELECTION_STALE
+    assert result.historical_scalping_potential is None
+
+
+def test_incomplete_daily_candle_is_rejected_even_inside_cutoff():
+    history = _stable(30)
+    history.index = pd.bdate_range(end="2026-07-24", periods=30)
+    history["Complete"] = True
+    incomplete = pd.DataFrame(
+        [
+            {
+                "Open": 100.0,
+                "High": 120.0,
+                "Low": 95.0,
+                "Close": 118.0,
+                "Volume": 2e6,
+                "Complete": False,
+            }
+        ],
+        index=[pd.Timestamp("2026-07-27")],
+    )
+    extended = pd.concat([history, incomplete])
+    extended.attrs = dict(history.attrs)
+
+    result = analyze_daily_history("X", extended, data_cutoff="2026-07-27")
+
+    assert result.metrics.valid_session_count == 30
+    assert result.latest_session != "2026-07-27"
+
+
+def test_invalid_zero_negative_and_malformed_rows_are_rejected():
+    history = _stable(30)
+    invalid = pd.DataFrame(
+        [
+            {"Open": 0, "High": 5, "Low": 1, "Close": 2, "Volume": 10},
+            {"Open": 5, "High": 6, "Low": 4, "Close": 5, "Volume": 0},
+            {"Open": 5, "High": 6, "Low": 4, "Close": 5, "Volume": -1},
+            {"Open": 5, "High": 4, "Low": 3, "Close": 5, "Volume": 10},
+        ],
+        index=pd.date_range("2026-07-20", periods=4),
+    )
+    extended = pd.concat([history, invalid])
+    extended.attrs = dict(history.attrs)
+
+    result = analyze_daily_history("X", extended, data_cutoff=CUTOFF)
+
+    assert result.metrics.valid_session_count == 30
+    assert result.metrics.zero_volume_session_count == 0
+
+
+def test_duplicate_session_dates_are_rejected_not_last_write_wins():
+    history = _stable(30)
+    history.index = pd.bdate_range(end="2026-07-24", periods=30)
+    duplicates = pd.DataFrame(
+        [
+            {"Open": 100, "High": 103, "Low": 99, "Close": 101, "Volume": 1e6},
+            {"Open": 100, "High": 120, "Low": 98, "Close": 119, "Volume": 1e6},
+        ],
+        index=[
+            pd.Timestamp("2026-07-27 10:00"),
+            pd.Timestamp("2026-07-27 14:00"),
+        ],
+    )
+    extended = pd.concat([history, duplicates])
+    extended.attrs = dict(history.attrs)
+
+    result = analyze_daily_history("X", extended, data_cutoff=CUTOFF)
+
+    assert result.metrics.valid_session_count == 30
+    assert result.latest_session != "2026-07-27"
+
+
+def test_abnormal_open_gap_is_flagged_but_not_added_to_score_formula():
+    history = _stable(30)
+    history.index = pd.bdate_range(end="2026-07-24", periods=30)
+    gap = pd.DataFrame(
+        [{"Open": 120.0, "High": 123.0, "Low": 119.0, "Close": 121.0, "Volume": 1e6}],
+        index=[pd.Timestamp("2026-07-27")],
+    )
+    extended = pd.concat([history, gap])
+    extended.attrs = dict(history.attrs)
+
+    result = analyze_daily_history("X", extended, data_cutoff=CUTOFF)
+
+    assert result.metrics.abnormal_gap_session_count == 1
+    assert result.metrics.maximum_absolute_open_gap_percent == pytest.approx(20.0)
+
+
+def test_single_extreme_candle_cannot_dominate_robust_score():
+    stable = analyze_daily_history(
+        "STABLE", _history([2.5] * 60), data_cutoff=CUTOFF
+    )
+    one_extreme = analyze_daily_history(
+        "EXTREME", _history([2.5] * 59 + [50.0]), data_cutoff=CUTOFF
+    )
+
+    assert one_extreme.metrics.mean_daily_range_percent > stable.metrics.mean_daily_range_percent
+    assert one_extreme.metrics.median_daily_range_percent == stable.metrics.median_daily_range_percent
+    assert (
+        one_extreme.historical_scalping_potential
+        <= stable.historical_scalping_potential
+    )
+
+
+def test_unresolved_volume_has_typed_status_while_price_metrics_remain_usable():
+    frame = _stable()
+    frame.attrs["market_data"]["volume_safe_for_lookback"] = False
+
+    result = analyze_daily_history("X", frame, data_cutoff=CUTOFF)
+
+    assert result.volume_history_status == VOLUME_HISTORY_UNRESOLVED
+    assert result.metrics.median_daily_range_percent is not None
+    assert result.metrics.daily_liquidity_score is None
+    assert result.historical_scalping_potential is None
+    assert VOLUME_HISTORY_UNRESOLVED in result.eligibility_reasons
+
+
+def test_safe_volume_has_typed_ready_status():
+    result = analyze_daily_history("X", _stable(), data_cutoff=CUTOFF)
+
+    assert result.volume_history_status == VOLUME_HISTORY_READY
 
 
 def test_production_and_broker_execution_remain_disabled():

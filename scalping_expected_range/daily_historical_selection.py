@@ -30,7 +30,12 @@ EODHD_DAILY = "EODHD_DAILY"
 DAILY_SELECTION_READY = "DAILY_HISTORICAL_SELECTION_READY"
 DAILY_SELECTION_INSUFFICIENT = "HISTORICAL_DAILY_DATA_INSUFFICIENT"
 DAILY_SELECTION_UNAVAILABLE = "HISTORICAL_DAILY_DATA_UNAVAILABLE"
-DAILY_LIQUIDITY_UNAVAILABLE = "HISTORICAL_DAILY_LIQUIDITY_UNAVAILABLE"
+DAILY_SELECTION_STALE = "HISTORICAL_DAILY_DATA_STALE"
+VOLUME_HISTORY_READY = "VOLUME_HISTORY_READY"
+VOLUME_HISTORY_UNRESOLVED = "VOLUME_HISTORY_UNRESOLVED"
+VOLUME_HISTORY_UNAVAILABLE = "VOLUME_HISTORY_UNAVAILABLE"
+# Backward-compatible name for callers of the checkpoint module.
+DAILY_LIQUIDITY_UNAVAILABLE = VOLUME_HISTORY_UNRESOLVED
 
 INTRADAY_ENRICHMENT_READY = "INTRADAY_HISTORICAL_ENRICHMENT_READY"
 INTRADAY_ENRICHMENT_NOT_READY = "INTRADAY_HISTORICAL_ENRICHMENT_NOT_READY"
@@ -111,6 +116,9 @@ class DailyHistoricalMetrics:
     mean_turnover_egp: float
     volume_consistency: float
     zero_volume_session_count: int
+    abnormal_gap_session_count: int
+    abnormal_gap_session_rate: float
+    maximum_absolute_open_gap_percent: float
     daily_movement_potential_score: float
     daily_range_stability_score: float
     daily_volatility_zone_consistency_score: float
@@ -130,6 +138,7 @@ class DailySelectionResult:
     source_data_fingerprint: str | None
     readiness: DailyReadiness
     metrics: DailyHistoricalMetrics | None
+    volume_history_status: str
     historical_scalping_potential: float | None
     historical_rank: int | None
     eligible: bool
@@ -227,6 +236,7 @@ def load_eodhd_daily_history(
     symbol: str,
     *,
     client=None,
+    data_cutoff: date | str | None = None,
     config: DailyHistoricalSelectionConfig | None = None,
 ) -> EODHDDailyLoadResult:
     """Load corporate-action-aware EODHD daily history with no fallback.
@@ -240,6 +250,7 @@ def load_eodhd_daily_history(
 
     cfg = config or DailyHistoricalSelectionConfig()
     base = str(symbol).strip().upper().split(".")[0]
+    cutoff = _to_date(data_cutoff) if data_cutoff is not None else None
     try:
         if client is None:
             from providers.eodhd_client import EODHDClient
@@ -262,6 +273,7 @@ def load_eodhd_daily_history(
         for row in (raw or [])
         if isinstance(row, dict)
         and all(row.get(key) is not None for key in ("date", "open", "high", "low", "close"))
+        and (cutoff is None or _to_date(row["date"]) <= cutoff)
     ]
     if not rows:
         return EODHDDailyLoadResult(
@@ -274,6 +286,17 @@ def load_eodhd_daily_history(
     from providers.eodhd_adjustment import adjust
     from providers.eodhd_volume_adjustment import resolve_operational_volume
 
+    applicable_splits = [
+        event
+        for event in (splits or [])
+        if cutoff is None
+        or (
+            isinstance(event, dict)
+            and event.get("date") is not None
+            and _to_date(event["date"]) <= cutoff
+        )
+    ]
+
     source = pd.DataFrame(
         {
             "Date": pd.to_datetime([row["date"] for row in rows], errors="coerce"),
@@ -285,13 +308,13 @@ def load_eodhd_daily_history(
         }
     )
     try:
-        adjusted = adjust(source, splits or [])
+        adjusted = adjust(source, applicable_splits)
         output = adjusted.frame
         served_volume, volume_meta = resolve_operational_volume(
             base,
             output["Date"],
             output["Raw Volume"],
-            splits or [],
+            applicable_splits,
             lookback_sessions=cfg.lookback_sessions,
         )
     except Exception as error:
@@ -314,6 +337,9 @@ def load_eodhd_daily_history(
         "interval": "1d",
         "price_series": "SPLIT_ADJUSTED",
         "raw_adjusted_mode": cfg.raw_adjusted_mode,
+        "normalization_data_cutoff": pd.Timestamp(output["Date"].max())
+        .date()
+        .isoformat(),
         "fallback_used": False,
         "yahoo_network_used": False,
         **adjusted.provenance,
@@ -383,6 +409,7 @@ def analyze_daily_history(
             None,
             assess_daily_readiness(0, source_available=False, config=cfg),
             None,
+            VOLUME_HISTORY_UNAVAILABLE,
             None,
             None,
             False,
@@ -390,8 +417,29 @@ def analyze_daily_history(
             overlap_validation_status,
         )
 
+    latest_date = _to_date(latest)
+    stale_days = max(0, (cutoff - latest_date).days)
+    if (
+        readiness.status == DAILY_SELECTION_READY
+        and stale_days > cfg.maximum_stale_calendar_days
+    ):
+        readiness = DailyReadiness(
+            DAILY_SELECTION_STALE,
+            readiness.valid_sessions,
+            readiness.minimum_sessions,
+            readiness.preferred_sessions,
+            readiness.preferred_ready,
+            (
+                f"latest valid positive-volume session {latest} is "
+                f"{stale_days} calendar days before cutoff {cutoff.isoformat()}"
+            ),
+        )
+
     metrics = _compute_metrics(selected, cfg)
-    volume_safe = _volume_safe(daily)
+    volume_safe = _volume_safe(daily, cutoff)
+    volume_history_status = (
+        VOLUME_HISTORY_READY if volume_safe else VOLUME_HISTORY_UNRESOLVED
+    )
     if not volume_safe:
         metrics = DailyHistoricalMetrics(
             **{
@@ -425,6 +473,7 @@ def analyze_daily_history(
         fingerprint,
         readiness,
         metrics,
+        volume_history_status,
         score,
         None,
         eligible,
@@ -553,6 +602,8 @@ def _compute_metrics(
     lower_magnitude = (-lower).clip(lower=0.0)
     close_change = (close - open_) / open_ * 100.0
     turnover = close * volume
+    absolute_open_gap = ((open_ / close.shift(1) - 1.0) * 100.0).abs().dropna()
+    abnormal_gaps = absolute_open_gap >= cfg.abnormal_gap_percent
 
     median_range = float(ranges.median())
     mean_range = float(ranges.mean())
@@ -617,6 +668,14 @@ def _compute_metrics(
         mean_turnover_egp=_round(float(turnover.mean()), 2),
         volume_consistency=_round(volume_consistency, 6),
         zero_volume_session_count=int((volume <= 0).sum()),
+        abnormal_gap_session_count=int(abnormal_gaps.sum()),
+        abnormal_gap_session_rate=_round(
+            float(abnormal_gaps.mean()) if not abnormal_gaps.empty else 0.0,
+            6,
+        ),
+        maximum_absolute_open_gap_percent=_round(
+            float(absolute_open_gap.max()) if not absolute_open_gap.empty else 0.0
+        ),
         daily_movement_potential_score=_round(movement_score),
         daily_range_stability_score=_round(stability_score),
         daily_volatility_zone_consistency_score=_round(zone_score),
@@ -742,7 +801,7 @@ def _eligibility(
     if readiness.status != DAILY_SELECTION_READY:
         reasons.append(readiness.status)
     if not volume_safe or metrics.daily_liquidity_score is None:
-        reasons.append(DAILY_LIQUIDITY_UNAVAILABLE)
+        reasons.append(VOLUME_HISTORY_UNRESOLVED)
     if score is None or score < threshold.minimum_historical_score:
         reasons.append("HISTORICAL_SCORE_BELOW_MINIMUM")
     if metrics.median_daily_range_percent < threshold.minimum_median_range_percent:
@@ -783,6 +842,19 @@ def _clean_completed_daily(daily: pd.DataFrame, cutoff: date) -> pd.DataFrame:
         frame.index = pd.to_datetime(frame.pop("Date"), errors="coerce")
     else:
         frame.index = pd.to_datetime(frame.index, errors="coerce")
+    if isinstance(frame.index, pd.DatetimeIndex) and frame.index.tz is not None:
+        frame.index = frame.index.tz_convert("Africa/Cairo").tz_localize(None)
+    complete_column = next(
+        (
+            column
+            for column in ("Complete", "IsComplete", "complete", "is_complete")
+            if column in frame.columns
+        ),
+        None,
+    )
+    if complete_column is not None:
+        complete = frame[complete_column].map(_is_completed_flag)
+        frame = frame[complete]
     required = ["Open", "High", "Low", "Close", "Volume"]
     if any(column not in frame.columns for column in required):
         return pd.DataFrame(columns=required)
@@ -795,14 +867,19 @@ def _clean_completed_daily(daily: pd.DataFrame, cutoff: date) -> pd.DataFrame:
         & (frame["High"] > 0)
         & (frame["Low"] > 0)
         & (frame["Close"] > 0)
-        & (frame["Volume"] >= 0)
+        & (frame["Volume"] > 0)
     ]
     frame = frame[
         (frame["High"] >= frame[["Open", "Close", "Low"]].max(axis=1))
         & (frame["Low"] <= frame[["Open", "Close", "High"]].min(axis=1))
     ]
-    frame = frame[pd.Index(frame.index.date) <= cutoff]
-    frame = frame[~frame.index.duplicated(keep="last")].sort_index()
+    session_dates = pd.DatetimeIndex(frame.index).normalize()
+    frame = frame[pd.Index(session_dates.date) <= cutoff]
+    session_dates = pd.DatetimeIndex(frame.index).normalize()
+    duplicate_sessions = session_dates.duplicated(keep=False)
+    frame = frame[~duplicate_sessions]
+    frame.index = session_dates[~duplicate_sessions]
+    frame = frame.sort_index()
     return frame[required]
 
 
@@ -828,6 +905,7 @@ def _unavailable_result(
         None,
         assess_daily_readiness(0, source_available=False, config=cfg),
         None,
+        VOLUME_HISTORY_UNAVAILABLE,
         None,
         None,
         False,
@@ -843,8 +921,11 @@ def _frame_fingerprint(frame: pd.DataFrame) -> str:
     return "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _volume_safe(frame: pd.DataFrame) -> bool:
+def _volume_safe(frame: pd.DataFrame, cutoff: date) -> bool:
     metadata = dict((frame.attrs or {}).get("market_data", {}))
+    normalized_through = metadata.get("normalization_data_cutoff")
+    if normalized_through and _to_date(normalized_through) > cutoff:
+        return False
     return bool(metadata.get("volume_safe_for_lookback", True))
 
 
@@ -858,6 +939,22 @@ def _has_eodhd_provenance(frame: pd.DataFrame | None) -> bool:
         if metadata.get(key)
     }
     return bool(providers) and providers <= {"EODHD", EODHD_DAILY}
+
+
+def _is_completed_flag(value) -> bool:
+    if pd.isna(value):
+        return False
+    if isinstance(value, str):
+        return value.strip().lower() not in {
+            "",
+            "0",
+            "false",
+            "forming",
+            "incomplete",
+            "partial",
+            "pending",
+        }
+    return bool(value)
 
 
 def _outlier_mask(values: pd.Series, threshold: float) -> pd.Series:

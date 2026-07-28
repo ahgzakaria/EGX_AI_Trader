@@ -70,10 +70,12 @@ class DailyHistoricalSelectionConfig:
     lookback_sessions: int = 60
     minimum_valid_sessions: int = 30
     preferred_valid_sessions: int = 60
+    maximum_stale_calendar_days: int = 10
     intraday_enrichment_minimum_sessions: int = 20
     useful_range_percent: float = 1.50
     outlier_mad_z: float = 3.50
     robust_band_mad_multiplier: float = 2.0
+    abnormal_gap_percent: float = 10.0
     weights: DailyHistoricalScoreWeights = field(
         default_factory=DailyHistoricalScoreWeights
     )
@@ -90,8 +92,12 @@ class DailyHistoricalSelectionConfig:
             raise ValueError("preferred_valid_sessions cannot be below the minimum")
         if self.lookback_sessions < self.preferred_valid_sessions:
             raise ValueError("lookback_sessions cannot be below the preferred history")
+        if self.maximum_stale_calendar_days < 0:
+            raise ValueError("maximum stale calendar days cannot be negative")
         if self.intraday_enrichment_minimum_sessions < 1:
             raise ValueError("intraday enrichment minimum must be positive")
+        if self.abnormal_gap_percent <= 0:
+            raise ValueError("abnormal gap threshold must be positive")
 
 
 @dataclass(frozen=True)
