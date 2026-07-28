@@ -647,6 +647,9 @@ class LiveEntryReadinessEngine:
         current = _positive(quote.last_price)
         bid = _positive(quote.bid)
         ask = _positive(quote.ask)
+        crossed_quote = (
+            bid is not None and ask is not None and ask < bid
+        )
         spread = (
             (ask - bid) / bid * 100
             if bid is not None and ask is not None and ask >= bid
@@ -733,11 +736,23 @@ class LiveEntryReadinessEngine:
             ),
             HardGateResult(
                 "spread",
-                None if spread is None else spread <= cfg.maximum_spread_percent,
                 (
+                    False
+                    if crossed_quote
+                    else (
+                        None
+                        if spread is None
+                        else spread <= cfg.maximum_spread_percent
+                    )
+                ),
+                (
+                    "crossed or inverted bid/ask"
+                    if crossed_quote
+                    else (
                     "bid/ask unavailable"
                     if spread is None
                     else f"{spread:.3f}% <= {cfg.maximum_spread_percent:.3f}%"
+                    )
                 ),
             ),
             HardGateResult(
@@ -819,6 +834,12 @@ class LiveEntryReadinessEngine:
                 base,
                 LIVE_DATA_UNAVAILABLE,
                 "Minute structure is too sparse for an opening-range claim",
+            )
+        if crossed_quote:
+            return _blocked(
+                base,
+                LIVE_DATA_UNAVAILABLE,
+                "Rubix bid/ask is crossed or inverted and cannot support a spread gate",
             )
         if spread is not None and spread > cfg.maximum_spread_percent:
             return _blocked(
