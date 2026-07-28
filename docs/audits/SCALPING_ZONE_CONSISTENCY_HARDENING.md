@@ -1,8 +1,11 @@
 # Scalping Zone Consistency Hardening
 
-**Phase:** 2B  
-**Branch:** `fix/scalping-historical-volatility-selection`  
-**Evidence cutoff:** completed EODHD Daily sessions through 2026-07-27  
+**Phase:** 2B
+
+**Branch:** `fix/scalping-historical-volatility-selection`
+
+**Evidence cutoff:** completed EODHD Daily sessions through 2026-07-27
+
 **Decision:** accept the hybrid Zone Consistency formulation as `ROBUST` for
 historical ranking; retain persistence, dashboard and live-entry work for a
 later phase.
