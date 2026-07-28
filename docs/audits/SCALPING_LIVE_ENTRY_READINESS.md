@@ -508,7 +508,7 @@ Production: DISABLED
 | New live-readiness and UI-isolation tests | **43 passed** |
 | Phase 3A + Phase 3B focused tests | **79 passed** |
 | Required scoped regression set | **363 passed, 7 skipped** |
-| Complete repository suite | **1529 passed, 7 skipped in 85.02s** |
+| Complete repository suite | **1529 passed, 7 skipped in 83.84s** |
 | Streamlit spare-port smoke | health 200; root 200 |
 | Final branch `git diff --check` | passed |
 
