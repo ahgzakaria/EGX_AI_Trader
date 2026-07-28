@@ -432,6 +432,13 @@ def test_dashboard_route_falls_back_and_backtest_stays_on_yahoo(tmp_path, monkey
     # After the EODHD migration the backtest purpose is served from the FROZEN Yahoo
     # snapshot (local cache, immutable, NO network) — the legacy domain.
     cache.store("yahoo", "SWDY.CA", "10y", "1d", candle_frame())
+    import providers.local_cache_provider as local_cache_module
+
+    monkeypatch.setattr(
+        local_cache_module,
+        "LocalCacheProvider",
+        lambda *args, **kwargs: cache,
+    )
     backtest = routing.load_history("SWDY.CA", purpose="backtest")
     md = backtest.attrs["market_data"]
     assert md["data_domain"] == "LEGACY_BACKTEST_V1"

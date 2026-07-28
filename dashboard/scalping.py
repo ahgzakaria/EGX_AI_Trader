@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -32,11 +33,467 @@ from scalping.database import ScalpingDatabase
 from scalping.models import Opportunity, SetupType
 from scalping.paper_portfolio import ScalpingPaperPortfolio
 from scalping.scanner import ScalpingScanner, intraday_evidence_description
+from scalping_expected_range.frozen_watchlist import (
+    CONFIG_VERSION_MISMATCH,
+    GENERATION_FAILED,
+    INSUFFICIENT_DAILY_HISTORY,
+    NO_ELIGIBLE_SYMBOLS,
+    PROVENANCE_REJECTED,
+    SOURCE_FINGERPRINT_CHANGED,
+    SOURCE_UNAVAILABLE,
+    WATCHLIST_NOT_GENERATED,
+    WATCHLIST_READY,
+    FrozenHistoricalWatchlistService,
+)
+from scalping_expected_range.live_readiness import (
+    CLOSING_AUCTION_NO_NEW_ENTRY,
+    ENTRY_READY_RESEARCH_ONLY,
+    LIVE_DATA_STALE,
+    LIVE_DATA_UNAVAILABLE,
+    MOVE_EXTENDED_DO_NOT_CHASE,
+    SESSION_CLOSED,
+    WATCHLIST_NOT_READY as LIVE_WATCHLIST_NOT_READY,
+    LiveEntryReadinessEngine,
+    LiveReadinessConfig,
+    RubixLiveBatchReader,
+)
 
 
 def _context():
     config = ScalpingConfig.from_mapping(settings.get("scalping"))
     return config, ScalpingDatabase(config.database_path)
+
+
+def _historical_watchlist_service():
+    return FrozenHistoricalWatchlistService()
+
+
+def _historical_watchlist_frame(record, *, displayed_only):
+    members = record.displayed if displayed_only else record.members
+    rows = []
+    for member in members:
+        rows.append(
+            {
+                "rank": member["historical_rank"],
+                "symbol": member["symbol"],
+                "historical_score": member["historical_score"],
+                "movement_potential": member["movement_potential_score"],
+                "range_stability": member["range_stability_score"],
+                "zone_consistency": member["combined_zone_consistency_score"],
+                "zone_confidence": member["zone_confidence_label"],
+                "liquidity_score": member["liquidity_score"],
+                "median_daily_range": member["median_daily_range"],
+                "normal_range_band": (
+                    f"{member['normal_range_lower']:.2f}%–"
+                    f"{member['normal_range_upper']:.2f}%"
+                ),
+                "range_hit_2pct_frequency": member["range_hit_2pct_frequency"],
+                "typical_lower_excursion": member["median_lower_excursion"],
+                "typical_upper_excursion": member["median_upper_excursion"],
+                "primary_60_state": member["primary_readiness_status"],
+                "recent_30_state": member["recent_confirmation_status"],
+                "historical_explanation": member["historical_explanation"],
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _historical_watchlist_panel(service=None):
+    """Render READY history only; this function never rebuilds on presentation."""
+
+    service = service or _historical_watchlist_service()
+    target, proposed_cutoff = service.target_and_cutoff()
+    section_header(
+        "HISTORICAL SCALPING WATCHLIST",
+        "قائمة السكالبنج التاريخية الثابتة · completed EODHD Daily history only",
+    )
+    controls = st.columns((1, 3))
+    load_clicked = controls[0].button(
+        "Load frozen watchlist",
+        key="load_frozen_historical_watchlist",
+        width="stretch",
+    )
+    controls[1].caption(
+        f"Target session {target.isoformat()} · proposed historical cutoff "
+        f"{proposed_cutoff.isoformat()} · loading is read-only"
+    )
+    result = service.get_for_session(target)
+    if load_clicked:
+        result = service.get_for_session(target)
+
+    with st.expander("Research Rebuild · إعادة بناء بحثية صريحة"):
+        st.warning(
+            "Research-only. This creates a new immutable identity only when "
+            "the cutoff, source fingerprint, selector version, universe, or "
+            "Top-N changes. It never overwrites a READY watchlist."
+        )
+        st.write(
+            f"Proposed target: **{target.isoformat()}**  \n"
+            f"Maximum historical cutoff: **{proposed_cutoff.isoformat()}**"
+        )
+        confirmed = st.checkbox(
+            "I confirm an authorized research rebuild",
+            key=f"historical_rebuild_confirm_{target.isoformat()}",
+        )
+        if st.button(
+            "Run Research Rebuild",
+            disabled=not confirmed,
+            key=f"historical_rebuild_{target.isoformat()}",
+        ):
+            with st.spinner(
+                "Loading EODHD Daily history and publishing an immutable watchlist..."
+            ):
+                result = service.rebuild_for_research(
+                    target,
+                    authorized=True,
+                )
+
+    if result.status != WATCHLIST_READY or result.record is None:
+        messages = {
+            WATCHLIST_NOT_GENERATED: (
+                "No frozen historical watchlist has been generated for this "
+                "session. Presentation does not start generation."
+            ),
+            INSUFFICIENT_DAILY_HISTORY: (
+                "The historical source does not contain enough completed daily "
+                "history to publish a watchlist."
+            ),
+            SOURCE_UNAVAILABLE: "EODHD Daily history is unavailable.",
+            PROVENANCE_REJECTED: (
+                "Historical source provenance was rejected. Yahoo, unknown and "
+                "mixed-provider histories are not accepted."
+            ),
+            CONFIG_VERSION_MISMATCH: (
+                "The stored selector version is incompatible with the current "
+                "approved configuration."
+            ),
+            SOURCE_FINGERPRINT_CHANGED: (
+                "The source fingerprint changed; an explicit research rebuild "
+                "is required."
+            ),
+            GENERATION_FAILED: (
+                "Historical watchlist generation failed closed. No partial "
+                "READY list is available."
+            ),
+            NO_ELIGIBLE_SYMBOLS: (
+                "No symbol passed the hard historical data and safety gates."
+            ),
+        }
+        st.info(messages.get(result.status, result.detail or result.status))
+        if result.detail:
+            st.caption(result.detail)
+        st.caption(
+            "No fallback to legacy ERS, Range Scanner, Yahoo, Rubix movers, "
+            "or current-session percentage change is permitted."
+        )
+        return result
+
+    record = result.record
+    header = record.header
+    st.session_state["_historical_scalping_watchlist_id"] = header["watchlist_id"]
+    cards = st.columns(4)
+    cards[0].metric("Target session", header["target_session_date"])
+    cards[1].metric("Historical cutoff", header["historical_data_cutoff"])
+    cards[2].metric("Eligible universe", header["eligible_count"])
+    cards[3].metric("Displayed candidates", header["displayed_count"])
+    st.caption(
+        f"ID {header['watchlist_id']} · {header['provider']} · "
+        f"{header['metric_version']} / {header['config_version']} · "
+        f"60-session primary / 30-session confirmation · Top {header['top_n']} · "
+        f"generated {header['generated_at']} · "
+        f"{header['source_fingerprint_status']} · FROZEN / IMMUTABLE"
+    )
+    st.success(
+        "This list is based only on completed EODHD Daily history and is "
+        "frozen for the session."
+    )
+    st.caption(
+        "Daily candles may include official closing-auction effects. "
+        "Intraday historical enrichment is currently unavailable/not ready."
+    )
+
+    top = _historical_watchlist_frame(record, displayed_only=True)
+    st.dataframe(top, use_container_width=True, hide_index=True)
+
+    with st.expander(
+        f"Complete hard-eligible universe ({header['eligible_count']})"
+    ):
+        sort_columns = {
+            "Historical rank": "rank",
+            "Historical score": "historical_score",
+            "Movement potential": "movement_potential",
+            "Range Stability": "range_stability",
+            "Zone Consistency": "zone_consistency",
+            "Liquidity": "liquidity_score",
+            "Median daily range": "median_daily_range",
+            "2% hit frequency": "range_hit_2pct_frequency",
+        }
+        sort_controls = st.columns((2, 1))
+        sort_label = sort_controls[0].selectbox(
+            "Sort historical universe",
+            tuple(sort_columns),
+            key=f"historical_sort_{header['watchlist_id']}",
+        )
+        descending = sort_controls[1].toggle(
+            "Descending",
+            value=sort_columns[sort_label] != "rank",
+            key=f"historical_sort_desc_{header['watchlist_id']}",
+        )
+        complete = _historical_watchlist_frame(
+            record, displayed_only=False
+        ).sort_values(
+            sort_columns[sort_label],
+            ascending=not descending,
+            kind="mergesort",
+        )
+        st.dataframe(complete, use_container_width=True, hide_index=True)
+
+    previous = service.repository.ready_before(header["target_session_date"])
+    if previous is not None:
+        comparison = service.compare_watchlists(
+            previous.header["watchlist_id"], header["watchlist_id"]
+        )
+        with st.expander("Stored watchlist comparison · مقارنة القوائم"):
+            comparison_cards = st.columns(4)
+            comparison_cards[0].metric(
+                "Previous target", comparison.previous_target_session
+            )
+            comparison_cards[1].metric(
+                "Candidate overlap", len(comparison.candidate_overlap)
+            )
+            comparison_cards[2].metric(
+                "Additions / removals",
+                f"{len(comparison.additions)} / {len(comparison.removals)}",
+            )
+            comparison_cards[3].metric(
+                "Top-N turnover", f"{comparison.top_n_turnover:.1%}"
+            )
+            st.caption(
+                f"Cutoff {comparison.previous_data_cutoff} → "
+                f"{comparison.current_data_cutoff} · eligible count change "
+                f"{comparison.eligible_count_change:+d} · metric version changed "
+                f"{comparison.metric_version_changed} · config version changed "
+                f"{comparison.config_version_changed}"
+            )
+            if comparison.additions:
+                st.write("Additions:", ", ".join(comparison.additions))
+            if comparison.removals:
+                st.write("Removals:", ", ".join(comparison.removals))
+            if comparison.rank_changes:
+                st.dataframe(
+                    pd.DataFrame(comparison.rank_changes),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            st.caption(
+                "Additions, removals and rank changes are historical list "
+                "comparisons, not trade signals."
+            )
+    return result
+
+
+def _live_readiness_engine():
+    market_data = settings.get("market_data") or {}
+    db_path = (
+        os.getenv("RUBIX_DB_PATH")
+        or market_data.get("rubix_db_path")
+        or "data/rubix_live_market.db"
+    )
+    config = LiveReadinessConfig()
+    return LiveEntryReadinessEngine(
+        RubixLiveBatchReader(
+            db_path,
+            busy_timeout_ms=config.read_busy_timeout_ms,
+        ),
+        config=config,
+    )
+
+
+def _live_readiness_frame(batch):
+    rows = []
+    for item in batch.results:
+        rows.append(
+            {
+                "Historical Rank (Frozen)": item.historical_rank,
+                "Symbol": item.symbol,
+                "Live Readiness": item.readiness_score,
+                "Live State": item.live_state,
+                "Current Price": item.current_price,
+                "Change From Open %": item.change_from_open_percent,
+                "Continuous Range %": item.continuous_range_percent,
+                "Historical Range Consumption": (
+                    item.historical_range_consumption
+                ),
+                "Indicative Remaining Movement": (
+                    item.indicative_remaining_movement
+                ),
+                "Opening Range": item.opening_range_state,
+                "VWAP State": item.vwap_state,
+                "Distance From VWAP %": item.distance_from_vwap_percent,
+                "Spread %": item.current_spread_percent,
+                "Quote Age Seconds": item.quote_age_seconds,
+                "Cumulative Volume": item.cumulative_volume,
+                "Cumulative Traded Value": item.cumulative_traded_value,
+                "Trade Count": item.trade_count,
+                "Entry Zone": (
+                    f"{item.entry_zone_low:.4f}–{item.entry_zone_high:.4f}"
+                    if item.entry_zone_low is not None
+                    and item.entry_zone_high is not None
+                    else None
+                ),
+                "Target": item.target_price,
+                "Stop": item.stop_price,
+                "Invalidation": item.invalidation_condition,
+                "No-Chase Warning": item.no_chase_reason,
+                "Data Quality": item.data_quality_status,
+                "Evaluated At": item.evaluated_at,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+@st.fragment(run_every=LiveReadinessConfig().refresh_seconds)
+def _live_entry_monitor_fragment(record, engine=None, evaluated_at=None):
+    """Refresh only mutable Rubix readiness; never rebuild frozen history."""
+
+    engine = engine or _live_readiness_engine()
+    batch = engine.evaluate(record, evaluated_at=evaluated_at)
+    if batch.status == LIVE_WATCHLIST_NOT_READY:
+        st.info(
+            "WATCHLIST_NOT_READY — generate the immutable historical "
+            "watchlist through the explicit Research Rebuild control above."
+        )
+        return batch
+
+    states = {}
+    for item in batch.results:
+        states[item.live_state] = states.get(item.live_state, 0) + 1
+    cards = st.columns(4)
+    cards[0].metric(
+        "Entry Ready · Research Only",
+        states.get(ENTRY_READY_RESEARCH_ONLY, 0),
+    )
+    cards[1].metric(
+        "Extended · Do Not Chase",
+        states.get(MOVE_EXTENDED_DO_NOT_CHASE, 0),
+    )
+    cards[2].metric(
+        "Stale / Unavailable",
+        states.get(LIVE_DATA_STALE, 0)
+        + states.get(LIVE_DATA_UNAVAILABLE, 0),
+    )
+    cards[3].metric(
+        "Auction / Closed",
+        states.get(CLOSING_AUCTION_NO_NEW_ENTRY, 0)
+        + states.get(SESSION_CLOSED, 0),
+    )
+    st.caption(
+        f"Watchlist {batch.watchlist_id} · Rubix cutoff "
+        f"{batch.rubix_data_cutoff or 'unavailable'} · "
+        f"{batch.connection_count} read-only connection · "
+        f"{batch.query_count} queries · query {batch.query_latency_ms:.3f} ms · "
+        f"evaluation {batch.evaluation_latency_ms:.3f} ms"
+    )
+    if batch.detail:
+        st.caption(batch.detail)
+
+    frame = _live_readiness_frame(batch)
+    if frame.empty:
+        st.info("No displayed frozen candidate is available for monitoring.")
+        return batch
+    sort_columns = {
+        "Readiness": "Live Readiness",
+        "Live state": "Live State",
+        "Quote freshness": "Quote Age Seconds",
+        "Historical rank": "Historical Rank (Frozen)",
+    }
+    controls = st.columns((2, 1))
+    sort_label = controls[0].selectbox(
+        "Sort live monitor",
+        tuple(sort_columns),
+        key=f"live_readiness_sort_{batch.watchlist_id}",
+    )
+    descending = controls[1].toggle(
+        "Descending",
+        value=sort_label == "Readiness",
+        key=f"live_readiness_desc_{batch.watchlist_id}",
+    )
+    ordered = frame.sort_values(
+        sort_columns[sort_label],
+        ascending=not descending,
+        kind="mergesort",
+        na_position="last",
+    )
+    st.dataframe(ordered, use_container_width=True, hide_index=True)
+
+    with st.expander("Deterministic assessment details · تفاصيل التقييم"):
+        selected = st.selectbox(
+            "Frozen candidate",
+            [item.symbol for item in batch.results],
+            key=f"live_readiness_detail_{batch.watchlist_id}",
+        )
+        item = next(
+            result for result in batch.results if result.symbol == selected
+        )
+        st.markdown(
+            "\n".join(
+                [
+                    "Historical selection:",
+                    f"- frozen rank {item.historical_rank}",
+                    f"- historical score {item.historical_score:.2f}",
+                    (
+                        f"- median full-session range "
+                        f"{item.median_daily_range:.2f}%"
+                    ),
+                    (
+                        f"- Range Stability {item.range_stability:.2f}; "
+                        f"Zone Consistency {item.zone_consistency:.2f}"
+                    ),
+                    "",
+                    "Live assessment:",
+                    *[f"- {reason}" for reason in item.explanations],
+                    f"- state: {item.live_state}",
+                ]
+            )
+        )
+        st.caption(
+            "Deterministic rules only. No AI prose, broker route, order, "
+            "paper trade, portfolio mutation or short-selling signal."
+        )
+    return batch
+
+
+def _live_entry_monitor_panel(historical_result, engine=None, evaluated_at=None):
+    section_header(
+        "LIVE ENTRY MONITOR",
+        "مراقبة جاهزية الدخول اللحظية · frozen candidates only",
+    )
+    st.caption(
+        "Historical universe: 225 validated symbols · Endpoint coverage: "
+        "241 / 265 · Watchlist ranking population: 225 validated symbols · "
+        "Remaining endpoint-unavailable/inactive/non-equity: 24"
+    )
+    st.info(
+        "Historical Rank: FROZEN · Live Readiness: CURRENT SESSION · "
+        "Production: DISABLED"
+    )
+    if (
+        historical_result is None
+        or historical_result.status != WATCHLIST_READY
+        or historical_result.record is None
+    ):
+        st.warning(
+            "WATCHLIST_NOT_READY — the live monitor will not scan the full "
+            "market, legacy ERS, Range Scanner, current movers or a temporary "
+            "candidate list. Use the explicit historical preparation workflow "
+            "above."
+        )
+        return None
+    return _live_entry_monitor_fragment(
+        historical_result.record,
+        engine=engine,
+        evaluated_at=evaluated_at,
+    )
 
 
 def _today_summary(database, config):
@@ -93,6 +550,8 @@ def show_scalping_dashboard():
                 icon="⚡", badge="SCALPING V3")
 
     egx_holiday_banner()
+    historical_result = _historical_watchlist_panel()
+    _live_entry_monitor_panel(historical_result)
     _dash_status_bar(cfg, _session_phase())
     _dash_health_panel(cfg)
     _dash_paper_panel(cfg)
