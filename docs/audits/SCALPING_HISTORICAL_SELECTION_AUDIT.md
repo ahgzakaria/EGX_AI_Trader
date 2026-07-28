@@ -7,6 +7,14 @@
 **Scope:** current implementation, Rubix intraday availability, metric definitions,
 distribution evidence, provisional thresholds, architecture, UI and expected files
 
+> **EODHD correction (2026-07-28):** The required account-level EODHD intraday
+> audit is complete in
+> [EODHD_INTRADAY_EGX_ENTITLEMENT_AUDIT.md](providers/EODHD_INTRADAY_EGX_ENTITLEMENT_AUDIT.md).
+> The valid paid account returned HTTP 403 for 1m, 5m and 1h intraday requests
+> while daily EGX data returned HTTP 200. Decision B therefore applies: Rubix
+> completed sessions remain the accessible historical intraday source and the
+> 20-session readiness gate remains closed. No ranking implementation has begun.
+
 ## Safety and repository state
 
 The work was isolated before inspection. The following existing local runtime
