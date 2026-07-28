@@ -19,6 +19,66 @@ SCAN_SOURCE = "data/symbols.csv"
 #: the page is not re-running constantly while a scan works.
 SCAN_POLL_SECONDS = 0.75
 
+#: Idempotency keys for the terminal handoff. A finished scan must release the page
+#: exactly once and publish its result exactly once, however many times the fragment
+#: ticks, the page reruns, or another observer attaches.
+TERMINAL_RERUN_KEY = "scan_terminal_rerun_scan_id"
+TERMINAL_CONSUMED_KEY = "terminal_result_consumed"
+
+#: Headline per terminal state. A run with gaps is never announced as a clean success.
+TERMINAL_HEADLINES = {
+    job_manager.COMPLETED: ("success", "Scan complete"),
+    job_manager.COMPLETED_WITH_GAPS: ("warning", "Scan complete with coverage gaps"),
+    job_manager.CANCELLED: ("warning", "Scan cancelled — partial diagnostics only"),
+    job_manager.FAILED: ("error", "Scan failed"),
+}
+
+
+def _observed_metadata(results):
+    """What the finished scan actually saw, for the final banner.
+
+    Read straight from the typed provenance fields the scanner already recorded on each
+    row — nothing is recomputed and no provider is consulted.
+    """
+    sessions = [row.get("LastCompletedSession") or row.get("CompletedSessionTimestamp")
+                for row in results or ()]
+    sessions = [str(value)[:10] for value in sessions if value]
+    statuses = {str(row.get("LivePriceStatus") or "").upper()
+                for row in results or ()} - {""}
+    return {
+        "latest_completed_candle": max(sessions) if sessions else "",
+        # Any stale overlay downgrades the reported live state; it never touches the
+        # historical source.
+        "live_quote_freshness": "STALE" if "STALE" in statuses else "",
+    }
+
+
+def _render_terminal_summary(job):
+    """Headline and counts for a finished job, above the existing results renderer."""
+    snapshot = job.progress()
+    tone, headline = TERMINAL_HEADLINES.get(snapshot.state, ("info", "Scan finished"))
+    getattr(st, tone)(f"{headline} · scan `{snapshot.scan_id}`")
+    if job.sanitized_error:
+        st.error(job.sanitized_error)
+
+    row = st.columns(5)
+    row[0].metric("Completed", f"{snapshot.completed} / {snapshot.total}")
+    row[1].metric("Successful", snapshot.success)
+    row[2].metric("Skipped", snapshot.skipped)
+    row[3].metric("Failed", snapshot.failed)
+    coverage = coverage_view(snapshot)
+    row[4].metric("Coverage", f"{coverage['coverage_percent']:.1f}%",
+                  help="Analytical coverage — successful results / approved symbols.")
+    if snapshot.status_breakdown:
+        st.caption("Typed outcome breakdown")
+        # Rendered as text, not a dataframe: these typed reasons are the explanation for
+        # the coverage gap, so they must be readable at a glance (and assertable in the
+        # DOM — Streamlit renders dataframes to a canvas, where the values are invisible).
+        st.markdown(" · ".join(
+            f"`{status}` **{count}**"
+            for status, count in sorted(snapshot.status_breakdown.items(),
+                                        key=lambda item: -item[1])))
+
 
 def _format_duration(seconds):
     if seconds is None:
@@ -89,22 +149,46 @@ def _render_scan_job(job):
         if job.sanitized_error:
             st.error(job.sanitized_error)
 
-    # ``run_every`` re-runs only this fragment on a bounded schedule — no busy loop and
-    # no sleep on the script thread. A terminal job renders once and stops polling.
-    if job.is_active:
-        st.fragment(_body, run_every=SCAN_POLL_SECONDS)()
-    else:
+    def _polling_body():
+        """Fragment body: render, then hand off exactly once when the job finishes.
+
+        ``run_every`` re-runs ONLY this fragment. When the worker reaches a terminal
+        state the fragment would otherwise just stop polling, leaving the surrounding
+        page frozen on whatever the last full script run captured — a stale banner, a
+        Stop button, and no results. One app-scoped rerun releases the page so the
+        normal results renderer takes over. It is guarded by scan_id so repeated
+        fragment ticks, page reruns and a second observer cannot repeat the handoff.
+        """
         _body()
+        if not job.is_active and st.session_state.get(TERMINAL_RERUN_KEY) != job.scan_id:
+            st.session_state[TERMINAL_RERUN_KEY] = job.scan_id
+            st.rerun(scope="app")
+
+    if job.is_active:
+        st.fragment(_polling_body, run_every=SCAN_POLL_SECONDS)()
+    else:
+        # Terminal: progress stays available but must never stand in for the results.
+        with st.expander(f"Scan progress · {job.progress().scan_id}", expanded=False):
+            _body()
 
 
 def _adopt_finished_job(job):
-    """Publish a terminal job's result into session state exactly once."""
-    if st.session_state.get("adopted_scan_id") == job.scan_id:
+    """Publish a terminal job's result into session state exactly once.
+
+    Idempotent on ``scan_id``: reruns, refreshes and a second observer all re-enter
+    here, and none of them may repeat the decision-support snapshot or re-expose a
+    cancelled run as a completed one. Nothing here re-runs analysis, contacts a
+    provider, archives, or finalizes — the worker already did all of that.
+    """
+    if st.session_state.get(TERMINAL_CONSUMED_KEY) == job.scan_id:
         return
+    st.session_state[TERMINAL_CONSUMED_KEY] = job.scan_id
     st.session_state.adopted_scan_id = job.scan_id
     result = job.final_result
     if result is None:
         return
+    # A cancelled or failed run keeps its partial rows as diagnostics but is never
+    # presented as a recorded session.
     st.session_state.results = result
     st.session_state.live_scan_completed = bool(result) and not job.cancelled
     st.session_state.archive_warning = _archive_warning(result)
@@ -187,12 +271,16 @@ def show_dashboard():
             )
 
     if job is not None:
+        if not active:
+            # Terminal: publish the worker's result BEFORE the progress panel, so the
+            # summary and the normal market-results renderer below both see it.
+            _adopt_finished_job(job)
+            _render_terminal_summary(job)
         _render_scan_job(job)
-        if job.is_active:
+        if active:
             # An active scan owns the page: results are published only once the worker
-            # reaches a terminal state.
+            # reaches a terminal state, and the fragment releases the page then.
             return
-        _adopt_finished_job(job)
 
     archive_warning = st.session_state.get("archive_warning")
     if archive_warning:
@@ -222,12 +310,20 @@ def show_dashboard():
         )
 
     df = pd.DataFrame(results)
-    provider_summary = summarize_frames(
-        [row.get("Data") for row in results], purpose="dashboard"
-    )
+    # The final banner is rendered from what the scan actually observed. It must NOT go
+    # back through ``summarize_frames``: with no observations that helper infers a
+    # fallback from Rubix quote health and announces ``local_cache:yahoo`` for the daily
+    # history provider — the exact mislabel this page was fixed to stop telling.
     provider_placeholder.empty()
     with provider_placeholder.container():
-        _render_provider_status(provider_summary)
+        if job is not None:
+            _render_scan_status(job.progress(),
+                                result_metadata=_observed_metadata(results))
+        else:
+            # No job in this session (e.g. results restored from an older run): keep the
+            # legacy summary rather than inventing a provider we did not observe.
+            _render_provider_status(summarize_frames(
+                [row.get("Data") for row in results], purpose="dashboard"))
     df["_AIProbabilitySort"] = pd.to_numeric(
         df["AIProbability"], errors="coerce"
     ).fillna(-1.0)
@@ -272,9 +368,13 @@ def show_dashboard():
     context = st.columns(3)
     context[0].metric("Symbols successfully analyzed", len(df))
     context[1].metric("Latest completed daily candle", latest_date)
+    # Read from the rows the scan produced rather than re-summarising frames, so this
+    # tile cannot disagree with the banner above it.
+    live_providers = {str(row.get("LiveProvider") or "").strip().lower()
+                      for row in results} - {"", "unavailable"}
     context[2].metric(
         "Live quote source",
-        str(provider_summary.get("live_quote_provider") or "Unavailable").title(),
+        next(iter(sorted(live_providers)), "Unavailable").title(),
     )
 
     coverage = list(getattr(results, "coverage", []) or [])
