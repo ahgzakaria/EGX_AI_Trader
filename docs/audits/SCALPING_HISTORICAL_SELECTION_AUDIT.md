@@ -15,6 +15,13 @@ distribution evidence, provisional thresholds, architecture, UI and expected fil
 > completed sessions remain the accessible historical intraday source and the
 > 20-session readiness gate remains closed. No ranking implementation has begun.
 
+> **Daily-baseline correction (2026-07-28):** EODHD daily OHLCV is sufficient
+> for the baseline historical selector; intraday history is an independent
+> enrichment gate. The scoped implementation and calibration checkpoint are
+> documented in
+> [SCALPING_DAILY_HISTORICAL_SELECTION_CHECKPOINT.md](SCALPING_DAILY_HISTORICAL_SELECTION_CHECKPOINT.md).
+> No dashboard, live-entry, production, or broker behavior was changed.
+
 ## Safety and repository state
 
 The work was isolated before inspection. The following existing local runtime

@@ -12,6 +12,9 @@ the Event-Driven Data Gate and the Rubix collector. Long-only, disabled by
 default, never places an order.
 """
 
-from scalping_expected_range.config import ExpectedRangeConfig
+from scalping_expected_range.config import (
+    DailyHistoricalSelectionConfig,
+    ExpectedRangeConfig,
+)
 
-__all__ = ["ExpectedRangeConfig"]
+__all__ = ["DailyHistoricalSelectionConfig", "ExpectedRangeConfig"]
