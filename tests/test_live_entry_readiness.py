@@ -13,7 +13,9 @@ import pytest
 from scalping_expected_range.frozen_watchlist import StoredWatchlist
 from scalping_expected_range.live_readiness import (
     BREAKOUT_UNCONFIRMED,
+    CLOSING_AUCTION,
     CLOSING_AUCTION_NO_NEW_ENTRY,
+    CONTINUOUS_TRADING,
     ENTRY_READY_RESEARCH_ONLY,
     ENTRY_TRIGGER_FORMING,
     HISTORICAL_CANDIDATE_WAITING,
@@ -24,6 +26,8 @@ from scalping_expected_range.live_readiness import (
     MOVE_EXTENDED_DO_NOT_CHASE,
     OPENING_RANGE_FORMING,
     OPPORTUNITY_INVALIDATED,
+    POST_CLOSE,
+    PRE_OPEN,
     PRE_OPEN_WAIT,
     PULLBACK_CONFIRMATION_REQUIRED,
     SESSION_CLOSED,
@@ -301,12 +305,12 @@ def test_non_candidate_plus_five_percent_remains_excluded():
 @pytest.mark.parametrize(
     ("moment", "expected"),
     [
-        (datetime(2026, 7, 28, 6, 59, tzinfo=UTC), PRE_OPEN_WAIT),
+        (datetime(2026, 7, 28, 6, 59, tzinfo=UTC), PRE_OPEN),
         (
             datetime(2026, 7, 28, 11, 20, tzinfo=UTC),
-            CLOSING_AUCTION_NO_NEW_ENTRY,
+            CLOSING_AUCTION,
         ),
-        (datetime(2026, 7, 28, 11, 25, tzinfo=UTC), SESSION_CLOSED),
+        (datetime(2026, 7, 28, 11, 25, tzinfo=UTC), POST_CLOSE),
     ],
 )
 def test_session_phase_boundaries(moment, expected):
@@ -321,6 +325,7 @@ def test_pre_open_wait_skips_database_read():
     )
 
     assert {item.live_state for item in result.results} == {PRE_OPEN_WAIT}
+    assert {item.session_phase for item in result.results} == {PRE_OPEN}
     assert reader.calls == []
 
 
@@ -335,6 +340,9 @@ def test_opening_range_forming_before_fifteen_minutes():
 
     assert {item.live_state for item in result.results} == {
         OPENING_RANGE_FORMING
+    }
+    assert {item.session_phase for item in result.results} == {
+        CONTINUOUS_TRADING
     }
 
 
@@ -503,6 +511,9 @@ def test_closing_auction_blocks_new_entry_and_keeps_score_none():
     assert {item.live_state for item in result.results} == {
         CLOSING_AUCTION_NO_NEW_ENTRY
     }
+    assert {item.session_phase for item in result.results} == {
+        CLOSING_AUCTION
+    }
     assert all(item.readiness_score is None for item in result.results)
 
 
@@ -511,6 +522,7 @@ def test_post_close_blocks_new_entry():
     result, _ = _evaluate(_snapshot(), at=at)
 
     assert {item.live_state for item in result.results} == {SESSION_CLOSED}
+    assert {item.session_phase for item in result.results} == {POST_CLOSE}
 
 
 def test_vwap_uses_minute_typical_price_and_volume():

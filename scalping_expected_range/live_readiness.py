@@ -31,6 +31,11 @@ AUCTION_CLOSE = time(14, 25)
 LIVE_METRIC_VERSION = "LIVE_ENTRY_READINESS_V1"
 LIVE_CONFIG_VERSION = "LIVE_ENTRY_READINESS_CONFIG_V1"
 
+PRE_OPEN = "PRE_OPEN"
+CONTINUOUS_TRADING = "CONTINUOUS_TRADING"
+CLOSING_AUCTION = "CLOSING_AUCTION"
+POST_CLOSE = "POST_CLOSE"
+
 WATCHLIST_NOT_READY = "WATCHLIST_NOT_READY"
 HISTORICAL_CANDIDATE_WAITING = "HISTORICAL_CANDIDATE_WAITING"
 PRE_OPEN_WAIT = "PRE_OPEN_WAIT"
@@ -254,21 +259,21 @@ def live_session_phase(
     target = _as_date(target_session_date)
     holiday_set = set(holidays or ())
     if current.date() != target:
-        return PRE_OPEN_WAIT if current.date() < target else SESSION_CLOSED
+        return PRE_OPEN if current.date() < target else POST_CLOSE
     if (
         target.weekday() not in TRADING_WEEKDAYS
         or target in holiday_set
         or (holidays is None and is_official_holiday(target))
     ):
-        return SESSION_CLOSED
+        return POST_CLOSE
     local = current.timetz().replace(tzinfo=None)
     if local < CONTINUOUS_OPEN:
-        return PRE_OPEN_WAIT
+        return PRE_OPEN
     if local < CONTINUOUS_CLOSE:
-        return "CONTINUOUS_TRADING"
+        return CONTINUOUS_TRADING
     if local < AUCTION_CLOSE:
-        return CLOSING_AUCTION_NO_NEW_ENTRY
-    return SESSION_CLOSED
+        return CLOSING_AUCTION
+    return POST_CLOSE
 
 
 class RubixLiveBatchReader:
@@ -536,9 +541,11 @@ class LiveEntryReadinessEngine:
             )
         )
         symbols = tuple(_symbol(row["symbol"]) for row in displayed)
-        if phase == PRE_OPEN_WAIT:
+        if phase == PRE_OPEN:
             results = tuple(
-                self._phase_only_result(header, member, now, PRE_OPEN_WAIT)
+                self._phase_only_result(
+                    header, member, now, PRE_OPEN, PRE_OPEN_WAIT
+                )
                 for member in displayed
             )
             return LiveReadinessBatchResult(
@@ -600,16 +607,18 @@ class LiveEntryReadinessEngine:
         phase,
         data_cutoff,
     ):
-        if phase in {
-            CLOSING_AUCTION_NO_NEW_ENTRY,
-            SESSION_CLOSED,
-        }:
+        if phase in {CLOSING_AUCTION, POST_CLOSE}:
             result = self._assess_inputs(
                 header, member, live, now, phase, data_cutoff
             )
+            state = (
+                CLOSING_AUCTION_NO_NEW_ENTRY
+                if phase == CLOSING_AUCTION
+                else SESSION_CLOSED
+            )
             return _replace_result(
                 result,
-                live_state=phase,
+                live_state=state,
                 readiness_score=None,
                 explanations=result.explanations
                 + (
@@ -617,7 +626,7 @@ class LiveEntryReadinessEngine:
                         "Closing auction: no new scalping entry; continuous "
                         "high/low/range are frozen at 14:15 Cairo"
                     )
-                    if phase == CLOSING_AUCTION_NO_NEW_ENTRY
+                    if phase == CLOSING_AUCTION
                     else "Session closed: no new entry"
                 ,),
             )
@@ -716,7 +725,7 @@ class LiveEntryReadinessEngine:
             ),
             HardGateResult(
                 "continuous_session",
-                phase == "CONTINUOUS_TRADING",
+                phase == CONTINUOUS_TRADING,
                 phase,
             ),
             HardGateResult("rubix_quote", current is not None, "positive last price"),
@@ -802,7 +811,7 @@ class LiveEntryReadinessEngine:
                 else DATA_PARTIAL
             ),
         )
-        if phase != "CONTINUOUS_TRADING":
+        if phase != CONTINUOUS_TRADING:
             return base
         if now < opening_end:
             return _replace_result(
@@ -982,9 +991,9 @@ class LiveEntryReadinessEngine:
             ),
         )
 
-    def _phase_only_result(self, header, member, now, state):
+    def _phase_only_result(self, header, member, now, phase, state):
         base = _base_result(
-            header, member, now, state, None, self.config
+            header, member, now, phase, None, self.config
         )
         return _replace_result(
             base,
@@ -999,9 +1008,13 @@ class LiveEntryReadinessEngine:
             header, member, now, phase, None, self.config
         )
         state = (
-            phase
-            if phase in {CLOSING_AUCTION_NO_NEW_ENTRY, SESSION_CLOSED}
-            else LIVE_DATA_UNAVAILABLE
+            CLOSING_AUCTION_NO_NEW_ENTRY
+            if phase == CLOSING_AUCTION
+            else (
+                SESSION_CLOSED
+                if phase == POST_CLOSE
+                else LIVE_DATA_UNAVAILABLE
+            )
         )
         return _replace_result(
             base,
