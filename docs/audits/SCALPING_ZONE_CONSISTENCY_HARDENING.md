@@ -612,3 +612,9 @@ transparent deterioration penalty and confidence status without overwriting
 long-term evidence.
 
 Phase 2B stops here.
+
+## Phase 3A cross-reference
+
+Persistent immutable publication of this selector is implemented and validated
+in `SCALPING_FROZEN_WATCHLIST_IMPLEMENTATION.md`. That phase consumes the
+formula unchanged and does not add Live Entry Readiness.
