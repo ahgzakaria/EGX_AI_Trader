@@ -335,31 +335,38 @@ class RubixLiveBatchReader:
             )
             placeholders = ",".join("?" for _ in requested)
             connection.execute("BEGIN")
-            quote_rows = connection.execute(
-                f"""
-                WITH ranked AS (
+            # A single scanner-level statement composed of bounded index probes.
+            # Each branch uses idx_quotes_ticker_time and stops at one row;
+            # unlike a window over all session history, latency does not grow
+            # with every quote accumulated during the day.
+            quote_branch = """
+                SELECT ticker,last_price,bid,ask,volume,change_percent,
+                       market_timestamp,received_at
+                FROM (
                   SELECT ticker,last_price,bid,ask,volume,change_percent,
-                         market_timestamp,received_at,
-                         ROW_NUMBER() OVER (
-                           PARTITION BY ticker
-                           ORDER BY market_timestamp DESC,id DESC
-                         ) AS row_number
+                         market_timestamp,received_at,id
                   FROM quotes
-                  WHERE ticker IN ({placeholders})
+                  WHERE ticker=?
                     AND market_timestamp>=?
                     AND market_timestamp<?
                     AND received_at<=?
+                  ORDER BY market_timestamp DESC,id DESC
+                  LIMIT 1
                 )
-                SELECT ticker,last_price,bid,ask,volume,change_percent,
-                       market_timestamp,received_at
-                FROM ranked WHERE row_number=1
-                """,
-                (
-                    *requested,
-                    _iso(session_open),
-                    _iso(continuous_cutoff),
-                    _iso(receive_cutoff),
-                ),
+            """
+            quote_parameters = []
+            for symbol in requested:
+                quote_parameters.extend(
+                    (
+                        symbol,
+                        _iso(session_open),
+                        _iso(continuous_cutoff),
+                        _iso(receive_cutoff),
+                    )
+                )
+            quote_rows = connection.execute(
+                " UNION ALL ".join(quote_branch for _ in requested),
+                tuple(quote_parameters),
             ).fetchall()
             query_count += 1
             candle_rows = connection.execute(
