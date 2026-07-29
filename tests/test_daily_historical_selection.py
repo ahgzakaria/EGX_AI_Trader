@@ -488,7 +488,7 @@ def test_recent_improvement_cannot_overwrite_long_term_profile():
 
 def test_hard_eligibility_and_top_n_selection_are_separate():
     histories = {
-        f"S{index:02d}": _stable(value=2.5 + index / 100.0)
+        f"S{index:02d}": _stable(value=4.0 + index / 100.0)
         for index in range(25)
     }
     snapshot = build_frozen_daily_watchlist(
@@ -509,7 +509,7 @@ def test_hard_eligibility_and_top_n_selection_are_separate():
 
 def test_small_severe_floor_change_does_not_reshuffle_normal_candidates():
     histories = {
-        f"S{index:02d}": _stable(value=2.5 + index / 100.0)
+        f"S{index:02d}": _stable(value=4.0 + index / 100.0)
         for index in range(25)
     }
     base_cfg = DailyHistoricalSelectionConfig()
