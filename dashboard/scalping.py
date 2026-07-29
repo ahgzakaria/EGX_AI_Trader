@@ -76,20 +76,57 @@ def _historical_watchlist_frame(record, *, displayed_only):
             {
                 "rank": member["historical_rank"],
                 "symbol": member["symbol"],
+                "range_bound_score": member["range_bound_score"],
                 "historical_score": member["historical_score"],
-                "movement_potential": member["movement_potential_score"],
-                "range_stability": member["range_stability_score"],
-                "zone_consistency": member["combined_zone_consistency_score"],
-                "zone_confidence": member["zone_confidence_label"],
-                "liquidity_score": member["liquidity_score"],
-                "median_daily_range": member["median_daily_range"],
-                "normal_range_band": (
-                    f"{member['normal_range_lower']:.2f}%–"
-                    f"{member['normal_range_upper']:.2f}%"
+                "buy_zone_support": (
+                    f"{member['support_zone_low']:.4f}–"
+                    f"{member['support_zone_high']:.4f}"
                 ),
-                "range_hit_2pct_frequency": member["range_hit_2pct_frequency"],
-                "typical_lower_excursion": member["median_lower_excursion"],
-                "typical_upper_excursion": member["median_upper_excursion"],
+                "sell_zone_resistance": (
+                    f"{member['resistance_zone_low']:.4f}–"
+                    f"{member['resistance_zone_high']:.4f}"
+                ),
+                "channel_center": member["channel_center"],
+                "channel_width_percent": member[
+                    "channel_width_percent"
+                ],
+                "channel_direction": member["channel_direction"],
+                "channel_center_slope": member[
+                    "channel_center_slope"
+                ],
+                "support_zone_slope": member["support_zone_slope"],
+                "resistance_zone_slope": member[
+                    "resistance_zone_slope"
+                ],
+                "channel_stability": member[
+                    "horizontal_channel_stability_score"
+                ],
+                "support_stability": member["support_stability_score"],
+                "resistance_stability": member[
+                    "resistance_stability_score"
+                ],
+                "containment": member["containment_frequency"],
+                "support_touch_proxy_count": member[
+                    "support_touch_proxy_count"
+                ],
+                "support_reaction_proxy_count": member[
+                    "support_reaction_proxy_count"
+                ],
+                "resistance_touch_proxy_count": member[
+                    "resistance_touch_proxy_count"
+                ],
+                "resistance_rejection_proxy_count": member[
+                    "resistance_rejection_proxy_count"
+                ],
+                "breakout_rate": member["breakout_frequency"],
+                "breakdown_rate": member["breakdown_frequency"],
+                "liquidity_score": member["liquidity_score"],
+                "valid_sessions": member["valid_sessions_primary"],
+                "data_cutoff": member["data_cutoff"],
+                "eligibility_state": member["range_bound_status"],
+                "deterministic_reasons": ", ".join(
+                    member["range_bound_reasons"]
+                ),
                 "primary_60_state": member["primary_readiness_status"],
                 "recent_30_state": member["recent_confirmation_status"],
                 "historical_explanation": member["historical_explanation"],
@@ -98,11 +135,13 @@ def _historical_watchlist_frame(record, *, displayed_only):
     return pd.DataFrame(rows)
 
 
-def _historical_watchlist_panel(service=None):
+def _historical_watchlist_panel(service=None, *, target_session_date=None):
     """Render READY history only; this function never rebuilds on presentation."""
 
     service = service or _historical_watchlist_service()
-    target, proposed_cutoff = service.target_and_cutoff()
+    target, proposed_cutoff = service.target_and_cutoff(
+        target_session_date
+    )
     section_header(
         "HISTORICAL SCALPING WATCHLIST",
         "قائمة السكالبنج التاريخية الثابتة · completed EODHD Daily history only",
@@ -204,12 +243,22 @@ def _historical_watchlist_panel(service=None):
         f"{header['source_fingerprint_status']} · FROZEN / IMMUTABLE"
     )
     st.success(
-        "This list is based only on completed EODHD Daily history and is "
-        "frozen for the session."
+        "Research Only — this stable range-bound list uses completed EODHD "
+        "Daily history and is frozen for the session. Production: DISABLED."
+    )
+    st.warning(
+        "High volatility but descending channel — rejected. Strong ascending "
+        "trends, drifting support/resistance, narrow channels and unstable "
+        "channels are also excluded."
     )
     st.caption(
         "Daily candles may include official closing-auction effects. "
         "Intraday historical enrichment is currently unavailable/not ready."
+    )
+    st.caption(
+        "Support reactions and resistance rejections are daily-bar proxies; "
+        "daily OHLC cannot prove intraday ordering. Buy/Sell zones are "
+        "research zones, never automatic orders."
     )
 
     top = _historical_watchlist_frame(record, displayed_only=True)
@@ -220,13 +269,13 @@ def _historical_watchlist_panel(service=None):
     ):
         sort_columns = {
             "Historical rank": "rank",
-            "Historical score": "historical_score",
-            "Movement potential": "movement_potential",
-            "Range Stability": "range_stability",
-            "Zone Consistency": "zone_consistency",
+            "Range-Bound Score": "range_bound_score",
+            "Channel Stability": "channel_stability",
+            "Support Stability": "support_stability",
+            "Resistance Stability": "resistance_stability",
+            "Channel Width": "channel_width_percent",
+            "Containment": "containment",
             "Liquidity": "liquidity_score",
-            "Median daily range": "median_daily_range",
-            "2% hit frequency": "range_hit_2pct_frequency",
         }
         sort_controls = st.columns((2, 1))
         sort_label = sort_controls[0].selectbox(
@@ -442,12 +491,14 @@ def _live_entry_monitor_fragment(record, engine=None, evaluated_at=None):
                     f"- frozen rank {item.historical_rank}",
                     f"- historical score {item.historical_score:.2f}",
                     (
-                        f"- median full-session range "
+                        f"- median daily opportunity range "
                         f"{item.median_daily_range:.2f}%"
                     ),
                     (
-                        f"- Range Stability {item.range_stability:.2f}; "
-                        f"Zone Consistency {item.zone_consistency:.2f}"
+                        f"- Horizontal Channel Stability "
+                        f"{item.range_stability:.2f}; "
+                        f"Support/Resistance Repeatability "
+                        f"{item.zone_consistency:.2f}"
                     ),
                     "",
                     "Live assessment:",
