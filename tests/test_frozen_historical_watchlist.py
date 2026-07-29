@@ -864,6 +864,11 @@ _historical_watchlist_panel(
     assert "High volatility but descending channel" in rendered
     assert "Production: DISABLED" in rendered
     assert "Research Only" in rendered
+    assert (
+        f"{prepared.record.header['displayed_count']} candidates found out "
+        f"of maximum {prepared.record.header['top_n']}"
+        in rendered
+    )
     assert len(app.dataframe) >= 2
     assert [button.label for button in app.button] == [
         "Load frozen watchlist",

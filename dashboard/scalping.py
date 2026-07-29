@@ -235,6 +235,10 @@ def _historical_watchlist_panel(service=None, *, target_session_date=None):
     cards[1].metric("Historical cutoff", header["historical_data_cutoff"])
     cards[2].metric("Eligible universe", header["eligible_count"])
     cards[3].metric("Displayed candidates", header["displayed_count"])
+    st.info(
+        f"{header['displayed_count']} candidates found out of maximum "
+        f"{header['top_n']}"
+    )
     st.caption(
         f"ID {header['watchlist_id']} · {header['provider']} · "
         f"{header['metric_version']} / {header['config_version']} · "
