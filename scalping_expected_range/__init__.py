@@ -1,10 +1,9 @@
-"""SCALPING V3 — EXPECTED_RANGE_SCALPER (isolated, decision-support, paper-only).
+"""SCALPING V3 — EXPECTED_RANGE_SCALPER (isolated research support).
 
-A liquidity-first pre-session scalping selector: rank the EGX universe by
-consistent Average Volume/Turnover first, historical daily volatility and 2%
-opportunity frequency second, estimate an expected daily range from completed
-daily history, then use live Rubix quotes only to locate price inside that range
-and display every long-entry scenario for the user to decide.
+The pre-session selector ranks stable horizontal support/resistance channels
+from completed EODHD Daily history. Daily volatility is only a minimum
+opportunity condition. Live Rubix readiness remains a separate, read-only
+research layer over the immutable frozen candidates.
 
 Completely isolated from the Swing/Daily engine, the Adaptive Selector, the AI
 ranking, the preserved fixed-2% Scalping strategy, the Intraday Range Scalper,
@@ -13,8 +12,15 @@ default, never places an order.
 """
 
 from scalping_expected_range.config import (
+    DailyRangeBoundConfig,
     DailyHistoricalSelectionConfig,
     ExpectedRangeConfig,
+    RangeBoundScoreWeights,
 )
 
-__all__ = ["DailyHistoricalSelectionConfig", "ExpectedRangeConfig"]
+__all__ = [
+    "DailyHistoricalSelectionConfig",
+    "DailyRangeBoundConfig",
+    "ExpectedRangeConfig",
+    "RangeBoundScoreWeights",
+]

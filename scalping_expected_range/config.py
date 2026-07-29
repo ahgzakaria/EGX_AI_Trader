@@ -17,7 +17,11 @@ DEFAULT_SETTINGS_PATH = "scalping_expected_range/settings.json"
 
 @dataclass(frozen=True)
 class DailyHistoricalScoreWeights:
-    """Typed, daily-only Historical Scalping Potential weights."""
+    """Legacy diagnostic weights retained for API compatibility.
+
+    These weights no longer rank or select frozen candidates. Daily volatility
+    remains visible as a diagnostic and a minimum-opportunity gate only.
+    """
 
     movement_potential: float = 0.40
     range_stability: float = 0.25
@@ -40,6 +44,142 @@ class DailyHistoricalScoreWeights:
             self.liquidity,
         ) < 0:
             raise ValueError("daily historical score weights cannot be negative")
+
+
+@dataclass(frozen=True)
+class RangeBoundScoreWeights:
+    """Range-Bound Tradability Score weights."""
+
+    horizontal_channel_stability: float = 0.35
+    support_resistance_repeatability: float = 0.25
+    tradable_channel_width: float = 0.20
+    channel_containment: float = 0.10
+    liquidity: float = 0.10
+
+    def __post_init__(self):
+        values = (
+            self.horizontal_channel_stability,
+            self.support_resistance_repeatability,
+            self.tradable_channel_width,
+            self.channel_containment,
+            self.liquidity,
+        )
+        if abs(sum(values) - 1.0) > 1e-9:
+            raise ValueError(
+                "range-bound score weights must sum to 1.0"
+            )
+        if min(values) < 0:
+            raise ValueError("range-bound score weights cannot be negative")
+
+
+@dataclass(frozen=True)
+class DailyRangeBoundConfig:
+    """Typed channel construction, scoring, and hard safety thresholds."""
+
+    weights: RangeBoundScoreWeights = field(
+        default_factory=RangeBoundScoreWeights
+    )
+
+    # Robust support/resistance clusters.
+    support_lower_quantile: float = 0.10
+    support_upper_quantile: float = 0.35
+    resistance_lower_quantile: float = 0.65
+    resistance_upper_quantile: float = 0.90
+
+    # A normalized slope is total robust drift over the selected window,
+    # divided by the channel's absolute width.
+    horizontal_direction_limit: float = 0.35
+    maximum_channel_center_drift: float = 0.35
+    maximum_support_drift: float = 0.45
+    maximum_resistance_drift: float = 0.45
+    maximum_center_dispersion_ratio: float = 0.30
+    maximum_support_dispersion_ratio: float = 0.30
+    maximum_resistance_dispersion_ratio: float = 0.30
+
+    minimum_channel_width_percent: float = 3.00
+    ideal_channel_width_minimum_percent: float = 5.00
+    ideal_channel_width_maximum_percent: float = 15.00
+    maximum_meaningful_channel_width_percent: float = 25.00
+
+    touch_tolerance_channel_fraction: float = 0.10
+    reaction_away_channel_fraction: float = 0.20
+    minimum_touch_frequency: float = 0.20
+    minimum_reaction_proxy_frequency: float = 0.40
+
+    containment_buffer_channel_fraction: float = 0.10
+    breakout_buffer_channel_fraction: float = 0.10
+    event_outlier_buffer_channel_fraction: float = 0.35
+    minimum_close_containment: float = 0.70
+    minimum_broad_consistency: float = 0.60
+    maximum_breakout_rate: float = 0.18
+    maximum_breakdown_rate: float = 0.08
+    maximum_event_outlier_rate: float = 0.20
+
+    primary_profile_weight: float = 0.70
+    recent_confirmation_weight: float = 0.30
+    confirmation_transition_points: float = 5.0
+
+    def __post_init__(self):
+        quantiles = (
+            self.support_lower_quantile,
+            self.support_upper_quantile,
+            self.resistance_lower_quantile,
+            self.resistance_upper_quantile,
+        )
+        if not (
+            0 <= quantiles[0] < quantiles[1] < quantiles[2]
+            < quantiles[3] <= 1
+        ):
+            raise ValueError(
+                "range-bound support/resistance quantiles must be ordered"
+            )
+        if abs(
+            self.primary_profile_weight
+            + self.recent_confirmation_weight
+            - 1.0
+        ) > 1e-9:
+            raise ValueError(
+                "range-bound primary/recent weights must sum to 1.0"
+            )
+        if self.confirmation_transition_points < 0:
+            raise ValueError(
+                "range-bound confirmation transition cannot be negative"
+            )
+        if not (
+            0
+            < self.minimum_channel_width_percent
+            <= self.ideal_channel_width_minimum_percent
+            <= self.ideal_channel_width_maximum_percent
+            < self.maximum_meaningful_channel_width_percent
+        ):
+            raise ValueError("range-bound channel-width thresholds are invalid")
+        rates = (
+            self.horizontal_direction_limit,
+            self.maximum_channel_center_drift,
+            self.maximum_support_drift,
+            self.maximum_resistance_drift,
+            self.maximum_center_dispersion_ratio,
+            self.maximum_support_dispersion_ratio,
+            self.maximum_resistance_dispersion_ratio,
+            self.touch_tolerance_channel_fraction,
+            self.reaction_away_channel_fraction,
+            self.minimum_touch_frequency,
+            self.minimum_reaction_proxy_frequency,
+            self.containment_buffer_channel_fraction,
+            self.breakout_buffer_channel_fraction,
+            self.event_outlier_buffer_channel_fraction,
+            self.minimum_close_containment,
+            self.minimum_broad_consistency,
+            self.maximum_breakout_rate,
+            self.maximum_breakdown_rate,
+            self.maximum_event_outlier_rate,
+            self.primary_profile_weight,
+            self.recent_confirmation_weight,
+        )
+        if any(value < 0 or value > 1 for value in rates):
+            raise ValueError(
+                "range-bound rates and normalized thresholds must be within [0, 1]"
+            )
 
 
 @dataclass(frozen=True)
@@ -143,8 +283,8 @@ class DailyHistoricalSelectionConfig:
     """
 
     source_provider: str = "EODHD_DAILY"
-    metric_version: str = "DAILY_HISTORICAL_SELECTION_V2"
-    config_version: str = "DAILY_HISTORICAL_SELECTION_CONFIG_V2"
+    metric_version: str = "RANGE_BOUND_HISTORICAL_SELECTION_V1"
+    config_version: str = "RANGE_BOUND_HISTORICAL_SELECTION_CONFIG_V1"
     raw_adjusted_mode: str = "SPLIT_ADJUSTED_OHLC_EVENT_SPECIFIC_VOLUME"
     lookback_sessions: int = 60
     recent_confirmation_sessions: int = 30
@@ -163,6 +303,9 @@ class DailyHistoricalSelectionConfig:
     )
     zone: DailyZoneConsistencyConfig = field(
         default_factory=DailyZoneConsistencyConfig
+    )
+    range_bound: DailyRangeBoundConfig = field(
+        default_factory=DailyRangeBoundConfig
     )
     eligibility: DailyHistoricalEligibility = field(
         default_factory=DailyHistoricalEligibility

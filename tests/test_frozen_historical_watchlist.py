@@ -88,7 +88,7 @@ def _history(value=3.0, *, end="2026-07-27", n=60, volume_safe=True):
 
 def _histories(count=25):
     return {
-        f"S{index:03d}": _history(2.5 + index / 100.0)
+        f"S{index:03d}": _history(4.0 + index / 100.0)
         for index in range(count)
     }
 
@@ -361,7 +361,7 @@ def test_d1_cutoff_excludes_current_day_and_d_becomes_usable_for_d_plus_1(tmp_pa
 
 def test_missing_latest_session_is_disclosed_without_fabricating_a_bar(tmp_path):
     histories = {
-        symbol: _history(2.5 + index / 100.0, end="2026-07-26")
+        symbol: _history(4.0 + index / 100.0, end="2026-07-26")
         for index, symbol in enumerate(_histories())
     }
 
@@ -377,7 +377,7 @@ def test_missing_latest_session_is_disclosed_without_fabricating_a_bar(tmp_path)
 
 def test_incomplete_latest_session_is_excluded(tmp_path):
     histories = {
-        f"S{index:03d}": _history(2.5 + index / 100.0, n=61)
+        f"S{index:03d}": _history(4.0 + index / 100.0, n=61)
         for index in range(25)
     }
     changed = {}
@@ -410,7 +410,7 @@ def test_incomplete_latest_session_is_excluded(tmp_path):
 
 def test_stale_cache_fails_closed_without_ready_watchlist(tmp_path):
     histories = {
-        symbol: _history(2.5 + index / 100.0, end="2026-07-01")
+        symbol: _history(4.0 + index / 100.0, end="2026-07-01")
         for index, symbol in enumerate(_histories())
     }
     service = _service(tmp_path)
@@ -514,11 +514,27 @@ def test_60_30_zone_confidence_and_provenance_fields_are_persisted(tmp_path):
     assert member["valid_sessions_primary"] == 60
     assert member["valid_sessions_recent"] == 30
     assert member["recent_confirmation_status"]
-    assert member["zone_confidence_label"].endswith("_ZONE")
+    assert (
+        member["zone_confidence_label"]
+        == "STABLE_RANGE_BOUND_CANDIDATE"
+    )
     assert member["source"] == EODHD_DAILY
     assert member["source_fingerprint"].startswith("sha256:")
-    assert member["metric_version"] == "DAILY_HISTORICAL_SELECTION_V2"
+    assert member["metric_version"] == "RANGE_BOUND_HISTORICAL_SELECTION_V1"
     assert member["data_cutoff"] == "2026-07-27"
+    assert member["range_bound_score"] == member["historical_score"]
+    assert member["support_zone_low"] <= member["support_zone_high"]
+    assert (
+        member["support_zone_high"]
+        < member["resistance_zone_low"]
+        <= member["resistance_zone_high"]
+    )
+    assert member["channel_direction"] == "HORIZONTAL"
+    assert member["channel_width_percent"] >= 3.0
+    assert member["range_bound_status"] == "STABLE_RANGE_BOUND_CANDIDATE"
+    assert "HORIZONTAL_CHANNEL_CONFIRMED" in member[
+        "range_bound_reasons"
+    ]
 
 
 def test_nine_unresolved_volume_symbols_remain_excluded(tmp_path):
@@ -775,7 +791,14 @@ def test_historical_table_contains_no_current_or_live_columns(tmp_path):
     assert {
         "rank",
         "symbol",
+        "range_bound_score",
         "historical_score",
+        "buy_zone_support",
+        "sell_zone_resistance",
+        "channel_width_percent",
+        "channel_direction",
+        "channel_stability",
+        "containment",
         "primary_60_state",
         "recent_30_state",
         "historical_explanation",
@@ -815,7 +838,10 @@ service = FrozenHistoricalWatchlistService(
     calendar=Calendar(),
     history_loader=forbidden_loader,
 )
-_historical_watchlist_panel(service)
+_historical_watchlist_panel(
+    service,
+    target_session_date="2026-07-28",
+)
 """
     )
     app.run(timeout=30)
@@ -835,6 +861,9 @@ _historical_watchlist_panel(service)
     assert prepared.record.header["watchlist_id"] in rendered
     assert "FROZEN / IMMUTABLE" in rendered
     assert "completed EODHD Daily history" in rendered
+    assert "High volatility but descending channel" in rendered
+    assert "Production: DISABLED" in rendered
+    assert "Research Only" in rendered
     assert len(app.dataframe) >= 2
     assert [button.label for button in app.button] == [
         "Load frozen watchlist",
