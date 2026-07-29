@@ -53,6 +53,27 @@ LONG_TERM_MODERATE_RECENT_STEADY = "LONG_TERM_MODERATE_RECENT_STEADY"
 LONG_TERM_UNSTABLE = "LONG_TERM_UNSTABLE"
 INSUFFICIENT_PREFERRED_DEPTH = "INSUFFICIENT_PREFERRED_DEPTH"
 
+STABLE_RANGE_BOUND_CANDIDATE = "STABLE_RANGE_BOUND_CANDIDATE"
+CHANNEL_DOWNTREND = "CHANNEL_DOWNTREND"
+CHANNEL_UPTREND = "CHANNEL_UPTREND"
+SUPPORT_DRIFTING_DOWN = "SUPPORT_DRIFTING_DOWN"
+RESISTANCE_DRIFTING_DOWN = "RESISTANCE_DRIFTING_DOWN"
+CHANNEL_UNSTABLE = "CHANNEL_UNSTABLE"
+CHANNEL_TOO_NARROW = "CHANNEL_TOO_NARROW"
+CHANNEL_BREAKDOWN_RISK = "CHANNEL_BREAKDOWN_RISK"
+INSUFFICIENT_HISTORY = "INSUFFICIENT_HISTORY"
+DATA_UNAVAILABLE = "DATA_UNAVAILABLE"
+
+CHANNEL_HORIZONTAL = "HORIZONTAL"
+CHANNEL_ASCENDING = "ASCENDING"
+CHANNEL_DESCENDING = "DESCENDING"
+
+RANGE_BOUND_PRIMARY_AND_RECENT_CONFIRMED = (
+    "RANGE_BOUND_PRIMARY_AND_RECENT_CONFIRMED"
+)
+RANGE_BOUND_RECENT_WEAKENING = "RANGE_BOUND_RECENT_WEAKENING"
+RANGE_BOUND_RECENT_IMPROVING = "RANGE_BOUND_RECENT_IMPROVING"
+
 INTRADAY_ENRICHMENT_READY = "INTRADAY_HISTORICAL_ENRICHMENT_READY"
 INTRADAY_ENRICHMENT_NOT_READY = "INTRADAY_HISTORICAL_ENRICHMENT_NOT_READY"
 
@@ -136,6 +157,60 @@ class ZoneConsistencyProfile:
 
 
 @dataclass(frozen=True)
+class RangeBoundChannelProfile:
+    """Robust horizontal-channel evidence from completed daily bars."""
+
+    lookback_sessions: int
+    valid_sessions: int
+    support_zone_low: float
+    support_zone_high: float
+    support_center: float
+    resistance_zone_low: float
+    resistance_zone_high: float
+    resistance_center: float
+    channel_center: float
+    channel_width_absolute: float
+    channel_width_percent: float
+    channel_direction: str
+    channel_center_slope: float
+    support_zone_slope: float
+    resistance_zone_slope: float
+    center_dispersion_ratio: float
+    support_dispersion_ratio: float
+    resistance_dispersion_ratio: float
+    support_touch_count: int
+    support_touch_frequency: float
+    support_reaction_proxy_count: int
+    support_reaction_proxy_frequency: float
+    resistance_touch_count: int
+    resistance_touch_frequency: float
+    resistance_rejection_proxy_count: int
+    resistance_rejection_proxy_frequency: float
+    close_containment_frequency: float
+    broad_channel_consistency_frequency: float
+    breakout_frequency: float
+    breakdown_frequency: float
+    event_dominated_outlier_count: int
+    event_dominated_outlier_rate: float
+    horizontal_channel_stability_score: float
+    support_stability_score: float
+    resistance_stability_score: float
+    support_resistance_repeatability_score: float
+    tradable_channel_width_score: float
+    channel_containment_score: float
+    range_bound_tradability_score: float
+    eligibility_state: str
+    deterministic_reasons: tuple[str, ...]
+    selection_reasons: tuple[str, ...]
+    support_reaction_disclosure: str = (
+        "Daily-bar support-reaction proxy; intraday ordering is unavailable."
+    )
+    resistance_rejection_disclosure: str = (
+        "Daily-bar resistance-rejection proxy; intraday ordering is unavailable."
+    )
+
+
+@dataclass(frozen=True)
 class DailyHistoricalMetrics:
     valid_session_count: int
     mean_daily_range_percent: float
@@ -196,6 +271,13 @@ class DailySelectionResult:
     eligible: bool
     eligibility_reasons: tuple[str, ...]
     overlap_validation_status: str
+    range_bound_profile_60: RangeBoundChannelProfile | None = None
+    range_bound_profile_30: RangeBoundChannelProfile | None = None
+    range_bound_tradability_score: float | None = None
+    confirmed_range_bound_tradability_score: float | None = None
+    range_bound_confirmation_status: str = INSUFFICIENT_PREFERRED_DEPTH
+    range_bound_confirmation_penalty: float = 0.0
+    range_bound_status: str = DATA_UNAVAILABLE
     zone_profile_60: ZoneConsistencyProfile | None = None
     zone_profile_30: ZoneConsistencyProfile | None = None
     zone_confirmation_status: str = INSUFFICIENT_PREFERRED_DEPTH
@@ -458,23 +540,29 @@ def analyze_daily_history(
 
     if selected.empty:
         return DailySelectionResult(
-            base,
-            cfg.source_provider,
-            "1d",
-            cfg.raw_adjusted_mode,
-            cfg.metric_version,
-            cfg.config_version,
-            cutoff.isoformat(),
-            None,
-            None,
-            assess_daily_readiness(0, source_available=False, config=cfg),
-            None,
-            VOLUME_HISTORY_UNAVAILABLE,
-            None,
-            None,
-            False,
-            ("NO_VALID_EODHD_DAILY_SESSIONS",),
-            overlap_validation_status,
+            symbol=base,
+            source_provider=cfg.source_provider,
+            interval="1d",
+            raw_adjusted_mode=cfg.raw_adjusted_mode,
+            metric_version=cfg.metric_version,
+            config_version=cfg.config_version,
+            data_cutoff=cutoff.isoformat(),
+            latest_session=None,
+            source_data_fingerprint=None,
+            readiness=assess_daily_readiness(
+                0, source_available=False, config=cfg
+            ),
+            metrics=None,
+            volume_history_status=VOLUME_HISTORY_UNAVAILABLE,
+            historical_scalping_potential=None,
+            historical_rank=None,
+            eligible=False,
+            eligibility_reasons=(
+                DATA_UNAVAILABLE,
+                "NO_VALID_EODHD_DAILY_SESSIONS",
+            ),
+            overlap_validation_status=overlap_validation_status,
+            range_bound_status=DATA_UNAVAILABLE,
         )
 
     latest_date = _to_date(latest)
@@ -501,8 +589,22 @@ def analyze_daily_history(
         cfg=cfg,
     )
     metrics = _compute_metrics(selected, cfg, zone_profile=primary_zone)
+    primary_range_bound = _range_bound_channel_profile(
+        selected,
+        lookback_sessions=cfg.lookback_sessions,
+        cfg=cfg,
+    )
     recent_zone = (
         _zone_consistency_profile(
+            selected.tail(cfg.recent_confirmation_sessions),
+            lookback_sessions=cfg.recent_confirmation_sessions,
+            cfg=cfg,
+        )
+        if len(selected) >= cfg.recent_confirmation_sessions
+        else None
+    )
+    recent_range_bound = (
+        _range_bound_channel_profile(
             selected.tail(cfg.recent_confirmation_sessions),
             lookback_sessions=cfg.recent_confirmation_sessions,
             cfg=cfg,
@@ -536,48 +638,82 @@ def analyze_daily_history(
 
     score = None
     confirmed_score = None
-    if readiness.status == DAILY_SELECTION_READY and metrics.daily_liquidity_score is not None:
-        weights = cfg.weights
-        score = _round(
-            metrics.daily_movement_potential_score * weights.movement_potential
-            + metrics.daily_range_stability_score * weights.range_stability
-            + metrics.daily_volatility_zone_consistency_score
-            * weights.zone_consistency
-            + metrics.daily_liquidity_score * weights.liquidity,
-            4,
-        )
-        confirmed_score = _round(score - confidence_penalty, 4)
+    range_confirmation_status = _range_bound_confirmation_status(
+        primary_range_bound,
+        recent_range_bound,
+        cfg,
+    )
+    range_confirmation_penalty = 0.0
+    if (
+        readiness.status == DAILY_SELECTION_READY
+        and metrics.daily_liquidity_score is not None
+    ):
+        score = primary_range_bound.range_bound_tradability_score
+        if recent_range_bound is not None:
+            rb_cfg = cfg.range_bound
+            confirmed_score = _round(
+                min(
+                    score,
+                    score * rb_cfg.primary_profile_weight
+                    + recent_range_bound.range_bound_tradability_score
+                    * rb_cfg.recent_confirmation_weight,
+                ),
+                4,
+            )
+            range_confirmation_penalty = _round(
+                max(0.0, score - confirmed_score),
+                4,
+            )
+        else:
+            confirmed_score = score
 
     eligible, reasons = _eligibility(
         metrics,
         readiness,
         volume_safe,
+        primary_range_bound,
+        recent_range_bound,
         primary_zone,
         cfg,
     )
+    range_status = (
+        STABLE_RANGE_BOUND_CANDIDATE
+        if eligible
+        else _range_bound_status(
+            reasons,
+            readiness=readiness,
+        )
+    )
     return DailySelectionResult(
-        base,
-        cfg.source_provider,
-        "1d",
-        cfg.raw_adjusted_mode,
-        cfg.metric_version,
-        cfg.config_version,
-        cutoff.isoformat(),
-        latest,
-        fingerprint,
-        readiness,
-        metrics,
-        volume_history_status,
-        score,
-        None,
-        eligible,
-        reasons,
-        overlap_validation_status,
-        primary_zone,
-        recent_zone,
-        confirmation_status,
-        confidence_penalty,
-        confirmed_score,
+        symbol=base,
+        source_provider=cfg.source_provider,
+        interval="1d",
+        raw_adjusted_mode=cfg.raw_adjusted_mode,
+        metric_version=cfg.metric_version,
+        config_version=cfg.config_version,
+        data_cutoff=cutoff.isoformat(),
+        latest_session=latest,
+        source_data_fingerprint=fingerprint,
+        readiness=readiness,
+        metrics=metrics,
+        volume_history_status=volume_history_status,
+        historical_scalping_potential=score,
+        historical_rank=None,
+        eligible=eligible,
+        eligibility_reasons=reasons,
+        overlap_validation_status=overlap_validation_status,
+        range_bound_profile_60=primary_range_bound,
+        range_bound_profile_30=recent_range_bound,
+        range_bound_tradability_score=score,
+        confirmed_range_bound_tradability_score=confirmed_score,
+        range_bound_confirmation_status=range_confirmation_status,
+        range_bound_confirmation_penalty=range_confirmation_penalty,
+        range_bound_status=range_status,
+        zone_profile_60=primary_zone,
+        zone_profile_30=recent_zone,
+        zone_confirmation_status=confirmation_status,
+        zone_confidence_penalty=confidence_penalty,
+        confirmed_historical_scalping_potential=confirmed_score,
     )
 
 
@@ -666,6 +802,8 @@ def build_frozen_daily_watchlist(
                 **asdict(result),
                 "readiness": result.readiness,
                 "metrics": result.metrics,
+                "range_bound_profile_60": result.range_bound_profile_60,
+                "range_bound_profile_30": result.range_bound_profile_30,
                 "zone_profile_60": result.zone_profile_60,
                 "zone_profile_30": result.zone_profile_30,
                 "eligibility_reasons": result.eligibility_reasons,
@@ -828,6 +966,425 @@ def _compute_metrics(
         daily_volatility_zone_consistency_score=zone_profile.combined_score,
         daily_liquidity_score=_round(liquidity_score),
     )
+
+
+def _range_bound_channel_profile(
+    daily: pd.DataFrame,
+    *,
+    lookback_sessions: int,
+    cfg: DailyHistoricalSelectionConfig,
+) -> RangeBoundChannelProfile:
+    """Build robust daily-bar support/resistance and horizontal-channel evidence."""
+
+    rb = cfg.range_bound
+    low = daily["Low"].astype(float)
+    high = daily["High"].astype(float)
+    close = daily["Close"].astype(float)
+    volume = daily["Volume"].astype(float)
+
+    support_zone_low = float(low.quantile(rb.support_lower_quantile))
+    support_zone_high = float(low.quantile(rb.support_upper_quantile))
+    support_cluster = low[low <= support_zone_high]
+    support_center = float(
+        support_cluster.median()
+        if not support_cluster.empty
+        else low.median()
+    )
+
+    resistance_zone_low = float(
+        high.quantile(rb.resistance_lower_quantile)
+    )
+    resistance_zone_high = float(
+        high.quantile(rb.resistance_upper_quantile)
+    )
+    resistance_cluster = high[high >= resistance_zone_low]
+    resistance_center = float(
+        resistance_cluster.median()
+        if not resistance_cluster.empty
+        else high.median()
+    )
+
+    channel_center = (support_center + resistance_center) / 2.0
+    raw_channel_width = resistance_center - support_center
+    channel_width = max(raw_channel_width, np.finfo(float).eps)
+    channel_width_percent = (
+        raw_channel_width / channel_center * 100.0
+        if channel_center > 0 and raw_channel_width > 0
+        else 0.0
+    )
+
+    session_center = (high + low) / 2.0
+    periods = max(len(daily) - 1, 1)
+    channel_center_slope = (
+        _theil_sen_slope(session_center) * periods / channel_width
+    )
+    support_slope = _theil_sen_slope(low) * periods / channel_width
+    resistance_slope = _theil_sen_slope(high) * periods / channel_width
+    center_dispersion = _mad(session_center) / channel_width
+    support_dispersion = _mad(low) / channel_width
+    resistance_dispersion = _mad(high) / channel_width
+
+    if channel_center_slope > rb.horizontal_direction_limit:
+        direction = CHANNEL_ASCENDING
+    elif channel_center_slope < -rb.horizontal_direction_limit:
+        direction = CHANNEL_DESCENDING
+    else:
+        direction = CHANNEL_HORIZONTAL
+
+    touch_buffer = rb.touch_tolerance_channel_fraction * channel_width
+    support_touches = (
+        (low >= support_zone_low - touch_buffer)
+        & (low <= support_zone_high + touch_buffer)
+    )
+    support_reactions = support_touches & (
+        close
+        >= support_center
+        + rb.reaction_away_channel_fraction * channel_width
+    )
+    resistance_touches = (
+        (high >= resistance_zone_low - touch_buffer)
+        & (high <= resistance_zone_high + touch_buffer)
+    )
+    resistance_rejections = resistance_touches & (
+        close
+        <= resistance_center
+        - rb.reaction_away_channel_fraction * channel_width
+    )
+    support_touch_count = int(support_touches.sum())
+    resistance_touch_count = int(resistance_touches.sum())
+    support_reaction_count = int(support_reactions.sum())
+    resistance_rejection_count = int(resistance_rejections.sum())
+    support_touch_frequency = float(support_touches.mean())
+    resistance_touch_frequency = float(resistance_touches.mean())
+    support_reaction_frequency = (
+        support_reaction_count / support_touch_count
+        if support_touch_count
+        else 0.0
+    )
+    resistance_rejection_frequency = (
+        resistance_rejection_count / resistance_touch_count
+        if resistance_touch_count
+        else 0.0
+    )
+
+    containment_buffer = (
+        rb.containment_buffer_channel_fraction * channel_width
+    )
+    close_containment = (
+        (close >= support_zone_low - containment_buffer)
+        & (close <= resistance_zone_high + containment_buffer)
+    )
+    event_buffer = rb.event_outlier_buffer_channel_fraction * channel_width
+    broad_consistency = (
+        (low >= support_center - event_buffer)
+        & (high <= resistance_center + event_buffer)
+    )
+    breakout_buffer = rb.breakout_buffer_channel_fraction * channel_width
+    breakouts = high > resistance_zone_high + breakout_buffer
+    breakdowns = low < support_zone_low - breakout_buffer
+    event_outliers = (
+        (high > resistance_center + event_buffer)
+        | (low < support_center - event_buffer)
+    )
+    close_containment_frequency = float(close_containment.mean())
+    broad_consistency_frequency = float(broad_consistency.mean())
+    breakout_frequency = float(breakouts.mean())
+    breakdown_frequency = float(breakdowns.mean())
+    event_outlier_count = int(event_outliers.sum())
+    event_outlier_rate = float(event_outliers.mean())
+
+    horizontal_stability_score = 100.0 * (
+        0.45
+        * _ratio_quality(
+            abs(channel_center_slope),
+            rb.maximum_channel_center_drift,
+        )
+        + 0.20
+        * _ratio_quality(abs(support_slope), rb.maximum_support_drift)
+        + 0.20
+        * _ratio_quality(
+            abs(resistance_slope),
+            rb.maximum_resistance_drift,
+        )
+        + 0.15
+        * _ratio_quality(
+            center_dispersion,
+            rb.maximum_center_dispersion_ratio,
+        )
+    )
+    support_stability_score = 100.0 * (
+        0.35
+        * _ratio_quality(
+            support_dispersion,
+            rb.maximum_support_dispersion_ratio,
+        )
+        + 0.25
+        * _ratio_quality(abs(support_slope), rb.maximum_support_drift)
+        + 0.20
+        * _minimum_quality(
+            support_touch_frequency,
+            rb.minimum_touch_frequency,
+        )
+        + 0.20
+        * _minimum_quality(
+            support_reaction_frequency,
+            rb.minimum_reaction_proxy_frequency,
+        )
+    )
+    resistance_stability_score = 100.0 * (
+        0.35
+        * _ratio_quality(
+            resistance_dispersion,
+            rb.maximum_resistance_dispersion_ratio,
+        )
+        + 0.25
+        * _ratio_quality(
+            abs(resistance_slope),
+            rb.maximum_resistance_drift,
+        )
+        + 0.20
+        * _minimum_quality(
+            resistance_touch_frequency,
+            rb.minimum_touch_frequency,
+        )
+        + 0.20
+        * _minimum_quality(
+            resistance_rejection_frequency,
+            rb.minimum_reaction_proxy_frequency,
+        )
+    )
+    repeatability_score = (
+        0.60 * min(support_stability_score, resistance_stability_score)
+        + 0.40
+        * math.sqrt(
+            max(0.0, support_stability_score * resistance_stability_score)
+        )
+    )
+    channel_width_score = _channel_width_score(
+        channel_width_percent,
+        cfg,
+    )
+    containment_score = 100.0 * (
+        0.45 * close_containment_frequency
+        + 0.25 * broad_consistency_frequency
+        + 0.15 * (1.0 - breakout_frequency)
+        + 0.15 * (1.0 - breakdown_frequency)
+    )
+    turnover = close * volume
+    liquidity_score, _ = _liquidity_score(volume, turnover)
+    weights = rb.weights
+    range_bound_score = (
+        horizontal_stability_score
+        * weights.horizontal_channel_stability
+        + repeatability_score
+        * weights.support_resistance_repeatability
+        + channel_width_score * weights.tradable_channel_width
+        + containment_score * weights.channel_containment
+        + liquidity_score * weights.liquidity
+    )
+
+    reasons: list[str] = []
+    if channel_width_percent < rb.minimum_channel_width_percent:
+        reasons.append(CHANNEL_TOO_NARROW)
+    if channel_center_slope < -rb.maximum_channel_center_drift:
+        reasons.append(CHANNEL_DOWNTREND)
+    elif channel_center_slope > rb.maximum_channel_center_drift:
+        reasons.append(CHANNEL_UPTREND)
+    if support_slope < -rb.maximum_support_drift:
+        reasons.append(SUPPORT_DRIFTING_DOWN)
+    if resistance_slope < -rb.maximum_resistance_drift:
+        reasons.append(RESISTANCE_DRIFTING_DOWN)
+    if (
+        center_dispersion > rb.maximum_center_dispersion_ratio
+        or support_dispersion > rb.maximum_support_dispersion_ratio
+        or resistance_dispersion > rb.maximum_resistance_dispersion_ratio
+        or channel_width_percent
+        > rb.maximum_meaningful_channel_width_percent
+        or close_containment_frequency < rb.minimum_close_containment
+        or broad_consistency_frequency < rb.minimum_broad_consistency
+        or breakout_frequency > rb.maximum_breakout_rate
+        or event_outlier_rate > rb.maximum_event_outlier_rate
+    ):
+        reasons.append(CHANNEL_UNSTABLE)
+    if breakdown_frequency > rb.maximum_breakdown_rate:
+        reasons.append(CHANNEL_BREAKDOWN_RISK)
+    reasons = list(dict.fromkeys(reasons))
+    eligibility_state = (
+        STABLE_RANGE_BOUND_CANDIDATE if not reasons else reasons[0]
+    )
+    selection_reasons = tuple(
+        code
+        for condition, code in (
+            (
+                direction == CHANNEL_HORIZONTAL
+                and abs(channel_center_slope)
+                <= rb.maximum_channel_center_drift,
+                "HORIZONTAL_CHANNEL_CONFIRMED",
+            ),
+            (
+                support_dispersion
+                <= rb.maximum_support_dispersion_ratio
+                and support_touch_frequency >= rb.minimum_touch_frequency,
+                "SUPPORT_ZONE_REPEATABLE",
+            ),
+            (
+                resistance_dispersion
+                <= rb.maximum_resistance_dispersion_ratio
+                and resistance_touch_frequency >= rb.minimum_touch_frequency,
+                "RESISTANCE_ZONE_REPEATABLE",
+            ),
+            (
+                channel_width_percent
+                >= rb.minimum_channel_width_percent
+                and channel_width_percent
+                <= rb.maximum_meaningful_channel_width_percent,
+                "CHANNEL_WIDTH_TRADABLE",
+            ),
+            (
+                close_containment_frequency
+                >= rb.minimum_close_containment
+                and broad_consistency_frequency
+                >= rb.minimum_broad_consistency,
+                "CHANNEL_CONTAINMENT_CONFIRMED",
+            ),
+            (
+                liquidity_score >= 50.0,
+                "LIQUIDITY_EXECUTABLE",
+            ),
+        )
+        if condition
+    )
+
+    return RangeBoundChannelProfile(
+        lookback_sessions=lookback_sessions,
+        valid_sessions=int(len(daily)),
+        support_zone_low=_round(support_zone_low),
+        support_zone_high=_round(support_zone_high),
+        support_center=_round(support_center),
+        resistance_zone_low=_round(resistance_zone_low),
+        resistance_zone_high=_round(resistance_zone_high),
+        resistance_center=_round(resistance_center),
+        channel_center=_round(channel_center),
+        channel_width_absolute=_round(max(0.0, raw_channel_width)),
+        channel_width_percent=_round(channel_width_percent),
+        channel_direction=direction,
+        channel_center_slope=_round(channel_center_slope, 6),
+        support_zone_slope=_round(support_slope, 6),
+        resistance_zone_slope=_round(resistance_slope, 6),
+        center_dispersion_ratio=_round(center_dispersion, 6),
+        support_dispersion_ratio=_round(support_dispersion, 6),
+        resistance_dispersion_ratio=_round(resistance_dispersion, 6),
+        support_touch_count=support_touch_count,
+        support_touch_frequency=_round(support_touch_frequency, 6),
+        support_reaction_proxy_count=support_reaction_count,
+        support_reaction_proxy_frequency=_round(
+            support_reaction_frequency, 6
+        ),
+        resistance_touch_count=resistance_touch_count,
+        resistance_touch_frequency=_round(
+            resistance_touch_frequency, 6
+        ),
+        resistance_rejection_proxy_count=resistance_rejection_count,
+        resistance_rejection_proxy_frequency=_round(
+            resistance_rejection_frequency, 6
+        ),
+        close_containment_frequency=_round(
+            close_containment_frequency, 6
+        ),
+        broad_channel_consistency_frequency=_round(
+            broad_consistency_frequency, 6
+        ),
+        breakout_frequency=_round(breakout_frequency, 6),
+        breakdown_frequency=_round(breakdown_frequency, 6),
+        event_dominated_outlier_count=event_outlier_count,
+        event_dominated_outlier_rate=_round(event_outlier_rate, 6),
+        horizontal_channel_stability_score=_round(
+            horizontal_stability_score
+        ),
+        support_stability_score=_round(support_stability_score),
+        resistance_stability_score=_round(resistance_stability_score),
+        support_resistance_repeatability_score=_round(
+            repeatability_score
+        ),
+        tradable_channel_width_score=_round(channel_width_score),
+        channel_containment_score=_round(containment_score),
+        range_bound_tradability_score=_round(range_bound_score),
+        eligibility_state=eligibility_state,
+        deterministic_reasons=tuple(reasons),
+        selection_reasons=selection_reasons,
+    )
+
+
+def _range_bound_confirmation_status(
+    primary: RangeBoundChannelProfile,
+    recent: RangeBoundChannelProfile | None,
+    cfg: DailyHistoricalSelectionConfig,
+) -> str:
+    if recent is None:
+        return INSUFFICIENT_PREFERRED_DEPTH
+    difference = (
+        recent.range_bound_tradability_score
+        - primary.range_bound_tradability_score
+    )
+    transition = cfg.range_bound.confirmation_transition_points
+    if difference > transition:
+        return RANGE_BOUND_RECENT_IMPROVING
+    if difference < -transition:
+        return RANGE_BOUND_RECENT_WEAKENING
+    return RANGE_BOUND_PRIMARY_AND_RECENT_CONFIRMED
+
+
+def _channel_width_score(
+    channel_width_percent: float,
+    cfg: DailyHistoricalSelectionConfig,
+) -> float:
+    rb = cfg.range_bound
+    width = float(channel_width_percent)
+    if width <= rb.minimum_channel_width_percent:
+        return 0.0
+    if width < rb.ideal_channel_width_minimum_percent:
+        return 100.0 * (
+            width - rb.minimum_channel_width_percent
+        ) / (
+            rb.ideal_channel_width_minimum_percent
+            - rb.minimum_channel_width_percent
+        )
+    if width <= rb.ideal_channel_width_maximum_percent:
+        return 100.0
+    return 100.0 * _unit(
+        (
+            rb.maximum_meaningful_channel_width_percent
+            - width
+        )
+        / (
+            rb.maximum_meaningful_channel_width_percent
+            - rb.ideal_channel_width_maximum_percent
+        )
+    )
+
+
+def _theil_sen_slope(values: pd.Series) -> float:
+    clean = np.asarray(values, dtype=float)
+    if len(clean) < 2:
+        return 0.0
+    slopes = [
+        (clean[right] - clean[left]) / (right - left)
+        for left in range(len(clean) - 1)
+        for right in range(left + 1, len(clean))
+    ]
+    return float(np.median(slopes))
+
+
+def _ratio_quality(value: float, maximum: float) -> float:
+    if maximum <= 0:
+        return 0.0
+    return _unit(1.0 - float(value) / float(maximum))
+
+
+def _minimum_quality(value: float, minimum: float) -> float:
+    if minimum <= 0:
+        return 1.0
+    return _unit(float(value) / float(minimum))
 
 
 def _movement_score(median_range: float, hit: Mapping[float, float]) -> float:
@@ -1157,15 +1714,22 @@ def _eligibility(
     metrics: DailyHistoricalMetrics,
     readiness: DailyReadiness,
     volume_safe: bool,
-    zone_profile: ZoneConsistencyProfile,
+    primary_range_bound: RangeBoundChannelProfile,
+    recent_range_bound: RangeBoundChannelProfile | None,
+    legacy_zone_profile: ZoneConsistencyProfile,
     cfg: DailyHistoricalSelectionConfig,
 ) -> tuple[bool, tuple[str, ...]]:
-    """Return hard historical eligibility, never ordinary quality cliffs."""
+    """Return hard data, opportunity, and range-bound safety eligibility."""
 
     reasons = []
     threshold = cfg.eligibility
     if readiness.status != DAILY_SELECTION_READY:
         reasons.append(readiness.status)
+        if readiness.status in {
+            DAILY_SELECTION_INSUFFICIENT,
+            DAILY_SELECTION_STALE,
+        }:
+            reasons.append(INSUFFICIENT_HISTORY)
     elif (
         cfg.require_preferred_depth_for_candidates
         and not readiness.preferred_ready
@@ -1179,9 +1743,36 @@ def _eligibility(
         reasons.append("TWO_PERCENT_RANGE_FREQUENCY_BELOW_MINIMUM")
     if metrics.median_turnover_egp < threshold.minimum_median_turnover_egp:
         reasons.append("MEDIAN_TURNOVER_BELOW_MINIMUM")
-    if zone_profile.safety_status != ZONE_SAFETY_READY:
-        reasons.extend(zone_profile.safety_reasons)
-    return not reasons, tuple(reasons)
+    reasons.extend(primary_range_bound.deterministic_reasons)
+    if recent_range_bound is not None:
+        reasons.extend(recent_range_bound.deterministic_reasons)
+    if "ZONE_EVENT_DOMINATED" in legacy_zone_profile.safety_reasons:
+        reasons.append("ZONE_EVENT_DOMINATED")
+    return not reasons, tuple(dict.fromkeys(reasons))
+
+
+def _range_bound_status(
+    reasons: tuple[str, ...],
+    *,
+    readiness: DailyReadiness,
+) -> str:
+    typed = (
+        CHANNEL_DOWNTREND,
+        CHANNEL_UPTREND,
+        SUPPORT_DRIFTING_DOWN,
+        RESISTANCE_DRIFTING_DOWN,
+        CHANNEL_UNSTABLE,
+        CHANNEL_TOO_NARROW,
+        CHANNEL_BREAKDOWN_RISK,
+        INSUFFICIENT_HISTORY,
+        DATA_UNAVAILABLE,
+    )
+    for state in typed:
+        if state in reasons:
+            return state
+    if readiness.status != DAILY_SELECTION_READY:
+        return INSUFFICIENT_HISTORY
+    return CHANNEL_UNSTABLE
 
 
 def _clean_completed_daily(daily: pd.DataFrame, cutoff: date) -> pd.DataFrame:
@@ -1249,27 +1840,30 @@ def _unavailable_result(
     overlap_validation_status: str,
     detail: str | None,
 ) -> DailySelectionResult:
-    reasons = [DAILY_SELECTION_UNAVAILABLE]
+    reasons = [DATA_UNAVAILABLE, DAILY_SELECTION_UNAVAILABLE]
     if detail:
         reasons.append(detail)
     return DailySelectionResult(
-        symbol,
-        cfg.source_provider,
-        "1d",
-        cfg.raw_adjusted_mode,
-        cfg.metric_version,
-        cfg.config_version,
-        cutoff.isoformat(),
-        None,
-        None,
-        assess_daily_readiness(0, source_available=False, config=cfg),
-        None,
-        VOLUME_HISTORY_UNAVAILABLE,
-        None,
-        None,
-        False,
-        tuple(reasons),
-        overlap_validation_status,
+        symbol=symbol,
+        source_provider=cfg.source_provider,
+        interval="1d",
+        raw_adjusted_mode=cfg.raw_adjusted_mode,
+        metric_version=cfg.metric_version,
+        config_version=cfg.config_version,
+        data_cutoff=cutoff.isoformat(),
+        latest_session=None,
+        source_data_fingerprint=None,
+        readiness=assess_daily_readiness(
+            0, source_available=False, config=cfg
+        ),
+        metrics=None,
+        volume_history_status=VOLUME_HISTORY_UNAVAILABLE,
+        historical_scalping_potential=None,
+        historical_rank=None,
+        eligible=False,
+        eligibility_reasons=tuple(reasons),
+        overlap_validation_status=overlap_validation_status,
+        range_bound_status=DATA_UNAVAILABLE,
     )
 
 

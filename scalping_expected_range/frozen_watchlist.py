@@ -37,7 +37,7 @@ from scalping_expected_range.daily_historical_selection import (
 )
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 DEFAULT_DATABASE_PATH = Path("data/scalping_historical_watchlists.db")
 DEFAULT_UNIVERSE_MANIFEST = Path("data/eodhd/historical_symbol_routing.json")
 
@@ -132,6 +132,34 @@ CREATE TABLE IF NOT EXISTS watchlist_members (
  metric_version TEXT NOT NULL,
  config_version TEXT NOT NULL,
  historical_explanation TEXT NOT NULL,
+ range_bound_score REAL NOT NULL DEFAULT 0,
+ primary_range_bound_score REAL NOT NULL DEFAULT 0,
+ support_zone_low REAL NOT NULL DEFAULT 0,
+ support_zone_high REAL NOT NULL DEFAULT 0,
+ support_center REAL NOT NULL DEFAULT 0,
+ resistance_zone_low REAL NOT NULL DEFAULT 0,
+ resistance_zone_high REAL NOT NULL DEFAULT 0,
+ resistance_center REAL NOT NULL DEFAULT 0,
+ channel_center REAL NOT NULL DEFAULT 0,
+ channel_width_percent REAL NOT NULL DEFAULT 0,
+ channel_direction TEXT NOT NULL DEFAULT 'UNKNOWN',
+ channel_center_slope REAL NOT NULL DEFAULT 0,
+ support_zone_slope REAL NOT NULL DEFAULT 0,
+ resistance_zone_slope REAL NOT NULL DEFAULT 0,
+ horizontal_channel_stability_score REAL NOT NULL DEFAULT 0,
+ support_stability_score REAL NOT NULL DEFAULT 0,
+ resistance_stability_score REAL NOT NULL DEFAULT 0,
+ containment_frequency REAL NOT NULL DEFAULT 0,
+ broad_channel_consistency_frequency REAL NOT NULL DEFAULT 0,
+ support_touch_proxy_count INTEGER NOT NULL DEFAULT 0,
+ support_reaction_proxy_count INTEGER NOT NULL DEFAULT 0,
+ resistance_touch_proxy_count INTEGER NOT NULL DEFAULT 0,
+ resistance_rejection_proxy_count INTEGER NOT NULL DEFAULT 0,
+ breakout_frequency REAL NOT NULL DEFAULT 0,
+ breakdown_frequency REAL NOT NULL DEFAULT 0,
+ event_outlier_count INTEGER NOT NULL DEFAULT 0,
+ range_bound_status TEXT NOT NULL DEFAULT 'DATA_UNAVAILABLE',
+ range_bound_reasons TEXT NOT NULL DEFAULT '[]',
  PRIMARY KEY(watchlist_id, symbol),
  UNIQUE(watchlist_id, historical_rank)
 );
@@ -247,7 +275,66 @@ MEMBER_COLUMNS = (
     "metric_version",
     "config_version",
     "historical_explanation",
+    "range_bound_score",
+    "primary_range_bound_score",
+    "support_zone_low",
+    "support_zone_high",
+    "support_center",
+    "resistance_zone_low",
+    "resistance_zone_high",
+    "resistance_center",
+    "channel_center",
+    "channel_width_percent",
+    "channel_direction",
+    "channel_center_slope",
+    "support_zone_slope",
+    "resistance_zone_slope",
+    "horizontal_channel_stability_score",
+    "support_stability_score",
+    "resistance_stability_score",
+    "containment_frequency",
+    "broad_channel_consistency_frequency",
+    "support_touch_proxy_count",
+    "support_reaction_proxy_count",
+    "resistance_touch_proxy_count",
+    "resistance_rejection_proxy_count",
+    "breakout_frequency",
+    "breakdown_frequency",
+    "event_outlier_count",
+    "range_bound_status",
+    "range_bound_reasons",
 )
+
+RANGE_BOUND_MEMBER_MIGRATION_COLUMNS = {
+    "range_bound_score": "REAL NOT NULL DEFAULT 0",
+    "primary_range_bound_score": "REAL NOT NULL DEFAULT 0",
+    "support_zone_low": "REAL NOT NULL DEFAULT 0",
+    "support_zone_high": "REAL NOT NULL DEFAULT 0",
+    "support_center": "REAL NOT NULL DEFAULT 0",
+    "resistance_zone_low": "REAL NOT NULL DEFAULT 0",
+    "resistance_zone_high": "REAL NOT NULL DEFAULT 0",
+    "resistance_center": "REAL NOT NULL DEFAULT 0",
+    "channel_center": "REAL NOT NULL DEFAULT 0",
+    "channel_width_percent": "REAL NOT NULL DEFAULT 0",
+    "channel_direction": "TEXT NOT NULL DEFAULT 'UNKNOWN'",
+    "channel_center_slope": "REAL NOT NULL DEFAULT 0",
+    "support_zone_slope": "REAL NOT NULL DEFAULT 0",
+    "resistance_zone_slope": "REAL NOT NULL DEFAULT 0",
+    "horizontal_channel_stability_score": "REAL NOT NULL DEFAULT 0",
+    "support_stability_score": "REAL NOT NULL DEFAULT 0",
+    "resistance_stability_score": "REAL NOT NULL DEFAULT 0",
+    "containment_frequency": "REAL NOT NULL DEFAULT 0",
+    "broad_channel_consistency_frequency": "REAL NOT NULL DEFAULT 0",
+    "support_touch_proxy_count": "INTEGER NOT NULL DEFAULT 0",
+    "support_reaction_proxy_count": "INTEGER NOT NULL DEFAULT 0",
+    "resistance_touch_proxy_count": "INTEGER NOT NULL DEFAULT 0",
+    "resistance_rejection_proxy_count": "INTEGER NOT NULL DEFAULT 0",
+    "breakout_frequency": "REAL NOT NULL DEFAULT 0",
+    "breakdown_frequency": "REAL NOT NULL DEFAULT 0",
+    "event_outlier_count": "INTEGER NOT NULL DEFAULT 0",
+    "range_bound_status": "TEXT NOT NULL DEFAULT 'DATA_UNAVAILABLE'",
+    "range_bound_reasons": "TEXT NOT NULL DEFAULT '[]'",
+}
 
 
 @dataclass(frozen=True)
@@ -324,6 +411,20 @@ class FrozenWatchlistRepository:
     def initialize(self):
         with self.connect() as connection:
             connection.executescript(SCHEMA)
+            installed_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(watchlist_members)"
+                )
+            }
+            for name, definition in (
+                RANGE_BOUND_MEMBER_MIGRATION_COLUMNS.items()
+            ):
+                if name not in installed_columns:
+                    connection.execute(
+                        f"ALTER TABLE watchlist_members "
+                        f"ADD COLUMN {name} {definition}"
+                    )
             connection.execute(
                 """INSERT OR IGNORE INTO watchlist_schema
                    (schema_version, installed_at) VALUES (?, ?)""",
@@ -1091,13 +1192,19 @@ def _member_from_result(
     metrics = result.metrics
     primary = result.zone_profile_60
     recent = result.zone_profile_30
+    range_bound = result.range_bound_profile_60
+    recent_range_bound = result.range_bound_profile_30
     required = {
         "metrics": metrics,
         "primary zone profile": primary,
         "recent zone profile": recent,
+        "primary range-bound profile": range_bound,
+        "recent range-bound profile": recent_range_bound,
         "source fingerprint": result.source_data_fingerprint,
-        "confirmed score": result.confirmed_historical_scalping_potential,
-        "primary score": result.historical_scalping_potential,
+        "confirmed score": (
+            result.confirmed_range_bound_tradability_score
+        ),
+        "primary score": result.range_bound_tradability_score,
         "eligible rank": result.eligible_rank,
         "scoreable rank": result.historical_rank,
         "latest session": result.latest_session,
@@ -1110,10 +1217,14 @@ def _member_from_result(
     if result.source_provider != EODHD_DAILY:
         raise ValueError(f"{result.symbol} provider is not EODHD_DAILY")
     explanation = (
-        f"{primary.confidence_label}; "
-        f"{result.zone_confirmation_status}; "
-        f"{primary.valid_sessions}-session primary; "
-        f"{recent.valid_sessions}-session recent confirmation; "
+        f"{result.range_bound_status}; "
+        f"{result.range_bound_confirmation_status}; "
+        f"{range_bound.channel_direction} channel; "
+        f"{range_bound.channel_width_percent:.2f}% width; "
+        f"{range_bound.close_containment_frequency:.1%} containment; "
+        f"{', '.join(range_bound.selection_reasons)}; "
+        f"{range_bound.valid_sessions}-session primary; "
+        f"{recent_range_bound.valid_sessions}-session recent confirmation; "
         "completed EODHD Daily history only"
     )
     return {
@@ -1125,25 +1236,27 @@ def _member_from_result(
             int(result.eligible_rank) <= config.candidate_display_limit
         ),
         "historical_score": float(
-            result.confirmed_historical_scalping_potential
+            result.confirmed_range_bound_tradability_score
         ),
         "primary_historical_score": float(
-            result.historical_scalping_potential
+            result.range_bound_tradability_score
         ),
         "movement_potential_score": float(
             metrics.daily_movement_potential_score
         ),
         "range_stability_score": float(
-            metrics.daily_range_stability_score
+            range_bound.horizontal_channel_stability_score
         ),
         "upper_zone_consistency_score": float(
-            primary.upper.consistency_score
+            range_bound.resistance_stability_score
         ),
         "lower_zone_consistency_score": float(
-            primary.lower.consistency_score
+            range_bound.support_stability_score
         ),
-        "combined_zone_consistency_score": float(primary.combined_score),
-        "zone_confidence_label": primary.confidence_label,
+        "combined_zone_consistency_score": float(
+            range_bound.support_resistance_repeatability_score
+        ),
+        "zone_confidence_label": result.range_bound_status,
         "liquidity_score": float(metrics.daily_liquidity_score),
         "median_daily_range": float(metrics.median_daily_range_percent),
         "normal_range_lower": float(metrics.range_p25_percent),
@@ -1160,8 +1273,12 @@ def _member_from_result(
         "valid_sessions_primary": int(primary.valid_sessions),
         "valid_sessions_recent": int(recent.valid_sessions),
         "primary_readiness_status": result.readiness.status,
-        "recent_confirmation_status": result.zone_confirmation_status,
-        "recent_penalty": float(result.zone_confidence_penalty),
+        "recent_confirmation_status": (
+            result.range_bound_confirmation_status
+        ),
+        "recent_penalty": float(
+            result.range_bound_confirmation_penalty
+        ),
         "eligibility_status": HARD_ELIGIBLE,
         "exclusion_reason": None,
         "source": EODHD_DAILY,
@@ -1171,6 +1288,67 @@ def _member_from_result(
         "metric_version": result.metric_version,
         "config_version": result.config_version,
         "historical_explanation": explanation,
+        "range_bound_score": float(
+            result.confirmed_range_bound_tradability_score
+        ),
+        "primary_range_bound_score": float(
+            result.range_bound_tradability_score
+        ),
+        "support_zone_low": float(range_bound.support_zone_low),
+        "support_zone_high": float(range_bound.support_zone_high),
+        "support_center": float(range_bound.support_center),
+        "resistance_zone_low": float(range_bound.resistance_zone_low),
+        "resistance_zone_high": float(range_bound.resistance_zone_high),
+        "resistance_center": float(range_bound.resistance_center),
+        "channel_center": float(range_bound.channel_center),
+        "channel_width_percent": float(
+            range_bound.channel_width_percent
+        ),
+        "channel_direction": range_bound.channel_direction,
+        "channel_center_slope": float(
+            range_bound.channel_center_slope
+        ),
+        "support_zone_slope": float(range_bound.support_zone_slope),
+        "resistance_zone_slope": float(
+            range_bound.resistance_zone_slope
+        ),
+        "horizontal_channel_stability_score": float(
+            range_bound.horizontal_channel_stability_score
+        ),
+        "support_stability_score": float(
+            range_bound.support_stability_score
+        ),
+        "resistance_stability_score": float(
+            range_bound.resistance_stability_score
+        ),
+        "containment_frequency": float(
+            range_bound.close_containment_frequency
+        ),
+        "broad_channel_consistency_frequency": float(
+            range_bound.broad_channel_consistency_frequency
+        ),
+        "support_touch_proxy_count": int(
+            range_bound.support_touch_count
+        ),
+        "support_reaction_proxy_count": int(
+            range_bound.support_reaction_proxy_count
+        ),
+        "resistance_touch_proxy_count": int(
+            range_bound.resistance_touch_count
+        ),
+        "resistance_rejection_proxy_count": int(
+            range_bound.resistance_rejection_proxy_count
+        ),
+        "breakout_frequency": float(range_bound.breakout_frequency),
+        "breakdown_frequency": float(range_bound.breakdown_frequency),
+        "event_outlier_count": int(
+            range_bound.event_dominated_outlier_count
+        ),
+        "range_bound_status": result.range_bound_status,
+        "range_bound_reasons": json.dumps(
+            range_bound.selection_reasons,
+            separators=(",", ":"),
+        ),
     }
 
 
@@ -1197,6 +1375,17 @@ def _validate_member_rows(members: tuple[dict, ...], top_n: int):
             raise ValueError("member provider is not EODHD_DAILY")
         if not str(member["source_fingerprint"]).startswith("sha256:"):
             raise ValueError("member source fingerprint is missing")
+        if member["range_bound_status"] != "STABLE_RANGE_BOUND_CANDIDATE":
+            raise ValueError("member is not an eligible range-bound candidate")
+        if not (
+            float(member["support_zone_low"])
+            <= float(member["support_zone_high"])
+            < float(member["resistance_zone_low"])
+            <= float(member["resistance_zone_high"])
+        ):
+            raise ValueError("member support/resistance zones are invalid")
+        if float(member["channel_width_percent"]) <= 0:
+            raise ValueError("member channel width is invalid")
 
 
 def _empty_result_code(snapshot: FrozenDailyWatchlist) -> str:
@@ -1245,6 +1434,12 @@ def _result_for_existing(record: StoredWatchlist | None) -> WatchlistServiceResu
 
 def _typed_member(member: dict) -> dict:
     member["displayed_candidate"] = bool(member["displayed_candidate"])
+    try:
+        member["range_bound_reasons"] = tuple(
+            json.loads(member["range_bound_reasons"])
+        )
+    except (TypeError, json.JSONDecodeError):
+        member["range_bound_reasons"] = ()
     return member
 
 
