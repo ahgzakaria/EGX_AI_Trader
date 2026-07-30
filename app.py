@@ -51,7 +51,12 @@ navigation = st.navigation({
     ],
     "RESEARCH & SYSTEM": [
         st.Page(show_ai_stock_analysis, title="AI Analysis", icon="🤖"),
-        st.Page(show_system_health, title="System Health", icon="🩺"),
+        st.Page(
+            show_system_health,
+            title="System Health",
+            icon="🩺",
+            url_path="system-health",
+        ),
         st.Page(show_settings, title="Settings", icon="⚙️"),
     ],
 })

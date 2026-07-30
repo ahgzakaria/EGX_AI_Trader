@@ -110,6 +110,10 @@ def _legacy_research_tools():
             "dashboard.scalping",
             "show_scalping_settings",
         ),
+        "إعادة بناء القائمة التاريخية (Research Rebuild)": (
+            "dashboard.scalping",
+            "_historical_watchlist_panel",
+        ),
     }
     with st.expander("Legacy Research Tools · أدوات البحث القديمة"):
         selected = st.selectbox(
