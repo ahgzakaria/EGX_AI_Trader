@@ -76,15 +76,16 @@ It may be pinned or used as the target of a normal Windows desktop shortcut.
 
 ## Startup workflow
 
-1. Validate `app.py`, `data/symbols.csv`, and the existing virtual environment.
+1. Validate `app.py`, `data/universe/egx_universe.csv` (the authoritative
+   EODHD EGX universe), and the existing virtual environment.
 2. Validate `adapter.py`, `protocol.py`, and `storage.py` in the saved adapter
    directory.
 3. Run the external collector's real `--help` preflight using the project venv
    to prove its dependencies/imports work.
 4. Validate the SQLite destination and create its parent directory.
 5. Validate and save only whitelisted launcher configuration.
-6. Convert every symbol in `data/symbols.csv` through the centralized
-   TickerChart symbol mapper.
+6. Convert every ACTIVE symbol in `data/universe/egx_universe.csv` through the
+   centralized TickerChart symbol mapper.
 7. Start the external read-only collector as a hidden child process.
 8. During an open EGX session, wait up to 45 seconds for a recent quote received
    **after the collector process started**. Outside regular session hours, a
