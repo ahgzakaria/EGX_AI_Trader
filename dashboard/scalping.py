@@ -21,6 +21,13 @@ from dashboard.ui import (
     section_header,
     status_bar,
 )
+from dashboard.uptrend_pullback import (
+    load_uptrend_pullback_view,
+    prepare_uptrend_pullback_view,
+    render_uptrend_pullback_tab,
+    uptrend_live_frame,
+    uptrend_watchlist_service,
+)
 from scalping.backtest_engine import ScalpingBacktest
 from scalping.config import ScalpingConfig
 from scalping.data_sources import (
@@ -46,17 +53,76 @@ from scalping_expected_range.frozen_watchlist import (
     FrozenHistoricalWatchlistService,
 )
 from scalping_expected_range.live_readiness import (
+    BREAKOUT_UNCONFIRMED,
     CLOSING_AUCTION_NO_NEW_ENTRY,
     ENTRY_READY_RESEARCH_ONLY,
+    ENTRY_TRIGGER_FORMING,
+    HISTORICAL_CANDIDATE_WAITING,
+    LIQUIDITY_INSUFFICIENT,
     LIVE_DATA_STALE,
     LIVE_DATA_UNAVAILABLE,
     MOVE_EXTENDED_DO_NOT_CHASE,
+    OPENING_RANGE_FORMING,
+    OPPORTUNITY_INVALIDATED,
+    PRE_OPEN_WAIT,
+    PULLBACK_CONFIRMATION_REQUIRED,
     SESSION_CLOSED,
+    SPREAD_TOO_WIDE,
+    TARGET_OUTSIDE_TYPICAL_ZONE,
     WATCHLIST_NOT_READY as LIVE_WATCHLIST_NOT_READY,
     LiveEntryReadinessEngine,
     LiveReadinessConfig,
     RubixLiveBatchReader,
 )
+from scalping_uptrend_pullback.live_readiness import (
+    UptrendLiveReadinessEngine,
+)
+
+
+SCALPING_TABS = (
+    "تداول داخل رينج ثابت (Stable Range-Bound)",
+    "اتجاه صاعد قرب الدعم (Uptrend Pullback)",
+    "المتابعة اللحظية (Live Monitor)",
+)
+
+RANGE_BOUND_PRIMARY_COLUMNS = (
+    "السهم",
+    "الحالة",
+    "منطقة الشراء",
+    "منطقة البيع",
+    "السعر الحالي",
+    "موقع السعر داخل الرينج",
+    "القرار",
+)
+
+LIVE_MONITOR_PRIMARY_COLUMNS = (
+    "السهم",
+    "الاستراتيجية",
+    "السعر الحالي",
+    "المنطقة المطلوبة",
+    "حالة Rubix",
+    "جاهزية الدخول البحثية",
+    "سبب المنع",
+)
+
+_LIVE_STATE_AR = {
+    HISTORICAL_CANDIDATE_WAITING: "انتظار الاقتراب",
+    PRE_OPEN_WAIT: "انتظار الاقتراب",
+    OPENING_RANGE_FORMING: "داخل منطقة المتابعة",
+    ENTRY_TRIGGER_FORMING: "تأكيد يتكوّن",
+    BREAKOUT_UNCONFIRMED: "تأكيد يتكوّن",
+    PULLBACK_CONFIRMATION_REQUIRED: "تأكيد يتكوّن",
+    ENTRY_READY_RESEARCH_ONLY: "جاهزية بحثية",
+    MOVE_EXTENDED_DO_NOT_CHASE: "ممتد — لا تطارده",
+    LIVE_DATA_STALE: "بيانات قديمة",
+    LIVE_DATA_UNAVAILABLE: "بيانات غير متاحة",
+    SPREAD_TOO_WIDE: "سبريد غير مناسب",
+    CLOSING_AUCTION_NO_NEW_ENTRY: "مزاد الإغلاق — لا دخول جديد",
+    SESSION_CLOSED: "الجلسة مغلقة",
+    LIQUIDITY_INSUFFICIENT: "سيولة غير كافية",
+    TARGET_OUTSIDE_TYPICAL_ZONE: "الهدف خارج الرينج المعتاد",
+    OPPORTUNITY_INVALIDATED: "الفرصة غير صالحة",
+}
 
 
 def _context():
@@ -133,6 +199,369 @@ def _historical_watchlist_frame(record, *, displayed_only):
             }
         )
     return pd.DataFrame(rows)
+
+
+def _batch_items(batch):
+    return {
+        item.symbol: item
+        for item in getattr(batch, "results", ())
+    }
+
+
+def _format_zone(low, high):
+    if low is None or high is None:
+        return "—"
+    return f"{float(low):.3f} – {float(high):.3f}"
+
+
+def _range_position(member, current_price):
+    if current_price is None:
+        return "بانتظار تحديث Rubix"
+    low = float(member["support_zone_low"])
+    high = float(member["resistance_zone_high"])
+    if high <= low:
+        return "—"
+    position = (float(current_price) - low) / (high - low) * 100.0
+    if position < 0:
+        return "أسفل الرينج"
+    if position > 100:
+        return "أعلى الرينج"
+    return f"{position:.0f}% من الرينج"
+
+
+def _live_state_label(state):
+    return _LIVE_STATE_AR.get(str(state or ""), "انتظار الاقتراب")
+
+
+def _range_bound_primary_frame(record, live_batch=None):
+    """Build the seven-column trader view without changing frozen membership."""
+
+    live = _batch_items(live_batch)
+    rows = []
+    for member in record.displayed:
+        item = live.get(member["symbol"])
+        current = getattr(item, "current_price", None)
+        rows.append(
+            {
+                "السهم": member["symbol"],
+                "الحالة": "رينج ثابت معتمد",
+                "منطقة الشراء": _format_zone(
+                    member["support_zone_low"],
+                    member["support_zone_high"],
+                ),
+                "منطقة البيع": _format_zone(
+                    member["resistance_zone_low"],
+                    member["resistance_zone_high"],
+                ),
+                "السعر الحالي": current,
+                "موقع السعر داخل الرينج": _range_position(member, current),
+                "القرار": _live_state_label(
+                    getattr(item, "live_state", None)
+                ),
+            }
+        )
+    return pd.DataFrame(rows, columns=RANGE_BOUND_PRIMARY_COLUMNS)
+
+
+def _rubix_status_label(item):
+    quality = str(getattr(item, "data_quality_status", "") or "")
+    if quality == "AVAILABLE_AND_VALIDATED":
+        return "متصل"
+    if quality == "STALE":
+        return "بيانات قديمة"
+    if quality == "AVAILABLE_BUT_SPARSE":
+        return "بيانات محدودة"
+    if quality == "NOT_QUERIED_SESSION_PHASE":
+        return "خارج وقت المتابعة"
+    return "غير متاح"
+
+
+def _blocking_reason(item):
+    if item is None:
+        return "حدّث المتابعة اللحظية"
+    if item.live_state == ENTRY_READY_RESEARCH_ONLY:
+        return "لا يوجد مانع بحثي"
+    return (
+        item.no_chase_reason
+        or item.invalidation_condition
+        or (item.explanations[-1] if item.explanations else None)
+        or _live_state_label(item.live_state)
+    )
+
+
+def _live_monitor_primary_frame(record, live_batch=None):
+    """Overlay Rubix only onto the frozen list; never admit a live mover."""
+
+    live = _batch_items(live_batch)
+    rows = []
+    for member in record.displayed:
+        item = live.get(member["symbol"])
+        rows.append(
+            {
+                "السهم": member["symbol"],
+                "الاستراتيجية": (
+                    "STABLE_RANGE_BOUND · تداول داخل رينج ثابت"
+                ),
+                "السعر الحالي": getattr(item, "current_price", None),
+                "المنطقة المطلوبة": _format_zone(
+                    member["support_zone_low"],
+                    member["support_zone_high"],
+                ),
+                "حالة Rubix": _rubix_status_label(item),
+                "جاهزية الدخول البحثية": _live_state_label(
+                    getattr(item, "live_state", None)
+                ),
+                "سبب المنع": _blocking_reason(item),
+            }
+        )
+    return pd.DataFrame(rows, columns=LIVE_MONITOR_PRIMARY_COLUMNS)
+
+
+def _render_range_bound_details(record):
+    if not record.displayed:
+        return
+    selected = st.selectbox(
+        "اختر سهماً لعرض التفاصيل",
+        [member["symbol"] for member in record.displayed],
+        key=f"range_bound_detail_{record.header['watchlist_id']}",
+    )
+    member = next(
+        item for item in record.displayed if item["symbol"] == selected
+    )
+    with st.expander(f"تفاصيل {selected}", expanded=False):
+        cards = st.columns(4)
+        cards[0].metric("الترتيب التاريخي", member["historical_rank"])
+        cards[1].metric(
+            "عرض القناة",
+            f"{member['channel_width_percent']:.2f}%",
+        )
+        cards[2].metric("اتجاه القناة", member["channel_direction"])
+        cards[3].metric(
+            "ثبات القناة",
+            f"{member['horizontal_channel_stability_score']:.2f}",
+        )
+        st.write(
+            f"**منطقة الدعم:** "
+            f"{_format_zone(member['support_zone_low'], member['support_zone_high'])}"
+        )
+        st.write(
+            f"**منطقة المقاومة:** "
+            f"{_format_zone(member['resistance_zone_low'], member['resistance_zone_high'])}"
+        )
+        detail = {
+            "الدرجة": member["range_bound_score"],
+            "الاحتواء": member["containment_frequency"],
+            "ميل مركز القناة": member["channel_center_slope"],
+            "السيولة": member["liquidity_score"],
+            "لمسات الدعم": member["support_touch_proxy_count"],
+            "ارتدادات الدعم": member["support_reaction_proxy_count"],
+            "لمسات المقاومة": member["resistance_touch_proxy_count"],
+            "رفض المقاومة": member["resistance_rejection_proxy_count"],
+            "الأسباب الحتمية": ", ".join(member["range_bound_reasons"]),
+        }
+        st.dataframe(
+            pd.DataFrame(
+                [{"البند": key, "القيمة": value} for key, value in detail.items()]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.caption(
+            f"المصدر: {record.header['provider']} · "
+            f"القطع: {member['data_cutoff']} · "
+            f"الإصدار: {record.header['metric_version']} · "
+            f"البصمة: {record.header['source_fingerprint']}"
+        )
+
+
+def _render_range_bound_tab(historical_result, live_batch=None):
+    if (
+        historical_result.status != WATCHLIST_READY
+        or historical_result.record is None
+    ):
+        empty_state(
+            "لا توجد قائمة تاريخية ثابتة جاهزة",
+            "افتح صحة النظام لإجراء أي إعادة بناء بحثية مصرح بها.",
+            icon="○",
+        )
+        st.markdown(
+            '<a class="egx-system-link" href="/system-health">'
+            "فتح صحة النظام</a>",
+            unsafe_allow_html=True,
+        )
+        return pd.DataFrame(columns=RANGE_BOUND_PRIMARY_COLUMNS)
+    record = historical_result.record
+    header = record.header
+    st.caption(
+        f"{header['displayed_count']} مرشحاً من حد أقصى {header['top_n']} · "
+        f"قائمة ثابتة للجلسة {header['target_session_date']}"
+    )
+    frame = _range_bound_primary_frame(record, live_batch)
+    st.dataframe(frame, use_container_width=True, hide_index=True)
+    _render_range_bound_details(record)
+    return frame
+
+
+def _render_live_monitor_tab(
+    historical_result,
+    uptrend_view,
+    live_batch=None,
+    uptrend_live_batch=None,
+):
+    range_ready = (
+        historical_result.status == WATCHLIST_READY
+        and historical_result.record is not None
+    )
+    uptrend_ready = (
+        uptrend_view.status == WATCHLIST_READY
+        and uptrend_view.record is not None
+    )
+    if not range_ready and not uptrend_ready:
+        empty_state(
+            "المتابعة اللحظية متوقفة",
+            "لا تبدأ متابعة السوق الكامل؛ يلزم أولاً وجود قائمة تاريخية ثابتة.",
+            icon="○",
+        )
+        return {
+            "range_bound": pd.DataFrame(
+                columns=LIVE_MONITOR_PRIMARY_COLUMNS
+            ),
+            "uptrend_pullback": pd.DataFrame(
+                columns=LIVE_MONITOR_PRIMARY_COLUMNS
+            ),
+        }
+    frames = {}
+    if range_ready:
+        section_header(
+            "تداول داخل رينج ثابت",
+            "Stable Range-Bound",
+        )
+        frames["range_bound"] = _live_monitor_primary_frame(
+            historical_result.record,
+            live_batch,
+        )
+        st.dataframe(
+            frames["range_bound"],
+            use_container_width=True,
+            hide_index=True,
+        )
+    if uptrend_ready:
+        section_header(
+            "اتجاه صاعد قرب الدعم",
+            "Uptrend Pullback",
+        )
+        frames["uptrend_pullback"] = uptrend_live_frame(
+            uptrend_view,
+            uptrend_live_batch,
+        )
+        st.dataframe(
+            frames["uptrend_pullback"],
+            use_container_width=True,
+            hide_index=True,
+        )
+    return frames
+
+
+def _scalping_status_items(
+    historical_result,
+    uptrend_view,
+    live_batch,
+    uptrend_live_batch,
+):
+    range_record = getattr(historical_result, "record", None)
+    uptrend_record = getattr(uptrend_view, "record", None)
+    headers = [
+        item.header
+        for item in (range_record, uptrend_record)
+        if item is not None
+    ]
+    cutoffs = [
+        header.get("historical_data_cutoff")
+        for header in headers
+        if header.get("historical_data_cutoff")
+    ]
+    phase = egx_session_phase()
+    phase_ar = {
+        "OPEN": "مفتوحة",
+        "PRE_OPEN": "قبل الافتتاح",
+        "POST_CLOSE": "مغلقة",
+        "WEEKEND": "عطلة أسبوعية",
+        "HOLIDAY": "عطلة",
+    }.get(phase, phase)
+    rubix_ok = any(
+        bool(batch and getattr(batch, "results", ()))
+        for batch in (live_batch, uptrend_live_batch)
+    )
+    ready_count = sum(item is not None for item in (range_record, uptrend_record))
+    rubix_value = "متصل" if rubix_ok else (
+        "جاهز للقراءة" if _rubix_path().is_file() else "غير متاح"
+    )
+    return [
+        ("جلسة EGX", phase_ar, "green" if phase == "OPEN" else "gray"),
+        (
+            "آخر قطع يومي EODHD",
+            max(cutoffs) if cutoffs else "غير متاح",
+            "blue",
+        ),
+        ("Rubix", rubix_value, "green" if rubix_ok else "amber"),
+        (
+            "القائمة الثابتة",
+            f"{ready_count}/2 جاهزة",
+            "green" if ready_count == 2 else "amber",
+        ),
+        (
+            "آخر تحديث",
+            st.session_state.get("_scalping_live_refreshed_at", "لم يتم"),
+            "gray",
+        ),
+        ("Production", "DISABLED", "red"),
+    ]
+
+
+def _prepare_scalping_watchlists(
+    range_service,
+    range_target,
+    historical_result,
+    uptrend_service,
+    uptrend_target,
+    uptrend_view,
+):
+    """Prepare each immutable strategy independently from one explicit action."""
+
+    messages = []
+    try:
+        existing_range = range_service.get_for_session(range_target)
+        historical_result = (
+            existing_range
+            if existing_range.status == WATCHLIST_READY
+            else range_service.prepare_for_session(range_target)
+        )
+        count = (
+            historical_result.record.header["displayed_count"]
+            if historical_result.record is not None
+            else 0
+        )
+        messages.append(f"رينج ثابت: {count} مرشحاً من حد أقصى 20")
+    except Exception:
+        messages.append("رينج ثابت: تعذر التجهيز؛ راجع صحة النظام")
+    try:
+        uptrend_view = prepare_uptrend_pullback_view(
+            uptrend_service,
+            target_session_date=uptrend_target,
+        )
+        count = (
+            uptrend_view.record.header["displayed_count"]
+            if uptrend_view.record is not None
+            else 0
+        )
+        messages.append(
+            f"اتجاه صاعد قرب الدعم: {count} مرشحاً من حد أقصى 20"
+        )
+    except Exception:
+        messages.append(
+            "اتجاه صاعد قرب الدعم: تعذر التجهيز؛ راجع صحة النظام"
+        )
+    return historical_result, uptrend_view, tuple(messages)
 
 
 def _historical_watchlist_panel(service=None, *, target_session_date=None):
@@ -362,6 +791,23 @@ def _live_readiness_engine():
     )
 
 
+def _uptrend_live_readiness_engine():
+    market_data = settings.get("market_data") or {}
+    db_path = (
+        os.getenv("RUBIX_DB_PATH")
+        or market_data.get("rubix_db_path")
+        or "data/rubix_live_market.db"
+    )
+    config = LiveReadinessConfig()
+    return UptrendLiveReadinessEngine(
+        RubixLiveBatchReader(
+            db_path,
+            busy_timeout_ms=config.read_busy_timeout_ms,
+        ),
+        live_config=config,
+    )
+
+
 def _live_readiness_frame(batch):
     rows = []
     for item in batch.results:
@@ -588,52 +1034,133 @@ def _today_summary(database, config):
 
 
 def show_scalping_dashboard():
-    """Operational control-tower for the active Expected Range Scalper system.
+    """One presentation-only workflow over frozen history and Rubix live data."""
 
-    Presentation only — reuses the cached pre-session scan, the shared components and
-    the reusable stock drawer. Never changes a strategy, score, threshold, scenario,
-    range, TP/SL, flag, provider, or database.
-    """
-    from dashboard.expected_range_scalper import (
-        _build_rows, _maybe_open_drawer, _run_scan, _session_phase,
+    page_header(
+        "لوحة السكالبنج",
+        "قوائم تاريخية ثابتة ومتابعة لحظية للبحث فقط",
+        icon="⚡",
+        badge="RESEARCH ONLY",
     )
-    from scalping_expected_range.config import ExpectedRangeConfig
-
-    cfg = ExpectedRangeConfig.load()
-    page_header("Scalping Dashboard",
-                "لوحة متابعة المضاربة اللحظية والاختبار الورقي · Live monitoring · Decision support only",
-                icon="⚡", badge="SCALPING V3")
-
     egx_holiday_banner()
-    historical_result = _historical_watchlist_panel()
-    _live_entry_monitor_panel(historical_result)
-    _dash_status_bar(cfg, _session_phase())
-    _dash_health_panel(cfg)
-    _dash_paper_panel(cfg)
 
-    if st.button("▶ Load / refresh scan · تحميل الفحص", type="primary"):
-        st.session_state["_ers_scan"] = True
-    if "_ers_scan" not in st.session_state:
-        empty_state("Load the scan · حمّل الفحص",
-                    "Run the pre-session scan to load live opportunities, watchlist, "
-                    "top candidates and the blockers summary.", icon="▶")
-        return
-    try:
-        result = _run_scan(True)
-    except Exception as error:
-        empty_state("Scan unavailable", str(error), icon="⚠")
-        return
+    service = _historical_watchlist_service()
+    target, _proposed_cutoff = service.target_and_cutoff()
+    historical_result = service.get_for_session(target)
+    uptrend_service = uptrend_watchlist_service()
+    uptrend_target, _uptrend_cutoff = uptrend_service.target_and_cutoff()
+    uptrend_view = load_uptrend_pullback_view(
+        uptrend_service,
+        target_session_date=uptrend_target,
+    )
+    live_batch = st.session_state.get("_scalping_live_batch")
+    uptrend_live_batch = st.session_state.get("_uptrend_live_batch")
+    if (
+        live_batch is not None
+        and historical_result.record is not None
+        and live_batch.watchlist_id
+        != historical_result.record.header["watchlist_id"]
+    ):
+        live_batch = None
+        st.session_state.pop("_scalping_live_batch", None)
+    if (
+        uptrend_live_batch is not None
+        and uptrend_view.record is not None
+        and uptrend_live_batch.watchlist_id
+        != uptrend_view.record.header["watchlist_id"]
+    ):
+        uptrend_live_batch = None
+        st.session_state.pop("_uptrend_live_batch", None)
 
-    rows = _build_rows(result["universe"], result["scenarios"])
-    phase = _session_phase()
-    _dash_primary_cards(rows, phase)
-    _dash_secondary_metrics(rows, result["summary"], cfg)
-    _dash_ready_panel(rows, phase)
-    _dash_watchlist_panel(rows, phase)
-    _dash_top_candidates(rows, phase)
-    _dash_blockers(rows, phase)
-    _maybe_open_drawer(rows, result["universe"], result["scenarios"])
-    st.caption(f"Generated {result['generated_at']} · decision-support only · production disabled")
+    status_slot = st.empty()
+    if st.button(
+        "تجهيز قائمة السكالبنج",
+        type="primary",
+        use_container_width=True,
+        key="prepare_scalping_watchlists",
+    ):
+        historical_result, uptrend_view, preparation_messages = (
+            _prepare_scalping_watchlists(
+                service,
+                target,
+                historical_result,
+                uptrend_service,
+                uptrend_target,
+                uptrend_view,
+            )
+        )
+        for message in preparation_messages:
+            st.info(message)
+        st.session_state["_scalping_prepared_at"] = cairo_now().strftime(
+            "%H:%M:%S"
+        )
+
+    range_tab, uptrend_tab, live_tab = st.tabs(SCALPING_TABS)
+    with range_tab:
+        _render_range_bound_tab(historical_result, live_batch)
+
+    with uptrend_tab:
+        render_uptrend_pullback_tab(uptrend_view, uptrend_live_batch)
+
+    with live_tab:
+        if st.button(
+            "تحديث المتابعة اللحظية",
+            type="primary",
+            use_container_width=True,
+            disabled=(
+                historical_result.record is None
+                and uptrend_view.record is None
+            ),
+            key="refresh_scalping_live_monitor",
+        ):
+            failures = []
+            if historical_result.record is not None:
+                try:
+                    live_batch = _live_readiness_engine().evaluate(
+                        historical_result.record
+                    )
+                    st.session_state["_scalping_live_batch"] = live_batch
+                except Exception:
+                    live_batch = None
+                    failures.append("رينج ثابت")
+            if uptrend_view.record is not None:
+                try:
+                    uptrend_live_batch = (
+                        _uptrend_live_readiness_engine().evaluate(
+                            uptrend_view.record
+                        )
+                    )
+                    st.session_state["_uptrend_live_batch"] = (
+                        uptrend_live_batch
+                    )
+                except Exception:
+                    uptrend_live_batch = None
+                    failures.append("اتجاه صاعد قرب الدعم")
+            if not failures:
+                st.session_state["_scalping_live_refreshed_at"] = (
+                    cairo_now().strftime("%H:%M:%S")
+                )
+            else:
+                st.warning(
+                    "تعذر تحديث Rubix للاستراتيجيات التالية: "
+                    + "، ".join(failures)
+                )
+        _render_live_monitor_tab(
+            historical_result,
+            uptrend_view,
+            live_batch,
+            uptrend_live_batch,
+        )
+
+    with status_slot.container():
+        status_bar(
+            _scalping_status_items(
+                historical_result,
+                uptrend_view,
+                live_batch,
+                uptrend_live_batch,
+            )
+        )
 
 
 # --- Scalping Dashboard components (operational overview, presentation only) ---
@@ -1158,8 +1685,13 @@ def show_live_opportunities():
 
 def show_active_scalping_trades():
     config, database = _context()
-    page_header("Active Scalping Trades", "Open paper positions and fixed fill-relative levels", icon="📍", badge="PAPER_ONLY")
-    if st.button("Refresh Paper Positions"):
+    page_header(
+        "الصفقات النشطة",
+        "مراكز الاختبار الورقي المفتوحة ومستوياتها الثابتة",
+        icon="📍",
+        badge="RESEARCH ONLY",
+    )
+    if st.button("تحديث المراكز الورقية"):
         result = ScalpingScanner(config=config, database=database).update_open_positions()
         if result["failures"]:
             st.warning(f"Position refresh completed with {len(result['failures'])} data failure(s).")
@@ -1207,8 +1739,19 @@ def show_scalping_paper_portfolio():
 
 def show_scalping_history():
     config, database = _context()
-    page_header("Scalping History", "Persistent signals, rejections, fills, exits and alerts", icon="🗂️", badge="SCALPING")
-    tabs = st.tabs(["Signals", "Rejected", "Fills", "Exits", "Alerts"])
+    page_header(
+        "سجل السكالبنج",
+        "الإشارات والرفض والتنفيذات والخروج والتنبيهات",
+        icon="🗂️",
+        badge="RESEARCH ONLY",
+    )
+    tabs = st.tabs([
+        "الإشارات",
+        "المرفوضة",
+        "التنفيذات",
+        "الخروج",
+        "التنبيهات",
+    ])
     queries = [
         "SELECT * FROM signals ORDER BY observed_at DESC LIMIT 500",
         "SELECT * FROM rejected_opportunities ORDER BY observed_at DESC LIMIT 500",

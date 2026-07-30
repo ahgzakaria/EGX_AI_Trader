@@ -38,20 +38,22 @@ def apply_global_style():
             --green: #34d399; --amber: #fbbf24; --red: #f87171;
             --blue: #60a5fa; --gray: #94a3b8;
         }
-        .stApp { background: var(--bg); color: var(--text); }
+        .stApp { background: var(--bg); color: var(--text); font-size:16px; }
         /* clear the fixed Streamlit toolbar so the page title is never clipped */
         .block-container { max-width: 1640px; padding-top: 3.4rem; padding-bottom: 2.4rem; }
         header[data-testid="stHeader"] { background: transparent; }
         [data-testid="stSidebar"] { background: #080e1a; border-right: 1px solid var(--border); }
         [data-testid="stSidebar"] * { color: #c7d3e6; }
-        [data-testid="stSidebarNav"] a { border-radius: 8px; }
+        [data-testid="stSidebarNav"] a {
+            border-radius: 8px; min-height:42px; font-size:.96rem;
+        }
         [data-testid="stSidebarNav"] a:hover { background: rgba(255,255,255,.06); }
         [data-testid="stSidebarNav"] a[aria-current="page"] {
             background: rgba(59,130,246,.18); font-weight: 700;
         }
         h1,h2,h3,h4 { color: var(--text); letter-spacing: -.01em; }
-        h1 { font-size: 1.5rem !important; }
-        p, span, label, .stMarkdown { color: var(--text); }
+        h1 { font-size: 1.75rem !important; }
+        p, label, .stMarkdown { color: var(--text); font-size:1rem; line-height:1.65; }
         .stCaption, [data-testid="stCaptionContainer"] { color: var(--muted) !important; }
 
         /* metrics -> compact dark cards */
@@ -64,7 +66,8 @@ def apply_global_style():
         [data-testid="stMetricDelta"] { font-size: .78rem; }
 
         .stButton > button, .stDownloadButton > button {
-            border-radius: 9px; min-height: 38px; font-weight: 650;
+            border-radius: 9px; min-height: 46px; font-weight: 700;
+            font-size:1rem; padding:.55rem 1rem;
             background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
         }
         .stButton > button[kind="primary"] {
@@ -72,12 +75,22 @@ def apply_global_style():
         }
         [data-testid="stDataFrame"] {
             border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+            font-size:15px;
+        }
+        [data-testid="stDataFrame"] [role="columnheader"] {
+            font-size:15px; font-weight:800;
+        }
+        [data-testid="stDataFrame"] [role="gridcell"] {
+            font-size:15px; min-height:40px;
         }
         [data-baseweb="tab-list"] {
             gap: .25rem; background: var(--surface); border: 1px solid var(--border);
             border-radius: 10px; padding: .25rem;
         }
-        [data-baseweb="tab"] { border-radius: 8px; padding: .45rem .8rem; color: var(--muted); }
+        [data-baseweb="tab"] {
+            border-radius: 8px; padding: .6rem 1rem; color: var(--muted);
+            font-size:.96rem; font-weight:700;
+        }
         [data-baseweb="tab"][aria-selected="true"] { background: rgba(59,130,246,.18); color: var(--text); }
         [data-testid="stExpander"] { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
         div[data-testid="stAlert"] { border-radius: 10px; }
@@ -132,6 +145,14 @@ def apply_global_style():
             background:#e6edf7; border:2px solid #0b1220; transform:translateX(-50%); }
         .egx-oppcard { background: var(--surface); border:1px solid var(--border);
             border-left:3px solid var(--green); border-radius:11px; padding:.7rem .85rem; height:100%; }
+        .egx-system-link { display:inline-block; padding:.55rem .85rem; border-radius:9px;
+            background:var(--surface-2); border:1px solid var(--border); color:#93c5fd !important;
+            font-weight:750; text-decoration:none; margin:.35rem 0 .65rem; }
+        @media (max-width: 900px) {
+            .block-container { padding-left:1rem; padding-right:1rem; }
+            .egx-hero { align-items:flex-start; gap:.65rem; }
+            [data-baseweb="tab-list"] { overflow-x:auto; }
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -271,6 +292,6 @@ def range_position_bar(position_percent, low_label="", high_label=""):
 def sidebar_brand():
     st.sidebar.markdown(
         """<div style="padding:.4rem .35rem .9rem">
-          <div style="font-size:1.12rem;font-weight:800;color:#e6edf7">📈 EGX AI Trader</div>
-          <div style="font-size:.72rem;color:#8ea1bd;margin-top:.2rem">Quant research & forward testing</div>
+          <div style="font-size:1.12rem;font-weight:800;color:#e6edf7">📈 متداول البورصة المصرية</div>
+          <div style="font-size:.82rem;color:#8ea1bd;margin-top:.2rem">بحث كمي ومتابعة آمنة</div>
         </div>""", unsafe_allow_html=True)

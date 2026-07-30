@@ -915,14 +915,17 @@ _historical_watchlist_panel(service)
     assert "No frozen historical watchlist" in info
 
 
-def test_dashboard_renders_historical_panel_before_live_scan_gate():
+def test_dashboard_reads_frozen_history_without_legacy_scan_or_generation():
     from dashboard.scalping import show_scalping_dashboard
 
     source = inspect.getsource(show_scalping_dashboard)
 
-    assert source.index("_historical_watchlist_panel()") < source.index(
-        'st.button("▶ Load / refresh scan'
+    assert "service.get_for_session(target)" in source
+    assert source.index("تجهيز قائمة السكالبنج") < source.index(
+        "range_tab, uptrend_tab, live_tab"
     )
+    assert "_run_scan" not in source
+    assert "rebuild_for_research" not in source
 
     panel_source = inspect.getsource(
         __import__(
