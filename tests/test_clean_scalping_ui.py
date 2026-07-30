@@ -15,6 +15,7 @@ from dashboard.scalping import (
 )
 from dashboard.uptrend_pullback import (
     UPTREND_PRIMARY_COLUMNS,
+    UptrendPullbackView,
     load_uptrend_pullback_view,
     primary_uptrend_frame,
 )
@@ -87,17 +88,31 @@ def test_live_monitor_uses_only_frozen_historical_membership():
     frame = _live_monitor_primary_frame(_record(), batch)
     assert tuple(frame.columns) == LIVE_MONITOR_PRIMARY_COLUMNS
     assert list(frame["السهم"]) == ["EGCH", "ORWE"]
-    assert set(frame["الاستراتيجية"]) == {"تداول داخل رينج ثابت"}
+    assert set(frame["الاستراتيجية"]) == {
+        "STABLE_RANGE_BOUND · تداول داخل رينج ثابت"
+    }
     assert (
         frame.loc[frame["السهم"] == "EGCH", "جاهزية الدخول البحثية"].iloc[0]
         == "ممتد — لا تطارده"
     )
 
 
-def test_uptrend_adapter_is_truthfully_empty_until_backend_exists():
-    view = load_uptrend_pullback_view()
+def test_uptrend_adapter_reads_service_without_preparing():
+    service = SimpleNamespace(
+        get_for_session=lambda _target: SimpleNamespace(
+            status="WATCHLIST_NOT_GENERATED",
+            record=None,
+            snapshot=None,
+            detail="not prepared",
+        )
+    )
+    view = load_uptrend_pullback_view(
+        service,
+        target_session_date="2026-07-30",
+    )
     frame = primary_uptrend_frame(view)
-    assert view.available is False
+    assert view.available is True
+    assert view.status == "WATCHLIST_NOT_GENERATED"
     assert view.candidates == ()
     assert frame.empty
     assert tuple(frame.columns) == UPTREND_PRIMARY_COLUMNS
@@ -113,7 +128,7 @@ def test_primary_scalping_workflow_has_only_two_clear_actions():
     assert "Research Rebuild" not in source
     assert "_run_scan" not in source
     assert "rebuild_for_research" not in source
-    assert "prepare_for_session" not in source
+    assert "_prepare_scalping_watchlists(" in source
 
 
 def test_status_bar_is_rendered_once_and_keeps_production_disabled():
@@ -151,7 +166,14 @@ def test_uptrend_empty_state_does_not_fabricate_rows():
     app = AppTest.from_string(
         """
 from dashboard.uptrend_pullback import render_uptrend_pullback_tab
-render_uptrend_pullback_tab()
+from dashboard.uptrend_pullback import UptrendPullbackView
+render_uptrend_pullback_tab(
+    UptrendPullbackView(
+        available=True,
+        status="WATCHLIST_NOT_GENERATED",
+        detail="not prepared",
+    )
+)
 """
     )
     app.run(timeout=20)
@@ -161,6 +183,6 @@ render_uptrend_pullback_tab()
         for collection in (app.markdown, app.caption)
         for element in collection
     )
-    assert "محرك الاتجاه الصاعد قرب الدعم لم يتم ربطه بعد" in rendered
+    assert "لا توجد قائمة اتجاه صاعد ثابتة جاهزة" in rendered
     assert "Research Only" in rendered
     assert len(app.dataframe) == 0

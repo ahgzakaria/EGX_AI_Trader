@@ -324,6 +324,7 @@ class UptrendWatchlistServiceResult:
     record: StoredUptrendWatchlist | None = None
     detail: str | None = None
     reused: bool = False
+    snapshot: FrozenUptrendWatchlist | None = None
 
 
 class UptrendWatchlistRepository:
@@ -697,7 +698,10 @@ class FrozenUptrendWatchlistService:
             if not eligible:
                 code = _empty_result_code(snapshot)
                 self.repository.fail(identity.watchlist_id, code)
-                return UptrendWatchlistServiceResult(code)
+                return UptrendWatchlistServiceResult(
+                    code,
+                    snapshot=snapshot,
+                )
             members = tuple(
                 _member_from_result(identity.watchlist_id, result)
                 for result in eligible
@@ -707,7 +711,11 @@ class FrozenUptrendWatchlistService:
                 members,
                 snapshot_id=snapshot.snapshot_id,
             )
-            return UptrendWatchlistServiceResult(WATCHLIST_READY, record)
+            return UptrendWatchlistServiceResult(
+                WATCHLIST_READY,
+                record,
+                snapshot=snapshot,
+            )
         except Exception as error:
             self.repository.fail(
                 identity.watchlist_id,
