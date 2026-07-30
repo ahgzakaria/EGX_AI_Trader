@@ -1,0 +1,45 @@
+{
+  "_comment": "UPTREND_PULLBACK_SCALPING research defaults. Never claimed optimal. Overrides only what differs from the typed dataclass defaults in config.py.",
+  "strategy_identity": "UPTREND_PULLBACK_SCALPING_V1",
+  "lookback_sessions": 60,
+  "minimum_valid_sessions": 40,
+  "preferred_valid_sessions": 60,
+  "candidate_display_limit": 20,
+  "eligible_states": ["UPTREND_NEAR_SUPPORT"],
+  "database_path": "data/uptrend_pullback_watchlists.db",
+  "production_enabled": false,
+  "paper_enabled": false,
+  "decision_support_only": true,
+  "automatic_execution": false,
+  "broker_orders_enabled": false,
+  "weights": {
+    "short_term_trend_quality": 0.30,
+    "support_confluence": 0.30,
+    "pullback_quality": 0.20,
+    "liquidity": 0.10,
+    "upside_versus_risk": 0.10
+  },
+  "trend": {
+    "fast_ema_period": 5,
+    "slow_ema_period": 10,
+    "slope_lookback_sessions": 3,
+    "minimum_fast_slope_percent_per_session": 0.05,
+    "minimum_slow_slope_percent_per_session": 0.02,
+    "trend_age_window": 30,
+    "minimum_trend_sessions": 10,
+    "trend_confirmation_window": 10,
+    "maximum_closes_below_slow_ema": 3
+  },
+  "support": {
+    "minimum_support_sources": 2,
+    "minimum_touch_count": 2,
+    "minimum_support_strength": 40.0,
+    "maximum_zone_width_percent": 4.0,
+    "invalidation_buffer_percent": 1.5
+  },
+  "pullback": {
+    "near_support_maximum_percent": 3.0,
+    "wait_for_pullback_maximum_percent": 6.0,
+    "maximum_pullback_depth_percent": 12.0
+  }
+}
