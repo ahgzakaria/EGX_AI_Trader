@@ -807,23 +807,17 @@ def test_live_fragment_cannot_rebuild_or_write_historical_watchlist():
     assert "update watchlist" not in source
 
 
-def test_live_monitor_is_between_frozen_panel_and_legacy_scan():
-    from dashboard.scalping import (
-        _live_entry_monitor_panel,
-        show_scalping_dashboard,
-    )
+def test_live_monitor_follows_frozen_history_without_legacy_scan():
+    from dashboard.scalping import show_scalping_dashboard
 
     source = inspect.getsource(show_scalping_dashboard)
-    historical = source.index("_historical_watchlist_panel()")
-    live = source.index("_live_entry_monitor_panel(historical_result)")
-    legacy = source.index('st.button("▶ Load / refresh scan')
+    historical = source.index("service.get_for_session(target)")
+    tabs = source.index("range_tab, uptrend_tab, live_tab")
+    live = source.index("تحديث المتابعة اللحظية")
 
-    assert historical < live < legacy
-    disclosure = inspect.getsource(_live_entry_monitor_panel)
-    assert "Historical universe: 225 validated symbols" in disclosure
-    assert "Endpoint coverage: " in disclosure
-    assert "241 / 265" in disclosure
-    assert "Production: DISABLED" in disclosure
+    assert historical < tabs < live
+    assert "_run_scan" not in source
+    assert "_live_entry_monitor_panel" not in source
 
 
 def test_watchlist_absence_panel_does_not_call_live_engine():

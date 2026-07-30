@@ -8,6 +8,7 @@ from pathlib import Path
 import streamlit as st
 
 from core.data_provider import provider_health
+from dashboard.ui import page_header, section_header
 from services.experiment_tracking import RunRepository
 from services.run_replay import replay_run
 from services.system_health import collect_system_health
@@ -27,30 +28,127 @@ def _lossless_replay_ready(run):
 
 
 def show_system_health():
-    st.title("🩺 System Health")
+    page_header(
+        "صحة النظام",
+        "حالة مصادر البيانات والتشخيصات الفنية",
+        icon="🩺",
+        badge="SYSTEM HEALTH",
+    )
     health = collect_system_health(streamlit_running=True)
     state = health["state"]
     if state == "HEALTHY":
-        st.success("HEALTHY — production data services are available.")
+        st.success("الخدمات المطلوبة متاحة للبحث.")
     elif state in {"DEGRADED", "RESEARCH_ONLY"}:
-        st.warning(f"{state} — {health['safety']['message']}")
+        st.warning(f"{health['safety']['message']} ({state})")
     else:
-        st.error(f"{state} — production prerequisites are incomplete.")
+        st.error(f"متطلبات التشغيل غير مكتملة. ({state})")
     provider, database, disk, replay = st.columns(4)
-    provider.metric("Provider", health["provider"].get("actual", "Unknown").upper())
-    database.metric("Rubix DB", health["rubix_database"]["status"])
-    disk.metric("Disk Free", f"{health['disk']['free_percent']:.1f}%")
-    replay.metric("Replay-ready Runs", health["replay_readiness"]["ready_runs"])
-    st.subheader("Operational evidence")
-    st.json(health, expanded=False)
-    if st.button("Refresh health", use_container_width=True):
+    provider.metric("مصدر البيانات اليومية", health["provider"].get("actual", "Unknown").upper())
+    database.metric("قاعدة Rubix", health["rubix_database"]["status"])
+    disk.metric("المساحة المتاحة", f"{health['disk']['free_percent']:.1f}%")
+    replay.metric("جلسات البحث القابلة للإعادة", health["replay_readiness"]["ready_runs"])
+    if st.button("تحديث حالة النظام", use_container_width=True):
         st.rerun()
+
+    section_header("التشخيصات الفنية", "تفاصيل للمراجعة عند وجود مشكلة")
+    st.caption(
+        "توجد هنا تفاصيل التغطية، معرّفات الفحص، نتائج الحالات، فقدان الذاكرة "
+        "المؤقتة، المهام المجدولة، اللقطات غير الصالحة، الجسر، إخفاقات المصدر، "
+        "بصمات قواعد البيانات، والعمليات."
+    )
+    with st.expander("تفاصيل النظام الكاملة (Advanced Diagnostics)"):
+        st.json(health, expanded=False)
+    with st.expander("تشخيصات مصادر البيانات (Provider Diagnostics)"):
+        _provider_domains_panel()
+        st.json(provider_health("dashboard"), expanded=False)
+
+    _legacy_research_tools()
+
+
+def _legacy_research_tools():
+    """Expose removed pages only from System Health, never primary navigation."""
+
+    section_header("أدوات البحث القديمة", "Legacy / Research Only")
+    st.warning(
+        "هذه الأدوات مخصصة للبحث والتشخيص فقط، وليست جزءاً من مسار التداول اليومي."
+    )
+    tools = {
+        "الفرص القديمة (Opportunities)": (
+            "dashboard.opportunities",
+            "show_opportunities",
+        ),
+        "النطاق المتوقع القديم (Expected Range Scalper)": (
+            "dashboard.expected_range_scalper",
+            "show_expected_range_scalper",
+        ),
+        "سجل التجارب (Run History)": (
+            "dashboard.run_history",
+            "show_run_history",
+        ),
+        "مقارنة التجارب (Compare Runs)": (
+            "dashboard.compare_runs",
+            "show_compare_runs",
+        ),
+        "إعادة التشغيل (Replay)": (__name__, "show_replay_run"),
+        "تحليلات الأداء (Performance Analytics)": (
+            "dashboard.decision_support",
+            "show_decision_analytics",
+        ),
+        "الاختبار الأمامي (Forward Testing)": (
+            "dashboard.forward_testing",
+            "show_forward_testing",
+        ),
+        "تقويم التداول (Trading Calendar)": (
+            "dashboard.trading_calendar",
+            "show_trading_calendar",
+        ),
+        "مراجعة EODHD (Migration Review)": (
+            "dashboard.eodhd_migration_review",
+            "show_eodhd_migration_review",
+        ),
+        "إعدادات السكالبنج القديمة (Scalping Settings)": (
+            "dashboard.scalping",
+            "show_scalping_settings",
+        ),
+        "إعادة بناء القائمة التاريخية (Research Rebuild)": (
+            "dashboard.scalping",
+            "_historical_watchlist_panel",
+        ),
+    }
+    with st.expander("Legacy Research Tools · أدوات البحث القديمة"):
+        selected = st.selectbox(
+            "اختر أداة بحثية",
+            tuple(tools),
+            key="legacy_research_tool",
+        )
+        st.caption("Legacy / Research Only")
+        if st.button(
+            "فتح الأداة البحثية",
+            key="open_legacy_research_tool",
+        ):
+            st.session_state["_open_legacy_research_tool"] = selected
+        active = st.session_state.get("_open_legacy_research_tool")
+        if active in tools:
+            module_name, function_name = tools[active]
+            if module_name == __name__:
+                renderer = globals()[function_name]
+            else:
+                from importlib import import_module
+
+                renderer = getattr(import_module(module_name), function_name)
+            st.divider()
+            renderer()
 
 
 def show_provider_diagnostics():
     """Keep verbose provider evidence out of the trading dashboard."""
 
-    st.title("🗄️ Provider Diagnostics")
+    page_header(
+        "تشخيصات مصادر البيانات",
+        "أدلة تشغيلية للقراءة فقط",
+        icon="🗄️",
+        badge="LEGACY / RESEARCH ONLY",
+    )
     st.caption(
         "Read-only operational evidence. These values never enter strategy "
         "or indicator calculations."
