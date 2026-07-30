@@ -90,7 +90,7 @@ Exactly one state per evaluated symbol, resolved in this order:
 DATA_UNAVAILABLE → PROVENANCE_REJECTED → INSUFFICIENT_HISTORY
 → INSUFFICIENT_LIQUIDITY → EMA_ALIGNMENT_FAILED → EMA5_SLOPE_FAILED
 → EMA10_SLOPE_FAILED → TREND_STRUCTURE_FAILED → SUPPORT_NOT_CONFIRMED
-→ SUPPORT_BROKEN → UPTREND_PULLBACK_TOO_DEEP
+→ SUPPORT_BROKEN → UPTREND_PULLBACK_TOO_DEEP → INSUFFICIENT_UPSIDE
 → UPTREND_NEAR_SUPPORT | UPTREND_WAIT_FOR_PULLBACK | UPTREND_EXTENDED_NO_CHASE
 ```
 
@@ -110,6 +110,30 @@ A close below `invalidation_level` (zone lower minus
 Only states listed in `eligible_states` (default: `UPTREND_NEAR_SUPPORT`) are
 eligible.
 
+## Practical-upside gate
+
+Sitting on support is not enough. A candidate must also have somewhere to go:
+
+- Available upside is measured from the latest completed close to the **first
+  valid historical research target above it** — the nearest confirmed daily
+  swing high, falling back to the lookback-window high.
+- `UpsideRiskConfig.minimum_upside_percent` (default **2.5%**) is a hard
+  eligibility gate. Below it the symbol becomes `INSUFFICIENT_UPSIDE`.
+- A target at or below the close yields no upside at all and is rejected the
+  same way. **No farther target is ever fabricated to clear the gate** — the
+  observed level is reported as-is, and the symbol simply fails.
+- The gate compares the same rounded percentage that is reported, so a
+  candidate is never rejected on a figure the caller cannot see. `2.5%` exactly
+  passes; `2.4999%` does not.
+- `INSUFFICIENT_UPSIDE` deliberately precedes all three proximity states, so a
+  thin-upside symbol is reported as such and is never silently reclassified as
+  `UPTREND_WAIT_FOR_PULLBACK`.
+
+Rejected symbols keep their score, rank and full diagnostics in the snapshot;
+they are only excluded from `candidate_symbols` and from the published frozen
+list. `_validate_member_rows` additionally refuses to publish any member whose
+research target is missing or not above its own close.
+
 ## Score
 
 Deterministic 0-100 *Uptrend Pullback Scalping Score*:
@@ -123,7 +147,9 @@ Deterministic 0-100 *Uptrend Pullback Scalping Score*:
 | 10% | available upside versus invalidation risk |
 
 The score ranks; it never overrides a hard gate. An extended symbol can carry a
-higher trend-quality score than the selected candidate and still be ineligible.
+higher trend-quality score than the selected candidate and still be ineligible,
+and a symbol scoring above 60 is still rejected outright when its upside is
+below `minimum_upside_percent`.
 
 ## Frozen watchlist
 

@@ -41,5 +41,11 @@
     "near_support_maximum_percent": 3.0,
     "wait_for_pullback_maximum_percent": 6.0,
     "maximum_pullback_depth_percent": 12.0
+  },
+  "upside": {
+    "_comment": "Hard eligibility gate. Measured from the latest completed close to the first valid historical research target above it.",
+    "minimum_upside_percent": 2.5,
+    "resistance_pivot_radius": 2,
+    "resistance_lookback_sessions": 60
   }
 }

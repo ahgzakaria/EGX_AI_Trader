@@ -38,6 +38,7 @@ from scalping_uptrend_pullback.states import (
     FIRST_TOUCH_ORDER_AVAILABLE,
     INSUFFICIENT_HISTORY,
     INSUFFICIENT_LIQUIDITY,
+    INSUFFICIENT_UPSIDE,
     PROVENANCE_REJECTED,
     REASON_CLOSE_BELOW_EMA10,
     REASON_DESCENDING_HIGHS,
@@ -49,6 +50,7 @@ from scalping_uptrend_pullback.states import (
     REASON_LAST_CLOSE_BELOW_EMA10,
     REASON_NEAR_SUPPORT,
     REASON_NO_STRUCTURE_PIVOTS,
+    REASON_NO_TARGET_ABOVE_CLOSE,
     REASON_PULLBACK_TOO_DEEP,
     REASON_STALE_HISTORY,
     REASON_STATE_NOT_ELIGIBLE,
@@ -62,6 +64,7 @@ from scalping_uptrend_pullback.states import (
     REASON_TREND_CONFIRMED,
     REASON_TREND_TOO_YOUNG,
     REASON_TURNOVER_BELOW_MINIMUM,
+    REASON_UPSIDE_BELOW_MINIMUM,
     REASON_VOLUME_BELOW_MINIMUM,
     REASON_VOLUME_HISTORY_UNRESOLVED,
     REASON_WAIT_FOR_PULLBACK,
@@ -188,6 +191,8 @@ class UpsideRiskProfile:
     recent_resistance: float | None
     resistance_source: str
     available_upside_percent: float | None
+    minimum_upside_percent: float
+    meets_minimum_upside: bool
     invalidation_risk_percent: float | None
     reward_risk_ratio: float | None
     upside_versus_risk_score: float
@@ -1375,9 +1380,11 @@ def _upside_risk_profile(
         else:
             resistance = None
             source = "NO_RESISTANCE_ABOVE_LAST_CLOSE"
-            reasons.append("NO_CONFIRMED_RESISTANCE_ABOVE_LAST_CLOSE")
+            reasons.append(REASON_NO_TARGET_ABOVE_CLOSE)
 
-    upside_percent = (
+    # The gate compares the same rounded figure that is reported, so a
+    # candidate can never be rejected on a value the caller cannot see.
+    upside_percent = _round(
         (resistance - last_close) / last_close * 100.0
         if resistance is not None and last_close > 0
         else None
@@ -1392,8 +1399,12 @@ def _upside_risk_profile(
         if upside_percent is not None and risk_percent and risk_percent > 0
         else None
     )
-    if upside_percent is not None and upside_percent < upside_cfg.minimum_upside_percent:
-        reasons.append("AVAILABLE_UPSIDE_BELOW_MINIMUM")
+    meets_minimum_upside = (
+        upside_percent is not None
+        and upside_percent >= upside_cfg.minimum_upside_percent
+    )
+    if upside_percent is not None and not meets_minimum_upside:
+        reasons.append(REASON_UPSIDE_BELOW_MINIMUM)
 
     score = 100.0 * _ramp_unit(
         reward_risk,
@@ -1404,7 +1415,9 @@ def _upside_risk_profile(
     return UpsideRiskProfile(
         recent_resistance=_round(resistance),
         resistance_source=source,
-        available_upside_percent=_round(upside_percent),
+        available_upside_percent=upside_percent,
+        minimum_upside_percent=float(upside_cfg.minimum_upside_percent),
+        meets_minimum_upside=bool(meets_minimum_upside),
         invalidation_risk_percent=_round(risk_percent),
         reward_risk_ratio=_round(reward_risk),
         upside_versus_risk_score=_round(score, 2),
@@ -1466,6 +1479,7 @@ def _resolve_state(
             and trend.last_close < support.invalidation_level
         ),
         UPTREND_PULLBACK_TOO_DEEP: not pullback.depth_within_maximum,
+        INSUFFICIENT_UPSIDE: not upside.meets_minimum_upside,
     }
     if blocking[SUPPORT_BROKEN]:
         reasons.append(REASON_SUPPORT_INVALIDATED)

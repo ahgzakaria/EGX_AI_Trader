@@ -17,11 +17,14 @@ from scalping_uptrend_pullback.config import (
     PullbackProximityConfig,
     ShortTermTrendConfig,
     SupportZoneConfig,
+    UpsideRiskConfig,
     UptrendPullbackScoreWeights,
     UptrendPullbackSelectionConfig,
 )
 from scalping_uptrend_pullback.selection import (
+    SupportZone,
     _resolve_state,
+    _upside_risk_profile,
     analyze_uptrend_pullback,
     build_frozen_uptrend_watchlist,
 )
@@ -31,12 +34,15 @@ from scalping_uptrend_pullback.states import (
     EMA_ALIGNMENT_FAILED,
     INSUFFICIENT_HISTORY,
     INSUFFICIENT_LIQUIDITY,
+    INSUFFICIENT_UPSIDE,
     PROVENANCE_REJECTED,
     REASON_LAST_CLOSE_BELOW_EMA10,
+    REASON_NO_TARGET_ABOVE_CLOSE,
     REASON_PULLBACK_TOO_DEEP,
     REASON_SUPPORT_INVALIDATED,
     REASON_SUPPORT_NO_SOURCES,
     REASON_TREND_TOO_YOUNG,
+    REASON_UPSIDE_BELOW_MINIMUM,
     SUPPORT_BROKEN,
     SUPPORT_NOT_CONFIRMED,
     SUPPORT_SOURCE_EMA10,
@@ -88,14 +94,32 @@ def _pullback_to_support():
     )
 
 
-def _extended():
-    """Same setup, one violent session that leaves price far above support."""
+def _with_overhead_supply():
+    """Same shape, but an early supply spike leaves a real overhead target.
 
-    return _pullback_to_support() + [23.45]
+    Without it a symbol printing a fresh high has nothing above the close to
+    measure against, and the upside gate — not the proximity band — becomes the
+    reported state.
+    """
+
+    spike = [20.0, 20.6, 22.2, 24.0, 24.60, 23.30, 21.90, 20.80, 20.20, 20.0, 19.95]
+    return (
+        spike
+        + _shelf(12)
+        + list(np.linspace(20.25, 21.60, 17))
+        + list(np.linspace(21.55, 20.62, 12))
+        + list(np.linspace(20.66, 20.95, 7))
+    )
+
+
+def _extended():
+    """One violent session that leaves price far above support."""
+
+    return _with_overhead_supply() + [23.45]
 
 
 def _waiting():
-    return _pullback_to_support() + [21.80, 22.67]
+    return _with_overhead_supply() + [21.80, 22.67]
 
 
 def _dipped_below_ema10():
@@ -543,6 +567,226 @@ def test_snapshot_identity_is_stable_across_rebuilds():
     )
 
     assert first.snapshot_id == second.snapshot_id
+
+
+# --- Practical-upside hard gate ---------------------------------------------
+
+
+def _target_frame(highs):
+    """Only ``High`` is read when locating the first research target."""
+
+    values = np.asarray(highs, dtype=float)
+    return pd.DataFrame(
+        {
+            "Open": values,
+            "High": values,
+            "Low": values,
+            "Close": values,
+            "Volume": 1.0,
+        },
+        index=pd.bdate_range(end=CUTOFF, periods=len(values)),
+    )
+
+
+def _highs_with_target(target, *, close=10.0, bars=13):
+    """A flat series whose single confirmed pivot high is ``target``."""
+
+    highs = [close] * bars
+    highs[bars // 2] = target
+    return highs
+
+
+def _confirmed_zone(invalidation=9.7):
+    return SupportZone(
+        lower=9.85,
+        upper=9.95,
+        centre=9.90,
+        width_percent=1.0,
+        source_types=("EMA10_AREA", "CONFIRMED_DAILY_SWING_LOW"),
+        contributing_levels=(9.85, 9.95),
+        strength=70.0,
+        support_touch_proxy_count=5,
+        support_reaction_proxy_count=2,
+        support_reaction_proxy_frequency=0.4,
+        invalidation_level=invalidation,
+        confirmed=True,
+        deterministic_reasons=(),
+    )
+
+
+def _upside(target, *, close=10.0, config=CONFIG):
+    return _upside_risk_profile(
+        _target_frame(_highs_with_target(target, close=close)),
+        _confirmed_zone(),
+        close,
+        config,
+    )
+
+
+def test_minimum_upside_default_is_two_and_a_half_percent():
+    assert UpsideRiskConfig().minimum_upside_percent == 2.5
+    assert CONFIG.upside.minimum_upside_percent == 2.5
+
+
+def test_one_and_a_half_percent_upside_is_rejected():
+    profile = _upside(10.15)
+
+    assert profile.available_upside_percent == 1.5
+    assert profile.meets_minimum_upside is False
+    assert REASON_UPSIDE_BELOW_MINIMUM in profile.deterministic_reasons
+
+
+def test_exactly_two_and_a_half_percent_upside_passes():
+    profile = _upside(10.25)
+
+    assert profile.available_upside_percent == 2.5
+    assert profile.minimum_upside_percent == 2.5
+    assert profile.meets_minimum_upside is True
+    assert REASON_UPSIDE_BELOW_MINIMUM not in profile.deterministic_reasons
+
+
+def test_more_than_two_and_a_half_percent_upside_qualifies():
+    profile = _upside(10.40)
+
+    assert profile.available_upside_percent == 4.0
+    assert profile.meets_minimum_upside is True
+    assert profile.deterministic_reasons == ()
+
+
+def test_a_target_at_or_below_the_close_is_rejected():
+    at_close = _upside_risk_profile(
+        _target_frame([10.0] * 13), _confirmed_zone(), 10.0, CONFIG
+    )
+    below_close = _upside_risk_profile(
+        _target_frame(_highs_with_target(9.80, close=10.0)),
+        _confirmed_zone(),
+        10.0,
+        CONFIG,
+    )
+
+    for profile in (at_close, below_close):
+        assert profile.recent_resistance is None
+        assert profile.available_upside_percent is None
+        assert profile.meets_minimum_upside is False
+        assert REASON_NO_TARGET_ABOVE_CLOSE in profile.deterministic_reasons
+
+
+def test_no_farther_target_is_invented_to_clear_the_gate():
+    profile = _upside(10.15)
+
+    assert profile.recent_resistance == 10.15
+    assert profile.resistance_source == "CONFIRMED_DAILY_SWING_HIGH"
+
+
+def test_thin_upside_blocks_an_otherwise_perfect_candidate():
+    frame = _frame(_pullback_to_support())
+    baseline = analyze_uptrend_pullback("AAA", frame, data_cutoff=CUTOFF)
+    demanding = replace(
+        CONFIG,
+        upside=UpsideRiskConfig(minimum_upside_percent=6.0),
+    )
+
+    gated = analyze_uptrend_pullback(
+        "AAA", frame, data_cutoff=CUTOFF, config=demanding
+    )
+
+    assert baseline.candidate_state == UPTREND_NEAR_SUPPORT
+    assert baseline.eligible is True
+    assert gated.candidate_state == INSUFFICIENT_UPSIDE
+    assert gated.eligible is False
+    # A hard gate, not a scoring preference: the score is untouched and still
+    # high, and it still cannot buy eligibility.
+    assert gated.total_score == baseline.total_score
+    assert gated.total_score > 60
+    assert REASON_UPSIDE_BELOW_MINIMUM in gated.deterministic_reasons
+
+
+def test_thin_upside_is_never_reclassified_as_wait_for_pullback():
+    frame = _frame(_waiting())
+    baseline = analyze_uptrend_pullback("BBB", frame, data_cutoff=CUTOFF)
+    demanding = replace(
+        CONFIG,
+        upside=UpsideRiskConfig(minimum_upside_percent=12.0),
+    )
+
+    gated = analyze_uptrend_pullback(
+        "BBB", frame, data_cutoff=CUTOFF, config=demanding
+    )
+
+    assert baseline.candidate_state == UPTREND_WAIT_FOR_PULLBACK
+    assert gated.candidate_state == INSUFFICIENT_UPSIDE
+    # The proximity band is unchanged — only the reported state differs.
+    assert (
+        gated.distance_from_support_percent
+        == baseline.distance_from_support_percent
+    )
+    assert (
+        CONFIG.pullback.near_support_maximum_percent
+        < gated.distance_from_support_percent
+        <= CONFIG.pullback.wait_for_pullback_maximum_percent
+    )
+
+
+def test_insufficient_upside_stays_visible_but_out_of_the_frozen_list():
+    demanding = replace(
+        CONFIG,
+        upside=UpsideRiskConfig(minimum_upside_percent=6.0),
+    )
+
+    snapshot = build_frozen_uptrend_watchlist(
+        {"AAA": _frame(_pullback_to_support())},
+        data_cutoff=CUTOFF,
+        generated_at=GENERATED,
+        config=demanding,
+    )
+    rejected = snapshot.results[0]
+
+    assert snapshot.candidate_symbols == ()
+    assert rejected.candidate_state == INSUFFICIENT_UPSIDE
+    assert rejected.eligible is False
+    assert rejected.selected_candidate is False
+    assert rejected.total_score is not None
+    assert rejected.historical_rank == 1
+    assert rejected.upside.available_upside_percent is not None
+
+
+def test_ranking_of_valid_candidates_is_unchanged_by_the_upside_gate():
+    histories = {
+        "AAA": _frame(_pullback_to_support()),
+        "BBB": _frame([value * 1.5 for value in _pullback_to_support()]),
+        "CCC": _frame([value * 0.4 for value in _pullback_to_support()]),
+        "DDD": _frame(_extended()),
+        "EEE": _frame(list(np.linspace(26.0, 19.0, 60))),
+    }
+    disabled = replace(CONFIG, upside=UpsideRiskConfig(minimum_upside_percent=0.0))
+
+    gated = build_frozen_uptrend_watchlist(
+        histories, data_cutoff=CUTOFF, generated_at=GENERATED
+    )
+    ungated = build_frozen_uptrend_watchlist(
+        histories, data_cutoff=CUTOFF, generated_at=GENERATED, config=disabled
+    )
+
+    accepted = set(gated.candidate_symbols)
+    assert accepted
+    assert all(
+        result.upside.available_upside_percent >= 2.5
+        for result in gated.results
+        if result.selected_candidate
+    )
+
+    gated_ranks = {r.symbol: r.historical_rank for r in gated.results}
+    ungated_ranks = {r.symbol: r.historical_rank for r in ungated.results}
+    gated_scores = {r.symbol: r.total_score for r in gated.results}
+    ungated_scores = {r.symbol: r.total_score for r in ungated.results}
+    for symbol in accepted:
+        assert gated_ranks[symbol] == ungated_ranks[symbol]
+        assert gated_scores[symbol] == ungated_scores[symbol]
+
+    repeated = build_frozen_uptrend_watchlist(
+        histories, data_cutoff=CUTOFF, generated_at=GENERATED
+    )
+    assert repeated.snapshot_id == gated.snapshot_id
 
 
 def test_eligible_state_set_is_configurable():

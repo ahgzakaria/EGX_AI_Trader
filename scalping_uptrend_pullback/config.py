@@ -275,11 +275,18 @@ class PullbackProximityConfig:
 
 @dataclass(frozen=True)
 class UpsideRiskConfig:
-    """First research target and invalidation-risk geometry."""
+    """First research target and invalidation-risk geometry.
+
+    ``minimum_upside_percent`` is a hard eligibility gate, not a scoring
+    preference: a stock sitting on support is not an actionable scalping
+    candidate when the first valid historical research target above the latest
+    completed close offers no practical room. The target is always an observed
+    daily level — a farther one is never fabricated to clear the gate.
+    """
 
     resistance_pivot_radius: int = 2
     resistance_lookback_sessions: int = 60
-    minimum_upside_percent: float = 1.50
+    minimum_upside_percent: float = 2.50
     ideal_reward_risk_ratio: float = 2.50
     minimum_scored_reward_risk_ratio: float = 0.50
 

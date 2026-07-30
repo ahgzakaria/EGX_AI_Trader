@@ -37,12 +37,14 @@ from scalping_uptrend_pullback.selection import (
 )
 from scalping_uptrend_pullback.states import (
     CANDIDATE_STATES,
+    INSUFFICIENT_UPSIDE,
     STRATEGY_IDENTITY,
     STRATEGY_NAME,
 )
 
 __all__ = [
     "CANDIDATE_STATES",
+    "INSUFFICIENT_UPSIDE",
     "FrozenUptrendWatchlist",
     "LiquidityConfig",
     "LiquidityProfile",

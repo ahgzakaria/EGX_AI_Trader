@@ -1115,6 +1115,18 @@ def _validate_member_rows(members: tuple[dict, ...], candidate_limit: int):
             raise ValueError("member close is below its own invalidation level")
         if float(member["ema5"]) <= float(member["ema10"]):
             raise ValueError("member EMA alignment is not bullish")
+        # The threshold itself lives in UpsideRiskConfig; this is the structural
+        # guarantee that no member is published without a real target above it.
+        if member["first_research_target"] is None or (
+            float(member["first_research_target"]) <= float(member["last_close"])
+        ):
+            raise ValueError(
+                "member has no research target above its latest completed close"
+            )
+        if member["available_upside_percent"] is None or (
+            float(member["available_upside_percent"]) <= 0
+        ):
+            raise ValueError("member available upside is missing or non-positive")
 
 
 def _empty_result_code(snapshot: FrozenUptrendWatchlist) -> str:
