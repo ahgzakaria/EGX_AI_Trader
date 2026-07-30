@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from forward_testing.service import ForwardTestingService
+from dashboard.formatting import with_company_name_column
 from dashboard.ui import empty_state, page_header, section_header
 
 
@@ -87,9 +88,13 @@ def show_paper_portfolio():
         open_positions = positions[positions["status"].isin(["PENDING_ENTRY", "OPEN"])]
         closed = positions[positions["status"] == "CLOSED"]
         section_header("Open Positions", "Pending and active paper positions")
-        _frame_or_message(open_positions, "No open or pending positions.")
+        # Historical rows keep their recorded ticker; only the DISPLAY is enriched,
+        # so a symbol that has left the active universe stays readable.
+        _frame_or_message(with_company_name_column(open_positions, "ticker"),
+                          "No open or pending positions.")
         section_header("Closed Trades", "Completed paper executions")
-        _frame_or_message(closed, "No closed trades.")
+        _frame_or_message(with_company_name_column(closed, "ticker"),
+                          "No closed trades.")
 
     allocation = status["sector_allocation"]
     section_header("Sector Allocation", "Current marked-to-market allocation")

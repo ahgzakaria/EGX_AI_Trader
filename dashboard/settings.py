@@ -11,6 +11,7 @@ import streamlit as st
 from config.settings_manager import settings
 from services.backtest_service import FULL_HISTORY, VALIDATED_OOS, run_backtest
 from ai.trainer import AITrainer
+from core.universe import universe_provenance
 from dashboard.ui import page_header, section_header
 from dashboard.backtest_state import (
     SCOPE_LABELS,
@@ -481,6 +482,12 @@ def show_settings():
                 "coverage with fresh initial capital. Full History starts earlier "
                 "and is not directly comparable to the Phase 5 baseline."
             ),
+        )
+        _provenance = universe_provenance()
+        st.caption(
+            f"Universe: {_provenance['active_count']} active EODHD EGX symbols · "
+            f"source: {_provenance['source']} · as of "
+            f"{_provenance['source_as_of'][:19] or '—'}"
         )
         backtest_scope = scope_from_label(scope_label)
         if backtest_scope == FULL_HISTORY:

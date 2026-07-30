@@ -104,7 +104,9 @@ def test_uptrend_primary_table_is_seven_columns_and_excludes_insufficient_upside
     )
     frame = primary_uptrend_frame(view)
     assert tuple(frame.columns) == UPTREND_PRIMARY_COLUMNS
-    assert len(frame.columns) == 7
+    # Seven trader columns plus the separate company-name column.
+    assert len(frame.columns) == 8
+    assert frame.columns[1] == "اسم السهم"
     assert list(frame["السهم"]) == ["DSCW"]
 
 

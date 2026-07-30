@@ -8,8 +8,9 @@ from typing import Mapping
 import pandas as pd
 import streamlit as st
 
-from dashboard.ui import empty_state
+from dashboard.formatting import NAME_COLUMN, company_name, symbol_option_label
 from scalping_expected_range.live_readiness import RUBIX_MAPPING_UNAVAILABLE
+from dashboard.ui import empty_state
 from scalping_uptrend_pullback.frozen_watchlist import (
     WATCHLIST_READY,
     FrozenUptrendWatchlistService,
@@ -36,6 +37,7 @@ from scalping_uptrend_pullback.states import (
 
 UPTREND_PRIMARY_COLUMNS = (
     "السهم",
+    NAME_COLUMN,
     "الحالة",
     "منطقة الدعم",
     "السعر الحالي",
@@ -46,6 +48,7 @@ UPTREND_PRIMARY_COLUMNS = (
 
 UPTREND_LIVE_COLUMNS = (
     "السهم",
+    NAME_COLUMN,
     "الاستراتيجية",
     "السعر الحالي",
     "المنطقة المطلوبة",
@@ -197,6 +200,7 @@ def primary_uptrend_frame(
         rows.append(
             {
                 "السهم": member["symbol"],
+                NAME_COLUMN: company_name(member["symbol"]),
                 "الحالة": "مؤهل تاريخياً",
                 "منطقة الدعم": _zone(
                     member["support_zone_lower"],
@@ -225,6 +229,7 @@ def uptrend_live_frame(view, live_batch=None):
         rows.append(
             {
                 "السهم": member["symbol"],
+                NAME_COLUMN: company_name(member["symbol"]),
                 "الاستراتيجية": (
                     f"{member['strategy_identity']} · اتجاه صاعد قرب الدعم"
                 ),
@@ -281,6 +286,7 @@ def _render_details(view):
     selected = st.selectbox(
         "اختر سهماً لعرض تفاصيل الاتجاه",
         [member["symbol"] for member in view.candidates],
+        format_func=symbol_option_label,
         key=f"uptrend_detail_{view.record.header['watchlist_id']}",
     )
     member = next(
@@ -346,6 +352,7 @@ def _render_rejections(view):
         rows = [
             {
                 "السهم": item.symbol,
+                NAME_COLUMN: company_name(item.symbol),
                 "الحالة": uptrend_state_label(item.candidate_state),
                 "Typed state": item.candidate_state,
                 "الأسباب": ", ".join(item.deterministic_reasons),

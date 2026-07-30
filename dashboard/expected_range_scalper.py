@@ -12,6 +12,9 @@ import streamlit as st
 
 from dashboard.formatting import (
     EM_DASH,
+    NAME_COLUMN,
+    company_names,
+    with_company_name_column,
     data_quality_label,
     fmt_frequency,
     fmt_percent,
@@ -283,11 +286,15 @@ def _stale_alert(universe, rows):
     st.markdown("  ".join(chips), unsafe_allow_html=True)
     if not hist_lag.empty:
         with st.expander(f"{len(hist_lag)} symbols behind expected history — last range preserved, never AVOID"):
-            st.dataframe(hist_lag[["Symbol", "prov_latest_completed_session",
-                                   "prov_data_status", "prov_data_age_sessions"]].rename(columns={
-                             "prov_latest_completed_session": "Latest", "prov_data_status": "Status",
-                             "prov_data_age_sessions": "Sessions behind"}),
-                         use_container_width=True, hide_index=True)
+            st.dataframe(
+                with_company_name_column(hist_lag, "Symbol")[[
+                    "Symbol", NAME_COLUMN, "prov_latest_completed_session",
+                    "prov_data_status", "prov_data_age_sessions",
+                ]].rename(columns={
+                    "prov_latest_completed_session": "Latest",
+                    "prov_data_status": "Status",
+                    "prov_data_age_sessions": "Sessions behind"}),
+                use_container_width=True, hide_index=True)
 
 
 # --- main tabs (Phase 4C) ---------------------------------------------------
@@ -369,7 +376,8 @@ def _candidate_table(frame, key):
     dq = [data_quality_label(data_status=ds, hist_stale=hs, advisory=a)
           for ds, hs, a in zip(view["DataStatus"], view["HistStale"], view["Advisory"])]
     disp = pd.DataFrame({
-        "Symbol": symbols, "Rank": view["Rank"], "Score": view["Score"].round(1),
+        "Symbol": symbols, NAME_COLUMN: company_names(view["Symbol"]),
+        "Rank": view["Rank"], "Score": view["Score"].round(1),
         "Avg Vol": view["AvgVolume"].map(fmt_volume),
         "Turnover": view["AvgTurnover"].map(fmt_turnover),
         "ADR%": view["ADR"].map(lambda x: fmt_percent(x, 1)),

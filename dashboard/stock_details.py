@@ -27,6 +27,7 @@ from dashboard.provenance_panel import (
     Provenance,
     render_provenance_panel,
 )
+from dashboard.formatting import company_name, symbol_option_label
 from dashboard.ui import section_header
 from portfolio.sizing import PositionSizer
 
@@ -35,7 +36,11 @@ def show_stock_details(stock):
     watchlist = Watchlist()
     symbols = watchlist.load()
     title_col, action_col, count_col = st.columns([2, 1, 1])
-    title_col.subheader(f"{stock['Ticker']} · {stock['Rating']} · {stock['Signal']}")
+    title_col.subheader(
+        f"{symbol_option_label(stock['Ticker'])} · "
+        f"{stock['Rating']} · {stock['Signal']}"
+    )
+    title_col.caption(company_name(stock["Ticker"]))
     if stock["Ticker"] in symbols:
         if action_col.button("✕ Remove", use_container_width=True):
             watchlist.remove(stock["Ticker"])

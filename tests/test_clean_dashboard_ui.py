@@ -40,8 +40,11 @@ def test_swing_primary_table_is_compact_and_does_not_change_results():
 
     pd.testing.assert_frame_equal(original, before)
     assert tuple(display.columns) == SWING_PRIMARY_COLUMNS
-    assert len(display.columns) == 7
+    # Ticker + full company name, kept as SEPARATE columns for filter/export.
+    assert len(display.columns) == 8
+    assert display.columns[1] == "اسم السهم"
     assert display.loc[0, "السهم"] == "COMI.CA"
+    assert display.loc[0, "اسم السهم"] == "Commercial International Bank-Egypt (CIB)"
     assert display.loc[0, "القرار"] == "BUY"
 
 

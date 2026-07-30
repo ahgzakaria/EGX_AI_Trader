@@ -7,6 +7,7 @@ import streamlit as st
 
 from decision_support.analytics import performance_analytics
 from decision_support.service import DecisionSupportService
+from dashboard.formatting import symbol_option_label, with_company_name_column
 from dashboard.ui import empty_state, page_header, section_header
 
 
@@ -189,14 +190,18 @@ def _opportunity_table(frame, pinned):
     if not columns:
         columns = defaults
     st.dataframe(
-        view[columns], hide_index=True, use_container_width=True,
+        with_company_name_column(view[columns], "Ticker")
+        if "Ticker" in columns else view[columns],
+        hide_index=True, use_container_width=True,
         height=min(720, 82 + len(view) * 35), column_config=_columns(),
     )
 
 
 def _pins(service, frame, pinned):
     action_col, pin_col, remove_col = st.columns([2, 1, 1])
-    ticker = action_col.selectbox("Pinned-symbol control", frame["Ticker"].tolist(), label_visibility="collapsed")
+    ticker = action_col.selectbox("Pinned-symbol control", frame["Ticker"].tolist(),
+                                  format_func=symbol_option_label,
+                                  label_visibility="collapsed")
     if pin_col.button("☆ Pin", use_container_width=True, disabled=ticker in pinned):
         service.database.set_pinned(ticker, True)
         st.rerun()
@@ -207,9 +212,12 @@ def _pins(service, frame, pinned):
 
 def _recommendation_card(frame):
     section_header("Recommendation Card", "Neutral criteria-based language; user decision required")
-    ticker = st.selectbox("Inspect opportunity", frame["Ticker"].tolist(), label_visibility="collapsed")
+    ticker = st.selectbox("Inspect opportunity", frame["Ticker"].tolist(),
+                          format_func=symbol_option_label,
+                          label_visibility="collapsed")
     row = frame[frame["Ticker"] == ticker].iloc[0]
-    st.subheader(f"#{int(row['EdgeRank'])} · {ticker} · Edge {row['EdgeScore']:.2f}/10")
+    st.subheader(f"#{int(row['EdgeRank'])} · {symbol_option_label(ticker)} · "
+                 f"Edge {row['EdgeScore']:.2f}/10")
     if row["QualityGate"] == "MEETS_CRITERIA":
         st.success(row["Recommendation"])
     else:

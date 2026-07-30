@@ -65,6 +65,7 @@ from dashboard.ui import (
     section_header,
     status_bar,
 )
+from dashboard.formatting import company_name, symbol_option_label
 from dashboard.provenance_panel import (
     FROZEN,
     MIXED,
@@ -680,6 +681,7 @@ def _history_section(symbol):
     frame = pd.DataFrame([{
         "التاريخ / Created": record.created_at,
         "الرمز / Symbol": record.symbol,
+        "اسم السهم / Company": company_name(record.symbol),
         "التوصية / Recommendation":
             RECOMMENDATION_LABELS.get(record.recommendation,
                                       (record.recommendation.value, "", ""))[0],

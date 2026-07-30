@@ -5,6 +5,7 @@ import streamlit as st
 
 from core.scanner import scan_symbols
 from core.watchlist import Watchlist
+from dashboard.formatting import NAME_COLUMN, with_company_name_column
 from dashboard.ui import empty_state, page_header, section_header
 
 
@@ -39,7 +40,7 @@ def show_watchlist():
     if results is None:
         section_header("Symbols", "Ready for a focused scan")
         st.dataframe(
-            pd.DataFrame({"Ticker": symbols}),
+            with_company_name_column(pd.DataFrame({"Ticker": symbols}), "Ticker"),
             hide_index=True,
             use_container_width=True,
         )
@@ -59,13 +60,14 @@ def show_watchlist():
 
     section_header("Latest Watchlist Scan", f"{len(frame)} symbols evaluated")
     st.dataframe(
-        frame[[
+        with_company_name_column(frame[[
             "Rank", "Ticker", "Rating", "Regime", "Signal", "Confidence",
             "Score", "AIProbability", "Price", "RR",
-        ]],
+        ]], "Ticker"),
         hide_index=True,
         use_container_width=True,
         column_config={
+            NAME_COLUMN: st.column_config.TextColumn("اسم السهم", width="large"),
             "Confidence": st.column_config.ProgressColumn(
                 "Confidence", min_value=0, max_value=100, format="%d%%"
             ),

@@ -24,6 +24,9 @@ import streamlit as st
 
 from dashboard.formatting import (
     EM_DASH,
+    NAME_COLUMN,
+    company_names,
+    with_company_name_column,
     data_quality_label,
     dq_compact,
     fmt_live_price,
@@ -38,6 +41,7 @@ from dashboard.formatting import (
     scenario_state_label,
     scenario_state_tone,
 )
+from core.universe import read_symbol_frame
 from dashboard.ui import (
     badge_html,
     egx_holiday_banner,
@@ -46,7 +50,6 @@ from dashboard.ui import (
     section_header,
     status_bar,
 )
-from core.universe import read_symbol_frame
 
 _TONE_HEX = {"green": "#34d399", "amber": "#fbbf24", "red": "#f87171",
              "gray": "#94a3b8", "blue": "#60a5fa"}
@@ -165,7 +168,8 @@ def _ready_view(rows, live, paper_idx, phase):
     dq = [data_quality_label(data_status=ds, hist_stale=hs, advisory=a, phase=phase, last_valid=v)
           for ds, hs, a, v in zip(r["DataStatus"], r["HistStale"], r["Advisory"], valid)]
     disp = pd.DataFrame({
-        "Symbol": r["Symbol"], "Scenario": r["BestScenario"].map(scenario_full_label),
+        "Symbol": r["Symbol"], NAME_COLUMN: company_names(r["Symbol"]),
+        "Scenario": r["BestScenario"].map(scenario_full_label),
         "Activated": [_activation_time(paper_idx, s) for s in r["Symbol"]],
         "Last": r["Last"].map(fmt_live_price), "Bid": r["Bid"].map(fmt_live_price),
         "Ask": r["Ask"].map(fmt_live_price), "Spread%": r["Spread"].map(lambda x: fmt_percent(x)),
@@ -227,7 +231,8 @@ def _near_ready_view(rows, live, phase):
         dq = [data_quality_label(data_status=ds, hist_stale=hs, advisory=a, phase=phase, last_valid=True)
               for ds, hs, a in zip(valid["DataStatus"], valid["HistStale"], valid["Advisory"])]
         disp = pd.DataFrame({
-            "Symbol": valid["Symbol"], "Expected scenario": valid["BestScenario"].map(scenario_full_label),
+            "Symbol": valid["Symbol"], NAME_COLUMN: company_names(valid["Symbol"]),
+            "Expected scenario": valid["BestScenario"].map(scenario_full_label),
             "Price": valid["Last"].map(fmt_live_price), "Trigger": valid["Entry"].map(fmt_price),
             "Dist to trigger": valid["_dist"].map(lambda x: fmt_percent(x)),
             "Missing confirmation": [_missing_confirmation(a, r) for a, r in
@@ -285,7 +290,8 @@ def _invalidated_view(rows, transitions, paper_idx, phase, session_date):
     last_price = {r["Symbol"]: r["Last"] for _, r in rows.iterrows()}
     range_pos = {r["Symbol"]: r["RangePos"] for _, r in rows.iterrows()}
     disp = pd.DataFrame({
-        "Symbol": inv["symbol"], "Scenario": inv["scenario"].map(scenario_full_label),
+        "Symbol": inv["symbol"], NAME_COLUMN: company_names(inv["symbol"]),
+        "Scenario": inv["scenario"].map(scenario_full_label),
         "Previous state": inv["from_state"].map(scenario_state_label),
         "Invalidated at": inv["at_cairo"].map(_short_ts),
         "Reason": [invalidation_label(t, n) for t, n in zip(inv["to_state"], inv["note"])],
@@ -320,7 +326,8 @@ def _blocked_view(rows, phase):
         n = len(syms)
         st.markdown(badge_html(f"{lbl}: {n} ({n / total:.0%})", tone), unsafe_allow_html=True)
         with st.expander(f"{lbl} — {n} symbol(s)"):
-            st.dataframe(pd.DataFrame({"Symbol": sorted(syms)}),
+            st.dataframe(with_company_name_column(
+                pd.DataFrame({"Symbol": sorted(syms)}), "Symbol"),
                          use_container_width=True, hide_index=True, height=min(320, 46 + 30 * n))
 
 
@@ -338,7 +345,8 @@ def _all_evaluations_view(rows, live, paper_idx, phase):
     dq = [data_quality_label(data_status=ds, hist_stale=hs, advisory=a, phase=phase, last_valid=v)
           for ds, hs, a, v in zip(f["DataStatus"], f["HistStale"], f["Advisory"], valid)]
     disp = pd.DataFrame({
-        "Symbol": f["Symbol"], "Scenario": f["BestScenario"].map(scenario_label),
+        "Symbol": f["Symbol"], NAME_COLUMN: company_names(f["Symbol"]),
+        "Scenario": f["BestScenario"].map(scenario_label),
         "State": f["Advisory"].map(scenario_state_label), "Rank": f["Rank"],
         "Score": f["Score"].map(fmt_score), "Last": f["Last"].map(fmt_live_price),
         "Trigger": f["Entry"].map(fmt_price), "Target": f["Target"].map(fmt_price),

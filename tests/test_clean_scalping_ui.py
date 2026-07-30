@@ -71,7 +71,9 @@ def test_range_bound_primary_table_has_only_seven_trader_columns():
     )
     frame = _range_bound_primary_frame(_record(), batch)
     assert tuple(frame.columns) == RANGE_BOUND_PRIMARY_COLUMNS
-    assert len(frame.columns) == 7
+    # Seven trader columns plus the separate company-name column.
+    assert len(frame.columns) == 8
+    assert frame.columns[1] == "اسم السهم"
     assert list(frame["السهم"]) == ["EGCH", "ORWE"]
     assert "score" not in " ".join(frame.columns).lower()
     assert "slope" not in " ".join(frame.columns).lower()

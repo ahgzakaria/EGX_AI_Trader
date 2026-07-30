@@ -64,7 +64,7 @@ def show_eodhd_migration_review():
     mapping = _csv("../eodhd_symbol_mapping.csv")
     c2 = st.columns(4)
     verified = int((mapping["mapping_status"] == "VERIFIED_EXACT").sum()) if not mapping.empty else 0
-    c2[0].metric("Verified mappings", f"{verified} / 265")
+    c2[0].metric("Verified mappings", f"{verified} / {len(mapping) if not mapping.empty else 0}")
     c2[1].metric("Forward would use EODHD", tier_summary.get("forward_uses_eodhd", "—"))
     c2[2].metric("No-fallback symbols", tier_summary.get("symbols_with_no_fallback", "—"))
     c2[3].metric("Blocked from migration", tier_summary.get("symbols_blocked_from_migration", "—"))

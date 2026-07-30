@@ -9,7 +9,83 @@ from __future__ import annotations
 
 import math
 
+from core.universe import _is_missing as _missing_symbol
+from core.universe import canonical as canonical_symbol
+from core.universe import company_name as universe_company_name
+from core.universe import display_label as universe_display_label
+
 EM_DASH = "—"
+
+# --- symbol identity --------------------------------------------------------
+
+#: Arabic table headers. Ticker and company name are ALWAYS separate columns so
+#: filtering, sorting and exporting stay usable; only dropdowns combine them.
+SYMBOL_COLUMN = "الرمز"
+NAME_COLUMN = "اسم السهم"
+
+
+def symbol_option_label(symbol) -> str:
+    """Dropdown label: ``COMI — Commercial International Bank-Egypt (CIB)``.
+
+    The SELECTED value stays the canonical ticker, so strategy code is unaffected.
+    A ticker that has left the active universe renders its archived name, or
+    ``TICKER — Historical / Inactive Symbol`` when no name was ever recorded.
+    """
+
+    return universe_display_label(symbol)
+
+
+def symbol_ticker(symbol) -> str:
+    """The canonical ticker behind any accepted spelling or display label.
+
+    Missing values (None / NaN / pandas NA) yield ``""``. The literal ticker
+    ``NULL`` is a real EGX symbol and survives unchanged.
+    """
+
+    if _missing_symbol(symbol):
+        return ""
+    text = str(symbol)
+    if EM_DASH in text:
+        text = text.split(EM_DASH, 1)[0]
+    return canonical_symbol(text)
+
+
+def company_name(symbol) -> str:
+    """Full company name for a table cell; archived symbols keep their name."""
+
+    ticker = symbol_ticker(symbol)
+    if not ticker:
+        return EM_DASH
+    from core.universe import INACTIVE_NAME, lookup
+
+    record = lookup(ticker)
+    if record is None:
+        return INACTIVE_NAME
+    return record.company_name or INACTIVE_NAME
+
+
+def company_names(symbols) -> list:
+    return [company_name(symbol) for symbol in symbols]
+
+
+def with_company_name_column(frame, symbol_column, name_column=NAME_COLUMN):
+    """Return a copy of ``frame`` with a company-name column beside the ticker.
+
+    Presentation only: the ticker column is untouched, so any consumer that
+    filters, groups or exports on the symbol keeps working unchanged.
+    """
+
+    if frame is None or getattr(frame, "empty", True):
+        return frame
+    if symbol_column not in frame.columns:
+        return frame
+    out = frame.copy()
+    out[name_column] = [company_name(value) for value in out[symbol_column]]
+    order = list(out.columns)
+    order.remove(name_column)
+    order.insert(order.index(symbol_column) + 1, name_column)
+    return out[order]
+
 
 # --- numbers ----------------------------------------------------------------
 

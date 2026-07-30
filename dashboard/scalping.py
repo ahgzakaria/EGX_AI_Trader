@@ -12,6 +12,13 @@ import streamlit as st
 
 from config.settings_manager import settings
 from core.egx_session import REGULAR_OPEN, cairo_now, egx_session_phase
+from core.universe import read_symbol_frame, universe_provenance
+from dashboard.formatting import (
+    NAME_COLUMN,
+    company_name,
+    symbol_option_label,
+    with_company_name_column,
+)
 from dashboard.ui import (
     badge_html,
     egx_holiday_banner,
@@ -78,7 +85,6 @@ from scalping_expected_range.live_readiness import (
 from scalping_uptrend_pullback.live_readiness import (
     UptrendLiveReadinessEngine,
 )
-from core.universe import read_symbol_frame
 
 
 SCALPING_TABS = (
@@ -89,6 +95,7 @@ SCALPING_TABS = (
 
 RANGE_BOUND_PRIMARY_COLUMNS = (
     "السهم",
+    NAME_COLUMN,
     "الحالة",
     "منطقة الشراء",
     "منطقة البيع",
@@ -99,6 +106,7 @@ RANGE_BOUND_PRIMARY_COLUMNS = (
 
 LIVE_MONITOR_PRIMARY_COLUMNS = (
     "السهم",
+    NAME_COLUMN,
     "الاستراتيجية",
     "السعر الحالي",
     "المنطقة المطلوبة",
@@ -146,6 +154,7 @@ def _historical_watchlist_frame(record, *, displayed_only):
             {
                 "rank": member["historical_rank"],
                 "symbol": member["symbol"],
+                "company_name": company_name(member["symbol"]),
                 "range_bound_score": member["range_bound_score"],
                 "historical_score": member["historical_score"],
                 "buy_zone_support": (
@@ -238,7 +247,10 @@ def _live_state_label(state):
 
 
 def _range_bound_primary_frame(record, live_batch=None):
-    """Build the seven-column trader view without changing frozen membership."""
+    """Build the trader view without changing frozen membership.
+
+    Ticker and company name stay SEPARATE columns so filtering and export work.
+    """
 
     live = _batch_items(live_batch)
     rows = []
@@ -248,6 +260,7 @@ def _range_bound_primary_frame(record, live_batch=None):
         rows.append(
             {
                 "السهم": member["symbol"],
+                NAME_COLUMN: company_name(member["symbol"]),
                 "الحالة": "رينج ثابت معتمد",
                 "منطقة الشراء": _format_zone(
                     member["support_zone_low"],
@@ -313,6 +326,7 @@ def _live_monitor_primary_frame(record, live_batch=None):
         rows.append(
             {
                 "السهم": member["symbol"],
+                NAME_COLUMN: company_name(member["symbol"]),
                 "الاستراتيجية": (
                     "STABLE_RANGE_BOUND · تداول داخل رينج ثابت"
                 ),
@@ -337,6 +351,7 @@ def _render_range_bound_details(record):
     selected = st.selectbox(
         "اختر سهماً لعرض التفاصيل",
         [member["symbol"] for member in record.displayed],
+        format_func=symbol_option_label,
         key=f"range_bound_detail_{record.header['watchlist_id']}",
     )
     member = next(
@@ -829,6 +844,7 @@ def _live_readiness_frame(batch):
             {
                 "Historical Rank (Frozen)": item.historical_rank,
                 "Symbol": item.symbol,
+                NAME_COLUMN: company_name(item.symbol),
                 "Live Readiness": item.readiness_score,
                 "Live State": item.live_state,
                 "Current Price": item.current_price,
@@ -978,16 +994,24 @@ def _live_entry_monitor_fragment(record, engine=None, evaluated_at=None):
     return batch
 
 
+def _universe_caption():
+    """Report the live authoritative universe instead of a hard-coded count."""
+
+    provenance = universe_provenance()
+    return (
+        f"Operational universe: {provenance['active_count']} active EODHD EGX "
+        f"symbols · source: {provenance['source']} · as of "
+        f"{provenance['source_as_of'][:19] or '—'} · archived (historical only): "
+        f"{provenance['archived_count']}"
+    )
+
+
 def _live_entry_monitor_panel(historical_result, engine=None, evaluated_at=None):
     section_header(
         "LIVE ENTRY MONITOR",
         "مراقبة جاهزية الدخول اللحظية · frozen candidates only",
     )
-    st.caption(
-        "Historical universe: 225 validated symbols · Endpoint coverage: "
-        "241 / 265 · Watchlist ranking population: 225 validated symbols · "
-        "Remaining endpoint-unavailable/inactive/non-equity: 24"
-    )
+    st.caption(_universe_caption())
     st.info(
         "Historical Rank: FROZEN · Live Readiness: CURRENT SESSION · "
         "Production: DISABLED"
@@ -1645,17 +1669,18 @@ def show_live_opportunities():
         })
         display["target_2pct"] = display["entry_ask"] * 1.02
         display["stop_2pct"] = display["entry_ask"] * 0.98
+        display[NAME_COLUMN] = [company_name(value) for value in display["ticker"]]
         columns = [
-            "ticker", "setup", "time", "entry_ask", "target_2pct", "stop_2pct",
-            "spread_percent", "volume", "score", "reasons", "data_freshness",
-            "actionable", "blocked_reason",
+            "ticker", NAME_COLUMN, "setup", "time", "entry_ask", "target_2pct",
+            "stop_2pct", "spread_percent", "volume", "score", "reasons",
+            "data_freshness", "actionable", "blocked_reason",
         ]
         st.dataframe(display[columns], use_container_width=True, hide_index=True)
         actionable = rows[rows["actionable"].fillna(False).astype(bool)]
         if not actionable.empty:
             st.caption("Paper execution only — entry is modelled at Ask plus configured slippage.")
             labels = [
-                f"{row.ticker} · {row.setup} · {row.timestamp}"
+                f"{symbol_option_label(row.ticker)} · {row.setup} · {row.timestamp}"
                 for row in actionable.itertuples()
             ]
             selected = st.selectbox("Qualified paper opportunity", labels)
@@ -1720,7 +1745,9 @@ def show_active_scalping_trades():
         quantity = int(row["quantity"])
         gross = (current - row["entry_fill"]) * quantity
         cols = st.columns(4)
-        cols[0].metric(row["ticker"], row["setup"])
+        cols[0].metric(row["ticker"], row["setup"],
+                       help=company_name(row["ticker"]))
+        cols[0].caption(company_name(row["ticker"]))
         cols[1].metric("Entry / Current Bid", f"{row['entry_fill']:.3f} / {current:.3f}")
         cols[2].metric("Target / Stop", f"{row['target_price']:.3f} / {row['stop_price']:.3f}")
         cols[3].metric("Gross P&L", f"{gross:,.2f}")
@@ -1746,7 +1773,8 @@ def show_scalping_paper_portfolio():
     )
     section_header("Closed paper trades", "Append-only fills and exits")
     if closed:
-        st.dataframe(pd.DataFrame(closed), use_container_width=True, hide_index=True)
+        st.dataframe(with_company_name_column(pd.DataFrame(closed), "ticker"),
+                     use_container_width=True, hide_index=True)
     else:
         st.info("No scalping paper trades have closed yet.")
 
@@ -1898,7 +1926,7 @@ def show_scalping_backtest():
                     "Symbols",
                     available_symbols,
                     default=defaults,
-                    format_func=lambda value: value.rsplit(".", 1)[0],
+                    format_func=symbol_option_label,
                     key=f"scalping_db_symbols_{selected_date.isoformat()}",
                 )
                 ready = bool(selected_symbols)

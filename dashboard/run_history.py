@@ -11,6 +11,7 @@ from services.run_status import (
     RECOVERED_COMPLETED,
     status_label,
 )
+from dashboard.formatting import with_company_name_column
 from dashboard.ui import empty_state, page_header, section_header
 from core.universe import read_symbol_frame
 
@@ -165,6 +166,12 @@ def _show_run(run_id, metadata):
         except pd.errors.EmptyDataError:
             st.info("This artifact is empty.")
         else:
+            # Saved runs stay byte-identical on disk. A ticker-only historical
+            # artifact simply GAINS a company-name column when displayed.
+            for column in ("Ticker", "Symbol", "symbol", "ticker"):
+                if column in frame.columns:
+                    frame = with_company_name_column(frame, column)
+                    break
             st.dataframe(frame, use_container_width=True, hide_index=True)
     elif path.suffix.lower() in {".md", ".json", ".txt"}:
         st.code(path.read_text(encoding="utf-8-sig"), language=None)

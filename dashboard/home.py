@@ -6,6 +6,13 @@ import streamlit as st
 
 from core import scan_job_manager as job_manager
 from core.data_provider import summarize_frames
+from core.symbols import SYMBOL_SOURCE
+from dashboard.formatting import (
+    NAME_COLUMN,
+    company_name,
+    symbol_option_label,
+    with_company_name_column,
+)
 from dashboard.scan_status_panel import coverage_view, scan_status_view
 from decision_support.service import DecisionSupportService
 from dashboard.stock_details import show_stock_details
@@ -14,7 +21,8 @@ from dashboard.ui import empty_state, page_header, section_header, status_bar
 
 logger = logging.getLogger(__name__)
 
-SCAN_SOURCE = "data/symbols.csv"
+#: Membership comes from the authoritative EODHD universe, never a local list.
+SCAN_SOURCE = SYMBOL_SOURCE
 #: Poll interval for the progress fragment. Fast enough to feel live, slow enough that
 #: the page is not re-running constantly while a scan works.
 SCAN_POLL_SECONDS = 0.75
@@ -206,6 +214,7 @@ def _adopt_finished_job(job):
 
 SWING_PRIMARY_COLUMNS = (
     "السهم",
+    NAME_COLUMN,
     "القرار",
     "حالة السوق",
     "السعر",
@@ -216,7 +225,11 @@ SWING_PRIMARY_COLUMNS = (
 
 
 def _swing_primary_frame(frame):
-    """Return a compact seven-column view without mutating scan results."""
+    """Compact trader view without mutating scan results.
+
+    Ticker and company name are separate columns so search, filtering and
+    export keep working on the raw ticker.
+    """
 
     source = frame.copy()
     mapping = {
@@ -229,9 +242,10 @@ def _swing_primary_frame(frame):
         "OperationalStatus": "الحالة التشغيلية",
     }
     available = [column for column in mapping if column in source.columns]
-    return source[available].rename(columns=mapping).reindex(
-        columns=SWING_PRIMARY_COLUMNS
-    )
+    view = source[available].rename(columns=mapping)
+    if "السهم" in view.columns:
+        view[NAME_COLUMN] = [company_name(value) for value in view["السهم"]]
+    return view.reindex(columns=SWING_PRIMARY_COLUMNS)
 
 
 def _render_swing_advanced_research(
@@ -248,13 +262,18 @@ def _render_swing_advanced_research(
         st.caption(
             "تفاصيل بحثية للمراجعة؛ لا تغيّر القرارات أو ترتيب النتائج."
         )
+        # Display-only enrichment: the raw Ticker column is left untouched.
+        df = df.copy()
+        if "Ticker" in df.columns:
+            df[NAME_COLUMN] = [company_name(value) for value in df["Ticker"]]
         if failed_coverage:
             st.subheader("تفاصيل فجوات التغطية")
             st.dataframe(
-                pd.DataFrame(failed_coverage)[[
-                    "symbol", "historical_row_count", "rejection_category",
-                    "rejection_reason", "final_status",
-                ]],
+                with_company_name_column(
+                    pd.DataFrame(failed_coverage)[[
+                        "symbol", "historical_row_count", "rejection_category",
+                        "rejection_reason", "final_status",
+                    ]], "symbol"),
                 use_container_width=True,
                 hide_index=True,
             )
@@ -317,7 +336,7 @@ def _render_swing_advanced_research(
         )
         overlap_col.metric("اتفاق BUY", breakout_overlap)
         comparison_columns = [
-            "Ticker", "ClassicDecision", "ClassicRR", "BreakoutDecision",
+            "Ticker", NAME_COLUMN, "ClassicDecision", "ClassicRR", "BreakoutDecision",
             "BreakoutRR", "BreakoutScore", "BreakoutConfidence",
             "BreakoutEdgeScore", "HigherQualityStrategy",
         ]
@@ -359,7 +378,7 @@ def _render_swing_advanced_research(
             f"{selector_confidence:.1f}%",
         )
         adaptive_columns = [
-            "Ticker", "ClassicDecision", "ClassicRR", "BreakoutDecision",
+            "Ticker", NAME_COLUMN, "ClassicDecision", "ClassicRR", "BreakoutDecision",
             "BreakoutRR", "MarketRegime", "ClassicSuccessProbability",
             "BreakoutSuccessProbability", "SelectorConfidence",
             "PreferredStrategy", "StrategyEdgeScore", "FinalRecommendation",
@@ -374,7 +393,7 @@ def _render_swing_advanced_research(
 
         section_header("الجدول البحثي الكامل", "Developer metrics and attribution")
         diagnostic_columns = [
-            "Rank", "Rating", "Ticker", "Regime", "StrategySignal", "Stars",
+            "Rank", "Rating", "Ticker", NAME_COLUMN, "Regime", "StrategySignal", "Stars",
             "AIProbability", "AILevel", "Confidence", "Score", "Price", "RR",
             "ClassicDecision", "ClassicRR", "BreakoutDecision", "BreakoutRR",
             "BreakoutScore", "BreakoutEdgeScore", "HigherQualityStrategy",
@@ -589,7 +608,7 @@ def show_dashboard():
     search_col, signal_col, result_col = st.columns([2, 1, 1])
     search = search_col.text_input(
         "ابحث عن سهم",
-        placeholder="مثال: COMI.CA",
+        placeholder="مثال: COMI",
         label_visibility="collapsed",
     ).strip().upper()
     signal_filter = signal_col.selectbox(
@@ -647,7 +666,8 @@ def show_stock_details_page():
         )
         return
     symbols = [row.get("Ticker") for row in results if row.get("Ticker")]
-    selected = st.selectbox("اختر السهم", symbols)
+    selected = st.selectbox("اختر السهم", symbols,
+                            format_func=symbol_option_label)
     stock = next((row for row in results if row.get("Ticker") == selected), None)
     if stock is not None:
         show_stock_details(stock)
@@ -656,7 +676,8 @@ def show_stock_details_page():
 def _market_column_config():
     return {
         "Rank": st.column_config.NumberColumn("#", width="small"),
-        "Ticker": st.column_config.TextColumn("Ticker", width="small"),
+        "Ticker": st.column_config.TextColumn("الرمز · Ticker", width="small"),
+        NAME_COLUMN: st.column_config.TextColumn("اسم السهم", width="large"),
         "Signal": st.column_config.TextColumn("Signal", width="small"),
         "StrategySignal": st.column_config.TextColumn("Strategy signal", width="small"),
         "Regime": st.column_config.TextColumn("Regime", width="small"),
