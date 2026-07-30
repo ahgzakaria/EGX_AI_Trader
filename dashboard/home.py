@@ -204,17 +204,206 @@ def _adopt_finished_job(job):
             st.session_state.decision_support_error = str(error)
 
 
+SWING_PRIMARY_COLUMNS = (
+    "السهم",
+    "القرار",
+    "حالة السوق",
+    "السعر",
+    "العائد إلى المخاطرة",
+    "الثقة",
+    "الحالة التشغيلية",
+)
+
+
+def _swing_primary_frame(frame):
+    """Return a compact seven-column view without mutating scan results."""
+
+    source = frame.copy()
+    mapping = {
+        "Ticker": "السهم",
+        "Signal": "القرار",
+        "Regime": "حالة السوق",
+        "Price": "السعر",
+        "RR": "العائد إلى المخاطرة",
+        "Confidence": "الثقة",
+        "OperationalStatus": "الحالة التشغيلية",
+    }
+    available = [column for column in mapping if column in source.columns]
+    return source[available].rename(columns=mapping).reindex(
+        columns=SWING_PRIMARY_COLUMNS
+    )
+
+
+def _render_swing_advanced_research(
+    df,
+    *,
+    buy,
+    watch,
+    avoid,
+    failed_coverage,
+):
+    """Keep comparisons, charts, and developer detail behind one disclosure."""
+
+    with st.expander("البحث المتقدم (Advanced Research)", expanded=False):
+        st.caption(
+            "تفاصيل بحثية للمراجعة؛ لا تغيّر القرارات أو ترتيب النتائج."
+        )
+        if failed_coverage:
+            st.subheader("تفاصيل فجوات التغطية")
+            st.dataframe(
+                pd.DataFrame(failed_coverage)[[
+                    "symbol", "historical_row_count", "rejection_category",
+                    "rejection_reason", "final_status",
+                ]],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        ai_values = pd.to_numeric(
+            df["AIProbability"], errors="coerce"
+        ).dropna()
+        avg_ai = round(ai_values.mean(), 1) if not ai_values.empty else None
+        actionable = int(
+            pd.Series(df.get("Actionable", False))
+            .fillna(False).astype(bool).sum()
+        )
+        non_actionable = int(
+            df.get(
+                "FinalActionability",
+                pd.Series(index=df.index, dtype=str),
+            )
+            .fillna("").astype(str).str.contains("NON_ACTIONABLE").sum()
+        )
+        extra = st.columns(5)
+        extra[0].metric("متوسط الثقة", f"{df['Confidence'].mean():.1f}%")
+        extra[1].metric("متوسط الدرجة", f"{df['Score'].mean():.1f}")
+        extra[2].metric(
+            "متوسط تقييم AI",
+            f"{avg_ai}%" if avg_ai is not None else "N/A",
+        )
+        extra[3].metric("فرص BUY اللحظية", actionable)
+        extra[4].metric("غير قابل للتنفيذ", non_actionable)
+
+        section_header("توزيع الإشارات وحالة السوق", "Full signal/regime charts")
+        chart_col, regime_col = st.columns(2)
+        with chart_col:
+            st.bar_chart(
+                pd.DataFrame(
+                    {"Count": [buy, watch, avoid]},
+                    index=["BUY", "WATCH", "AVOID"],
+                ),
+                color="#2563eb",
+            )
+        with regime_col:
+            regimes = df["Regime"].fillna("Unknown").value_counts()
+            st.bar_chart(regimes.rename("Count"), color="#0891b2")
+
+        breakout_buy = int((df.get("BreakoutDecision") == "BUY").sum())
+        breakout_watch = int((df.get("BreakoutDecision") == "WATCH").sum())
+        breakout_avoid = int((df.get("BreakoutDecision") == "AVOID").sum())
+        breakout_overlap = int(
+            ((df["Signal"] == "BUY") & (df.get("BreakoutDecision") == "BUY"))
+            .sum()
+        )
+        section_header(
+            "مقارنة Classic و BREAKOUT_SWING",
+            "Classic versus Breakout comparison",
+        )
+        classic_col, breakout_col, overlap_col = st.columns(3)
+        classic_col.metric("Classic BUY / WATCH / AVOID", f"{buy} / {watch} / {avoid}")
+        breakout_col.metric(
+            "Breakout BUY / WATCH / AVOID",
+            f"{breakout_buy} / {breakout_watch} / {breakout_avoid}",
+        )
+        overlap_col.metric("اتفاق BUY", breakout_overlap)
+        comparison_columns = [
+            "Ticker", "ClassicDecision", "ClassicRR", "BreakoutDecision",
+            "BreakoutRR", "BreakoutScore", "BreakoutConfidence",
+            "BreakoutEdgeScore", "HigherQualityStrategy",
+        ]
+        st.dataframe(
+            df[[column for column in comparison_columns if column in df.columns]],
+            use_container_width=True,
+            hide_index=True,
+            column_config=_market_column_config(),
+        )
+
+        market_regime = str(
+            df.get("MarketRegime", pd.Series(["UNKNOWN"])).iloc[0]
+        )
+        preferred_counts = df.get(
+            "PreferredStrategy",
+            pd.Series(index=df.index, dtype=str),
+        ).fillna("NONE").value_counts()
+        preferred_strategy = (
+            str(preferred_counts.index[0])
+            if not preferred_counts.empty
+            else "NONE"
+        )
+        selector_confidence = pd.to_numeric(
+            df.get(
+                "SelectorConfidence",
+                pd.Series(index=df.index, dtype=float),
+            ),
+            errors="coerce",
+        ).fillna(0).mean()
+        section_header(
+            "الاختيار التكيفي",
+            "Adaptive per-symbol decisions",
+        )
+        adaptive_cards = st.columns(3)
+        adaptive_cards[0].metric("حالة السوق", market_regime)
+        adaptive_cards[1].metric("الاستراتيجية المفضلة", preferred_strategy)
+        adaptive_cards[2].metric(
+            "ثقة الاختيار",
+            f"{selector_confidence:.1f}%",
+        )
+        adaptive_columns = [
+            "Ticker", "ClassicDecision", "ClassicRR", "BreakoutDecision",
+            "BreakoutRR", "MarketRegime", "ClassicSuccessProbability",
+            "BreakoutSuccessProbability", "SelectorConfidence",
+            "PreferredStrategy", "StrategyEdgeScore", "FinalRecommendation",
+            "WhyPreferred", "WhyNotOther", "SelectorReason",
+        ]
+        st.dataframe(
+            df[[column for column in adaptive_columns if column in df.columns]],
+            use_container_width=True,
+            hide_index=True,
+            column_config=_market_column_config(),
+        )
+
+        section_header("الجدول البحثي الكامل", "Developer metrics and attribution")
+        diagnostic_columns = [
+            "Rank", "Rating", "Ticker", "Regime", "StrategySignal", "Stars",
+            "AIProbability", "AILevel", "Confidence", "Score", "Price", "RR",
+            "ClassicDecision", "ClassicRR", "BreakoutDecision", "BreakoutRR",
+            "BreakoutScore", "BreakoutEdgeScore", "HigherQualityStrategy",
+            "MarketRegime", "PreferredStrategy", "SelectorConfidence",
+            "StrategyEdgeScore", "FinalRecommendation", "OperationalStatus",
+            "FinalActionability", "DataSource", "DataTimestamp",
+            "DataAgeSeconds", "OperationalReason", "Reasons",
+        ]
+        available = [
+            column for column in diagnostic_columns if column in df.columns
+        ]
+        st.dataframe(
+            _format_ai_probability(df[available].copy()),
+            use_container_width=True,
+            hide_index=True,
+            column_config=_market_column_config(),
+        )
+
+
 def show_dashboard():
     page_header(
-        "Swing / Daily Market Dashboard",
-        "Multi-day frozen strategy · Daily candles · Separate from paper scalping",
+        "لوحة التداول اليومي",
+        "قرارات متعددة الأيام مبنية على شموع يومية مكتملة",
         icon="📊",
-        badge="SWING · DAILY",
+        badge="SWING / DAILY",
     )
     st.info(
-        "Current workspace: SWING / DAILY. Signals and levels here belong to the "
-        "validated multi-day strategy. For intraday +2%/−2% paper research, open "
-        "‘Scalping Dashboard · Paper’ from WORKSPACES."
+        "هذه الصفحة للتداول اليومي والمتوسط فقط. متابعة السكالبنج موجودة في "
+        "لوحة السكالبنج."
     )
 
     live_policy_version = "SWING_HISTORY_PLUS_RUBIX_QUOTE_V5_ADAPTIVE_SELECTOR"
@@ -244,7 +433,7 @@ def show_dashboard():
         scan_completed = False
     with scan_col:
         if st.button(
-            "🔍 Run Market Scan",
+            "فحص السوق اليومي",
             type="primary",
             use_container_width=True,
             disabled=active or scan_completed,
@@ -255,17 +444,18 @@ def show_dashboard():
             # already owns this workspace instead of starting a second scan.
             job, created = job_manager.start_scan_job(SCAN_SOURCE, "dashboard")
             if not created:
-                st.info(f"A market scan is already running (scan {job.scan_id}).")
+                st.info("يوجد فحص سوق قيد التشغيل بالفعل.")
             st.rerun()
     with status_col:
         if active:
-            if st.button("⏹ إيقاف الفحص · Stop Scan", use_container_width=True,
+            # Stop Scan remains an explicit, idempotent operator control.
+            if st.button("إيقاف الفحص", use_container_width=True,
                          key=f"stop_scan_{job.scan_id}"):
                 job.request_cancel()          # idempotent
                 st.rerun()
         else:
             st.button(
-                "● Session recorded" if scan_completed else "○ Ready to scan",
+                "تم حفظ فحص الجلسة" if scan_completed else "جاهز للفحص",
                 disabled=True,
                 use_container_width=True,
             )
@@ -334,19 +524,6 @@ def show_dashboard():
     buy = int((df["Signal"] == "BUY").sum())
     watch = int((df["Signal"] == "WATCH").sum())
     avoid = int((df["Signal"] == "AVOID").sum())
-    ai_values = pd.to_numeric(df["AIProbability"], errors="coerce").dropna()
-    avg_ai = round(ai_values.mean(), 1) if not ai_values.empty else None
-    actionable = int(pd.Series(df.get("Actionable", False)).fillna(False).astype(bool).sum())
-    non_actionable = int(
-        df.get("FinalActionability", pd.Series(index=df.index, dtype=str))
-        .fillna("").astype(str).str.contains("NON_ACTIONABLE").sum()
-    )
-    breakout_buy = int((df.get("BreakoutDecision") == "BUY").sum())
-    breakout_watch = int((df.get("BreakoutDecision") == "WATCH").sum())
-    breakout_avoid = int((df.get("BreakoutDecision") == "AVOID").sum())
-    breakout_overlap = int(
-        ((df["Signal"] == "BUY") & (df.get("BreakoutDecision") == "BUY")).sum()
-    )
 
     run_id = results[0].get("RunID")
     latest_dates = [
@@ -355,206 +532,70 @@ def show_dashboard():
     ]
     latest_date = max(latest_dates).date().isoformat() if latest_dates else "N/A"
     st.caption(
-        f"Run: {run_id or 'N/A'}  •  Latest market candle: {latest_date}  •  "
-        "Policy: Strategy Only + AI Advisory"
+        f"آخر شمعة يومية مكتملة: {latest_date} · "
+        f"مرجع الفحص: {run_id or 'غير متاح'}"
     )
 
-    # Frozen strategy outcomes remain visually primary. Operational evidence
-    # is available below in one compact expander instead of twelve cards.
     primary = st.columns(3)
-    primary[0].metric("🟢 BUY", buy, help="Frozen strategy BUY decisions")
-    primary[1].metric("🟡 WATCH", watch)
-    primary[2].metric("🔴 AVOID", avoid)
-    context = st.columns(3)
-    context[0].metric("Symbols successfully analyzed", len(df))
-    context[1].metric("Latest completed daily candle", latest_date)
-    # Read from the rows the scan produced rather than re-summarising frames, so this
-    # tile cannot disagree with the banner above it.
-    live_providers = {str(row.get("LiveProvider") or "").strip().lower()
-                      for row in results} - {"", "unavailable"}
-    context[2].metric(
-        "Live quote source",
-        next(iter(sorted(live_providers)), "Unavailable").title(),
-    )
+    primary[0].metric("🟢 شراء (BUY)", buy)
+    primary[1].metric("🟡 متابعة (WATCH)", watch)
+    primary[2].metric("🔴 تجنب (AVOID)", avoid)
 
     coverage = list(getattr(results, "coverage", []) or [])
     failed_coverage = [
         row for row in coverage if not row.get("accepted_into_swing_scan")
     ]
+    market_state = str(
+        df.get("MarketRegime", pd.Series(["UNKNOWN"])).iloc[0]
+    )
+    live_providers = {str(row.get("LiveProvider") or "").strip().lower()
+                      for row in results} - {"", "unavailable"}
+    live_quote_help = "Live quote source"
+    context = st.columns(4)
+    context[0].metric(
+        "تغطية البيانات",
+        f"{len(df)} / {len(df) + len(failed_coverage)}",
+    )
+    context[1].metric("حالة السوق", market_state)
+    context[2].metric("آخر جلسة مكتملة", latest_date)
+    context[3].metric(
+        "مصدر السعر اللحظي",
+        next(iter(sorted(live_providers)), "Unavailable").title(),
+        help=live_quote_help,
+    )
+
     if failed_coverage:
-        status_counts = pd.Series([
-            row.get("final_status", "NOT_ANALYZED") for row in failed_coverage
-        ]).value_counts()
         st.warning(
-            f"{len(failed_coverage)} symbols were not analyzed and are not "
-            "counted as AVOID: "
-            + ", ".join(f"{key}={value}" for key, value in status_counts.items())
-        )
-        with st.expander("Coverage failures", expanded=False):
-            st.dataframe(
-                pd.DataFrame(failed_coverage)[[
-                    "symbol", "historical_row_count", "rejection_category",
-                    "rejection_reason", "final_status",
-                ]],
-                use_container_width=True,
-                hide_index=True,
-            )
-
-    with st.expander("Additional analysis metrics", expanded=False):
-        extra = st.columns(5)
-        extra[0].metric("Average Confidence", f"{df['Confidence'].mean():.1f}%")
-        extra[1].metric("Average Score", f"{df['Score'].mean():.1f}")
-        extra[2].metric(
-            "Avg AI on evaluated BUY",
-            f"{avg_ai}%" if avg_ai is not None else "N/A",
-        )
-        extra[3].metric("Actionable Live BUY", actionable)
-        extra[4].metric("Non-actionable", non_actionable)
-
-    section_header("Market Overview", "Signal and regime distribution")
-    chart_col, regime_col = st.columns(2)
-    with chart_col:
-        st.bar_chart(pd.DataFrame({
-            "Count": [buy, watch, avoid],
-        }, index=["BUY", "WATCH", "AVOID"]), color="#2563eb")
-    with regime_col:
-        regimes = df["Regime"].fillna("Unknown").value_counts()
-        st.bar_chart(regimes.rename("Count"), color="#0891b2")
-
-    # Phase 10 comparison is intentionally separate: no merged signal and no
-    # change to Classic ranking, filtering, or operational actionability.
-    section_header(
-        "Classic vs BREAKOUT_SWING",
-        "Independent decision-support strategies; decisions are never merged",
-    )
-    classic_col, breakout_col, overlap_col = st.columns(3)
-    with classic_col:
-        st.markdown("**Classic Strategy (validated and frozen)**")
-        st.caption(f"BUY {buy}  ·  WATCH {watch}  ·  AVOID {avoid}")
-    with breakout_col:
-        st.markdown("**BREAKOUT_SWING (research only)**")
-        st.caption(
-            f"BUY {breakout_buy}  ·  WATCH {breakout_watch}  ·  "
-            f"AVOID {breakout_avoid}"
-        )
-    with overlap_col:
-        st.markdown("**BUY overlap**")
-        st.caption(f"{breakout_overlap} symbol(s) selected by both strategies")
-
-    with st.expander("Per-symbol strategy comparison", expanded=False):
-        comparison_columns = [
-            "Ticker", "ClassicDecision", "ClassicRR", "BreakoutDecision",
-            "BreakoutRR", "BreakoutScore", "BreakoutConfidence",
-            "BreakoutEdgeScore", "HigherQualityStrategy",
-        ]
-        available = [column for column in comparison_columns if column in df.columns]
-        st.dataframe(
-            df[available],
-            use_container_width=True,
-            hide_index=True,
-            column_config=_market_column_config(),
+            f"تعذر تحليل {len(failed_coverage)} سهم. التفاصيل موجودة في "
+            "البحث المتقدم وصحة النظام."
         )
 
-    section_header(
-        "Adaptive Strategy",
-        "Walk-forward strategy selection; Classic and BREAKOUT_SWING remain unchanged",
-    )
-    market_regime = str(df.get("MarketRegime", pd.Series(["UNKNOWN"])).iloc[0])
-    regime_confidence = pd.to_numeric(
-        df.get("MarketRegimeConfidence", pd.Series([0])), errors="coerce"
-    ).fillna(0).iloc[0]
-    preferred_counts = df.get(
-        "PreferredStrategy", pd.Series(index=df.index, dtype=str)
-    ).fillna("NONE").value_counts()
-    preferred_strategy = (
-        str(preferred_counts.index[0]) if not preferred_counts.empty else "NONE"
-    )
-    selector_confidence = pd.to_numeric(
-        df.get("SelectorConfidence", pd.Series(index=df.index, dtype=float)),
-        errors="coerce",
-    ).fillna(0).mean()
-    expected_edge = pd.to_numeric(
-        df.get("StrategyEdgeScore", pd.Series(index=df.index, dtype=float)),
-        errors="coerce",
-    ).fillna(0).mean()
-    adaptive_buy_classic = int(
-        (df.get("FinalRecommendation") == "BUY_CLASSIC").sum()
-    )
-    adaptive_buy_breakout = int(
-        (df.get("FinalRecommendation") == "BUY_BREAKOUT").sum()
-    )
-    adaptive_cards = st.columns(5)
-    adaptive_cards[0].metric("Market Regime", market_regime)
-    adaptive_cards[1].metric("Preferred Strategy", preferred_strategy)
-    adaptive_cards[2].metric("Selector Confidence", f"{selector_confidence:.1f}%")
-    adaptive_cards[3].metric("Expected Edge", f"{expected_edge:.1f}")
-    adaptive_cards[4].metric(
-        "Adaptive BUY",
-        adaptive_buy_classic + adaptive_buy_breakout,
-        help=(
-            f"BUY_CLASSIC={adaptive_buy_classic}; "
-            f"BUY_BREAKOUT={adaptive_buy_breakout}"
-        ),
-    )
-    st.caption(
-        f"Regime confidence: {regime_confidence:.1f}% · "
-        + str(df.get("AdaptiveMarketReasons", pd.Series(["No reason available"])).iloc[0])
-    )
-    with st.expander("Adaptive per-symbol decisions", expanded=False):
-        adaptive_columns = [
-            "Ticker", "ClassicDecision", "ClassicRR", "BreakoutDecision",
-            "BreakoutRR", "MarketRegime", "ClassicSuccessProbability",
-            "BreakoutSuccessProbability", "SelectorConfidence",
-            "PreferredStrategy", "StrategyEdgeScore", "FinalRecommendation",
-            "WhyPreferred", "WhyNotOther", "SelectorReason",
-        ]
-        available = [column for column in adaptive_columns if column in df.columns]
-        st.dataframe(
-            df[available], use_container_width=True, hide_index=True,
-            column_config=_market_column_config(),
-        )
-
-    section_header("Top Strategy Opportunities", "Frozen BUY signal plus independent operational status")
+    section_header("أهم الفرص القابلة للمتابعة", "Top actionable opportunities")
     top_buy = df[df["Signal"] == "BUY"].head(10)
     if top_buy.empty:
         empty_state(
-            "No strategy BUY signals today",
-            "AI advisory is visible for evaluated technical candidates but cannot reject them.",
+            "لا توجد فرص شراء اليوم",
+            "يمكن متابعة الأسهم الأخرى من الجدول المختصر أدناه.",
             icon="○",
         )
     else:
         st.dataframe(
-            _format_ai_probability(top_buy[[
-                "Rank", "Rating", "Ticker", "Regime", "AIProbability",
-                "AILevel", "Confidence", "Score", "Price", "RR",
-                "OperationalStatus", "FinalActionability", "DataSource",
-            ]]),
+            _swing_primary_frame(top_buy),
             use_container_width=True,
             hide_index=True,
-            column_config=_market_column_config(),
         )
 
-    section_header("Market Scan", "Search, filter, then inspect a symbol")
-    search_col, signal_col, regime_col, rating_col = st.columns([2, 1, 1, 1])
+    section_header("جدول السوق المختصر", "Compact market table")
+    search_col, signal_col, result_col = st.columns([2, 1, 1])
     search = search_col.text_input(
-        "Search ticker", placeholder="e.g. COMI.CA", label_visibility="collapsed"
+        "ابحث عن سهم",
+        placeholder="مثال: COMI.CA",
+        label_visibility="collapsed",
     ).strip().upper()
     signal_filter = signal_col.selectbox(
-        "Signal", ["ALL", "BUY", "WATCH", "AVOID"], label_visibility="collapsed"
-    )
-    regime_options = ["ALL"] + sorted(df["Regime"].dropna().astype(str).unique().tolist())
-    regime_filter = regime_col.selectbox(
-        "Regime", regime_options, label_visibility="collapsed"
-    )
-    rating_options = ["ALL"] + sorted(df["Rating"].dropna().astype(str).unique().tolist())
-    rating_filter = rating_col.selectbox(
-        "Rating", rating_options, label_visibility="collapsed"
-    )
-
-    rr_col, score_col, result_col = st.columns([1, 1, 2])
-    min_rr = rr_col.number_input("Minimum RR", min_value=0.0, value=0.0, step=0.25)
-    min_score = score_col.number_input(
-        "Minimum Score", min_value=0, max_value=100, value=0, step=5
+        "القرار",
+        ["ALL", "BUY", "WATCH", "AVOID"],
+        label_visibility="collapsed",
     )
 
     filtered = df.copy()
@@ -562,39 +603,28 @@ def show_dashboard():
         filtered = filtered[filtered["Ticker"].astype(str).str.upper().str.contains(search)]
     if signal_filter != "ALL":
         filtered = filtered[filtered["Signal"] == signal_filter]
-    if regime_filter != "ALL":
-        filtered = filtered[filtered["Regime"] == regime_filter]
-    if rating_filter != "ALL":
-        filtered = filtered[filtered["Rating"] == rating_filter]
-    filtered = filtered[
-        (pd.to_numeric(filtered["RR"], errors="coerce").fillna(0) >= min_rr)
-        & (pd.to_numeric(filtered["Score"], errors="coerce").fillna(0) >= min_score)
-    ]
-    result_col.caption(f"Showing {len(filtered)} of {len(df)} symbols")
+    result_col.caption(f"عرض {len(filtered)} من {len(df)} سهم")
 
     if filtered.empty:
-        empty_state("No matching symbols", "Adjust the search or filter values.", icon="⌕")
-        return
+        empty_state(
+            "لا توجد نتائج مطابقة",
+            "غيّر البحث أو فلتر القرار.",
+            icon="⌕",
+        )
+    else:
+        st.dataframe(
+            _swing_primary_frame(filtered),
+            use_container_width=True,
+            hide_index=True,
+            height=min(650, 82 + len(filtered) * 42),
+        )
 
-    display = filtered[[
-        "Rank", "Rating", "Ticker", "Regime", "StrategySignal", "Stars",
-        "AIProbability", "AILevel", "Confidence", "Score", "Price", "RR",
-        "ClassicDecision", "ClassicRR", "BreakoutDecision", "BreakoutRR",
-        "BreakoutScore", "BreakoutEdgeScore", "HigherQualityStrategy",
-        "MarketRegime", "PreferredStrategy", "SelectorConfidence",
-        "StrategyEdgeScore", "FinalRecommendation",
-        "OperationalStatus", "FinalActionability", "DataSource",
-        "DataTimestamp", "DataAgeSeconds", "OperationalReason", "Reasons",
-    ]].copy()
-    display["Reasons"] = display["Reasons"].astype(str).apply(
-        lambda text: text if len(text) <= 90 else text[:87] + "…"
-    )
-    st.dataframe(
-        _format_ai_probability(display),
-        use_container_width=True,
-        hide_index=True,
-        height=min(650, 82 + len(display) * 35),
-        column_config=_market_column_config(),
+    _render_swing_advanced_research(
+        df,
+        buy=buy,
+        watch=watch,
+        avoid=avoid,
+        failed_coverage=failed_coverage,
     )
 
 
@@ -603,21 +633,21 @@ def show_stock_details_page():
     """Dedicated Swing/Daily details page using the latest in-session scan."""
 
     page_header(
-        "Swing / Daily Stock Details",
-        "Frozen decision trace, completed daily indicators, and live quote overlay",
+        "تفاصيل السهم",
+        "القرار التاريخي والمؤشرات اليومية والسعر اللحظي",
         icon="🔎",
         badge="SWING · DAILY",
     )
     results = st.session_state.get("results")
     if not results:
         empty_state(
-            "No market scan available",
-            "Run the Swing / Daily Dashboard scan first.",
+            "لا يوجد فحص سوق متاح",
+            "شغّل فحص السوق اليومي أولاً.",
             icon="○",
         )
         return
     symbols = [row.get("Ticker") for row in results if row.get("Ticker")]
-    selected = st.selectbox("Select a symbol", symbols)
+    selected = st.selectbox("اختر السهم", symbols)
     stock = next((row for row in results if row.get("Ticker") == selected), None)
     if stock is not None:
         show_stock_details(stock)

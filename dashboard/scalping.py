@@ -1505,8 +1505,13 @@ def show_live_opportunities():
 
 def show_active_scalping_trades():
     config, database = _context()
-    page_header("Active Scalping Trades", "Open paper positions and fixed fill-relative levels", icon="📍", badge="PAPER_ONLY")
-    if st.button("Refresh Paper Positions"):
+    page_header(
+        "الصفقات النشطة",
+        "مراكز الاختبار الورقي المفتوحة ومستوياتها الثابتة",
+        icon="📍",
+        badge="RESEARCH ONLY",
+    )
+    if st.button("تحديث المراكز الورقية"):
         result = ScalpingScanner(config=config, database=database).update_open_positions()
         if result["failures"]:
             st.warning(f"Position refresh completed with {len(result['failures'])} data failure(s).")
@@ -1554,8 +1559,19 @@ def show_scalping_paper_portfolio():
 
 def show_scalping_history():
     config, database = _context()
-    page_header("Scalping History", "Persistent signals, rejections, fills, exits and alerts", icon="🗂️", badge="SCALPING")
-    tabs = st.tabs(["Signals", "Rejected", "Fills", "Exits", "Alerts"])
+    page_header(
+        "سجل السكالبنج",
+        "الإشارات والرفض والتنفيذات والخروج والتنبيهات",
+        icon="🗂️",
+        badge="RESEARCH ONLY",
+    )
+    tabs = st.tabs([
+        "الإشارات",
+        "المرفوضة",
+        "التنفيذات",
+        "الخروج",
+        "التنبيهات",
+    ])
     queries = [
         "SELECT * FROM signals ORDER BY observed_at DESC LIMIT 500",
         "SELECT * FROM rejected_opportunities ORDER BY observed_at DESC LIMIT 500",

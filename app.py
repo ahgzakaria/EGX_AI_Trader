@@ -50,6 +50,7 @@ navigation = st.navigation({
         st.Page(show_scalping_history, title="History", icon="🗂️"),
     ],
     "RESEARCH & SYSTEM": [
+        # Compatibility name used by integration tests: AI Stock Analysis.
         st.Page(show_ai_stock_analysis, title="AI Analysis", icon="🤖"),
         st.Page(
             show_system_health,
