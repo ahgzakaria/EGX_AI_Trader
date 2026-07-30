@@ -66,6 +66,7 @@ from scalping_expected_range.live_readiness import (
     OPPORTUNITY_INVALIDATED,
     PRE_OPEN_WAIT,
     PULLBACK_CONFIRMATION_REQUIRED,
+    RUBIX_MAPPING_UNAVAILABLE,
     SESSION_CLOSED,
     SPREAD_TOO_WIDE,
     TARGET_OUTSIDE_TYPICAL_ZONE,
@@ -117,6 +118,8 @@ _LIVE_STATE_AR = {
     MOVE_EXTENDED_DO_NOT_CHASE: "ممتد — لا تطارده",
     LIVE_DATA_STALE: "بيانات قديمة",
     LIVE_DATA_UNAVAILABLE: "بيانات غير متاحة",
+    # A real historical candidate with no live feed — NOT a collector fault.
+    RUBIX_MAPPING_UNAVAILABLE: "تاريخي فقط — لا ربط لحظي (No live mapping)",
     SPREAD_TOO_WIDE: "سبريد غير مناسب",
     CLOSING_AUCTION_NO_NEW_ENTRY: "مزاد الإغلاق — لا دخول جديد",
     SESSION_CLOSED: "الجلسة مغلقة",
@@ -265,6 +268,9 @@ def _range_bound_primary_frame(record, live_batch=None):
 
 
 def _rubix_status_label(item):
+    if getattr(item, "live_state", None) == RUBIX_MAPPING_UNAVAILABLE:
+        # Say plainly that no mapping exists; never imply a broken collector.
+        return "لا يوجد ربط Rubix · No Rubix mapping"
     quality = str(getattr(item, "data_quality_status", "") or "")
     if quality == "AVAILABLE_AND_VALIDATED":
         return "متصل"
@@ -280,6 +286,13 @@ def _rubix_status_label(item):
 def _blocking_reason(item):
     if item is None:
         return "حدّث المتابعة اللحظية"
+    if item.live_state == RUBIX_MAPPING_UNAVAILABLE:
+        return (
+            "البيانات التاريخية من EODHD متاحة، لكن لا يوجد ربط Rubix موثّق "
+            "لهذا السهم — ليست مشكلة في المجمِّع · Historical EODHD data is "
+            "available; no verified Rubix mapping, so no live quote. Not a "
+            "collector failure."
+        )
     if item.live_state == ENTRY_READY_RESEARCH_ONLY:
         return "لا يوجد مانع بحثي"
     return (

@@ -50,6 +50,12 @@ SPREAD_TOO_WIDE = "SPREAD_TOO_WIDE"
 LIQUIDITY_INSUFFICIENT = "LIQUIDITY_INSUFFICIENT"
 LIVE_DATA_STALE = "LIVE_DATA_STALE"
 LIVE_DATA_UNAVAILABLE = "LIVE_DATA_UNAVAILABLE"
+#: The symbol is a legitimate historical candidate with complete EODHD Daily
+#: history, but it has no VERIFIED Rubix mapping, so no live feed can exist for
+#: it. Deliberately distinct from LIVE_DATA_UNAVAILABLE (a real collector/feed
+#: failure) so an operator is never told the collector is broken when it is not,
+#: and is never shown a candidate as though live data were connected.
+RUBIX_MAPPING_UNAVAILABLE = "RUBIX_MAPPING_UNAVAILABLE"
 OPPORTUNITY_INVALIDATED = "OPPORTUNITY_INVALIDATED"
 CLOSING_AUCTION_NO_NEW_ENTRY = "CLOSING_AUCTION_NO_NEW_ENTRY"
 SESSION_CLOSED = "SESSION_CLOSED"
@@ -541,6 +547,10 @@ class LiveEntryReadinessEngine:
             )
         )
         symbols = tuple(_symbol(row["symbol"]) for row in displayed)
+        # Only symbols with a VERIFIED Rubix mapping are queried. An unmapped
+        # symbol cannot appear in the feed, and the reader matches ticker
+        # equality exactly, so it can never inherit another symbol's quote.
+        mapped_symbols = tuple(s for s in symbols if _has_rubix_mapping(s))
         if phase == PRE_OPEN:
             results = tuple(
                 self._phase_only_result(
@@ -557,13 +567,17 @@ class LiveEntryReadinessEngine:
                 evaluation_latency_ms=_elapsed_ms(started),
             )
         snapshot = live_snapshot or self.reader.load(
-            symbols,
+            mapped_symbols,
             target_session_date=target,
             evaluated_at=now,
         )
         if snapshot.error_code:
             results = tuple(
-                self._unavailable_result(
+                self._mapping_unavailable_result(
+                    header, member, now, phase, snapshot.data_cutoff
+                )
+                if not _has_rubix_mapping(member["symbol"])
+                else self._unavailable_result(
                     header,
                     member,
                     now,
@@ -607,6 +621,10 @@ class LiveEntryReadinessEngine:
         phase,
         data_cutoff,
     ):
+        if not _has_rubix_mapping(member["symbol"]):
+            return self._mapping_unavailable_result(
+                header, member, now, phase, data_cutoff
+            )
         if phase in {CLOSING_AUCTION, POST_CLOSE}:
             result = self._assess_inputs(
                 header, member, live, now, phase, data_cutoff
@@ -1001,6 +1019,34 @@ class LiveEntryReadinessEngine:
             data_quality_status=DATA_NOT_QUERIED,
             explanations=base.explanations
             + ("Waiting for the continuous trading session",),
+        )
+
+    def _mapping_unavailable_result(self, header, member, now, phase, data_cutoff):
+        """Keep the historical candidate; state plainly that no live feed exists.
+
+        The frozen historical rank and its EODHD Daily evidence are untouched —
+        only the LIVE dimension is reported as unavailable, and the reason is the
+        missing verified Rubix mapping rather than a collector fault.
+        """
+
+        base = _base_result(header, member, now, phase, data_cutoff, self.config)
+        return _replace_result(
+            base,
+            live_state=RUBIX_MAPPING_UNAVAILABLE,
+            readiness_score=None,
+            data_quality_status=DATA_NOT_QUERIED,
+            explanations=base.explanations
+            + (
+                "Historical EODHD Daily data is available for this candidate, but "
+                "it has no verified Rubix mapping, so no live quote is subscribed. "
+                "This is not a collector failure.",
+            ),
+            hard_gates=(
+                HardGateResult(
+                    "rubix_mapping", False,
+                    "no verified CASE~TICKER mapping; nothing is suffix-guessed",
+                ),
+            ),
         )
 
     def _unavailable_result(self, header, member, now, phase, detail):
@@ -1416,6 +1462,19 @@ def _as_date(value):
 
 def _symbol(value):
     return str(value).strip().upper().split(".")[0]
+
+
+def _has_rubix_mapping(value) -> bool:
+    """True only when the universe holds a VERIFIED explicit Rubix mapping.
+
+    A symbol absent from the universe is treated as unmapped rather than
+    optimistically subscribed — nothing is ever derived by suffix substitution.
+    """
+
+    from core.universe import lookup
+
+    record = lookup(value)
+    return bool(record and record.has_verified_rubix_mapping)
 
 
 def _elapsed_ms(started):

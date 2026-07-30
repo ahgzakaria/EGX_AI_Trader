@@ -22,11 +22,13 @@ from scalping_expected_range.live_readiness import (
     POST_CLOSE,
     PRE_OPEN,
     PRE_OPEN_WAIT,
+    RUBIX_MAPPING_UNAVAILABLE,
     SESSION_CLOSED,
     SPREAD_TOO_WIDE,
     LiveReadinessConfig,
     RubixBatchSnapshot,
     RubixLiveBatchReader,
+    _has_rubix_mapping,
     live_session_phase,
 )
 from scalping_uptrend_pullback.config import UptrendPullbackSelectionConfig
@@ -127,6 +129,10 @@ class UptrendLiveReadinessEngine:
             )
         )
         symbols = tuple(member["symbol"] for member in displayed)
+        # Only symbols with a VERIFIED Rubix mapping are queried; the reader
+        # matches ticker equality exactly, so an unmapped symbol can never
+        # inherit another symbol's quote.
+        mapped_symbols = tuple(s for s in symbols if _has_rubix_mapping(s))
         if phase == PRE_OPEN:
             results = tuple(
                 self._phase_result(
@@ -169,7 +175,7 @@ class UptrendLiveReadinessEngine:
                 symbols,
             )
         snapshot = live_snapshot or self.reader.load(
-            symbols,
+            mapped_symbols,
             target_session_date=target,
             evaluated_at=now,
         )
@@ -224,6 +230,24 @@ class UptrendLiveReadinessEngine:
                 phase,
                 SESSION_CLOSED,
                 snapshot=snapshot,
+                rubix_data_cutoff=batch.data_cutoff,
+            )
+        if not _has_rubix_mapping(member["symbol"]):
+            # A genuine historical candidate whose live dimension cannot exist.
+            # Reported distinctly so it is never read as a collector failure.
+            return self._result(
+                header,
+                member,
+                now,
+                phase,
+                RUBIX_MAPPING_UNAVAILABLE,
+                snapshot=None,
+                data_quality_status="NOT_QUERIED_NO_RUBIX_MAPPING",
+                explanation=(
+                    "Historical EODHD Daily data is available for this candidate, "
+                    "but it has no verified Rubix mapping, so no live quote is "
+                    "subscribed. This is not a collector failure."
+                ),
                 rubix_data_cutoff=batch.data_cutoff,
             )
         if batch.error_code or snapshot is None or snapshot.quote is None:

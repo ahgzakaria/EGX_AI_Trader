@@ -30,7 +30,11 @@ def test_complete_symbol_mapping_and_deterministic_batching(tmp_path):
     assert to_rubix_subscription_symbol("COMI.CA") == "CASE~COMI"
     assert plan.subscriptions == ("CASE~COMI", "CASE~SWDY", "CASE~FWRY")
     assert plan.batches == (("CASE~COMI", "CASE~SWDY"), ("CASE~FWRY",))
-    assert plan.invalid == ({"symbol": "BAD SYMBOL", "reason": "expected uppercase .CA ticker"},)
+    # Keys come from the universe record, never from suffix substitution, so an
+    # unknown ticker is rejected against the authoritative list.
+    assert plan.invalid == (
+        {"symbol": "BAD SYMBOL", "reason": "not in the authoritative universe"},
+    )
 
 
 def test_optional_active_flag_filters_collector_only(tmp_path):
