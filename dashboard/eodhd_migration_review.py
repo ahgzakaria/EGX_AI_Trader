@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from dashboard.ui import badge_html, page_header, section_header
+from core.universe import read_symbol_frame
 
 REP = Path("reports/eodhd")
 REVIEW = Path("data/eodhd/historical_symbol_routing_review.json")
@@ -28,7 +29,7 @@ def _json(path):
 
 def _csv(name):
     try:
-        return pd.read_csv(REP / name)
+        return read_symbol_frame(REP / name)
     except Exception:
         return pd.DataFrame()
 

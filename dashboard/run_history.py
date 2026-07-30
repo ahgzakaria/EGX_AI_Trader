@@ -12,6 +12,7 @@ from services.run_status import (
     status_label,
 )
 from dashboard.ui import empty_state, page_header, section_header
+from core.universe import read_symbol_frame
 
 
 def _history_frame(runs):
@@ -160,9 +161,11 @@ def _show_run(run_id, metadata):
     path = directory / Path(selected_artifact).name
     if path.suffix.lower() == ".csv":
         try:
-            st.dataframe(pd.read_csv(path), use_container_width=True, hide_index=True)
+            frame = read_symbol_frame(path)
         except pd.errors.EmptyDataError:
             st.info("This artifact is empty.")
+        else:
+            st.dataframe(frame, use_container_width=True, hide_index=True)
     elif path.suffix.lower() in {".md", ".json", ".txt"}:
         st.code(path.read_text(encoding="utf-8-sig"), language=None)
     else:

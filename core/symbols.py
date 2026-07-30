@@ -13,6 +13,7 @@ import pandas as pd
 
 from core.universe import (
     UNIVERSE_SOURCE,
+    read_symbol_frame,
     UniverseUnavailable,
     active_universe,
     canonical,
@@ -112,7 +113,7 @@ def load_symbols(source=SYMBOL_SOURCE):
     _reject_retired_source(source)
     if isinstance(source, (str, Path)):
         try:
-            frame = pd.read_csv(source)
+            frame = read_symbol_frame(source)
         except (OSError, pd.errors.ParserError) as error:
             raise ValueError(f"Unable to read symbols source: {error}") from error
 
@@ -164,7 +165,7 @@ def load_approved_symbol_options(source=SYMBOL_SOURCE):
     metadata = {}
     if isinstance(source, (str, Path)):
         try:
-            frame = pd.read_csv(source)
+            frame = read_symbol_frame(source)
         except (OSError, pd.errors.ParserError) as error:
             raise ValueError(f"Unable to read symbols source: {error}") from error
         for row in frame.to_dict("records"):
@@ -285,7 +286,7 @@ def load_active_symbols(source=SYMBOL_SOURCE):
     if not isinstance(source, (str, Path)):
         return load_symbols(source)
     try:
-        frame = pd.read_csv(source)
+        frame = read_symbol_frame(source)
     except (OSError, pd.errors.ParserError) as error:
         raise ValueError(f"Unable to read symbols source: {error}") from error
     universe_values = _universe_frame_tickers(frame)

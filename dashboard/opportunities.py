@@ -46,6 +46,7 @@ from dashboard.ui import (
     section_header,
     status_bar,
 )
+from core.universe import read_symbol_frame
 
 _TONE_HEX = {"green": "#34d399", "amber": "#fbbf24", "red": "#f87171",
              "gray": "#94a3b8", "blue": "#60a5fa"}
@@ -710,6 +711,6 @@ def _short_ts(value):
 
 def _safe_csv(path):
     try:
-        return pd.read_csv(path)
+        return read_symbol_frame(path)
     except Exception:
         return pd.DataFrame()

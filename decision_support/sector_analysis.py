@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 import pandas as pd
+from core.universe import read_symbol_frame
 
 
 def load_sector_map(path):
     source = Path(path)
     if not source.is_file():
         return {}
-    frame = pd.read_csv(source)
+    frame = read_symbol_frame(source)
     symbol_column = next((name for name in ("Ticker", "Symbol", "ticker", "symbol") if name in frame), None)
     sector_column = next((name for name in ("Sector", "sector") if name in frame), None)
     if not symbol_column or not sector_column:

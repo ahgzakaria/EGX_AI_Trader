@@ -19,6 +19,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
+from core.universe import read_symbol_frame
 
 CURRENT_RESEARCH_V2 = "CURRENT_RESEARCH_V2"
 LEGACY_BACKTEST_V1 = "LEGACY_BACKTEST_V1"
@@ -87,7 +88,7 @@ def unresolved_action_date(symbol):
         return None
     if _RECON_CACHE["mtime"] != mtime:
         try:
-            df = pd.read_csv(RECON_PATH)
+            df = read_symbol_frame(RECON_PATH)
             m = {}
             for _, r in df.iterrows():
                 if str(r.get("classified_action")) != "SPLIT":      # unresolved convention

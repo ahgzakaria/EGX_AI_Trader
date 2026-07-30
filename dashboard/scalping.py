@@ -77,6 +77,7 @@ from scalping_expected_range.live_readiness import (
 from scalping_uptrend_pullback.live_readiness import (
     UptrendLiveReadinessEngine,
 )
+from core.universe import read_symbol_frame
 
 
 SCALPING_TABS = (
@@ -1576,7 +1577,7 @@ def _dash_blockers(rows, phase):
 
 def _read_csv(path):
     try:
-        return pd.read_csv(path)
+        return read_symbol_frame(path)
     except Exception:
         return pd.DataFrame()
 

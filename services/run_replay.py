@@ -27,6 +27,7 @@ from services.backtest_service import (
     _walk_forward_context,
 )
 from strategy.trading_decision import TradingDecisionService
+from core.universe import read_symbol_frame
 
 
 def _read_json(path: Path) -> dict:
@@ -40,12 +41,12 @@ def _symbols_from_archive(run_dir: Path, frames: dict[str, pd.DataFrame]) -> lis
     path = run_dir / "dataset" / "symbols_used.csv"
     if not path.is_file():
         raise FileNotFoundError("Archived symbols_used.csv is required for replay")
-    symbols = pd.read_csv(path).get("Symbol", pd.Series(dtype=str)).dropna().astype(str).tolist()
+    symbols = read_symbol_frame(path).get("Symbol", pd.Series(dtype=str)).dropna().astype(str).tolist()
     failure_path = run_dir / "dataset" / "failed_symbols.csv"
     declared_failures = set()
     if failure_path.is_file():
         try:
-            failures = pd.read_csv(failure_path)
+            failures = read_symbol_frame(failure_path)
             column = "Symbol" if "Symbol" in failures else "symbol" if "symbol" in failures else None
             if column:
                 declared_failures = set(failures[column].dropna().astype(str))
@@ -81,7 +82,7 @@ def _validate_prediction_snapshot(source_dir: Path, validation) -> dict:
         return {"required": False, "match": None, "reason": "strategy-only run"}
     source = source_dir / "dataset" / info["path"]
     with gzip.open(source, "rt", encoding="utf-8") as handle:
-        archived = pd.read_csv(handle, index_col=0)
+        archived = read_symbol_frame(handle, index_col=0)
     regenerated = validation.predictions.copy()
     # CSV round-tripping can alter dtype labels, so compare canonical string
     # values and shape rather than model objects or in-memory dtype metadata.

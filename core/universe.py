@@ -107,14 +107,56 @@ class UniverseSymbol:
         return bool(self.rubix_symbol) and self.rubix_mapping_status == RUBIX_VERIFIED
 
 
+#: EGX contains a LEGITIMATE ticker literally spelled ``NULL`` (Fitness Prime).
+#: pandas' default NA tokens include "NULL", "NA", "N/A", "NaN" and "None", so a
+#: plain ``pd.read_csv`` silently turns that real ticker into NaN — and any
+#: ``dropna()`` downstream then deletes the row outright. Every reader of a
+#: symbol-bearing file must therefore go through :func:`read_symbol_frame`.
+NA_SAFE_READ_OPTIONS = {"keep_default_na": False, "na_values": [""]}
+
+
+def read_symbol_frame(path_or_buffer, **kwargs):
+    """``pd.read_csv`` that never mistakes a real ticker for a missing value.
+
+    Only a genuinely EMPTY cell counts as missing, so numeric columns still
+    parse normally while ``NULL``, ``NA`` and ``NaN`` survive as literal tickers.
+    """
+
+    import pandas as pd
+
+    options = dict(NA_SAFE_READ_OPTIONS)
+    options.update(kwargs)
+    return pd.read_csv(path_or_buffer, **options)
+
+
+def _is_missing(value) -> bool:
+    """True only for a genuinely absent value (None, float NaN, pandas NA).
+
+    Deliberately identity/type based: the STRINGS ``"NULL"``, ``"NA"`` and
+    ``"NAN"`` are legitimate tickers and must never be treated as missing.
+    """
+
+    if value is None:
+        return True
+    if isinstance(value, float) and value != value:          # float NaN
+        return True
+    return value.__class__.__name__ in {"NAType", "NaTType"}  # pandas NA / NaT
+
+
 def canonical(symbol) -> str:
     """Normalize any accepted spelling to the canonical ticker.
 
     Accepts ``GRCA``, ``GRCA.EGX``, the legacy ``GRCA.CA`` alias and the Rubix
     ``CASE~GRCA`` subscription key.
+
+    A real float NaN is MISSING and yields ``""`` — it must never be stringified
+    into a bogus ``NAN`` ticker. The literal strings ``NULL`` and ``NA`` are the
+    opposite case: they are legitimate EGX tickers and are preserved verbatim.
     """
 
-    text = str(symbol or "").strip().upper()
+    if _is_missing(symbol):
+        return ""
+    text = str(symbol).strip().upper()
     if not text:
         return ""
     if "~" in text:
