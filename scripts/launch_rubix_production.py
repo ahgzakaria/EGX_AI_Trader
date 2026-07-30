@@ -51,6 +51,9 @@ from services.rubix_auth_assistant import (  # noqa: E402 - project root above
     AUTH_INVALID,
     AUTH_MISSING,
     AUTH_VALID,
+    PreflightItem,
+    auth_preflight_items,
+    format_auth_diagnostics,
     inspect_auth_frame,
     run_preflight,
     validate_auth_frame_or_raise,
@@ -807,6 +810,7 @@ class RubixAuthenticationAssistantUI(LauncherUI):
         self._status_checked_at = {}
         self._last_health_check = 0.0
         self._last_health_result = 0.0
+        self._auth_selection_revision = 0
         self._full_ui_ready = False
         self._ui_events = queue.Queue()
         self.jobs = AsyncJobRunner(self._ui_events)
@@ -1055,14 +1059,33 @@ class RubixAuthenticationAssistantUI(LauncherUI):
             filetypes=(("Text or JSON files", "*.txt *.json"), ("All files", "*.*")),
         )
         if selected:
+            self._auth_selection_revision = (
+                getattr(self, "_auth_selection_revision", 0) + 1
+            )
+            revision = self._auth_selection_revision
             self.auth_var.set(selected)
             self.settings["last_auth_folder"] = str(Path(selected).parent)
             self.auth_status_var.set("CHECKING")
             self.auth_message_var.set(
                 "Checking the selected file in the background…"
             )
+            self._replace_auth_preflight_rows((
+                PreflightItem(
+                    "Authentication File",
+                    True,
+                    "Checking the newly selected file.",
+                    "CHECKING",
+                ),
+                PreflightItem(
+                    "File Age",
+                    True,
+                    "Checking filesystem last-write time independently.",
+                    "CHECKING",
+                ),
+            ))
             self.jobs.submit(
-                "auth_inspection", lambda: inspect_auth_frame(selected)
+                f"auth_inspection:{revision}",
+                lambda: inspect_auth_frame(selected),
             )
             self._save_preferences()
 
@@ -1094,6 +1117,29 @@ class RubixAuthenticationAssistantUI(LauncherUI):
         background, foreground = colors.get(inspection.status, colors[AUTH_MISSING])
         self.auth_badge.configure(background=background, foreground=foreground)
         self.status_values["rubix_auth"].set(inspection.status)
+        self._replace_auth_preflight_rows(auth_preflight_items(inspection))
+        diagnostics = format_auth_diagnostics(inspection)
+        log_event("auth_validation", diagnostics)
+        if hasattr(self, "log"):
+            self.log.insert("end", f"Authentication diagnostics: {diagnostics}\n")
+
+    def _replace_auth_preflight_rows(self, items):
+        """Replace only the two auth rows, leaving unrelated Self Check rows intact."""
+
+        if not hasattr(self, "preflight"):
+            return
+        names = {"Authentication File", "File Age"}
+        for row in self.preflight.get_children():
+            values = self.preflight.item(row, "values")
+            if len(values) >= 2 and values[1] in names:
+                self.preflight.delete(row)
+        for item in items:
+            state = item.display_status or ("PASS" if item.ok else "FAIL")
+            self.preflight.insert(
+                "",
+                "end",
+                values=(state, item.name, item.message),
+            )
 
     def _startup_inputs(self):
         """Capture Tk values once; workers must never read Tk variables."""
@@ -1102,6 +1148,7 @@ class RubixAuthenticationAssistantUI(LauncherUI):
             "adapter": self.adapter_var.get(),
             "database": self.db_var.get(),
             "auth": self.auth_var.get(),
+            "auth_revision": getattr(self, "_auth_selection_revision", 0),
             "port_text": self.port_var.get(),
             "port": self._port(),
         }
@@ -1128,7 +1175,11 @@ class RubixAuthenticationAssistantUI(LauncherUI):
             self.preflight.insert(
                 "",
                 "end",
-                values=("PASS" if item.ok else "FAIL", item.name, item.message),
+                values=(
+                    item.display_status or ("PASS" if item.ok else "FAIL"),
+                    item.name,
+                    item.message,
+                ),
             )
         failed = [item.name for item in results if not item.ok]
         self.status_var.set(
@@ -1158,7 +1209,7 @@ class RubixAuthenticationAssistantUI(LauncherUI):
         return started
 
     def _self_check_worker(self, inputs):
-        return self.timeline.measure(
+        results = self.timeline.measure(
             "self_check",
             lambda: run_preflight(
                 PROJECT_ROOT,
@@ -1174,6 +1225,10 @@ class RubixAuthenticationAssistantUI(LauncherUI):
                 str(inputs["database"]),
             ),
         )
+        return {
+            "auth_revision": inputs["auth_revision"],
+            "results": results,
+        }
 
     def start(self):
         """Begin the whole Rubix/Streamlit sequence in one cancellable worker."""
@@ -1904,7 +1959,23 @@ class RubixAuthenticationAssistantUI(LauncherUI):
     def _handle_worker_result(self, event):
         payload = event.payload
         if event.job == "self_check":
-            failed = self._apply_preflight(payload)
+            if isinstance(payload, dict) and "results" in payload:
+                auth_revision = payload.get("auth_revision", -1)
+                results = payload["results"]
+            else:  # Backward-compatible with already queued pre-upgrade events.
+                auth_revision = self._auth_selection_revision
+                results = payload
+            if auth_revision != self._auth_selection_revision:
+                log_event(
+                    "auth_validation",
+                    "Discarded a Self Check result for a superseded file selection.",
+                )
+                self.status_var.set(
+                    "Authentication file changed during Self Check; the new file "
+                    "was validated separately. Run Self Check again for all rows."
+                )
+                return
+            failed = self._apply_preflight(results)
             self._set_state(
                 StartupState.DEGRADED if failed else StartupState.PREFLIGHT_READY
             )
@@ -1949,8 +2020,18 @@ class RubixAuthenticationAssistantUI(LauncherUI):
             )
         elif event.job == "status_refresh":
             self._apply_status_refresh(payload)
-        elif event.job == "auth_inspection":
-            self._apply_auth_inspection(payload)
+        elif event.job.startswith("auth_inspection:"):
+            try:
+                revision = int(event.job.partition(":")[2])
+            except ValueError:
+                revision = -1
+            if revision == self._auth_selection_revision:
+                self._apply_auth_inspection(payload)
+            else:
+                log_event(
+                    "auth_validation",
+                    "Discarded a superseded authentication-file result.",
+                )
         elif event.job == "rubix_health":
             self._last_health_result = time.monotonic()
             self._status_checked_at["rubix"] = self._last_health_result
@@ -1966,6 +2047,36 @@ class RubixAuthenticationAssistantUI(LauncherUI):
 
     def _handle_worker_error(self, event):
         payload = event.payload or {}
+        if event.job.startswith("auth_inspection:"):
+            try:
+                revision = int(event.job.partition(":")[2])
+            except ValueError:
+                revision = -1
+            log_event(
+                "auth_validation_failed",
+                "Authentication-file validation failed without logging exception data.",
+                level=logging.ERROR,
+            )
+            if revision == self._auth_selection_revision:
+                self.auth_status_var.set(AUTH_INVALID)
+                self.auth_message_var.set(
+                    "The selected authentication file could not be validated."
+                )
+                self._replace_auth_preflight_rows((
+                    PreflightItem(
+                        "Authentication File",
+                        False,
+                        "The selected authentication file could not be validated.",
+                        "FAIL",
+                    ),
+                    PreflightItem(
+                        "File Age",
+                        True,
+                        "Filesystem age was not available.",
+                        "SKIPPED",
+                    ),
+                ))
+            return
         reason = f"{payload.get('type', 'Error')}: {payload.get('message', 'operation failed')}"
         log_event(
             f"{event.job}_failed", reason, level=logging.ERROR

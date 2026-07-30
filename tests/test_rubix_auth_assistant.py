@@ -5,17 +5,24 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
 from services.rubix_auth_assistant import (
     AUTH_EXPIRED,
     AUTH_INVALID,
     AUTH_MISSING,
     AUTH_VALID,
+    FUTURE_CLOCK_SKEW_SECONDS,
+    auth_preflight_items,
+    format_auth_diagnostics,
     inspect_auth_frame,
     load_launcher_preferences,
     run_preflight,
+    safe_auth_diagnostics,
     safe_inspection_dict,
     save_launcher_preferences,
 )
+from services.launcher_startup import WorkerEvent
 from scripts.launch_rubix_production import RubixAuthenticationAssistantUI
 
 
@@ -36,7 +43,100 @@ def test_missing_and_expired_files_have_explicit_states(tmp_path):
     old = _frame(tmp_path, {"MT": -1, "TKN": "synthetic"}, age_minutes=16)
     result = inspect_auth_frame(old, now=NOW)
     assert result.status == AUTH_EXPIRED
-    assert "expired" in result.message.lower()
+    assert "960.0 seconds" in result.message
+
+
+@pytest.mark.parametrize(
+    ("age_minutes", "expected_status", "expected_age_valid"),
+    (
+        (0, AUTH_VALID, True),
+        (14, AUTH_VALID, True),
+        (15, AUTH_VALID, True),
+        (16, AUTH_EXPIRED, False),
+    ),
+)
+def test_filesystem_age_boundaries_are_independent_and_exact(
+    tmp_path, age_minutes, expected_status, expected_age_valid
+):
+    path = _frame(
+        tmp_path,
+        {"MT": -1, "TKN": "synthetic"},
+        name=f"age-{age_minutes}.json",
+        age_minutes=age_minutes,
+    )
+    result = inspect_auth_frame(path, now=NOW)
+    assert result.status == expected_status
+    assert result.structure_valid is True
+    assert result.file_age_valid is expected_age_valid
+    assert result.file_age_seconds == pytest.approx(age_minutes * 60, abs=0.01)
+    auth_item, age_item = auth_preflight_items(result)
+    assert auth_item.display_status == "PASS"
+    assert age_item.display_status == ("PASS" if expected_age_valid else "FAIL")
+    assert f"{age_minutes * 60:.1f} seconds" in age_item.message
+
+
+def test_cairo_utc_plus_three_uses_aware_utc_for_file_age(tmp_path):
+    cairo = timezone(timedelta(hours=3))
+    cairo_now = NOW.astimezone(cairo)
+    path = _frame(tmp_path, {"MT": -1, "TKN": "synthetic"})
+    result = inspect_auth_frame(path, now=cairo_now)
+    assert result.current_utc == NOW.isoformat()
+    assert result.current_local == cairo_now.isoformat()
+    assert result.local_utc_offset == "+03:00"
+    assert result.file_mtime_utc == NOW.isoformat()
+    assert result.file_age_seconds == pytest.approx(0.0, abs=0.01)
+    assert result.status == AUTH_VALID
+
+
+def test_future_filesystem_timestamp_within_clock_skew_is_valid(tmp_path):
+    path = _frame(
+        tmp_path,
+        {"MT": -1, "TKN": "synthetic"},
+        age_minutes=-(FUTURE_CLOCK_SKEW_SECONDS / 60),
+    )
+    result = inspect_auth_frame(path, now=NOW)
+    assert result.file_age_seconds == pytest.approx(
+        -FUTURE_CLOCK_SKEW_SECONDS, abs=0.01
+    )
+    assert result.file_age_valid is True
+    assert result.status == AUTH_VALID
+
+
+@pytest.mark.parametrize(
+    "timestamp",
+    (
+        int(NOW.timestamp()),
+        int(NOW.timestamp() * 1000),
+    ),
+)
+def test_embedded_unix_timestamp_seconds_and_milliseconds_are_diagnostic_only(
+    tmp_path, timestamp
+):
+    path = _frame(
+        tmp_path,
+        {"MT": -1, "TKN": "synthetic", "timestamp": timestamp},
+        name=f"timestamp-{timestamp}.json",
+    )
+    result = inspect_auth_frame(path, now=NOW)
+    assert result.status == AUTH_VALID
+    assert result.embedded_timestamp_found is True
+    assert result.embedded_timestamp_utc == NOW.isoformat()
+    assert result.embedded_age_seconds == pytest.approx(0.0, abs=0.01)
+    assert auth_preflight_items(result)[1].name == "File Age"
+
+
+def test_invalid_structure_with_fresh_mtime_does_not_false_fail_file_age(tmp_path):
+    result = inspect_auth_frame(
+        _frame(tmp_path, {"MT": 0}, name="fresh-invalid.json"),
+        now=NOW,
+    )
+    assert result.status == AUTH_INVALID
+    assert result.structure_valid is False
+    assert result.file_age_valid is True
+    auth_item, age_item = auth_preflight_items(result)
+    assert auth_item.display_status == "FAIL"
+    assert age_item.display_status == "PASS"
+    assert "0.0 seconds" in age_item.message
 
 
 def test_invalid_json_heartbeat_metadata_and_subscription_are_rejected(tmp_path):
@@ -61,6 +161,65 @@ def test_valid_auth_frame_returns_safe_metadata_only(tmp_path):
     assert secret not in safe
     assert "payload" not in safe.lower()
     assert "content" not in safe.lower()
+
+
+def test_safe_diagnostics_and_launcher_log_text_never_expose_payload_secrets(tmp_path):
+    secret = "synthetic-diagnostic-secret-never-log"
+    path = _frame(
+        tmp_path,
+        {"MT": -1, "TKN": secret, "timestamp": int(NOW.timestamp())},
+        name="safe-diagnostic-path.json",
+    )
+    result = inspect_auth_frame(path, now=NOW)
+    diagnostics = safe_auth_diagnostics(result)
+    rendered = format_auth_diagnostics(result)
+    assert set(diagnostics) == {
+        "current_utc",
+        "current_local",
+        "local_utc_offset",
+        "selected_file_path",
+        "filesystem_last_write_utc",
+        "filesystem_age_seconds",
+        "embedded_timestamp_found",
+        "embedded_timestamp_utc",
+        "embedded_age_seconds",
+        "validation_decision",
+        "validation_reason",
+    }
+    assert secret not in rendered
+    assert "TKN" not in rendered
+    assert "payload" not in rendered.lower()
+    assert "cookie" not in rendered.lower()
+    assert "authorization" not in rendered.lower()
+
+
+def test_new_file_selection_ignores_older_file_result(monkeypatch, tmp_path):
+    old = inspect_auth_frame(
+        _frame(tmp_path, {"MT": -1, "TKN": "synthetic"}, age_minutes=16),
+        now=NOW,
+    )
+    new = inspect_auth_frame(
+        _frame(
+            tmp_path,
+            {"MT": -1, "TKN": "synthetic"},
+            name="new-auth.json",
+        ),
+        now=NOW,
+    )
+    ui = RubixAuthenticationAssistantUI.__new__(RubixAuthenticationAssistantUI)
+    ui._auth_selection_revision = 2
+    applied = []
+    ui._apply_auth_inspection = applied.append
+    monkeypatch.setattr(
+        "scripts.launch_rubix_production.log_event",
+        lambda *_args, **_kwargs: None,
+    )
+
+    ui._handle_worker_result(WorkerEvent("result", "auth_inspection:1", old))
+    assert applied == []
+    ui._handle_worker_result(WorkerEvent("result", "auth_inspection:2", new))
+    assert applied == [new]
+    assert applied[0].status == AUTH_VALID
 
 
 def test_documented_delimiter_based_price_auth_frame_is_valid(tmp_path):
@@ -135,9 +294,11 @@ def test_preflight_fails_cleanly_without_auth_or_collector(tmp_path):
         tmp_path, tmp_path / "missing-adapter", tmp_path / "missing" / "rubix.db",
         "", "bad-port", module_available=lambda _name: False,
     )
-    states = {item.name: item.ok for item in results}
+    items = {item.name: item for item in results}
+    states = {name: item.ok for name, item in items.items()}
     assert states["Authentication File"] is False
-    assert states["File Age"] is False
+    assert states["File Age"] is True
+    assert items["File Age"].display_status == "SKIPPED"
     assert states["Collector"] is False
     assert states["Launcher Configuration"] is False
     assert states["Streamlit"] is False
