@@ -1,0 +1,2177 @@
+{
+  "endpoint": "exchange-symbol-list/EGX",
+  "delisted": false,
+  "retrieved_at_utc": "2026-07-30T20:39:42.471332+00:00",
+  "count": 241,
+  "rows": [
+    {
+      "Code": "AALR",
+      "Name": "General Company For Land Reclamation,Development & Reconstru",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS01081C016"
+    },
+    {
+      "Code": "ABUK",
+      "Name": "Abou Kir Fertilizers",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS38191C010"
+    },
+    {
+      "Code": "ACAMD",
+      "Name": "Arab Co. for Asset Management And Development",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS72AQ1C016"
+    },
+    {
+      "Code": "ACAP",
+      "Name": "A Capital Holding",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS697S1C015"
+    },
+    {
+      "Code": "ACGC",
+      "Name": "Arab Cotton Ginning",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS32221C011"
+    },
+    {
+      "Code": "ACTF",
+      "Name": "Act Financial",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS7D5P1C019"
+    },
+    {
+      "Code": "ADCI",
+      "Name": "Arab Pharmaceuticals",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS38321C013"
+    },
+    {
+      "Code": "ADIB",
+      "Name": "Abu Dhabi Islamic Bank- Egypt",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS60111C019"
+    },
+    {
+      "Code": "ADPC",
+      "Name": "The Arab Dairy Products Co. Arab Dairy - Panda",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS30221C013"
+    },
+    {
+      "Code": "AFDI",
+      "Name": "El Ahli Investment and Development",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS69021C011"
+    },
+    {
+      "Code": "AFMC",
+      "Name": "Alexandria Flour Mills",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS30471C014"
+    },
+    {
+      "Code": "AGIG",
+      "Name": "Arab Moltaka Investments Co",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS67221C019"
+    },
+    {
+      "Code": "AIDC",
+      "Name": "Arabia for Investment and Development",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS65R01C015"
+    },
+    {
+      "Code": "AIND",
+      "Name": "Arabia Investments Holding",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS21351C019"
+    },
+    {
+      "Code": "AJWA",
+      "Name": "AJWA for Food Industries company Egypt",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS30211C014"
+    },
+    {
+      "Code": "ALCN",
+      "Name": "Alexandria Containers and goods",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS42111C012"
+    },
+    {
+      "Code": "ALRA",
+      "Name": "Atlas For Investment and Food Industries",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS071L1C018"
+    },
+    {
+      "Code": "ALUM",
+      "Name": "Arab Aluminum",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3D031C018"
+    },
+    {
+      "Code": "AMER",
+      "Name": "Amer Group Holding",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS675S1C011"
+    },
+    {
+      "Code": "AMES",
+      "Name": "Alexandria New Medical Center",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS72081C010"
+    },
+    {
+      "Code": "AMIA",
+      "Name": "Arab Moltaka Investments Co.",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": null
+    },
+    {
+      "Code": "AMII",
+      "Name": "Arabian Metal Industries And Industrial Investments",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3E1E1C013"
+    },
+    {
+      "Code": "AMOC",
+      "Name": "Alexandria Mineral Oils Company",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS380P1C010"
+    },
+    {
+      "Code": "APSW",
+      "Name": "ARAB POLVARA SPINNING & WEAVING CO.",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS32331C018"
+    },
+    {
+      "Code": "ARAB",
+      "Name": "Arab Developers Holding",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS694A1C018"
+    },
+    {
+      "Code": "ARCC",
+      "Name": "Arabian Cement Company",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3C0O1C016"
+    },
+    {
+      "Code": "AREH",
+      "Name": "Egyptian Real Estate Group",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS65211C012"
+    },
+    {
+      "Code": "ARVA",
+      "Name": "Arab Valves Company",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3E1E1C013"
+    },
+    {
+      "Code": "ASCM",
+      "Name": "ASEC Company for Mining - ASCOM",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS10001C013"
+    },
+    {
+      "Code": "ASPI",
+      "Name": "Aspire Capital Holding For Financial Investments",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS691L1C018"
+    },
+    {
+      "Code": "ATLC",
+      "Name": "Al Tawfeek Leasing Company-A.T.LEASE",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS676N1C015"
+    },
+    {
+      "Code": "ATQA",
+      "Name": "Misr National Steel - Ataqa",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3D0C1C018"
+    },
+    {
+      "Code": "AUTO",
+      "Name": "GB Corp",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS673T1C012"
+    },
+    {
+      "Code": "AXPH",
+      "Name": "Alexandria Pharmaceuticals",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS38341C011"
+    },
+    {
+      "Code": "BINV",
+      "Name": "B Investments Holding",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS691T1C010"
+    },
+    {
+      "Code": "BIOC",
+      "Name": "Glaxo Smith Kline",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS38171C012"
+    },
+    {
+      "Code": "BONY",
+      "Name": "Bonyan for Development and Trade",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS656M1C010"
+    },
+    {
+      "Code": "BTFH",
+      "Name": "Beltone Holding",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS691G1C015"
+    },
+    {
+      "Code": "CAED",
+      "Name": "Cairo Educational Services",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS72201C014"
+    },
+    {
+      "Code": "CANA",
+      "Name": "Suez Canal Bank S.A.E",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS60231C015"
+    },
+    {
+      "Code": "CCAP",
+      "Name": "QALA For Financial Investments",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS73541C012"
+    },
+    {
+      "Code": "CCRS",
+      "Name": "Gulf Canadian Real Estate Investment Co.",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS651B1C018"
+    },
+    {
+      "Code": "CEFM",
+      "Name": "Middle Egypt Flour Mills",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS30401C011"
+    },
+    {
+      "Code": "CERA",
+      "Name": "The Arab Ceramic CO.- Ceramica Remas",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3C151C015"
+    },
+    {
+      "Code": "CFGH",
+      "Name": "Concrete Fashion Group For Commercial& Industrial Investment",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS672I2C014"
+    },
+    {
+      "Code": "CICH",
+      "Name": "CI Capital Holding For Financial Investments",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS691D1C018"
+    },
+    {
+      "Code": "CIEB",
+      "Name": "Credit Agricole Egypt",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS60041C018"
+    },
+    {
+      "Code": "CIRA",
+      "Name": "Cairo for Investment and Real Estate Development SAE",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": null
+    },
+    {
+      "Code": "CLHO",
+      "Name": "Cleopatra Hospital Company",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS729J1C018"
+    },
+    {
+      "Code": "CNFN",
+      "Name": "Contact Financial Holding",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS738I1C018"
+    },
+    {
+      "Code": "COMI",
+      "Name": "Commercial International Bank-Egypt (CIB)",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS60121C018"
+    },
+    {
+      "Code": "COPR",
+      "Name": "Copper For Commercial Investment & Real Estate Development",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS65511C015"
+    },
+    {
+      "Code": "COSG",
+      "Name": "Cairo Oils & Soap",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS30581C010"
+    },
+    {
+      "Code": "CPCI",
+      "Name": "Cairo Pharmaceuticals",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS38391C016"
+    },
+    {
+      "Code": "CPME",
+      "Name": "Catalyst Partners Middle East ",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS698X1C017"
+    },
+    {
+      "Code": "CRST",
+      "Name": "Creast Mark For Contracting And Real Estate Development",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS23141C012"
+    },
+    {
+      "Code": "CSAG",
+      "Name": "Canal Shipping Agencies",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS44031C010"
+    },
+    {
+      "Code": "DAPH",
+      "Name": "Development & Engineering Consultants",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS65081C019"
+    },
+    {
+      "Code": "DEIN",
+      "Name": "Delta Insurance",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS63031C016"
+    },
+    {
+      "Code": "DGTZ",
+      "Name": "Digitize for Investment And Technology",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS74F71C015"
+    },
+    {
+      "Code": "DOMT",
+      "Name": "Arabian Food Industries DOMTY",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS30031C016"
+    },
+    {
+      "Code": "DSCW",
+      "Name": "Dice Sport & Casual Wear",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS33321C018"
+    },
+    {
+      "Code": "DTPP",
+      "Name": "Delta For Printing & Packaging",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS370W1C013"
+    },
+    {
+      "Code": "EALR",
+      "Name": "El Arabia for Land Reclamation",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS65771C015"
+    },
+    {
+      "Code": "EASB",
+      "Name": "Egyptian Arabian(Themar)Comp. For Securities&Bonds Brok. EAC",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS681D1C010"
+    },
+    {
+      "Code": "EAST",
+      "Name": "Eastern Company",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS37091C013"
+    },
+    {
+      "Code": "EBSC",
+      "Name": "Osool ESB Securities Brokerage",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS68181C014"
+    },
+    {
+      "Code": "ECAP",
+      "Name": "El Ezz Porcelain (Gemma)",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3C071C015"
+    },
+    {
+      "Code": "EDBM",
+      "Name": "The Egyptian Company for Construction Development-Lift Slab",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS23141C012"
+    },
+    {
+      "Code": "EDFM",
+      "Name": "East Delta Flour Mills",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS30351C018"
+    },
+    {
+      "Code": "EEII",
+      "Name": "El Arabia Engineering Industries",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3G111C015"
+    },
+    {
+      "Code": "EFIC",
+      "Name": "Egyptian Financial & Industrial",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS38381C017"
+    },
+    {
+      "Code": "EFID",
+      "Name": "Edita Food Industries S.A.E",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS305I1C011"
+    },
+    {
+      "Code": "EFIH",
+      "Name": "E-finance For Digital and Financial Investments",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS743O1C013"
+    },
+    {
+      "Code": "EGAL",
+      "Name": "Egypt Aluminum",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3E181C010"
+    },
+    {
+      "Code": "EGAS",
+      "Name": "Natural Gas & Mining Project (Egypt Gas)",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS39011C019"
+    },
+    {
+      "Code": "EGBE",
+      "Name": "Egyptian Gulf Bank",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS60182C010"
+    },
+    {
+      "Code": "EGCH",
+      "Name": "Egyptian Chemical Industries (Kima)",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS38201C017"
+    },
+    {
+      "Code": "EGREF",
+      "Name": "Egyptians Real Estate Fund Certificates",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS694B1C017"
+    },
+    {
+      "Code": "EGSA",
+      "Name": "Egyptian Satellites (NileSat)",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS48022C015"
+    },
+    {
+      "Code": "EGTS",
+      "Name": "Egyptian for Tourism Resorts",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS70431C019"
+    },
+    {
+      "Code": "EHDR",
+      "Name": "Egyptians Housing Development & Reconstruction",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS65341C017"
+    },
+    {
+      "Code": "ELEC",
+      "Name": "Electro Cable Egypt",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3G231C011"
+    },
+    {
+      "Code": "ELKA",
+      "Name": "El Kahera Housing",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS65071C010"
+    },
+    {
+      "Code": "ELNA",
+      "Name": "El Nasr For Manufacturing Agricultural Crops",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS300L1C011"
+    },
+    {
+      "Code": "ELSH",
+      "Name": "El Shams Housing & Urbanization",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS65091C018"
+    },
+    {
+      "Code": "EMFD",
+      "Name": "Emaar Misr for Development",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS673Y1C015"
+    },
+    {
+      "Code": "ENGC",
+      "Name": "Engineering Industries (ICON)",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3F021C017"
+    },
+    {
+      "Code": "EOSB",
+      "Name": "El Orouba Securities Brokerage",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS681I1C015"
+    },
+    {
+      "Code": "EPCO",
+      "Name": "Egypt for Poultry",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS02211C018"
+    },
+    {
+      "Code": "EPPK",
+      "Name": "El Ahram Co. For Printing And Packing",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS360A1C011"
+    },
+    {
+      "Code": "ETEL",
+      "Name": "Telecom Egypt",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS48031C016"
+    },
+    {
+      "Code": "ETRS",
+      "Name": "Egyptian Transport & Commercial Services Co. -EGYTRANS NOSCO",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS42051C010"
+    },
+    {
+      "Code": "EXPA",
+      "Name": "Export Development Bank of Egypt",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS60241C014"
+    },
+    {
+      "Code": "FAIT",
+      "Name": "Faisal Islamic Bank of Egypt - In EGP",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS60321C014"
+    },
+    {
+      "Code": "FAITA",
+      "Name": "Faisal Islamic Bank of Egypt - In US Dollars",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS60322C012"
+    },
+    {
+      "Code": "FERC",
+      "Name": "FERCHEM MISR CO. FOR FERTILLIZERS & CHEMICALS",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS385S1C012"
+    },
+    {
+      "Code": "FTNS",
+      "Name": "Fitness Prime",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS774M1C017"
+    },
+    {
+      "Code": "FWRY",
+      "Name": "Fawry For Banking Technology And Electronic Payment",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS745L1C014"
+    },
+    {
+      "Code": "GBCO",
+      "Name": "GB Corp.",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": null
+    },
+    {
+      "Code": "GDWA",
+      "Name": "Gadwa For Industrial Development",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3JM11C012"
+    },
+    {
+      "Code": "GGCC",
+      "Name": "Giza General Contracting",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS21541C015"
+    },
+    {
+      "Code": "GGRN",
+      "Name": "Gogreen for Agricultural Investment",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS07DR1C012"
+    },
+    {
+      "Code": "GIHD",
+      "Name": "Gharbia Islamic Housing Development",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS65461C013"
+    },
+    {
+      "Code": "GMCI",
+      "Name": "GMC GROUP FOR INDUSTRIAL COMMERCIAL & FINANCIAL INVESTMENTS",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS46051C016"
+    },
+    {
+      "Code": "GOUR",
+      "Name": "Gourmet Egypt.Com Foods",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS540S1C014"
+    },
+    {
+      "Code": "GPIM",
+      "Name": "GPI For Urban Growth",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS213S1C010"
+    },
+    {
+      "Code": "GPPL",
+      "Name": "Golden Pyramids Plaza",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS70342C018"
+    },
+    {
+      "Code": "GRCA",
+      "Name": "Grand Investment Capital",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS69261C013"
+    },
+    {
+      "Code": "GSSC",
+      "Name": "General Silos & Storage",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS30441C017"
+    },
+    {
+      "Code": "GTEX",
+      "Name": "GTEX For Commercial And Industrial",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS59U92C011"
+    },
+    {
+      "Code": "GTWL",
+      "Name": "Golden Textiles & Clothes Wool",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS32161C019"
+    },
+    {
+      "Code": "HBCO",
+      "Name": "Heibco for commercial investments & real estate development",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS23OD1C015"
+    },
+    {
+      "Code": "HDBK",
+      "Name": "Housing & Development Bank",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS60301C016"
+    },
+    {
+      "Code": "HELI",
+      "Name": "Heliopolis Housing",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS65591C017"
+    },
+    {
+      "Code": "HRHO",
+      "Name": "EFG Holding",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS69101C011"
+    },
+    {
+      "Code": "ICFC",
+      "Name": "International Company For Fertilizers & Chemicals",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS520D1C015"
+    },
+    {
+      "Code": "ICID",
+      "Name": "International Co For Investment & Development",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS67191C014"
+    },
+    {
+      "Code": "ICLE",
+      "Name": "International Company For Leasing (IncoLEASE)",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS67001C015"
+    },
+    {
+      "Code": "IDRE",
+      "Name": "Ismailia Development and Real Estate Co",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS214Q1C011"
+    },
+    {
+      "Code": "IEEC",
+      "Name": "Industrial & Engineering Projects",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS22171C010"
+    },
+    {
+      "Code": "IFAP",
+      "Name": "International Agricultural Products",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS07061C012"
+    },
+    {
+      "Code": "INFI",
+      "Name": "Ismailia National Food Industries",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS01041C010"
+    },
+    {
+      "Code": "IRON",
+      "Name": "Egyptian Iron & Steel",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3D061C015"
+    },
+    {
+      "Code": "ISMA",
+      "Name": "Ismailia Misr Poultry",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS02021C011"
+    },
+    {
+      "Code": "ISMQ",
+      "Name": "Iron And Steel for Mines and Quarries",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS102S1C014"
+    },
+    {
+      "Code": "ISPH",
+      "Name": "Ibnsina Pharma",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS512O1C012"
+    },
+    {
+      "Code": "JUFO",
+      "Name": "Juhayna Food Industries",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS30901C010"
+    },
+    {
+      "Code": "KABO",
+      "Name": "El Nasr Clothes & Textiles (Kabo)",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS33061C010"
+    },
+    {
+      "Code": "KASABF",
+      "Name": "Certificates Of Odin Egyptian Equity Investment Fund-KASAB",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS696Z1C017"
+    },
+    {
+      "Code": "KORA",
+      "Name": "KORRA",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS07911C018"
+    },
+    {
+      "Code": "KRDI",
+      "Name": "Al Khair River For Development Agricultural Investment&Envir",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS02291C010"
+    },
+    {
+      "Code": "KWIN",
+      "Name": "El Kahera El Watania Investment",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS69011C012"
+    },
+    {
+      "Code": "KZPC",
+      "Name": "Kafr El Zayat Pesticides",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS38411C012"
+    },
+    {
+      "Code": "LCSW",
+      "Name": "Lecico Egypt",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3C161C014"
+    },
+    {
+      "Code": "LUTS",
+      "Name": "Lotus For Agricultural Investments And Development",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS07661C019"
+    },
+    {
+      "Code": "MAAL",
+      "Name": "Egyptian Gulf Marseilia For Real Estate Investment",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS739Z1C016"
+    },
+    {
+      "Code": "MASR",
+      "Name": "Madinet Masr For Housing and Development",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS65571C019"
+    },
+    {
+      "Code": "MATD",
+      "Name": "Marsa Marsa Alam For Tourism Development",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS70P91C010"
+    },
+    {
+      "Code": "MBEG",
+      "Name": "M.B Engineering",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS221V1C015"
+    },
+    {
+      "Code": "MBSC",
+      "Name": "Misr Beni Suef Cement",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3C371C019"
+    },
+    {
+      "Code": "MCQE",
+      "Name": "Misr Cement (Qena)",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3C391C017"
+    },
+    {
+      "Code": "MCRO",
+      "Name": "Macro Group Pharmaceuticals - Macro Capital",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS7D971C011"
+    },
+    {
+      "Code": "MEDP",
+      "Name": "Medical Packaging Company",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3C4L1C015"
+    },
+    {
+      "Code": "MEGM",
+      "Name": "Middle East Glass Manufacturing",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3C001C012"
+    },
+    {
+      "Code": "MENA",
+      "Name": "Mena Touristic & Real Estate Investment",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS65441C015"
+    },
+    {
+      "Code": "MEPA",
+      "Name": "Medical Packaging Company",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": null
+    },
+    {
+      "Code": "MFPC",
+      "Name": "Misr Fretilizers Production Company - Mopco",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS39061C014"
+    },
+    {
+      "Code": "MFSC",
+      "Name": "Misr Duty Free Shops",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS53051C016"
+    },
+    {
+      "Code": "MHOT",
+      "Name": "Misr Hotels",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS70081C012"
+    },
+    {
+      "Code": "MICH",
+      "Name": "Misr Chemical Industries",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS38211C016"
+    },
+    {
+      "Code": "MILS",
+      "Name": "North Cairo Mills",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS30361C017"
+    },
+    {
+      "Code": "MIPH",
+      "Name": "Minapharm Pharmaceuticals",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS380G1C011"
+    },
+    {
+      "Code": "MOED",
+      "Name": "The Egyptian Modern Education Systems",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS729F1C012"
+    },
+    {
+      "Code": "MOIL",
+      "Name": "Maridive & oil services",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS44012C010"
+    },
+    {
+      "Code": "MOIN",
+      "Name": "Mohandes Insurance",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS63041C015"
+    },
+    {
+      "Code": "MOSC",
+      "Name": "Misr Oils & Soap",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS38421C011"
+    },
+    {
+      "Code": "MPCI",
+      "Name": "Memphis Pharmaceuticals",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS38351C010"
+    },
+    {
+      "Code": "MPCO",
+      "Name": "Mansourah Poultry",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS02091C014"
+    },
+    {
+      "Code": "MPRC",
+      "Name": "Egyptian Media Production City",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS78021C010"
+    },
+    {
+      "Code": "MTIE",
+      "Name": "MM Group For Industry And International Trade",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS75011C014"
+    },
+    {
+      "Code": "NAHO",
+      "Name": "Naeem Holding",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS69182C011"
+    },
+    {
+      "Code": "NAPR",
+      "Name": "National Printing",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS370O1C013"
+    },
+    {
+      "Code": "NARE",
+      "Name": "Naeem Real Estate Holding Group",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS69191C012"
+    },
+    {
+      "Code": "NCCW",
+      "Name": "Nasr Company for Civil Works",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS23111C015"
+    },
+    {
+      "Code": "NDRL",
+      "Name": "National Drilling",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS735N2C012"
+    },
+    {
+      "Code": "NEDA",
+      "Name": "Northern Upper Egypt Development & Agricultural Production",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS52041C018"
+    },
+    {
+      "Code": "NHPS",
+      "Name": "National Housing for Professional Syndicates",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS65131C012"
+    },
+    {
+      "Code": "NINH",
+      "Name": "Nozha International Hospital",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS72011C017"
+    },
+    {
+      "Code": "NIPH",
+      "Name": "El-Nile Co. For Pharmaceuticals And Chemical Industries",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS38331C012"
+    },
+    {
+      "Code": "NULL",
+      "Name": "Fitness Prime",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": null
+    },
+    {
+      "Code": "OBRI",
+      "Name": "El Obour Real Estate Investment",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS65551C011"
+    },
+    {
+      "Code": "OCDI",
+      "Name": "Six of October Development & Investment (SODIC)",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS65851C015"
+    },
+    {
+      "Code": "OCPH",
+      "Name": "October Pharma",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS380R1C018"
+    },
+    {
+      "Code": "ODIN",
+      "Name": "ODIN Investments",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS67181C015"
+    },
+    {
+      "Code": "OFH",
+      "Name": "O B Financial Holding",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS696S1C016"
+    },
+    {
+      "Code": "OIH",
+      "Name": "Orascom Investment Holding SAE",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": null
+    },
+    {
+      "Code": "OLFI",
+      "Name": "Obour Land For Food Industries",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS30AL1C012"
+    },
+    {
+      "Code": "ORAS",
+      "Name": "Orascom Construction PLC",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS95001C011"
+    },
+    {
+      "Code": "ORHD",
+      "Name": "Orascom Development Egypt",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS70321C012"
+    },
+    {
+      "Code": "ORMT",
+      "Name": "Orascom Investment Holding",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS693V1C014"
+    },
+    {
+      "Code": "ORWE",
+      "Name": "Oriental Weavers",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS33041C012"
+    },
+    {
+      "Code": "PHAR",
+      "Name": "Egyptian International Pharmaceuticals (EIPICO)",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS38081C013"
+    },
+    {
+      "Code": "PHDC",
+      "Name": "Palm Hills Development Company",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS655L1C012"
+    },
+    {
+      "Code": "PHGC",
+      "Name": "Premium HealthCare Group",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS72XL1C014"
+    },
+    {
+      "Code": "PHTV",
+      "Name": "Pyramisa Hotels",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS70331C011"
+    },
+    {
+      "Code": "PIOH",
+      "Name": "Pioneers Holding",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS691L1C018"
+    },
+    {
+      "Code": "POUL",
+      "Name": "Cairo Poultry",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS02051C018"
+    },
+    {
+      "Code": "PRCL",
+      "Name": "Ceramic & Porcelain",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3C111C019"
+    },
+    {
+      "Code": "PRDC",
+      "Name": "Pioneers Properties For Urban Development - (PRE Group)",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS21FW1C015"
+    },
+    {
+      "Code": "PRMH",
+      "Name": "Prime Holding",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS691A1C011"
+    },
+    {
+      "Code": "QNBA",
+      "Name": "Qatar National Bank",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS60081C014"
+    },
+    {
+      "Code": "QNBE",
+      "Name": "Qatar Natl Bank",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": null
+    },
+    {
+      "Code": "RACC",
+      "Name": "Raya Customer Experience",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS74191C015"
+    },
+    {
+      "Code": "RAKT",
+      "Name": "Rakta Paper Manufacturing",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS36021C011"
+    },
+    {
+      "Code": "RAYA",
+      "Name": "Raya Holding For Financial Investments",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS690C1C010"
+    },
+    {
+      "Code": "RMDA",
+      "Name": "Tenth Of Ramadan Pharmaceutical Industries&Diagnostic-Rameda",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS381B1C015"
+    },
+    {
+      "Code": "ROTO",
+      "Name": "Rowad Tourism (Al Rowad)",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS70281C018"
+    },
+    {
+      "Code": "RREI",
+      "Name": "Arab Real Estate Investment CO.-ALICO",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS65011C016"
+    },
+    {
+      "Code": "RTVC",
+      "Name": "Remco for Touristic Villages Construction",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS70271C019"
+    },
+    {
+      "Code": "RUBX",
+      "Name": "Rubex International for Plastic and Acrylic Manufacturing",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3A221C018"
+    },
+    {
+      "Code": "SAIB",
+      "Name": "Societe Arabe Internationale De Banque S.A.E",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS60142C014"
+    },
+    {
+      "Code": "SAUD",
+      "Name": "Al Baraka Bank Egypt",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS60101C010"
+    },
+    {
+      "Code": "SCEM",
+      "Name": "Sinai Cement",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3C401C014"
+    },
+    {
+      "Code": "SCFM",
+      "Name": "South Cairo & Giza Mills & Bakeries",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS30411C010"
+    },
+    {
+      "Code": "SCTS",
+      "Name": "Sues Canal Company For Technology Settling",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS740C1C010"
+    },
+    {
+      "Code": "SDTI",
+      "Name": "Sharm Dreams Co. for Tourism Investment",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS70571C012"
+    },
+    {
+      "Code": "SEIG",
+      "Name": "Saudi Egyptian Investment & Finance",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS67031C012"
+    },
+    {
+      "Code": "SEIGA",
+      "Name": "Saudi Egyptian Investment & Finance $",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS67032C010"
+    },
+    {
+      "Code": "SIMO",
+      "Name": "Paper Middle East (Simo)",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS36091C014"
+    },
+    {
+      "Code": "SIPC",
+      "Name": "Sabaa International Company for Pharmaceutical and Chemical",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS382M1C011"
+    },
+    {
+      "Code": "SKPC",
+      "Name": "Sidi Kerir Petrochemicals - SIDPEC",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS380S1C017"
+    },
+    {
+      "Code": "SMFR",
+      "Name": "Samad Misr -EGYFERT",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS51191C012"
+    },
+    {
+      "Code": "SNFC",
+      "Name": "Sharkia National Food",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS30291C016"
+    },
+    {
+      "Code": "SPHT",
+      "Name": "El Shams Pyramids For Hotels& Touristic Projects",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS70H02C014"
+    },
+    {
+      "Code": "SPIN",
+      "Name": "Alexandria Spinning & Weaving (SPINALEX)",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS32041C013"
+    },
+    {
+      "Code": "SPMD",
+      "Name": "Speed Medical",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS73BR1C013"
+    },
+    {
+      "Code": "SRWA",
+      "Name": "Sarwa Capital Holding",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS738I1C018"
+    },
+    {
+      "Code": "SUGR",
+      "Name": "Delta Sugar",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS30201C015"
+    },
+    {
+      "Code": "SVCE",
+      "Name": "South Valley Cement",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3C351C011"
+    },
+    {
+      "Code": "SWDY",
+      "Name": "ELSWEDY ELECTRIC",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS3G0Z1C014"
+    },
+    {
+      "Code": "TALM",
+      "Name": "Taaleem Management Services",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS597R1C017"
+    },
+    {
+      "Code": "TANM",
+      "Name": "Tanmiya for Real Estate Investment",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS21EB1C011"
+    },
+    {
+      "Code": "TAQA",
+      "Name": "Taqa Arabia",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS490S1C014"
+    },
+    {
+      "Code": "TMGH",
+      "Name": "T M G Holding",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS691S1C011"
+    },
+    {
+      "Code": "TRTO",
+      "Name": "TransOceans Tours",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS79072C012"
+    },
+    {
+      "Code": "TWSA",
+      "Name": "TAWASOA For Factoring",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS7D231C010"
+    },
+    {
+      "Code": "TYCN",
+      "Name": "Tycoon Holding Company For Financial Investments",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS67331C016"
+    },
+    {
+      "Code": "UBEE",
+      "Name": "The United Bank",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS600M1C017"
+    },
+    {
+      "Code": "UEFM",
+      "Name": "Upper Egypt Flour Mills",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS30451C016"
+    },
+    {
+      "Code": "UEGC",
+      "Name": "Elsaeed Contracting& Real Estate Investment Company SCCD",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS21531C016"
+    },
+    {
+      "Code": "UNIP",
+      "Name": "Universal For Paper and Packaging Materials (Unipack",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS38161C013"
+    },
+    {
+      "Code": "UNIT",
+      "Name": "United Housing & Development",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS65061C011"
+    },
+    {
+      "Code": "UTOP",
+      "Name": "UTOPIA",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS655Y1C017"
+    },
+    {
+      "Code": "VALU",
+      "Name": "U Consumer Finance",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS505Z1C018"
+    },
+    {
+      "Code": "VLMR",
+      "Name": "Valmore Holding",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS69082C013"
+    },
+    {
+      "Code": "VLMRA",
+      "Name": "Valmore Holding-EGP",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS69081C023"
+    },
+    {
+      "Code": "WCDF",
+      "Name": "Middle & West Delta Flour Mills",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS30421C019"
+    },
+    {
+      "Code": "WKOL",
+      "Name": "Wadi Kom Ombo Land Reclamation",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS01071C017"
+    },
+    {
+      "Code": "ZEOT",
+      "Name": "Extracted Oils",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS38251C012"
+    },
+    {
+      "Code": "ZMID",
+      "Name": "Zahraa Maadi Investment & Development",
+      "Country": "Egypt",
+      "Exchange": "EGX",
+      "Currency": "EGP",
+      "Type": "Common Stock",
+      "Isin": "EGS21171C011"
+    }
+  ]
+}

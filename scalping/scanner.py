@@ -10,7 +10,7 @@ import pandas as pd
 
 from config.settings_manager import settings
 from core.egx_session import cairo_now, egx_session_phase
-from core.symbols import load_symbols
+from core.symbols import SYMBOL_SOURCE, load_symbols
 from providers.rubix_sqlite_provider import RubixSQLiteProvider
 from providers.symbol_mapping import to_rubix_symbol
 from scalping.config import ScalpingConfig
@@ -49,13 +49,13 @@ class ScalpingScanner:
             self.rubix_path,
             stale_after_minutes=self.config.quote_max_age_seconds / 60.0,
             bar_stale_after_minutes=max(1.0, self.config.quote_max_age_seconds / 60.0),
-            expected_symbols=load_symbols("data/symbols.csv"),
+            expected_symbols=load_symbols(SYMBOL_SOURCE),
             now=self.now,
         )
         return provider.health()
 
     def scan(self, symbols=None):
-        symbols = tuple(symbols or load_symbols("data/symbols.csv"))
+        symbols = tuple(symbols or load_symbols(SYMBOL_SOURCE))
         health = self.health()
         opportunities = []
         failures = []

@@ -21,17 +21,15 @@ if str(PROJECT_ROOT) not in sys.path:
 from core.environment import load_project_environment       # noqa: E402
 from providers.eodhd_client import EODHDClient, EODHDError  # noqa: E402
 from providers.eodhd_reconciliation import classify_extra, classify_unmapped  # noqa: E402
+from core.universe import active_symbols
 
 OUT = PROJECT_ROOT / "reports" / "eodhd"
 
 
 def _internal_bases():
-    out = []
-    for line in (PROJECT_ROOT / "data" / "symbols.csv").read_text(encoding="utf-8").splitlines():
-        s = line.strip()
-        if s and s.lower() != "ticker":
-            out.append(s.upper().split(".")[0])
-    return out
+    """The authoritative active universe (canonical, suffix-free)."""
+
+    return list(active_symbols())
 
 
 def _rubix_bases():

@@ -28,6 +28,8 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from core.universe import active_symbols
+
 from scalping_uptrend_pullback.config import UptrendPullbackSelectionConfig
 from scalping_uptrend_pullback.selection import (
     FrozenUptrendWatchlist,
@@ -905,18 +907,18 @@ def fingerprint_histories(
     return f"sha256:{_sha256_json(rows)}"
 
 
-def validated_eodhd_symbols(
-    manifest_path: str | Path = DEFAULT_UNIVERSE_MANIFEST,
-) -> tuple[str, ...]:
-    payload = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
-    symbols = {
-        _base(row.get("symbol"))
-        for row in (payload.get("symbols") or [])
-        if row.get("symbol")
-        and str(row.get("evidence_status") or "") != "coverage_gap"
-        and str(row.get("policy") or "") != "EXCLUDED_NON_EQUITY"
-    }
-    return tuple(sorted(symbols))
+def validated_eodhd_symbols(manifest_path=None) -> tuple[str, ...]:
+    """The Uptrend Pullback selector universe — the ACTIVE authoritative list.
+
+    Membership comes from :mod:`core.universe` (the official EODHD EGX active
+    tickers) and from nowhere else. ``historical_symbol_routing.json`` continues
+    to carry per-symbol PROVIDER ROUTING, which this migration leaves untouched;
+    it is no longer a competing source of universe membership.
+
+    ``manifest_path`` is accepted for call compatibility and is unused.
+    """
+
+    return tuple(sorted(active_symbols()))
 
 
 def load_validated_eodhd_histories(

@@ -21,20 +21,16 @@ if str(PROJECT_ROOT) not in sys.path:
 from core.environment import load_project_environment       # noqa: E402
 from providers.eodhd_client import EODHDClient, EODHDError  # noqa: E402
 from providers.eodhd_symbol_map import build_mapping        # noqa: E402
+from core.universe import active_symbols                    # noqa: E402
 
 FIELDS = ["internal_symbol", "internal_symbol_ca", "eodhd_symbol", "company_name_internal",
           "company_name_eodhd", "instrument_type", "mapping_status", "mapping_method", "notes"]
 
 
 def _internal_symbols():
-    path = PROJECT_ROOT / "data" / "symbols.csv"
-    out = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        s = line.strip()
-        if not s or s.lower() == "ticker":
-            continue
-        out.append(s)
-    return out
+    """The authoritative active universe (canonical tickers)."""
+
+    return list(active_symbols())
 
 
 def main():

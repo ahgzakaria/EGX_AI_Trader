@@ -29,6 +29,7 @@ from core.symbols import load_symbols  # noqa: E402
 from providers.local_cache_provider import LocalCacheProvider  # noqa: E402
 from scalping_expected_range.config import ExpectedRangeConfig  # noqa: E402
 from scalping_expected_range.historical_selector import HistoricalSelector  # noqa: E402
+from core.symbols import SYMBOL_SOURCE
 
 REPORT_DIR = Path("reports/daily_bridge")
 
@@ -78,7 +79,7 @@ def main(argv=None):
                               hour=9, minute=45)
     sel = HistoricalSelector(config=cfg, now=now)
     rows = []
-    for s in load_symbols("data/symbols.csv"):
+    for s in load_symbols(SYMBOL_SOURCE):
         a = sel.analyze(s)
         p = a.provenance
         rows.append({"canonical_symbol": s, "as_of_snapshot": next_day.isoformat(),

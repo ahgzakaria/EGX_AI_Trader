@@ -20,6 +20,7 @@ import pathlib
 import pytest
 
 from core import scan_job_manager as jm
+from core.symbols import SYMBOL_SOURCE
 from dashboard.scan_status_panel import coverage_view, scan_status_view
 
 
@@ -89,7 +90,7 @@ def test_every_active_state_still_reports_the_job_as_active(state):
 def test_the_terminal_job_survives_in_the_registry_for_a_later_observer():
     """A refresh or a second browser must still find the finished job."""
     job = _terminal_job()
-    key = jm.workspace_key_for("dashboard", "data/symbols.csv")
+    key = jm.workspace_key_for("dashboard", SYMBOL_SOURCE)
     again = jm.REGISTRY.get(key)
     assert again is job
     assert again.progress().state == jm.COMPLETED_WITH_GAPS

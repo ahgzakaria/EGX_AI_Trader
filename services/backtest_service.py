@@ -12,7 +12,7 @@ from backtesting.engine import BacktestEngine
 from backtesting.report import BacktestReport
 from backtesting.statistics import BacktestStatistics
 from config.settings_manager import settings
-from core.symbols import load_symbols
+from core.symbols import SYMBOL_SOURCE, load_symbols
 from portfolio.portfolio_simulator import PortfolioSimulator
 from services.risk_overlay_reporting import create_risk_overlay_reports
 from services.experiment_tracking import ExperimentRun, RunRepository
@@ -250,7 +250,7 @@ def run_backtest(scope=FULL_HISTORY):
     start_time = time.time()
     settings.reload()
     cfg = load_backtest_config()
-    symbols = load_symbols("data/symbols.csv")
+    symbols = load_symbols(SYMBOL_SOURCE)
     mode = cfg.AI_MODE
     if scope not in {FULL_HISTORY, VALIDATED_OOS}:
         raise ValueError(f"Unsupported backtest scope: {scope}")
@@ -407,7 +407,7 @@ def run_ai_risk_overlay_comparison():
     if not settings.get("ai").get("enabled", False):
         raise RuntimeError("AI risk-overlay comparison requires ai.enabled=true")
 
-    symbols = load_symbols("data/symbols.csv")
+    symbols = load_symbols(SYMBOL_SOURCE)
     experiment = ExperimentRun(
         "BACKTEST", "AI_RISK_OVERLAY_COMPARISON", symbols
     )

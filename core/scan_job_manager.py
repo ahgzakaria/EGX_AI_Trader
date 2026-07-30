@@ -27,6 +27,7 @@ import logging
 import threading
 import time
 import uuid
+from core.symbols import SYMBOL_SOURCE
 
 logger = logging.getLogger(__name__)
 
@@ -366,7 +367,7 @@ def _repository_root():
     return str(Path(__file__).resolve().parents[1])
 
 
-def workspace_key_for(purpose="dashboard", source="data/symbols.csv",
+def workspace_key_for(purpose="dashboard", source=SYMBOL_SOURCE,
                       provider_mode=None):
     """A stable key identifying ONE market-scan workspace.
 
@@ -398,7 +399,7 @@ def workspace_key_for(purpose="dashboard", source="data/symbols.csv",
                       resolved_source, str(provider_mode).strip().lower()))
 
 
-def start_scan_job(source="data/symbols.csv", purpose="dashboard", *, runner=None,
+def start_scan_job(source=SYMBOL_SOURCE, purpose="dashboard", *, runner=None,
                    registry=None, symbols=None, autostart=True):
     """Create (or attach to) the job for this workspace and start its worker.
 

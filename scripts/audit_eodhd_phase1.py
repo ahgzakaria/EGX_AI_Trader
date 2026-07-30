@@ -29,6 +29,7 @@ from providers.base_provider import (
 from providers.eodhd_provider import EODHDProvider
 from providers.local_cache_provider import LocalCacheProvider
 from providers.symbol_mapping import to_eodhd_symbol
+from core.symbols import SYMBOL_SOURCE
 
 
 DEFAULT_OUTPUT = PROJECT_ROOT / "reports" / "eodhd_phase1_symbol_comparison.csv"
@@ -93,7 +94,7 @@ def _save(rows, output):
 
 
 def run_audit(provider, output=DEFAULT_OUTPUT, pause=0.05, retry_failed=False):
-    symbols = load_symbols("data/symbols.csv")
+    symbols = load_symbols(SYMBOL_SOURCE)
     cache = _yahoo_cache()
     existing = {}
     if retry_failed and output.is_file():

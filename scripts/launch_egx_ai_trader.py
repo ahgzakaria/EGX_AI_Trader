@@ -36,6 +36,7 @@ from core.egx_session import (  # noqa: E402
     assess_quote_freshness,
     egx_session_phase,
 )
+from core.universe import UNIVERSE_SOURCE
 
 
 CONFIG_PATH = PROJECT_ROOT / "config" / "launcher_settings.json"
@@ -140,7 +141,7 @@ def validate_project(project_root=PROJECT_ROOT):
     root = Path(project_root).resolve()
     required = (
         root / "app.py",
-        root / "data" / "symbols.csv",
+        root / UNIVERSE_SOURCE,
         root / "venv" / "Scripts" / "python.exe",
     )
     missing = [str(path) for path in required if not path.is_file()]
@@ -591,16 +592,22 @@ def wait_for_port(port, timeout_seconds=30):
 
 
 def _load_adapter_symbols(path):
+    """Adapter subscription symbols for the ACTIVE authoritative universe only."""
+
     with Path(path).open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         symbols = []
         for row in reader:
-            value = row.get("Ticker") or row.get("Symbol") or next(iter(row.values()), "")
+            if "is_active" in row and str(row.get("is_active") or "").strip().lower() \
+                    not in {"1", "true", "yes", "y", "active"}:
+                continue
+            value = (row.get("canonical_symbol") or row.get("Ticker")
+                     or row.get("Symbol") or next(iter(row.values()), ""))
             if value:
                 symbols.append(to_tickerchart_symbol(value))
     unique = sorted(set(symbols))
     if not unique:
-        raise LauncherError("No symbols found in data/symbols.csv")
+        raise LauncherError(f"No active symbols found in {UNIVERSE_SOURCE}")
     return unique
 
 

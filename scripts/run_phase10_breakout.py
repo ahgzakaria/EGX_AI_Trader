@@ -33,6 +33,7 @@ from strategy_breakout.breakout_strategy import (
     BreakoutSwingStrategy,
     load_breakout_config,
 )
+from core.universe import UNIVERSE_SOURCE
 
 
 DEFAULT_BASELINE = PROJECT_ROOT / "reports" / "RUN_20260714_125023"
@@ -185,7 +186,7 @@ def main():
 
     baseline_run = args.baseline_run.resolve()
     frames, manifest = load_archived_frames(baseline_run)
-    symbols = load_symbols(PROJECT_ROOT / "data" / "symbols.csv")
+    symbols = load_symbols(PROJECT_ROOT / UNIVERSE_SOURCE)
     portfolio_config = load_backtest_config()
     breakout_config = load_breakout_config()
 

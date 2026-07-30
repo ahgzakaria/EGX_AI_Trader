@@ -1,4 +1,5 @@
 from core.scanner import scan_symbols
+from core.symbols import SYMBOL_SOURCE
 
 
 def print_stock(stock):
@@ -41,7 +42,7 @@ def print_stock(stock):
 
 def main():
 
-    results = scan_symbols("data/symbols.csv")
+    results = scan_symbols(SYMBOL_SOURCE)
 
     print("\n")
     print("=" * 70)

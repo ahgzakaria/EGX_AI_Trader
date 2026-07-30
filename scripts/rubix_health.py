@@ -19,6 +19,7 @@ from providers.rubix_sqlite_provider import RubixSQLiteProvider  # noqa: E402
 from providers.yahoo_provider import YahooProvider  # noqa: E402
 from config.settings_manager import settings  # noqa: E402
 from core.symbols import load_symbols  # noqa: E402
+from core.symbols import SYMBOL_SOURCE
 
 
 def _utc(value, naive_zone="UTC"):
@@ -54,7 +55,7 @@ def main():
         db_path=args.database,
         stale_after_minutes=float(market_cfg.get("rubix_quote_stale_seconds", 60)) / 60,
         bar_stale_after_minutes=float(market_cfg.get("rubix_bar_stale_seconds", 120)) / 60,
-        expected_symbols=load_symbols("data/symbols.csv"),
+        expected_symbols=load_symbols(SYMBOL_SOURCE),
     ).health()
     if args.compare_yahoo:
         try:

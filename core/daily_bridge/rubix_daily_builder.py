@@ -53,6 +53,7 @@ from core.daily_bridge.schema import (
 # (real auction trades) OR the auction clears at a materially different price.
 AUCTION_PRICE_MOVE_PCT = 0.05
 from providers.symbol_mapping import to_rubix_symbol
+from core.symbols import SYMBOL_SOURCE
 
 CAIRO = ZoneInfo("Africa/Cairo")
 CONT_OPEN = time(10, 0)
@@ -291,7 +292,7 @@ class RubixDailyBuilder:
     def _universe(self):
         from core.symbols import load_symbols
         try:
-            return load_symbols("data/symbols.csv")
+            return load_symbols(SYMBOL_SOURCE)
         except Exception:
             return []
 

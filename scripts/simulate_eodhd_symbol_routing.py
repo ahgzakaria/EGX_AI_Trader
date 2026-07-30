@@ -20,13 +20,14 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from providers.eodhd_routing import load_policy, resolve_route  # noqa: E402
+from core.universe import ARCHIVED_LEGACY_SOURCE
 
 OUT = PROJECT_ROOT / "reports" / "eodhd"
 
 
 def _universe():
     out = []
-    for line in (PROJECT_ROOT / "data" / "symbols.csv").read_text(encoding="utf-8").splitlines():
+    for line in (PROJECT_ROOT / ARCHIVED_LEGACY_SOURCE).read_text(encoding="utf-8").splitlines():
         s = line.strip()
         if s and s.lower() != "ticker":
             out.append(s.upper().split(".")[0])

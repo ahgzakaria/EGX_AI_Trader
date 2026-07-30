@@ -25,12 +25,13 @@ from services.backtest_service import (  # noqa: E402
 )
 from services.experiment_tracking import ExperimentRun  # noqa: E402
 from strategy.trading_decision import TradingDecisionService  # noqa: E402
+from core.symbols import SYMBOL_SOURCE
 
 
 def main():
     settings.reload()
     config = load_backtest_config()
-    symbols = load_symbols("data/symbols.csv")
+    symbols = load_symbols(SYMBOL_SOURCE)
     experiment = ExperimentRun("RESEARCH", "PHASE5_CURRENT_DATA_V2", symbols)
     try:
         context = _walk_forward_context(symbols, config)

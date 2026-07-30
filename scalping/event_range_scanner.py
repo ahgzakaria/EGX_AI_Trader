@@ -18,7 +18,7 @@ import sqlite3
 import pandas as pd
 
 from config.settings_manager import settings
-from core.symbols import load_symbols
+from core.symbols import SYMBOL_SOURCE, load_symbols
 from providers.symbol_mapping import to_rubix_symbol
 from scalping.event_quality import (
     EventQualityConfig,
@@ -106,7 +106,7 @@ class EventRangeShadowScanner:
         return intervals
 
     def scan(self, session_date, symbols=None):
-        symbols = tuple(symbols or load_symbols("data/symbols.csv"))
+        symbols = tuple(symbols or load_symbols(SYMBOL_SOURCE))
         now = self.now or datetime.now(timezone.utc)
         rows = []
         # Completed-session boundaries in UTC (never the report runtime).

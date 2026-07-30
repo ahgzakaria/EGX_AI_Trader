@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 
-from core.symbols import load_active_symbols
+from core.symbols import SYMBOL_SOURCE, load_active_symbols
 from providers.symbol_mapping import to_rubix_subscription_symbol
 
 
@@ -32,7 +32,7 @@ class RubixSubscriptionPlan:
         }
 
 
-def build_rubix_subscription_plan(source="data/symbols.csv", batch_size=100):
+def build_rubix_subscription_plan(source=SYMBOL_SOURCE, batch_size=100):
     """Load the project universe and create deterministic provider batches."""
 
     requested = tuple(load_active_symbols(source))

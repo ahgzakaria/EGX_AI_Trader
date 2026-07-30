@@ -20,7 +20,7 @@ import pandas as pd
 
 from config.settings_manager import settings
 from core.data_provider import provider_purpose
-from core.symbols import load_symbols
+from core.symbols import SYMBOL_SOURCE, load_symbols
 from indicators.technical import calculate_indicators
 from providers.base_provider import ProviderError
 from providers.local_cache_provider import LocalCacheProvider
@@ -68,7 +68,7 @@ def _indicator_diffs(yahoo_frame, merged_frame):
     return " | ".join(diffs) if diffs else "none"
 
 
-def run_shadow(symbols_source="data/symbols.csv", *, limit=None, record_provenance=True):
+def run_shadow(symbols_source=SYMBOL_SOURCE, *, limit=None, record_provenance=True):
     settings.reload()
     data_cfg = settings.get("data")
     period = data_cfg.get("history_period", "10y")

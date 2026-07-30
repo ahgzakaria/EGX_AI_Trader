@@ -11,6 +11,7 @@ import pandas as pd
 import pytest
 
 from core.symbols import (
+    SYMBOL_SOURCE,
     ApprovedSymbol,
     load_approved_symbol_options,
     load_symbols,
@@ -19,7 +20,8 @@ from core.symbols import (
 )
 
 
-SYMBOLS_PATH = Path("data/symbols.csv")
+#: The authoritative EODHD universe replaced the retired 265-symbol list.
+SYMBOLS_PATH = SYMBOL_SOURCE
 _NO_INPUT = object()
 
 
@@ -34,7 +36,7 @@ def _tickers(matches):
 
 def test_full_approved_universe_is_searchable_and_not_limited_to_ten(options):
     approved = load_symbols(SYMBOLS_PATH)
-    assert len(approved) == 265
+    assert len(approved) == 241
     assert len(options) == len({_normalized(value) for value in approved})
     assert len(options) > 10
     assert {"AALR", "COMI", "MPCO", "SWDY", "TMGH"} <= set(_tickers(options))
@@ -59,10 +61,10 @@ def test_english_company_name_search(options):
     assert matches[0].ticker == "COMI"
 
 
-def test_arabic_company_name_search(options):
-    matches = search_approved_symbol_options(options, "منصورة")
+def test_company_name_search_uses_the_authoritative_eodhd_name(options):
+    matches = search_approved_symbol_options(options, "mansourah poultry")
     assert matches[0].ticker == "MPCO"
-    assert "المنصورة للدواجن" in matches[0].display_label
+    assert matches[0].display_label == "MPCO — Mansourah Poultry"
 
 
 def test_duplicate_ca_aliases_are_normalized_into_one_option(tmp_path):
@@ -109,11 +111,13 @@ def test_valid_ticker_text_resolves_to_canonical_symbol(options, valid):
     assert resolve_approved_symbol(valid, options).ticker == "COMI"
 
 
-def test_display_label_contains_searchable_arabic_and_english_metadata(options):
+def test_display_label_is_ticker_then_full_company_name(options):
     comi = resolve_approved_symbol("COMI", options)
     assert comi.display_label == (
-        "COMI — البنك التجاري الدولي · Commercial International Bank"
+        "COMI — Commercial International Bank-Egypt (CIB)"
     )
+    # The selected VALUE stays the canonical ticker, so strategy code is unaffected.
+    assert comi.ticker == "COMI"
 
 
 def test_empty_query_can_browse_complete_universe(options):

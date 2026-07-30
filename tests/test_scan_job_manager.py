@@ -9,6 +9,7 @@ Nothing here runs a real scan, touches the live databases, or reaches a network.
 
 from __future__ import annotations
 
+from core.symbols import SYMBOL_SOURCE
 import ast
 import pathlib
 import threading
@@ -86,15 +87,15 @@ def test_a_terminal_job_releases_the_workspace_for_a_new_scan():
 
 def test_different_repositories_do_not_share_a_workspace():
     """A worktree and the main repository must never attach to one another's scan."""
-    key = jm.workspace_key_for("dashboard", "data/symbols.csv")
+    key = jm.workspace_key_for("dashboard", SYMBOL_SOURCE)
     assert str(pathlib.Path(__file__).resolve().parents[1]) in key
-    assert key != jm.workspace_key_for("scanner", "data/symbols.csv")
+    assert key != jm.workspace_key_for("scanner", SYMBOL_SOURCE)
     assert key != jm.workspace_key_for("dashboard", "data/other_universe.csv")
 
 
 def test_the_workspace_key_carries_no_volatile_or_secret_value():
-    key = jm.workspace_key_for("dashboard", "data/symbols.csv")
-    assert key == jm.workspace_key_for("dashboard", "data/symbols.csv")
+    key = jm.workspace_key_for("dashboard", SYMBOL_SOURCE)
+    assert key == jm.workspace_key_for("dashboard", SYMBOL_SOURCE)
     for forbidden in ("token", "secret", "session", str(time.time())[:6]):
         assert forbidden not in key.lower()
 
@@ -152,7 +153,7 @@ def test_a_worker_exception_becomes_failed_with_sanitized_text():
     def explode(*args, **kwargs):
         raise RuntimeError("boom with detail")
 
-    jm._run_job(job, "data/symbols.csv", "dashboard", runner=explode)
+    jm._run_job(job, SYMBOL_SOURCE, "dashboard", runner=explode)
     assert job.state == jm.FAILED
     assert job.sanitized_error.startswith("RuntimeError:")
     assert job.finished_at
@@ -176,7 +177,7 @@ def test_the_scan_context_is_closed_on_success_cancellation_and_failure():
                 raise RuntimeError("nope")
             return []
 
-        jm._run_job(job, "data/symbols.csv", "dashboard", runner=runner)
+        jm._run_job(job, SYMBOL_SOURCE, "dashboard", runner=runner)
         assert context.closed >= 1, f"context not closed on {outcome}"
 
 

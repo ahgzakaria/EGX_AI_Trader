@@ -26,6 +26,7 @@ import pandas as pd
 
 from scalping_expected_range.config import ExpectedRangeConfig
 from scalping_expected_range.historical_selector import HistoricalSelector
+from core.symbols import SYMBOL_SOURCE
 
 
 # --- A. selection validation -------------------------------------------------
@@ -78,7 +79,7 @@ def run_selection_validation(symbols=None, config=None, test_sessions=30, cache=
     cfg = config or ExpectedRangeConfig.load()
     selector = HistoricalSelector(config=cfg, cache=cache, holidays=holidays, now=now)
     from core.symbols import load_symbols
-    symbols = tuple(symbols or load_symbols("data/symbols.csv"))
+    symbols = tuple(symbols or load_symbols(SYMBOL_SOURCE))
 
     frames = {}
     for s in symbols:

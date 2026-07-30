@@ -22,7 +22,7 @@ import sqlite3
 import pandas as pd
 
 from config.settings_manager import settings
-from core.symbols import load_symbols
+from core.symbols import SYMBOL_SOURCE, load_symbols
 from providers.symbol_mapping import to_rubix_symbol
 from scalping_expected_range.config import ExpectedRangeConfig
 from scalping_expected_range.historical_selector import HistoricalSelector
@@ -38,7 +38,7 @@ from scalping_expected_range.liquidity_model import (
 
 
 class ExpectedRangeScanner:
-    def __init__(self, config=None, rubix_db_path=None, symbols_path="data/symbols.csv",
+    def __init__(self, config=None, rubix_db_path=None, symbols_path=SYMBOL_SOURCE,
                  holidays=(), now=None, cache=None):
         self.config = config or ExpectedRangeConfig.load()
         market = settings.get("market_data")

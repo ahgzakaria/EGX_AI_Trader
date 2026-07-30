@@ -28,6 +28,7 @@ from strategy_selector.selector import AdaptiveStrategySelector, load_selector_s
 from strategy_selector.selector_backtest import AdaptiveSelectorBacktester, robustness_rows
 from strategy_selector.selector_report import save_selector_artifacts
 from strategy_selector.selector_score import WalkForwardPerformanceLedger
+from core.universe import UNIVERSE_SOURCE
 
 
 BASELINE_RUN = ROOT / "reports" / "RUN_20260714_125023"
@@ -226,7 +227,7 @@ def main():
     portfolio_config = load_backtest_config()
     frames, manifest = load_archived_frames(args.baseline_run.resolve())
     prepared, preparation_failures = _prepare_frames(frames)
-    symbols = load_symbols(ROOT / "data" / "symbols.csv")
+    symbols = load_symbols(ROOT / UNIVERSE_SOURCE)
 
     with replay_dataset(frames):
         classic_candidates, classic_failures, _, _ = _run_pass(

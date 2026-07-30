@@ -14,7 +14,7 @@ import pandas as pd
 
 from config.settings_manager import settings
 from core.egx_session import egx_session_phase, trading_session_lag
-from core.symbols import load_symbols
+from core.symbols import SYMBOL_SOURCE, load_symbols
 from providers.base_provider import ProviderDataError, ProviderError, REQUIRED_COLUMNS
 from providers.eodhd_provider import EODHDProvider
 from providers.local_cache_provider import LocalCacheProvider
@@ -85,7 +85,7 @@ def _provider_instances():
                     market_cfg.get("rubix_bar_stale_seconds", 120),
                 )) / 60,
                 history_loader=yahoo_history_seed,
-                expected_symbols=load_symbols("data/symbols.csv"),
+                expected_symbols=load_symbols(SYMBOL_SOURCE),
             ),
             "tickerchart": TickerChartProvider(
                 db_path=market_cfg.get("tickerchart_db_path") or os.getenv("TICKERCHART_DB_PATH"),

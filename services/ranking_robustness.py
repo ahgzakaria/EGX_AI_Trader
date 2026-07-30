@@ -11,7 +11,7 @@ import pandas as pd
 
 from backtesting.statistics import BacktestStatistics
 from config.settings_manager import settings
-from core.symbols import load_symbols
+from core.symbols import SYMBOL_SOURCE, load_symbols
 from portfolio.portfolio_simulator import PortfolioSimulator
 from services.backtest_service import _run_overlay_mode, _walk_forward_context
 from services.experiment_tracking import ExperimentRun
@@ -31,7 +31,7 @@ def run_ai_ranking_robustness():
     if not settings.get("ai").get("enabled", False):
         raise RuntimeError("AI ranking robustness validation requires ai.enabled=true")
 
-    symbols = load_symbols("data/symbols.csv")
+    symbols = load_symbols(SYMBOL_SOURCE)
     experiment = ExperimentRun("RESEARCH", "AI_RANKING_ROBUSTNESS", symbols)
     try:
         context = _walk_forward_context(symbols, cfg)

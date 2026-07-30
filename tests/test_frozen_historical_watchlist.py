@@ -12,6 +12,7 @@ import pandas as pd
 import pytest
 
 from scalping_expected_range.config import DailyHistoricalSelectionConfig
+from core.universe import active_symbols
 from scalping_expected_range.frozen_watchlist import (
     CONFIG_VERSION_MISMATCH,
     EODHD_DAILY,
@@ -111,11 +112,14 @@ def _prepare(service, histories=None, **kwargs):
     )
 
 
-def test_validated_manifest_resolves_accepted_225_symbol_universe():
+def test_selector_universe_is_the_authoritative_eodhd_active_list():
+    """Membership comes from core.universe, not the routing manifest."""
+
     symbols = validated_eodhd_symbols()
 
-    assert len(symbols) == 225
-    assert "EGX30ETF" not in symbols
+    assert symbols == tuple(sorted(active_symbols()))
+    assert len(symbols) == 241
+    assert "EGX30ETF" not in symbols            # retired, never re-admitted
     assert "RAYA" in symbols
 
 

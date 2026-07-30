@@ -91,6 +91,7 @@ from scripts.launcher_process_utils import (  # noqa: E402 - project root above
     supervisor_status,
     wait_for_streamlit,
 )
+from core.universe import UNIVERSE_SOURCE
 
 
 LOGGER = logging.getLogger("egx.rubix_launcher")
@@ -264,7 +265,7 @@ class ProductionSupervisor:
             str(self.python), str(PROJECT_ROOT / "scripts" / "rubix_collector_supervisor.py"),
             "--adapter", str(adapter), "--auth-frame-file", str(auth_frame),
             "--database", str(self.database),
-            "--symbols", str(PROJECT_ROOT / "data" / "symbols.csv"),
+            "--symbols", str(PROJECT_ROOT / UNIVERSE_SOURCE),
             "--batch-size", str(int(batch_size)),
             "--pid-file", str(SUPERVISOR_PID_FILE),
             "--lock-file", str(SUPERVISOR_LOCK_FILE),
@@ -393,7 +394,7 @@ class ProductionSupervisor:
             self.database,
             stale_after_minutes=float(cfg.get("rubix_quote_stale_seconds", 60)) / 60,
             bar_stale_after_minutes=float(cfg.get("rubix_bar_stale_seconds", 120)) / 60,
-            expected_symbols=load_symbols(PROJECT_ROOT / "data" / "symbols.csv"),
+            expected_symbols=load_symbols(PROJECT_ROOT / UNIVERSE_SOURCE),
         ).health()
 
     def wait_until_healthy(
@@ -573,7 +574,7 @@ class LauncherUI:
             validate_auth_frame(self.auth_var.get())
             cfg = settings.get("market_data")
             plan = build_rubix_subscription_plan(
-                PROJECT_ROOT / "data" / "symbols.csv",
+                PROJECT_ROOT / UNIVERSE_SOURCE,
                 cfg.get("rubix_subscription_batch_size", 100),
             )
             if plan.invalid:
@@ -1308,10 +1309,10 @@ class RubixAuthenticationAssistantUI(LauncherUI):
         plan = self.timeline.measure(
             "subscription_plan",
             lambda: build_rubix_subscription_plan(
-                PROJECT_ROOT / "data" / "symbols.csv",
+                PROJECT_ROOT / UNIVERSE_SOURCE,
                 cfg.get("rubix_subscription_batch_size", 100),
             ),
-            paths=(str(PROJECT_ROOT / "data" / "symbols.csv"),),
+            paths=(str(PROJECT_ROOT / UNIVERSE_SOURCE),),
         )
         plan_report = self.timeline.measure(
             "subscription_report",

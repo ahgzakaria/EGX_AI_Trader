@@ -23,7 +23,7 @@ import sqlite3
 import pandas as pd
 
 from config.settings_manager import settings
-from core.symbols import load_symbols
+from core.symbols import SYMBOL_SOURCE, load_symbols
 from providers.local_cache_provider import LocalCacheProvider
 from providers.rubix_sqlite_provider import RubixSQLiteProvider
 from providers.symbol_mapping import to_rubix_symbol
@@ -52,13 +52,13 @@ class RangeScanner:
     def health(self):
         provider = RubixSQLiteProvider(
             self.rubix_path,
-            expected_symbols=load_symbols("data/symbols.csv"),
+            expected_symbols=load_symbols(SYMBOL_SOURCE),
             now=self.now,
         )
         return provider.health()
 
     def scan(self, symbols=None):
-        symbols = tuple(symbols or load_symbols("data/symbols.csv"))
+        symbols = tuple(symbols or load_symbols(SYMBOL_SOURCE))
         health = self.health()
         session_date = self._latest_session_date()
         records = []

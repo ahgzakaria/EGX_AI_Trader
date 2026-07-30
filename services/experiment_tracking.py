@@ -36,6 +36,7 @@ from services.dataset_archive import (
     sha256_file,
 )
 from services.run_status import annotate_metadata
+from core.symbols import SYMBOL_SOURCE
 
 
 logger = logging.getLogger(__name__)
@@ -231,7 +232,7 @@ class ExperimentRun:
             "ai_model_version": _sha256(model)[:16] if _sha256(model) else "unavailable",
             "walk_forward_version": _combined_version([Path("ai/walk_forward.py")]),
             "dataset_version": _combined_version([
-                Path("data/symbols.csv"), Path("core/data_loader.py"),
+                Path(SYMBOL_SOURCE), Path("core/data_loader.py"),
             ]),
             "feature_version": _combined_version([
                 Path("ai/features.py"), Path("ai/dataset.py"),

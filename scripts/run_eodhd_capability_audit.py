@@ -32,6 +32,7 @@ from core.providers.eodhd_daily import (  # noqa: E402
 )
 from core.symbols import load_symbols  # noqa: E402
 from providers.symbol_mapping import to_eodhd_symbol  # noqa: E402
+from core.symbols import SYMBOL_SOURCE
 
 REPORTS = Path("reports")
 PENDING = "PENDING_API_KEY"
@@ -63,7 +64,7 @@ def main():
     key_ok = client.key_configured
     live_status = "OK" if key_ok else API_KEY_MISSING
 
-    symbols = load_symbols("data/symbols.csv")
+    symbols = load_symbols(SYMBOL_SOURCE)
 
     # Phase 2 — symbol-mapping coverage (offline mapping; live columns PENDING).
     cov_rows = []

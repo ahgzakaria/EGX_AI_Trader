@@ -33,6 +33,7 @@ from scripts.launcher_process_utils import (
     InstanceAlreadyRunning,
     SingleInstanceLock,
 )
+from core.universe import UNIVERSE_SOURCE
 
 
 FEED_URL = "wss://eg-feed3.mubashertrade.com/websocket/price"
@@ -255,7 +256,7 @@ def build_parser():
     parser.add_argument("--adapter", required=True)
     parser.add_argument("--auth-frame-file", required=True)
     parser.add_argument("--database", required=True)
-    parser.add_argument("--symbols", default=str(PROJECT_ROOT / "data" / "symbols.csv"))
+    parser.add_argument("--symbols", default=str(PROJECT_ROOT / UNIVERSE_SOURCE))
     parser.add_argument("--batch-size", type=int, default=100)
     parser.add_argument("--stale-seconds", type=int, default=60)
     parser.add_argument("--bar-stale-seconds", type=int, default=120)

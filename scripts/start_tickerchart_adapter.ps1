@@ -5,7 +5,7 @@ The caller supplies the dynamically assigned signed-session WebSocket URL.
 param(
     [Parameter(Mandatory = $false)]
     [string]$StreamerUrl = $env:TICKERCHART_STREAMER_URL,
-    [string]$SymbolsFile = "data/symbols.csv",
+    [string]$SymbolsFile = "data/universe/egx_universe.csv",
     [string]$Python = ".\venv\Scripts\python.exe"
 )
 
@@ -32,8 +32,9 @@ if (-not (Test-Path -LiteralPath $SymbolsFile -PathType Leaf)) {
 # Convert the engine's Yahoo-style EGX suffix to the adapter's central
 # TickerChart subscription convention. No strategy or symbol filtering occurs.
 $symbols = Import-Csv -LiteralPath $SymbolsFile |
+    Where-Object { -not $_.PSObject.Properties['is_active'] -or $_.is_active -match '^(?i)(1|true|yes|y|active)$' } |
     ForEach-Object {
-        $value = if ($_.Symbol) { $_.Symbol } elseif ($_.Ticker) { $_.Ticker } else { $_.PSObject.Properties[0].Value }
+        $value = if ($_.canonical_symbol) { $_.canonical_symbol } elseif ($_.Symbol) { $_.Symbol } elseif ($_.Ticker) { $_.Ticker } else { $_.PSObject.Properties[0].Value }
         $code = ([string]$value).Trim().ToUpperInvariant() -replace '\.CA$', ''
         if ($code -eq '^CASE30') { 'EGX30.EGY' } else { "$code.EGY" }
     }

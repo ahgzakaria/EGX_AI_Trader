@@ -2,7 +2,7 @@ from config.settings_manager import settings
 
 from backtesting.engine import BacktestEngine
 from backtesting.statistics import BacktestStatistics
-from core.symbols import load_symbols
+from core.symbols import SYMBOL_SOURCE, load_symbols
 from strategy.trading_decision import TradingDecisionService
 
 
@@ -12,7 +12,7 @@ class StrategyEvaluator:
 
         settings.reload()
 
-        self.symbols = load_symbols("data/symbols.csv")
+        self.symbols = load_symbols(SYMBOL_SOURCE)
         self.decision_service = TradingDecisionService()
 
         # نحفظ نسخة من إعدادات الاستراتيجية الأصلية عشان

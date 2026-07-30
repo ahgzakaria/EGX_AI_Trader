@@ -21,6 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from core.environment import load_project_environment       # noqa: E402
 import core.research_router as router                        # noqa: E402
+from core.universe import ARCHIVED_LEGACY_SOURCE
 
 OUT = PROJECT_ROOT / "reports" / "eodhd"
 MIN_BARS = 250
@@ -72,7 +73,7 @@ def _bars_seen(detail):
 
 def _universe():
     out = []
-    for line in (PROJECT_ROOT / "data" / "symbols.csv").read_text(encoding="utf-8").splitlines():
+    for line in (PROJECT_ROOT / ARCHIVED_LEGACY_SOURCE).read_text(encoding="utf-8").splitlines():
         s = line.strip()
         if s and s.lower() != "ticker":
             out.append(s.upper().split(".")[0])

@@ -27,6 +27,7 @@ import core.research_router as router                   # noqa: E402
 from providers.eodhd_volume_adjustment import (         # noqa: E402
     CORPORATE_ACTION_POLICY_VERSION, MULTIPLY_BY_FACTOR, classify_events,
     resolve_operational_volume)
+from core.universe import ARCHIVED_LEGACY_SOURCE
 
 OUT = PROJECT_ROOT / "reports" / "eodhd"
 CA_DIR = PROJECT_ROOT / "data" / "eodhd" / "corporate_actions"
@@ -54,7 +55,7 @@ VOLUME_CONSUMERS = [
 
 def _universe():
     out = []
-    for line in (PROJECT_ROOT / "data" / "symbols.csv").read_text(encoding="utf-8").splitlines():
+    for line in (PROJECT_ROOT / ARCHIVED_LEGACY_SOURCE).read_text(encoding="utf-8").splitlines():
         s = line.strip()
         if s and s.lower() != "ticker":
             out.append(s.upper().split(".")[0])

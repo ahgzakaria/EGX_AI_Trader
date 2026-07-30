@@ -10,6 +10,7 @@ import sys
 
 import pytest
 
+from core.universe import UNIVERSE_SOURCE
 from scripts.launch_egx_ai_trader import (
     DatabaseStatus,
     LauncherError,
@@ -87,9 +88,9 @@ def test_path_and_project_validation(tmp_path):
         validate_database_path(tmp_path / "quotes.txt")
 
     project = tmp_path / "project"
-    (project / "data").mkdir(parents=True)
+    (project / UNIVERSE_SOURCE).parent.mkdir(parents=True)
     (project / "venv" / "Scripts").mkdir(parents=True)
-    for file in (project / "app.py", project / "data" / "symbols.csv",
+    for file in (project / "app.py", project / UNIVERSE_SOURCE,
                  project / "venv" / "Scripts" / "python.exe"):
         file.write_text("", encoding="utf-8")
     assert validate_project(project) == project.resolve()

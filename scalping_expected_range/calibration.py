@@ -21,6 +21,7 @@ import pandas as pd
 from scalping_expected_range.config import ExpectedRangeConfig
 from scalping_expected_range.expected_range import compute_expected_range
 from scalping_expected_range.historical_selector import HistoricalSelector
+from core.symbols import SYMBOL_SOURCE
 
 BANDS = ("conservative", "base", "high_volatility")
 
@@ -37,7 +38,7 @@ def run_forecast_calibration(symbols=None, config=None, test_sessions=40, cache=
     cfg = config or ExpectedRangeConfig.load()
     selector = HistoricalSelector(config=cfg, cache=cache, holidays=holidays, now=now)
     from core.symbols import load_symbols
-    symbols = tuple(symbols or load_symbols("data/symbols.csv"))
+    symbols = tuple(symbols or load_symbols(SYMBOL_SOURCE))
 
     obs = []          # per (symbol, session, band)
     room_obs = []     # per (symbol, session) target-room
