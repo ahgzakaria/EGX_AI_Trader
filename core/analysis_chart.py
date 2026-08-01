@@ -54,8 +54,12 @@ LEVEL_COLOURS = {
 
 SUPPORT_BAND_KEYS = ("support_1", "support_2")
 
-#: Approximate rendered height of one annotation label, in pixels.
-LABEL_PX = 18.0
+#: Rendered height of the TALLEST annotation chip, in pixels. The last-close chip
+#: is deliberately the most prominent (12px type, solid background), so it
+#: measures ~20px against ~19px for a level label. Spacing the lanes by the
+#: smaller figure let that chip overlap its neighbour, so the solver must budget
+#: for the largest label, not the average one.
+LABEL_PX = 21.0
 #: Lane key for the last-close marker, so it shares the collision solver.
 LAST_PRICE_KEY = "__last_price__"
 #: Lane key for the research pullback zone label.
@@ -272,7 +276,7 @@ def build_daily_figure(presentation: AnalysisPresentation, *,
             x=1.0, xref="paper", y=lanes.get(LAST_PRICE_KEY, presentation.close),
             yref="y", text=f"Last {fmt_value(presentation.close)}", showarrow=False,
             xanchor="left", font=dict(size=12, color="#0b1220"),
-            bgcolor="#e6edf7", borderpad=4)
+            bgcolor="#e6edf7", borderpad=3)
 
     for value, label, colour in (
             (pullback.swing_high, "Swing high", "#fbbf24"),

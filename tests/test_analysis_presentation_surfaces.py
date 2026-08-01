@@ -379,3 +379,42 @@ def test_decision_values_are_copied_not_recomputed(presentation):
     assert presentation.pullback.pullback_percent == \
         result.pullback_scenario.pullback_percent
     assert presentation.pullback.state_en == "NOT_APPLICABLE"
+
+
+def test_the_lane_gap_budgets_for_the_TALLEST_chip_not_the_average(presentation):
+    """The last-close chip is the most prominent label and therefore the tallest.
+
+    Spacing the lanes by an average label height let it overlap its neighbour —
+    "Last 7.50" sat on top of "Resistance 1 7.54" on the real RAYA chart.
+    """
+
+    pytest.importorskip("plotly")
+    from core.analysis_chart import LABEL_PX
+
+    # font 12 + borderpad 3 top and bottom, the largest chip the renderer draws.
+    tallest_chip_px = 12 * 1.2 + 6
+    assert LABEL_PX >= tallest_chip_px
+
+    height = 700
+    plot_px = (height - 86 - 36) * 0.76
+    for timeframe in TIMEFRAMES:
+        figure = build_daily_figure(presentation, timeframe=timeframe, height=height)
+        labels = sorted(a.y for a in figure.layout.annotations if a.yref == "y")
+        window = select_window(presentation, timeframe)
+        closes = [c.close for c in window.candles if c.close is not None]
+        span = max(max(closes), max(labels)) - min(min(closes), min(labels))
+        gaps_px = [(labels[i + 1] - labels[i]) / span * plot_px
+                   for i in range(len(labels) - 1)]
+        assert min(gaps_px) >= tallest_chip_px, \
+            f"{timeframe}: labels are {min(gaps_px):.1f}px apart, chip is {tallest_chip_px:.1f}px"
+
+
+def test_two_levels_at_the_same_price_share_one_label(presentation):
+    """RAYA's breakout and major resistance are both 8.49 — one fact, one label."""
+
+    pytest.importorskip("plotly")
+    figure = build_daily_figure(presentation, timeframe="FULL")
+    texts = [a.text for a in figure.layout.annotations if a.yref == "y"]
+    assert any("/" in text and "8.49" in text for text in texts)
+    # The merged label is counted once, so the lane set stays small enough to fit.
+    assert sum("8.49" in text for text in texts) == 1
