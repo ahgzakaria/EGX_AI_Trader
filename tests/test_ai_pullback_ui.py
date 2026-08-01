@@ -1,6 +1,7 @@
 """Presentation-only checks for the AI Analysis Pullback card."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from core.ai_stock_analysis_contract import (
     PullbackScenarioResult,
@@ -34,7 +35,7 @@ def test_pullback_card_maps_only_typed_values():
         invalidation_reason="REVERSAL_CONFIRMATION_REQUIRED",
     )
     view = pullback_scenario_view(scenario)
-    assert view["state_ar"] == "انتظار تأكيد الارتداد"
+    assert view["state_ar"] == "وصل إلى منطقة مهمة وينتظر تأكيد الارتداد"
     assert view["correction"] == "7.40% / 1.30 ATR"
     assert view["support_zone"] == "7.30 – 7.37"
     assert view["support_reached"] == "نعم · Yes"
@@ -57,7 +58,7 @@ def test_internal_confirmation_is_presented_as_amber_research_only():
     view = pullback_scenario_view(PullbackScenarioResult(
         state=PullbackState.CONFIRMED_PULLBACK_ENTRY))
     assert view["state_en"] == "RESEARCH_CONFIRMATION_ONLY"
-    assert view["state_ar"] == "تأكيد بحثي فقط — غير صالح للتنفيذ"
+    assert view["state_ar"] == "ظهر تأكيد ارتداد بحثي فقط"
     assert view["tone"] == "amber"
 
 
@@ -67,7 +68,9 @@ def test_page_keeps_breakout_breakdown_and_adds_separate_pullback_section():
     source = Path(page.__file__).read_text(encoding="utf-8")
     assert "_scenario_section(result)" in source
     assert "_pullback_section(result)" in source
-    assert source.index("_scenario_section(result)") < source.index("_pullback_section(result)")
+    render_flow = source[source.index("def show_ai_stock_analysis"):]
+    assert render_flow.index("_pullback_section(result)") < render_flow.index(
+        "_scenario_section(result)")
     assert "تحليل جودة التصحيح" in source
     assert "Pullback Health Analysis" in source
     assert "Research Only — غير معتمد كإشارة دخول" in source
@@ -76,3 +79,64 @@ def test_page_keeps_breakout_breakdown_and_adds_separate_pullback_section():
     assert "Research simulation levels" in source
     assert "expanded=False" in source
     assert "pullback_live_confirmation" not in source
+
+
+def test_main_pullback_state_is_visible_and_only_simulation_levels_are_collapsed():
+    import dashboard.ai_stock_analysis as page
+
+    source = Path(page.__file__).read_text(encoding="utf-8")
+    section = source[source.index("def _pullback_section"):source.index(
+        "def _regenerate_narrative_only")]
+    assert section.index("state_badge") < section.index("with st.expander")
+    assert "مستويات المحاكاة البحثية · Research simulation levels" in section
+    assert "expanded=False" in section
+    assert "Research Trigger" in section
+    assert "Research Structural Stop" in section
+    assert "Research Target 1" in section
+    assert "Research Target 2" in section
+    assert "Research Major Resistance" in section
+    assert "الحالة الحالية · Current State" in section
+    assert "st.button" not in section
+
+
+def test_insufficient_history_keeps_exact_reason_and_missing_values():
+    scenario = PullbackScenarioResult(
+        state=PullbackState.NOT_APPLICABLE,
+        invalidation_reason="INSUFFICIENT_COMPLETED_DAILY_HISTORY",
+        missing_measurements=("confirmed_swing_high", "impulse_low"),
+    )
+    view = pullback_scenario_view(scenario)
+    assert "INSUFFICIENT_COMPLETED_DAILY_HISTORY" in view["invalidation"]
+    assert "التاريخ اليومي المكتمل غير كافٍ" in view["invalidation"]
+    assert view["swing_high"] == EM_DASH
+    assert view["impulse_low"] == EM_DASH
+    assert view["pullback_percent"] == EM_DASH
+
+
+def test_local_pullback_error_is_a_visible_local_diagnostic():
+    view = pullback_scenario_view(PullbackScenarioResult(
+        state=PullbackState.NOT_APPLICABLE,
+        invalidation_reason="PULLBACK_DIAGNOSTIC_ERROR:RuntimeError",
+        missing_measurements=("pullback_calculation_failed",),
+    ))
+    assert view["calculation_error"] is True
+    assert "PULLBACK_DIAGNOSTIC_ERROR:RuntimeError" in view["invalidation"]
+
+
+def test_selecting_another_stock_discards_the_previous_bundle(monkeypatch):
+    import dashboard.ai_stock_analysis as page
+    from dashboard.ai_stock_analysis_components import fixture_analysis
+
+    fake = SimpleNamespace(session_state={
+        page.STATE_BUNDLE: fixture_analysis("COMI"),
+        page.STATE_SYMBOL: "COMI",
+        page.STATE_CARD: b"old-card",
+        page.STATE_CARD_KEY: "old-card-key",
+    })
+    monkeypatch.setattr(page, "st", fake)
+    page._discard_stale_analysis("HRHO")
+
+    assert fake.session_state[page.STATE_BUNDLE] is None
+    assert fake.session_state[page.STATE_SYMBOL] is None
+    assert fake.session_state[page.STATE_CARD] is None
+    assert fake.session_state[page.STATE_CARD_KEY] is None

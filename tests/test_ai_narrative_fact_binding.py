@@ -669,7 +669,7 @@ def test_the_prompt_version_moved_with_the_wording_rule():
 
     # The cache key carries the prompt version, so narratives written under the old
     # wording rule cannot be served from cache after this change.
-    assert PROMPT_VERSION == "ai_narrative_prompt@3.1.0"
+    assert PROMPT_VERSION == "ai_narrative_prompt@3.2.0"
 
 
 def test_invalidation_level_wording_is_normalized_in_the_invalidation_section(result):

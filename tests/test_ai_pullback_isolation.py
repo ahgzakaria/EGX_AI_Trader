@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+import pandas as pd
 
 from core import ai_analysis_evidence as evidence
 from core.ai_stock_analysis_contract import (
@@ -124,3 +128,111 @@ def test_pullback_modules_do_not_write_or_plan_operational_actions():
         for path in (ROOT / "core").glob("ai_pullback_*.py")
     )
     assert all(token not in sources for token in forbidden)
+
+
+def test_ai_analysis_service_runs_pullback_automatically(monkeypatch):
+    from core.ai_stock_analysis_service import analyze_symbol
+
+    calls = []
+    real_evaluator = evidence.evaluate_pullback_scenario
+
+    def recording_evaluator(frame, **kwargs):
+        calls.append((float(frame["Close"].iloc[-1]), kwargs["data_cutoff"]))
+        return real_evaluator(frame, **kwargs)
+
+    monkeypatch.setattr(evidence, "evaluate_pullback_scenario", recording_evaluator)
+    frame = _frame()
+    response = analyze_symbol(
+        "AAA",
+        now=datetime(2026, 7, 22, 15, 0, tzinfo=ZoneInfo("Africa/Cairo")),
+        include_live=False,
+        history_loader=lambda symbol: frame,
+    )
+
+    assert len(calls) == 1
+    assert calls[0][1] == frame.attrs["market_data"]["latest_completed_session"]
+    assert response.result.pullback_scenario is not None
+    assert response.result.pullback_scenario.historical_data_cutoff == calls[0][1]
+
+
+def test_new_symbol_and_analysis_date_recalculate_without_reusing_previous_result(
+        monkeypatch):
+    from core.ai_stock_analysis_service import analyze_symbol
+
+    calls = []
+
+    def diagnostic(frame, **kwargs):
+        current = float(frame["Close"].iloc[-1])
+        cutoff = str(kwargs["data_cutoff"])
+        calls.append((current, cutoff))
+        return PullbackScenarioResult(
+            state=PullbackState.DEVELOPING_PULLBACK,
+            current_price=current,
+            historical_data_cutoff=cutoff,
+        )
+
+    monkeypatch.setattr(evidence, "evaluate_pullback_scenario", diagnostic)
+    first_frame = _frame(final_close=14.80)
+    second_frame = _frame(final_close=15.40)
+    second_frame.index = second_frame.index + pd.offsets.BDay(1)
+    second_frame.attrs["market_data"]["latest_completed_session"] = (
+        second_frame.index[-1].date().isoformat())
+
+    first = analyze_symbol(
+        "AAA", as_of="2026-07-22T15:00:00+03:00", include_live=False,
+        history_loader=lambda symbol: first_frame)
+    second = analyze_symbol(
+        "BBB", as_of="2026-07-23T15:00:00+03:00", include_live=False,
+        history_loader=lambda symbol: second_frame)
+
+    assert len(calls) == 2
+    assert first.result.request.symbol == "AAA"
+    assert second.result.request.symbol == "BBB"
+    assert first.result.request.as_of != second.result.request.as_of
+    assert first.result.pullback_scenario.current_price != second.result.pullback_scenario.current_price
+    assert first.result.pullback_scenario.historical_data_cutoff != (
+        second.result.pullback_scenario.historical_data_cutoff)
+
+
+def test_pullback_failure_preserves_analysis_decision_confidence_and_scenarios(monkeypatch):
+    baseline = evidence.build_evidence(
+        _request(), _frame(), market_phase=MarketPhase.CLOSED,
+        generated_at="2026-07-22T14:30:00+03:00")
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("synthetic pullback failure")
+
+    monkeypatch.setattr(evidence, "evaluate_pullback_scenario", fail)
+    protected = evidence.build_evidence(
+        _request(), _frame(), market_phase=MarketPhase.CLOSED,
+        generated_at="2026-07-22T14:30:00+03:00")
+
+    assert protected.pullback_scenario.state == PullbackState.NOT_APPLICABLE
+    assert protected.pullback_scenario.invalidation_reason == (
+        "PULLBACK_DIAGNOSTIC_ERROR:RuntimeError")
+    assert "synthetic pullback failure" not in protected.pullback_scenario.invalidation_reason
+    assert _operational_decision_snapshot(protected) == _operational_decision_snapshot(baseline)
+
+
+def test_insufficient_analysis_still_contains_visible_pullback_reason():
+    result = evidence.build_insufficient_evidence(
+        _request(), market_phase=MarketPhase.CLOSED,
+        generated_at="2026-07-22T14:30:00+03:00")
+    assert result.pullback_scenario is not None
+    assert result.pullback_scenario.state == PullbackState.NOT_APPLICABLE
+    assert result.pullback_scenario.invalidation_reason == (
+        "INSUFFICIENT_COMPLETED_DAILY_HISTORY")
+
+
+def test_narrative_contains_correction_quality_without_upgrading_recommendation():
+    from core.ai_analysis_narrative import build_fallback_narrative
+
+    result = evidence.build_evidence(
+        _request(), _frame(), market_phase=MarketPhase.CLOSED,
+        generated_at="2026-07-22T14:30:00+03:00")
+    before = result.recommendation
+    narrative = build_fallback_narrative(result)
+
+    assert "تحليل جودة التصحيح" in narrative.rationale
+    assert "لا تغيّر التوصية العامة" in narrative.rationale
+    assert result.recommendation == before

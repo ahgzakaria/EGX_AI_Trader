@@ -106,6 +106,20 @@ def run_analysis(symbol, runner=None):
     return (runner or _default_runner)(ticker)
 
 
+def _discard_stale_analysis(selected_symbol):
+    """Never render a stored bundle under a newly selected ticker."""
+    if not selected_symbol:
+        return
+    bundle = st.session_state.get(STATE_BUNDLE)
+    stored_symbol = getattr(getattr(getattr(bundle, "result", None), "request", None),
+                            "symbol", None)
+    if bundle is not None and stored_symbol != normalize_symbol(selected_symbol):
+        st.session_state[STATE_BUNDLE] = None
+        st.session_state[STATE_SYMBOL] = None
+        st.session_state[STATE_CARD] = None
+        st.session_state[STATE_CARD_KEY] = None
+
+
 # --------------------------------------------------------------------------- #
 # Small render helpers
 # --------------------------------------------------------------------------- #
@@ -471,6 +485,7 @@ def _pullback_section(result):
     st.markdown(
         f'<div class="egx-scenario"><div class="t">تحليل جودة التصحيح · '
         f'Pullback Health Analysis</div><div style="margin:.4rem 0">'
+        f'<span class="egx-req">الحالة الحالية · Current State:</span> '
         f'{state_badge} {research_badge}</div>'
         f'</div>',
         unsafe_allow_html=True,
@@ -481,11 +496,16 @@ def _pullback_section(result):
         "لم تثبت المعايرة التاريخية أفضلية إيجابية بعد تطبيق الوقف والأهداف.\n\n"
         "هذا التحليل يصف جودة التصحيح ولا يمثل إشارة شراء."
     )
+    if view["calculation_error"]:
+        st.error(
+            "تعذر حساب هذا الجزء محليًا؛ بقيت بقية صفحة التحليل متاحة. · "
+            "Local Pullback diagnostic error; the rest of AI Analysis is unaffected."
+        )
     first = st.columns(6)
     first_cells = (
         ("جودة الاتجاه", "Trend Quality", view["trend"]),
-        ("قمة مؤكدة", "Confirmed Swing High", view["swing_high"]),
-        ("قاع الدفعة", "Impulse Low", view["impulse_low"]),
+        ("آخر قمة مؤكدة", "Last Confirmed Swing High", view["swing_high"]),
+        ("قاع بداية الموجة", "Impulse Start Low", view["impulse_low"]),
         ("نسبة التصحيح", "Pullback", view["pullback_percent"]),
         ("عمق ATR", "Pullback ATR", view["pullback_atr"]),
         ("ارتداد الدفعة", "Impulse Retracement", view["retracement"]),
@@ -506,11 +526,11 @@ def _pullback_section(result):
         with column:
             metric_card(cell[0], cell[2], label_en=cell[1])
     details = [
-        ("التداخل", "Confluence", view["confluence"]),
-        ("الحجم", "Volume", view["volume"]),
-        ("تأكيد الارتداد", "Reversal Confirmation", view["confirmation"]),
+        ("عناصر تداخل الدعم", "Support Confluence", view["confluence"]),
+        ("سلوك حجم التداول", "Volume Behaviour", view["volume"]),
+        ("دليل الارتداد", "Reversal Evidence", view["confirmation"]),
         ("المقاومة القريبة", "Nearby Resistance", view["minor_resistance"]),
-        ("سبب عدم الأهلية/الإبطال", "Gate / Invalidation", view["invalidation"]),
+        ("سبب الإبطال أو الفشل", "Invalidation / Failure Reason", view["invalidation"]),
         ("تجميد البيانات", "Historical Cutoff", view["cutoff"]),
     ]
     _kv_table(details)
@@ -523,10 +543,11 @@ def _pullback_section(result):
         simulation = st.columns(6)
         simulation_cells = (
             ("التفعيل البحثي", "Research Trigger", view["trigger"]),
-            ("وقف المحاكاة", "Simulation Stop", view["stop"]),
-            ("الهدف الأول", "Target 1", view["target_1"]),
-            ("الهدف الثاني", "Target 2", view["target_2"]),
-            ("المقاومة الرئيسية", "Major Resistance", view["major_resistance"]),
+            ("الوقف الهيكلي البحثي", "Research Structural Stop", view["stop"]),
+            ("الهدف البحثي الأول", "Research Target 1", view["target_1"]),
+            ("الهدف البحثي الثاني", "Research Target 2", view["target_2"]),
+            ("المقاومة البحثية الرئيسية", "Research Major Resistance",
+             view["major_resistance"]),
             ("ع/م تشخيصي", "Diagnostic R/R", view["risk_reward"]),
         )
         for column, cell in zip(simulation, simulation_cells):
@@ -798,6 +819,7 @@ def show_ai_stock_analysis(runner=None):
                 unsafe_allow_html=True)
 
     symbol, pressed = _symbol_selector()
+    _discard_stale_analysis(symbol)
 
     if pressed and symbol:
         try:
@@ -838,8 +860,8 @@ def show_ai_stock_analysis(runner=None):
     _chart_section(result)
     _technical_section(result)
     _levels_section(result)
-    _scenario_section(result)
     _pullback_section(result)
+    _scenario_section(result)
     _narrative_section(narrative, result, bundle=bundle)
     _confidence_section(result)
     _warnings_section(result)

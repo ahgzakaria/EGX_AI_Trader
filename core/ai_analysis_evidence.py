@@ -49,6 +49,8 @@ from core.ai_stock_analysis_contract import (
     MarketPhase,
     MomentumState,
     PriceSummary,
+    PullbackScenarioResult,
+    PullbackState,
     Recommendation,
     ScenarioResult,
     ScenarioState,
@@ -342,14 +344,9 @@ def build_evidence(
         atr_val=atr_val, trend=trend.value, momentum=momentum.value,
         volume_safe=volume_safe, volume_ratio=volume_ratio, usable=usable,
     )
-    pullback_scenario = evaluate_pullback_scenario(
-        frame,
-        ema20=ema_series[20],
-        ema50=ema_series[50],
-        atr14=atr_series,
-        volume_safe=volume_safe,
-        data_cutoff=latest_session,
-    )
+    pullback_scenario = _build_pullback_health(
+        frame, ema20=ema_series[20], ema50=ema_series[50], atr14=atr_series,
+        volume_safe=volume_safe, data_cutoff=latest_session)
     primary_state = scenarios[0].state if scenarios else ScenarioState.DATA_INSUFFICIENT
 
     # ---- Confidence (pure function of completed-session evidence) ---------- #
@@ -442,16 +439,57 @@ def build_insufficient_evidence(
         state=ScenarioState.DATA_INSUFFICIENT,
         invalidation_conditions=("usable CURRENT_RESEARCH_V2 history required",),
     )
+    pullback_scenario = PullbackScenarioResult(
+        state=PullbackState.NOT_APPLICABLE,
+        historical_data_cutoff=latest_session,
+        prior_trend_status="UNAVAILABLE",
+        invalidation_reason="INSUFFICIENT_COMPLETED_DAILY_HISTORY",
+        explanation_ar="التاريخ اليومي المكتمل غير كافٍ لتقييم جودة التصحيح.",
+        explanation_en="Completed daily history is insufficient for Pullback Health Analysis.",
+        missing_measurements=(
+            "confirmed_swing_high", "impulse_low", "pullback_measurements"),
+        primary_rejection_reason="INSUFFICIENT_COMPLETED_DAILY_HISTORY",
+        rejection_reasons=("INSUFFICIENT_COMPLETED_DAILY_HISTORY",),
+    )
     partial = AnalysisResult(
         request=request, price=price, indicators=indicators, confidence=confidence,
         data_quality=data_quality, recommendation=Recommendation.DATA_INSUFFICIENT,
         market_phase=market_phase, evidence_version="", generated_at=generated_at,
-        scenarios=(scenario,), recommendation_reasons=(reason,), evidence_hash=None,
+        scenarios=(scenario,), pullback_scenario=pullback_scenario,
+        recommendation_reasons=(reason,), evidence_hash=None,
     )
     evidence_hash = _evidence_hash(partial)
     evidence_version = f"evidence@{symbol}@{latest_session or 'none'}@{evidence_hash[7:19]}"
     return _replace_result(partial, evidence_version=evidence_version,
                            evidence_hash=evidence_hash)
+
+
+def _build_pullback_health(frame, *, ema20, ema50, atr14, volume_safe, data_cutoff):
+    """Run the diagnostic evaluator without allowing it to break AI Analysis.
+
+    Only the exception type is retained. The raw exception text is deliberately discarded
+    because it may contain a path or provider detail. This wrapper does not alter any
+    evaluator formula, threshold or decision output.
+    """
+    try:
+        return evaluate_pullback_scenario(
+            frame, ema20=ema20, ema50=ema50, atr14=atr14,
+            volume_safe=volume_safe, data_cutoff=data_cutoff)
+    except Exception as error:
+        reason = f"PULLBACK_DIAGNOSTIC_ERROR:{type(error).__name__}"
+        return PullbackScenarioResult(
+            state=PullbackState.NOT_APPLICABLE,
+            historical_data_cutoff=str(data_cutoff) if data_cutoff else None,
+            prior_trend_status="UNAVAILABLE",
+            invalidation_reason=reason,
+            explanation_ar="تعذر حساب تحليل جودة التصحيح، وبقي باقي التحليل متاحًا.",
+            explanation_en=(
+                "Pullback Health Analysis failed locally; the rest of AI Analysis remains "
+                "available."),
+            missing_measurements=("pullback_calculation_failed",),
+            primary_rejection_reason=reason,
+            rejection_reasons=(reason,),
+        )
 
 
 # --------------------------------------------------------------------------- #

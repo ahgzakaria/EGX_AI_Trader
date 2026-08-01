@@ -24,6 +24,7 @@ from core.ai_stock_analysis_contract import (
     AnalysisResult,
     DataStatus,
     NarrativeResult,
+    PullbackState,
     Recommendation,
 )
 
@@ -62,6 +63,52 @@ _STATUS_AR = {
 
 DISCLAIMER_AR = ("بحث تعليمي فقط — ليس نصيحة استثمارية. "
                  "التنفيذ الحقيقي والوسيط غير مفعّلين.")
+
+_PULLBACK_STATE_AR = {
+    PullbackState.NOT_APPLICABLE: "غير قابل للتقييم حاليًا",
+    PullbackState.DEVELOPING_PULLBACK: "التصحيح ما زال يتطور",
+    PullbackState.WAIT_REVERSAL_CONFIRMATION: (
+        "وصل إلى منطقة مهمة وينتظر تأكيد الارتداد"),
+    PullbackState.HEALTHY_PULLBACK: "تصحيح صحي داخل اتجاه صاعد",
+    PullbackState.DEEP_PULLBACK: "تصحيح عميق ومخاطره أعلى",
+    PullbackState.FAILED_PULLBACK: "التصحيح فشل وكسر البنية الصاعدة",
+    PullbackState.CONFIRMED_PULLBACK_ENTRY: "ظهر تأكيد ارتداد بحثي فقط",
+}
+
+_PULLBACK_REASON_AR = {
+    "INSUFFICIENT_COMPLETED_DAILY_HISTORY": "التاريخ اليومي المكتمل غير كافٍ",
+    "NO_CONFIRMED_SWING_HIGH": "لا توجد قمة محورية مؤكدة داخل النافذة المتاحة",
+    "NO_VALID_IMPULSE_LOW": "لا يوجد قاع صالح لبداية الموجة الصاعدة",
+    "EODHD_COMPLETED_DAILY_REQUIRED": "يلزم تاريخ يومي مكتمل من EODHD",
+}
+
+
+def pullback_health_narrative(result: AnalysisResult) -> str:
+    """Deterministic qualitative Pullback sentence; never an entry recommendation."""
+    pullback = result.pullback_scenario
+    if pullback is None:
+        return "تحليل جودة التصحيح غير متاح، ولا يؤثر ذلك في التوصية العامة."
+
+    clauses = [f"تحليل جودة التصحيح: {_PULLBACK_STATE_AR.get(pullback.state, pullback.state.value)}."]
+    if pullback.prior_trend_status == "VALID_UPTREND":
+        clauses.append("السهم يحافظ على بنية الاتجاه الصاعد رغم التصحيح.")
+    if pullback.support_confluence:
+        support = " و".join(pullback.support_confluence[:3])
+        clauses.append(f"التصحيح يراقب دعمًا متداخلًا مع {support}.")
+    if pullback.volume_behaviour == "SELLING_VOLUME_CONTRACTING":
+        clauses.append("حجم البيع يتراجع أثناء التصحيح.")
+    elif pullback.volume_behaviour == "AGGRESSIVE_SELLING_EXPANSION":
+        clauses.append("حجم البيع يتوسع بصورة تضعف جودة التصحيح.")
+    if pullback.confirmation_status in {"WAITING", "NOT_CONFIRMED", "NOT_AT_SUPPORT"}:
+        clauses.append("لم يظهر تأكيد ارتداد حتى الآن.")
+    elif pullback.confirmation_status == "CONFIRMED":
+        clauses.append("ظهر تأكيد ارتداد بحثي فقط، ولا يمثل إشارة شراء.")
+    if pullback.invalidation_reason and pullback.state == PullbackState.NOT_APPLICABLE:
+        reason = _PULLBACK_REASON_AR.get(
+            pullback.invalidation_reason, pullback.invalidation_reason)
+        clauses.append(f"سبب عدم قابلية التقييم: {reason}.")
+    clauses.append("هذه قراءة بحثية تشخيصية ولا تغيّر التوصية العامة.")
+    return " ".join(clauses)
 
 
 # --------------------------------------------------------------------------- #
@@ -150,11 +197,13 @@ def build_fallback_narrative(result: AnalysisResult, *, language: str = "ar") ->
     rec_ar = _REC_AR.get(result.recommendation, result.recommendation.value)
     status_ar = _STATUS_AR.get(result.data_quality.status, result.data_quality.status.value)
 
+    pullback_text = pullback_health_narrative(result)
     if result.recommendation == Recommendation.DATA_INSUFFICIENT:
         headline = f"{symbol}: بيانات غير كافية للتحليل"
         summary = ("لا يتوفر تاريخ بحثي كافٍ ضمن نطاق CURRENT_RESEARCH_V2 لإنتاج تحليل موثوق؛ "
                    "لم يتم توليد أي أرقام.")
-        rationale = "التحليل يتطلب تاريخاً يومياً كافياً وحجماً موثوقاً ضمن نافذة المراجعة."
+        rationale = ("التحليل يتطلب تاريخاً يومياً كافياً وحجماً موثوقاً ضمن نافذة "
+                     f"المراجعة. {pullback_text}")
         risks = "الاعتماد على بيانات ناقصة قد يعطي إشارات مضللة؛ لذلك أُوقف التحليل."
         return NarrativeResult(
             request_id=result.request.request_id, symbol=symbol, language=language,
@@ -180,7 +229,7 @@ def build_fallback_narrative(result: AnalysisResult, *, language: str = "ar") ->
     # Rationale is built from machine reasons, which are themselves evidence strings.
     reasons_txt = "؛ ".join(result.recommendation_reasons[:5])
     rationale = (f"مؤشر القوة النسبية {_fmt(ind.rsi_14)} ومدى التذبذب (ATR) "
-                 f"{_fmt(ind.atr_14)}. الأسباب الآلية: {reasons_txt}.")
+                 f"{_fmt(ind.atr_14)}. الأسباب الآلية: {reasons_txt}. {pullback_text}")
 
     if primary is not None and primary.entry_low is not None:
         risks = (f"يبطل السيناريو بكسر {_fmt(primary.stop)}؛ "
@@ -249,7 +298,8 @@ def generate_narrative(
     return NarrativeResult(
         request_id=result.request.request_id, symbol=result.request.symbol,
         language=language, headline=fields["headline"], summary=fields["summary"],
-        rationale=fields["rationale"], risks=fields["risks"], disclaimer=DISCLAIMER_AR,
+        rationale=f'{fields["rationale"]} {pullback_health_narrative(result)}',
+        risks=fields["risks"], disclaimer=DISCLAIMER_AR,
         model=str(model or produced.get("model") or "ai-narrative"),
         derived_from_evidence_version=result.evidence_version,
         contains_no_original_numbers=True)

@@ -36,7 +36,11 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Callable, Protocol, runtime_checkable
 
-from core.ai_analysis_narrative import FALLBACK_MODEL, build_fallback_narrative
+from core.ai_analysis_narrative import (
+    FALLBACK_MODEL,
+    build_fallback_narrative,
+    pullback_health_narrative,
+)
 from core.ai_narrative_facts import build_fact_registry
 from core.ai_narrative_prompt import (
     PROMPT_VERSION,
@@ -337,6 +341,9 @@ def _accepted(result: AnalysisResult, language: str, sections: dict, *, provider
     its label, its unit, its rounding and the order the lines appear in.
     """
     base = build_fallback_narrative(result, language=language)
+    accepted_sections = dict(sections)
+    accepted_sections["technical_read_ar"] = (
+        f'{accepted_sections["technical_read_ar"]}\n{pullback_health_narrative(result)}')
     provenance = NarrativeProvenance(
         source=accepted_source(provider), provider=provider, model=model,
         prompt_version=PROMPT_VERSION,
@@ -345,11 +352,11 @@ def _accepted(result: AnalysisResult, language: str, sections: dict, *, provider
         fallback_reason="")
     return replace(
         base,
-        summary=sections["executive_summary_ar"],
-        rationale=sections["technical_read_ar"],
-        risks=sections["risk_notes_ar"],
+        summary=accepted_sections["executive_summary_ar"],
+        rationale=accepted_sections["technical_read_ar"],
+        risks=accepted_sections["risk_notes_ar"],
         model=model or "ai-narrative",
-        sections=tuple((name, sections[name]) for name in REQUIRED_SECTIONS),
+        sections=tuple((name, accepted_sections[name]) for name in REQUIRED_SECTIONS),
         provenance=provenance,
     )
 

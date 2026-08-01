@@ -98,15 +98,63 @@ SCENARIO_STATE_LABELS = {
 }
 
 PULLBACK_STATE_LABELS = {
-    PullbackState.NOT_APPLICABLE: ("غير منطبق", "Not Applicable", "gray"),
-    PullbackState.DEVELOPING_PULLBACK: ("تصحيح قيد التكوين", "Developing Pullback", "blue"),
+    PullbackState.NOT_APPLICABLE: (
+        "غير قابل للتقييم حاليًا", "NOT_APPLICABLE", "gray"),
+    PullbackState.DEVELOPING_PULLBACK: (
+        "التصحيح ما زال يتطور", "DEVELOPING_PULLBACK", "blue"),
     PullbackState.WAIT_REVERSAL_CONFIRMATION: (
-        "انتظار تأكيد الارتداد", "Wait Reversal Confirmation", "amber"),
-    PullbackState.HEALTHY_PULLBACK: ("تصحيح صحي", "Healthy Pullback", "blue"),
-    PullbackState.DEEP_PULLBACK: ("تصحيح عميق", "Deep Pullback", "amber"),
+        "وصل إلى منطقة مهمة وينتظر تأكيد الارتداد",
+        "WAIT_REVERSAL_CONFIRMATION", "amber"),
+    PullbackState.HEALTHY_PULLBACK: (
+        "تصحيح صحي داخل اتجاه صاعد", "HEALTHY_PULLBACK", "blue"),
+    PullbackState.DEEP_PULLBACK: (
+        "تصحيح عميق ومخاطره أعلى", "DEEP_PULLBACK", "amber"),
     PullbackState.CONFIRMED_PULLBACK_ENTRY: (
-        "تأكيد بحثي فقط — غير صالح للتنفيذ", "RESEARCH_CONFIRMATION_ONLY", "amber"),
-    PullbackState.FAILED_PULLBACK: ("فشل التصحيح", "Failed Pullback", "red"),
+        "ظهر تأكيد ارتداد بحثي فقط", "RESEARCH_CONFIRMATION_ONLY", "amber"),
+    PullbackState.FAILED_PULLBACK: (
+        "التصحيح فشل وكسر البنية الصاعدة", "FAILED_PULLBACK", "red"),
+}
+
+PULLBACK_REASON_LABELS = {
+    "INSUFFICIENT_COMPLETED_DAILY_HISTORY": "التاريخ اليومي المكتمل غير كافٍ",
+    "EODHD_COMPLETED_DAILY_REQUIRED": "يلزم تاريخ يومي مكتمل من EODHD حتى الجلسة السابقة",
+    "ATR_UNAVAILABLE": "قياس ATR غير متاح",
+    "NO_CONFIRMED_SWING_HIGH": "لا توجد قمة محورية مؤكدة داخل النافذة المتاحة",
+    "NO_VALID_IMPULSE_LOW": "لا يوجد قاع صالح لبداية الموجة الصاعدة",
+    "INVALID_PRIOR_UPTREND": "الاتجاه الصاعد السابق لم يستوفِ شروط القياس البحثية",
+    "CLOSE_BELOW_STRUCTURAL_SUPPORT": "الإغلاق كسر الدعم الهيكلي",
+    "CORRECTION_EXCEEDS_RESEARCH_DEPTH_LIMIT": "عمق التصحيح تجاوز الحد البحثي",
+    "ESTABLISHED_DESCENDING_CHANNEL": "تكوّنت قناة هابطة بدل تصحيح داخل اتجاه صاعد",
+    "EMA50_DECLINING_MATERIALLY": "ميل EMA50 أصبح هابطًا بصورة مؤثرة",
+    "AGGRESSIVE_SELLING_VOLUME_EXPANSION": "حجم البيع يتوسع بصورة غير داعمة",
+    "DEEP_PULLBACK_REQUIRES_STRONGER_CONFIRMATION": "التصحيح العميق يحتاج تأكيد ارتداد أقوى",
+    "REWARD_RISK_BELOW_RESEARCH_THRESHOLD": "العائد إلى المخاطرة دون الحد البحثي",
+    "SELLING_VOLUME_NOT_SUPPORTIVE": "سلوك حجم البيع غير داعم",
+    "VOLUME_BEHAVIOUR_UNAVAILABLE": "سلوك الحجم غير متاح بصورة موثوقة",
+}
+
+PULLBACK_VOLUME_LABELS = {
+    "SELLING_VOLUME_CONTRACTING": "حجم البيع يتراجع · Selling volume contracting",
+    "SELLING_VOLUME_EXPANDING": "حجم البيع يتوسع · Selling volume expanding",
+    "AGGRESSIVE_SELLING_EXPANSION": "توسع قوي في حجم البيع · Aggressive selling volume",
+    "MIXED_VOLUME": "سلوك حجم مختلط · Mixed volume",
+    "UNAVAILABLE": "حجم غير متاح بصورة موثوقة · Volume unavailable",
+}
+
+PULLBACK_CONFIRMATION_LABELS = {
+    "CONFIRMED": "ظهر تأكيد ارتداد بحثي فقط · Research confirmation only",
+    "WAITING": "لم يظهر تأكيد ارتداد حتى الآن · Waiting for reversal evidence",
+    "REVERSAL_CANDLE_TRIGGER_PENDING": "ظهرت شمعة ارتداد والتفعيل البحثي لم يكتمل",
+    "NOT_AT_SUPPORT": "لم يصل السعر بعد إلى منطقة الدعم المحددة",
+    "NOT_CONFIRMED": "لم يظهر تأكيد ارتداد حتى الآن",
+}
+
+PULLBACK_CONFIRMATION_REASON_LABELS = {
+    "BULLISH_REJECTION_CANDLE": "شمعة رفض سعري صاعدة",
+    "CLOSE_BACK_ABOVE_SUPPORT_ZONE": "استعادة الإغلاق أعلى منطقة الدعم",
+    "EMA20_RECLAIM": "استعادة EMA20",
+    "CLOSE_ABOVE_PREVIOUS_CANDLE_HIGH": "إغلاق أعلى قمة الجلسة السابقة",
+    "CORRECTION_TRENDLINE_BREAK": "كسر خط اتجاه التصحيح",
 }
 
 MARKET_PHASE_LABELS = {
@@ -538,9 +586,19 @@ def pullback_scenario_view(scenario: PullbackScenarioResult | None):
                if scenario.pullback_atr is not None else EM_DASH)
         correction = f"{percent} / {atr}"
     confluence = " + ".join(scenario.support_confluence) or EM_DASH
-    confirmation = scenario.confirmation_status or EM_DASH
+    confirmation = PULLBACK_CONFIRMATION_LABELS.get(
+        scenario.confirmation_status, scenario.confirmation_status or EM_DASH)
     if scenario.confirmation_reasons:
-        confirmation = f"{confirmation}: " + " + ".join(scenario.confirmation_reasons)
+        reasons = tuple(PULLBACK_CONFIRMATION_REASON_LABELS.get(item, item)
+                        for item in scenario.confirmation_reasons)
+        confirmation = f"{confirmation}: " + " + ".join(reasons)
+    raw_reason = scenario.invalidation_reason or ""
+    if raw_reason.startswith("PULLBACK_DIAGNOSTIC_ERROR:"):
+        reason = f"تعذر حساب تحليل جودة التصحيح · {raw_reason}"
+    elif raw_reason:
+        reason = f"{PULLBACK_REASON_LABELS.get(raw_reason, raw_reason)} · {raw_reason}"
+    else:
+        reason = EM_DASH
     return {
         "state_ar": arabic,
         "state_en": english,
@@ -563,7 +621,8 @@ def pullback_scenario_view(scenario: PullbackScenarioResult | None):
         "support_zone": zone,
         "support_reached": "نعم · Yes" if scenario.support_reached else "لا · No",
         "confluence": confluence,
-        "volume": scenario.volume_behaviour or EM_DASH,
+        "volume": PULLBACK_VOLUME_LABELS.get(
+            scenario.volume_behaviour, scenario.volume_behaviour or EM_DASH),
         "confirmation": confirmation,
         "ema20": dash(scenario.ema20),
         "ema50": dash(scenario.ema50),
@@ -580,7 +639,8 @@ def pullback_scenario_view(scenario: PullbackScenarioResult | None):
         "risk_reward_meaningful": fmt_ratio(
             scenario.reward_risk_meaningful_target, 2),
         "risk_reward_broader": fmt_ratio(scenario.reward_risk_broader_target, 2),
-        "invalidation": scenario.invalidation_reason or EM_DASH,
+        "invalidation": reason,
+        "calculation_error": raw_reason.startswith("PULLBACK_DIAGNOSTIC_ERROR:"),
         "explanation_ar": scenario.explanation_ar,
         "explanation_en": scenario.explanation_en,
         "evidence": tuple(scenario.evidence),
