@@ -21,12 +21,23 @@ import streamlit as st
 
 from core.ai_analysis_evidence import EVIDENCE_ENGINE_VERSION
 from core.analysis_card_generator import CARD_SIZES, DEFAULT_CARD_SIZE
+from core.analysis_presentation import build_presentation
+from core.detailed_analysis_card import (
+    DEFAULT_DETAILED_SIZE,
+    DEFAULT_LANGUAGE,
+    DETAILED_CARD_SIZES,
+    DETAILED_SIZE_LABELS,
+    LANGUAGE_LABELS,
+    LANGUAGES,
+    render_detailed_card_png,
+)
 from core.symbols import (
     ApprovedSymbol,
     load_approved_symbol_options,
     resolve_approved_symbol,
 )
 from dashboard.ai_stock_analysis_components import (
+    CARD_KIND_LABELS,
     CARD_SIZE_LABELS,
     EM_DASH,
     NARRATIVE_CSS,
@@ -814,28 +825,53 @@ def _warnings_section(result):
 
 
 def _card_section(result, narrative):
-    section_header("بطاقة التحليل", "Generate Analysis Card — original Arabic PNG")
+    section_header("بطاقة التحليل", "Export card — compact summary or detailed analysis")
+    presentation = build_presentation(result, narrative)
     left, right = st.columns([1.2, 1])
     with left:
-        size = st.radio("مقاس البطاقة · Card size", list(CARD_SIZES),
-                        format_func=lambda key: CARD_SIZE_LABELS[key],
-                        horizontal=True, key="_ai_analysis_card_size",
-                        index=list(CARD_SIZES).index(DEFAULT_CARD_SIZE))
-        company = st.text_input(
-            "اسم الشركة بالعربية (اختياري) · Arabic company name (optional)",
-            value="", key="_ai_analysis_company",
-        ).strip()
+        kind = st.radio(
+            "نوع البطاقة · Card type",
+            ("COMPACT", "DETAILED"),
+            format_func=lambda key: CARD_KIND_LABELS[key],
+            horizontal=True, key="_ai_analysis_card_kind")
+        if kind == "COMPACT":
+            size = st.radio("مقاس البطاقة · Card size", list(CARD_SIZES),
+                            format_func=lambda key: CARD_SIZE_LABELS[key],
+                            horizontal=True, key="_ai_analysis_card_size",
+                            index=list(CARD_SIZES).index(DEFAULT_CARD_SIZE))
+            language = DEFAULT_LANGUAGE
+            company = st.text_input(
+                "اسم الشركة بالعربية (اختياري) · Arabic company name (optional)",
+                value="", key="_ai_analysis_company",
+            ).strip()
+        else:
+            size = st.radio("مقاس البطاقة · Card size", list(DETAILED_CARD_SIZES),
+                            format_func=lambda key: DETAILED_SIZE_LABELS[key],
+                            key="_ai_analysis_detailed_size",
+                            index=list(DETAILED_CARD_SIZES).index(DEFAULT_DETAILED_SIZE))
+            language = st.radio("اللغة · Language", list(LANGUAGES),
+                                format_func=lambda key: LANGUAGE_LABELS[key],
+                                horizontal=True, key="_ai_analysis_card_language",
+                                index=list(LANGUAGES).index(DEFAULT_LANGUAGE))
+            company = ""
+            st.caption(f"{presentation.display_label} · جلسة {presentation.last_completed_session}")
         generate = st.button("🖼 إنشاء البطاقة · Generate Analysis Card",
                              key="_ai_analysis_card_go")
 
-    cache_key = card_cache_key(result, size) + f"|{company}"
+    cache_key = f"{card_cache_key(result, size)}|{kind}|{language}|{company}"
     if generate and st.session_state.get(STATE_CARD_KEY) != cache_key:
-        # Rendering is deliberately gated on the button AND on the cache key, so a rerun
-        # (a widget change elsewhere on the page) never re-renders the same card.
+        # Rendering is gated on the button AND the cache key, so a rerun never
+        # re-renders the same card.
         with st.spinner("جارٍ إنشاء البطاقة… · Rendering card…"):
             try:
-                st.session_state[STATE_CARD] = generate_card_bytes(
-                    result, narrative, size=size, company_name=company or None)
+                if kind == "COMPACT":
+                    st.session_state[STATE_CARD] = generate_card_bytes(
+                        result, narrative, size=size, company_name=company or None)
+                else:
+                    # The detailed card consumes the SAME presentation model the page
+                    # rendered; it never recalculates a level or a decision.
+                    st.session_state[STATE_CARD] = render_detailed_card_png(
+                        presentation, size=size, language=language)
                 st.session_state[STATE_CARD_KEY] = cache_key
             except Exception as error:
                 st.session_state[STATE_CARD] = None
@@ -845,11 +881,13 @@ def _card_section(result, narrative):
     card = st.session_state.get(STATE_CARD)
     if card and st.session_state.get(STATE_CARD_KEY) == cache_key:
         with right:
-            st.image(card, caption=f"{result.request.symbol} · {CARD_SIZE_LABELS[size]}",
+            # The preview IS the exported bytes — the same object is shown and
+            # downloaded, so they can never differ.
+            st.image(card, caption=f"{presentation.ticker} · {kind.title()}",
                      use_container_width=True)
             st.download_button(
                 "⬇ تنزيل PNG · Download PNG", data=card,
-                file_name=f"{result.request.symbol}_ai_analysis_{size.lower()}.png",
+                file_name=f"{presentation.ticker}_ai_analysis_{kind.lower()}_{size.lower()}.png",
                 mime="image/png", key="_ai_analysis_card_dl")
     elif not card:
         with right:
@@ -942,6 +980,7 @@ def show_ai_stock_analysis(runner=None):
         st.caption("مصدر البيانات: تجهيزة اختبار محلية (لم يُستدعَ أي مزود). · Source: local test "
                    "fixture — no provider was contacted.")
 
+    presentation = build_presentation(result, narrative)
     _status_section(result)
     render_provenance_panel(analysis_provenance(result))
     _price_section(result)
