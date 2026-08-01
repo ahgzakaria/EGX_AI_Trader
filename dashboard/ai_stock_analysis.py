@@ -21,6 +21,13 @@ import streamlit as st
 
 from core.ai_analysis_evidence import EVIDENCE_ENGINE_VERSION
 from core.analysis_card_generator import CARD_SIZES, DEFAULT_CARD_SIZE
+from core.analysis_chart import (
+    DEFAULT_TIMEFRAME,
+    TIMEFRAME_LABELS,
+    TIMEFRAMES,
+    build_daily_figure,
+    figure_to_png,
+)
 from core.analysis_presentation import build_presentation
 from core.detailed_analysis_card import (
     DEFAULT_DETAILED_SIZE,
@@ -375,15 +382,16 @@ def _price_section(result):
                        "folded into the continuous-session range above.")
 
 
-def _chart_section(result):
-    """Render typed daily/Rubix series without fetching or deriving data in the UI."""
+def _chart_section(result, presentation=None):
+    """Render the typed daily/Rubix series. All levels come from the presentation model."""
     section_header("الرسم البياني", "Typed Daily + Rubix Intraday Series")
     try:
-        import plotly.graph_objects as go
+        import plotly.graph_objects as go                                  # noqa: F401
     except Exception:
         st.caption("Plotly is unavailable in this environment; the chart is skipped.")
         return
 
+    presentation = presentation or build_presentation(result, None)
     daily = result.daily_chart_series
     intraday = result.intraday_chart_series
     if daily is None or not daily.points:
@@ -392,74 +400,56 @@ def _chart_section(result):
 
     daily_tab, intraday_tab = st.tabs(("Daily · يومي", "Rubix Intraday · لحظي"))
 
-    def base_figure(series, *, name):
-        figure = go.Figure()
-        points = series.points
-        figure.add_trace(go.Candlestick(
-            x=[p.timestamp for p in points],
-            open=[p.open for p in points], high=[p.high for p in points],
-            low=[p.low for p in points], close=[p.close for p in points],
-            name=name, increasing_line_color="#34d399", decreasing_line_color="#f87171"))
-        figure.update_layout(
-            template="plotly_dark", height=470, margin=dict(l=70, r=130, t=24, b=34),
-            paper_bgcolor="#0b1220", plot_bgcolor="#0e1729",
-            xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#223049", title="EGP"),
-            xaxis_rangeslider_visible=False, showlegend=True,
-            legend=dict(orientation="h", y=1.12, bgcolor="rgba(0,0,0,0)"))
-        return figure
-
     with daily_tab:
-        figure = base_figure(daily, name=f"{daily.source} · {daily.timeframe}")
-        lines = [(row["label_en"], row) for row in key_level_rows(result) if row["present"]]
-        palette = {"Support 1": "#34d399", "Support 2": "#10b981",
-                   "Resistance 1": "#fbbf24", "Resistance 2": "#f59e0b",
-                   "Breakout": "#60a5fa", "Invalidation": "#f87171"}
-        drawn = []
-        for label, row in lines:
-            try:
-                value = float(str(row["value"]).replace(",", ""))
-            except ValueError:
-                continue
-            shift = 14 * sum(1 for seen in drawn if abs(seen - value) < 1e-9)
-            drawn.append(value)
-            figure.add_hline(
-                y=value, line_dash="dot", line_color=palette.get(label, "#94a3b8"),
-                annotation_text=f"{label} {row['value']}", annotation_position="right",
-                annotation_yshift=shift,
-                annotation_font_color=palette.get(label, "#94a3b8"))
-
-        st.plotly_chart(figure, use_container_width=True)
-        st.caption(f"source: {daily.source} · latest completed session: "
-                   f"{daily.latest_completed_session or EM_DASH}")
+        timeframe = st.radio(
+            "المدى الزمني · Timeframe", list(TIMEFRAMES),
+            format_func=lambda key: TIMEFRAME_LABELS[key], horizontal=True,
+            key="_ai_analysis_timeframe",
+            index=list(TIMEFRAMES).index(DEFAULT_TIMEFRAME))
+        st.caption(
+            "المدى الزمني يغيّر عدد الشموع المعروضة فقط ولا يعيد حساب أي مستوى · "
+            "Timeframe changes the displayed candles only; analysis levels are unchanged."
+        )
+        figure = build_daily_figure(presentation, timeframe=timeframe)
+        if figure is None:
+            empty_state("لا توجد بيانات كافية للرسم", "No candles in the selected window.")
+        else:
+            st.plotly_chart(figure, use_container_width=True)
+            st.caption(
+                "خطوط متصلة: اختراق/إبطال · متقطعة: دعم ومقاومة · منقّطة: مستويات ثانوية · "
+                "نطاق بنفسجي: منطقة تصحيح بحثية · Solid: breakout/invalidation · "
+                "Dashed: support/resistance · Dotted: minor · Purple band: research pullback zone"
+            )
+            png = figure_to_png(figure)
+            if png:
+                # The SAME figure object that is displayed is the one exported.
+                st.download_button(
+                    "⬇ تنزيل الرسم PNG · Download chart PNG", data=png,
+                    file_name=f"{presentation.ticker}_daily_{timeframe.lower()}.png",
+                    mime="image/png", key="_ai_analysis_chart_dl")
 
     with intraday_tab:
         if intraday is None or not intraday.points:
-            empty_state("لا توجد شموع Rubix", "No typed current-session Rubix series supplied.")
+            empty_state("لا توجد بيانات لحظية", "No typed Rubix intraday series was supplied.")
         else:
+            points = intraday.points
             intraday_figure = go.Figure()
-            if intraday.continuous_points:
-                pts = intraday.continuous_points
-                intraday_figure.add_trace(go.Candlestick(
-                    x=[p.timestamp for p in pts], open=[p.open for p in pts],
-                    high=[p.high for p in pts], low=[p.low for p in pts],
-                    close=[p.close for p in pts], name="Continuous",
-                    increasing_line_color="#34d399", decreasing_line_color="#f87171"))
-            if intraday.auction_points:
-                pts = intraday.auction_points
-                intraday_figure.add_trace(go.Scatter(
-                    x=[p.timestamp for p in pts], y=[p.close for p in pts],
-                    mode="markers", name="Closing Auction (separate)",
-                    marker=dict(size=8, color="#fbbf24", symbol="diamond")))
+            intraday_figure.add_trace(go.Candlestick(
+                x=[point.timestamp for point in points],
+                open=[point.open for point in points],
+                high=[point.high for point in points],
+                low=[point.low for point in points],
+                close=[point.close for point in points],
+                name=f"{intraday.source} · {intraday.timeframe}",
+                increasing_line_color="#34d399", decreasing_line_color="#f87171"))
             intraday_figure.update_layout(
-                template="plotly_dark", height=470, margin=dict(l=70, r=40, t=24, b=34),
+                template="plotly_dark", height=470,
+                margin=dict(l=70, r=130, t=24, b=34),
                 paper_bgcolor="#0b1220", plot_bgcolor="#0e1729",
-                xaxis_rangeslider_visible=False,
-                yaxis=dict(gridcolor="#223049", title="EGP"))
+                xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#223049", title="EGP"),
+                xaxis_rangeslider_visible=False, showlegend=True,
+                legend=dict(orientation="h", y=1.12, bgcolor="rgba(0,0,0,0)"))
             st.plotly_chart(intraday_figure, use_container_width=True)
-            st.caption(f"source: {intraday.source} · session: {intraday.session_date} · "
-                       f"auction points: {len(intraday.auction_points)} (kept separate)")
-    st.caption("كل القيم معروضة كما وردت من محرك الأدلة — لا يحسب هذا الرسم أي مؤشر. · Every value "
-               "is plotted exactly as supplied; the chart computes nothing.")
 
 
 def _technical_section(result):
@@ -984,7 +974,7 @@ def show_ai_stock_analysis(runner=None):
     _status_section(result)
     render_provenance_panel(analysis_provenance(result))
     _price_section(result)
-    _chart_section(result)
+    _chart_section(result, presentation)
     _technical_section(result)
     _levels_section(result)
     _pullback_section(result)
