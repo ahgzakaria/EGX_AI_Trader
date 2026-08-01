@@ -309,9 +309,12 @@ def test_label_collisions_are_resolved_deterministically():
         assert following - previous >= 0.06 - 1e-9
     # Deterministic: the same input always yields the same lanes.
     assert lanes == resolve_label_lanes(levels, min_gap=0.06)
-    # A level is never pushed DOWN below its true price.
-    for key, price in levels:
-        assert lanes[key] >= price - 1e-9
+    # Order is preserved, and a cluster stays centred on its members' true prices
+    # rather than drifting the whole stack one way.
+    assert [k for k, _ in sorted(lanes.items(), key=lambda i: i[1])] ==         [k for k, _ in levels]
+    centre_before = sum(price for _, price in levels) / len(levels)
+    centre_after = sum(lanes.values()) / len(lanes)
+    assert abs(centre_after - centre_before) < 1e-6
 
 
 def test_levels_have_a_visual_hierarchy(presentation):

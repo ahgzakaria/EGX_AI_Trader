@@ -54,6 +54,13 @@ LEVEL_COLOURS = {
 
 SUPPORT_BAND_KEYS = ("support_1", "support_2")
 
+#: Approximate rendered height of one annotation label, in pixels.
+LABEL_PX = 18.0
+#: Lane key for the last-close marker, so it shares the collision solver.
+LAST_PRICE_KEY = "__last_price__"
+#: Lane key for the research pullback zone label.
+ZONE_KEY = "__pullback_zone__"
+
 
 @dataclass(frozen=True)
 class ChartWindow:
@@ -98,26 +105,51 @@ def _ema(values, span):
 
 
 def resolve_label_lanes(levels, *, min_gap: float) -> dict:
-    """Assign each level a vertical slot so close labels never overlap.
+    """Assign each label a vertical slot so close labels never overlap.
 
-    Deterministic: levels are sorted by price and any label closer than
-    ``min_gap`` to the previous one is pushed up by exactly the remaining gap.
-    Given 7.37 / 7.50 / 7.54 / 7.57 / 7.66 this yields five distinct anchors in a
-    stable order, on every render.
+    Overlapping labels are grouped into clusters and each cluster is spread
+    symmetrically about the MEAN of its members' true prices. A pure push-up pass
+    is simpler but drifts the whole stack upward — an 8.49 breakout ended up
+    labelled at 8.92, far from its own line. Centring keeps every label beside the
+    price it describes while still guaranteeing ``min_gap`` between labels.
+
+    Deterministic: sorted by price, then by key for equal prices, so the same
+    input always yields the same lanes. Given 7.37 / 7.50 / 7.54 / 7.57 / 7.66 it
+    produces five distinct, stable anchors.
     """
 
-    present = sorted(((key, float(price)) for key, price in levels if price is not None),
-                     key=lambda item: item[1])
-    lanes, previous = {}, None
-    for key, price in present:
-        anchor = price if previous is None else max(price, previous + min_gap)
-        lanes[key] = anchor
-        previous = anchor
-    return lanes
+    present = sorted(((str(key), float(price)) for key, price in levels
+                      if price is not None),
+                     key=lambda item: (item[1], item[0]))
+    if not present:
+        return {}
+    if min_gap <= 0:
+        return {key: price for key, price in present}
+
+    # Cluster indices whose labels would collide, then re-cluster until stable.
+    clusters = [[index] for index in range(len(present))]
+    while True:
+        positions, merged = {}, False
+        for cluster in clusters:
+            centre = sum(present[i][1] for i in cluster) / len(cluster)
+            start = centre - (len(cluster) - 1) * min_gap / 2.0
+            for offset, index in enumerate(cluster):
+                positions[index] = start + offset * min_gap
+        combined = [clusters[0]]
+        for cluster in clusters[1:]:
+            previous = combined[-1]
+            if positions[cluster[0]] - positions[previous[-1]] < min_gap - 1e-12:
+                combined[-1] = previous + cluster
+                merged = True
+            else:
+                combined.append(cluster)
+        clusters = combined
+        if not merged:
+            return {present[index][0]: positions[index] for index in positions}
 
 
 def build_daily_figure(presentation: AnalysisPresentation, *,
-                       timeframe: str = DEFAULT_TIMEFRAME, height: int = 620):
+                       timeframe: str = DEFAULT_TIMEFRAME, height: int = 700):
     """Return a Plotly figure for the Daily tab, or ``None`` without Plotly."""
 
     try:
@@ -160,17 +192,27 @@ def build_daily_figure(presentation: AnalysisPresentation, *,
         opacity=0.55, hovertemplate="%{x}<br>Vol %{y:,.0f}<extra></extra>"),
         row=2, col=1)
 
-    prices = [c.high for c in candles if c.high is not None] + \
-             [c.low for c in candles if c.low is not None]
+    # The y-axis spans BOTH the candles and every annotated level, so the label gap
+    # must come from that full range — a breakout above the highs would otherwise be
+    # spaced against the wrong scale.
+    prices = [c.high for c in candles if c.high is not None]
+    prices += [c.low for c in candles if c.low is not None]
+    prices += [lv.price for lv in presentation.levels if lv.present]
+    if presentation.close is not None:
+        prices.append(presentation.close)
     span_price = (max(prices) - min(prices)) if prices else 1.0
-    min_gap = span_price * 0.035
+    # A label is ~LABEL_PX tall and the price sub-plot gets ~76% of the drawable
+    # height, so convert that pixel requirement into price units.
+    plot_px = max(120.0, (height - 86 - 36) * 0.76)
+    min_gap = span_price * (LABEL_PX / plot_px)
 
     pullback = presentation.pullback
+    zone_mid = None
     if pullback.support_zone_low is not None and pullback.support_zone_high is not None:
         figure.add_hrect(y0=pullback.support_zone_low, y1=pullback.support_zone_high,
                          fillcolor="#c084fc", opacity=0.16, line_width=0,
-                         annotation_text="Pullback zone (research)",
-                         annotation_position="top left", row=1, col=1)
+                         row=1, col=1)
+        zone_mid = (pullback.support_zone_low + pullback.support_zone_high) / 2.0
 
     # Supports render as translucent BANDS, not hairlines.
     for key in SUPPORT_BAND_KEYS:
@@ -181,8 +223,31 @@ def build_daily_figure(presentation: AnalysisPresentation, *,
                              fillcolor=LEVEL_COLOURS[key], opacity=0.18,
                              line_width=0, row=1, col=1)
 
-    lanes = resolve_label_lanes(
-        [(lv.key, lv.price) for lv in presentation.levels], min_gap=min_gap)
+    # The last-price marker shares the lane set, so it can never sit on a level.
+    # Two levels at the SAME price are one fact, not two labels. Merging them keeps
+    # the lane set small enough that no label has to drift far from its own line.
+    merged: dict[float, list] = {}
+    for level in presentation.levels:
+        if level.present:
+            merged.setdefault(round(float(level.price), 4), []).append(level)
+    label_text = {}
+    annotated = []
+    for price, group in merged.items():
+        key = group[0].key
+        annotated.append((key, price))
+        names = " / ".join(dict.fromkeys(item.label_en for item in group))
+        label_text[key] = f"{names} {group[0].display}"
+    if presentation.close is not None:
+        annotated.append((LAST_PRICE_KEY, presentation.close))
+    if zone_mid is not None:
+        annotated.append((ZONE_KEY, zone_mid))
+    lanes = resolve_label_lanes(annotated, min_gap=min_gap)
+    if zone_mid is not None:
+        figure.add_annotation(
+            x=1.0, xref="paper", y=lanes[ZONE_KEY], yref="y",
+            text="Pullback zone (research)", showarrow=False, xanchor="left",
+            font=dict(size=11, color="#c084fc"),
+            bgcolor="rgba(11,18,32,0.72)", borderpad=3)
     for level in presentation.levels:
         if not level.present:
             continue
@@ -190,11 +255,13 @@ def build_daily_figure(presentation: AnalysisPresentation, *,
         colour = LEVEL_COLOURS.get(level.key, "#94a3b8")
         figure.add_hline(y=level.price, line=dict(
             color=colour, width=style["width"], dash=style["dash"]), row=1, col=1)
+        if level.key not in label_text:
+            continue
         # The annotation lane keeps close labels legible; the LINE stays on the
         # true price, only its label is nudged.
         figure.add_annotation(
             x=1.0, xref="paper", y=lanes.get(level.key, level.price), yref="y",
-            text=f"{level.label_en} {level.display}", showarrow=False,
+            text=label_text[level.key], showarrow=False,
             xanchor="left", align="left", font=dict(size=11, color=colour),
             bgcolor="rgba(11,18,32,0.72)", borderpad=3)
 
@@ -202,8 +269,8 @@ def build_daily_figure(presentation: AnalysisPresentation, *,
         figure.add_hline(y=presentation.close, line=dict(color="#e6edf7", width=2.4),
                          row=1, col=1)
         figure.add_annotation(
-            x=1.0, xref="paper", y=presentation.close, yref="y",
-            text=f"Last {fmt_value(presentation.close)}", showarrow=False,
+            x=1.0, xref="paper", y=lanes.get(LAST_PRICE_KEY, presentation.close),
+            yref="y", text=f"Last {fmt_value(presentation.close)}", showarrow=False,
             xanchor="left", font=dict(size=12, color="#0b1220"),
             bgcolor="#e6edf7", borderpad=4)
 
@@ -218,14 +285,16 @@ def build_daily_figure(presentation: AnalysisPresentation, *,
 
     figure.update_layout(
         template="plotly_dark", height=height,
-        margin=dict(l=60, r=210, t=42, b=36),
+        margin=dict(l=60, r=235, t=86, b=36),
         paper_bgcolor="#0b1220", plot_bgcolor="#0e1729",
         xaxis_rangeslider_visible=False, hovermode="x unified",
         showlegend=True,
-        legend=dict(orientation="h", y=1.10, bgcolor="rgba(0,0,0,0)"),
+        legend=dict(orientation="h", y=1.04, yanchor="bottom",
+                    bgcolor="rgba(0,0,0,0)"),
         title=dict(text=f"{presentation.ticker} · EODHD daily · "
                         f"last completed session {window.last_session} · {timeframe}",
-                   font=dict(size=13, color="#8ea1bd"), x=0, xanchor="left"))
+                   font=dict(size=13, color="#8ea1bd"),
+                   x=0, xanchor="left", y=0.985, yanchor="top"))
     figure.update_yaxes(title_text=presentation.currency, gridcolor="#223049", row=1, col=1)
     figure.update_yaxes(title_text="Volume", gridcolor="#223049", row=2, col=1)
     figure.update_xaxes(showgrid=False, row=2, col=1)
