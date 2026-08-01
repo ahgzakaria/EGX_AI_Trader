@@ -106,8 +106,11 @@ def test_insufficient_history_keeps_exact_reason_and_missing_values():
         missing_measurements=("confirmed_swing_high", "impulse_low"),
     )
     view = pullback_scenario_view(scenario)
-    assert "INSUFFICIENT_COMPLETED_DAILY_HISTORY" in view["invalidation"]
-    assert "التاريخ اليومي المكتمل غير كافٍ" in view["invalidation"]
+    # The user-facing sentence is the LOCALIZED reason only; the internal enum
+    # moved to invalidation_code for the collapsed diagnostics section.
+    assert view["invalidation"] == "التاريخ اليومي المكتمل غير كافٍ"
+    assert "INSUFFICIENT_COMPLETED_DAILY_HISTORY" not in view["invalidation"]
+    assert view["invalidation_code"] == "INSUFFICIENT_COMPLETED_DAILY_HISTORY"
     assert view["swing_high"] == EM_DASH
     assert view["impulse_low"] == EM_DASH
     assert view["pullback_percent"] == EM_DASH
@@ -120,7 +123,11 @@ def test_local_pullback_error_is_a_visible_local_diagnostic():
         missing_measurements=("pullback_calculation_failed",),
     ))
     assert view["calculation_error"] is True
-    assert "PULLBACK_DIAGNOSTIC_ERROR:RuntimeError" in view["invalidation"]
+    # Still surfaced as a local diagnostic, but the raw exception token is kept
+    # out of the reading flow and preserved in the diagnostic code field.
+    assert "تعذر حساب تحليل جودة التصحيح" in view["invalidation"]
+    assert "RuntimeError" not in view["invalidation"]
+    assert view["invalidation_code"] == "PULLBACK_DIAGNOSTIC_ERROR:RuntimeError"
 
 
 def test_selecting_another_stock_discards_the_previous_bundle(monkeypatch):

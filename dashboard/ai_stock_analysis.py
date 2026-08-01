@@ -15,6 +15,7 @@ but the production page never imports a fixture and never contacts a provider di
 from __future__ import annotations
 
 import html
+import re
 
 import streamlit as st
 
@@ -124,14 +125,61 @@ def _discard_stale_analysis(selected_symbol):
 # Small render helpers
 # --------------------------------------------------------------------------- #
 
+#: A value is "numeric" when it is only digits, separators and units — those keep the
+#: LTR tabular presentation. Anything containing Arabic or prose is narrative and is
+#: rendered right-to-left so it wraps on word boundaries.
+_NUMERIC_VALUE = re.compile(r"^[\s\d.,%/:+\-–—()A-Za-z]*$")
+
+
+def _is_numeric_value(text):
+    return bool(_NUMERIC_VALUE.fullmatch(str(text)))
+
+
+def _isolate_identifiers(text):
+    """Bidi-isolate technical ASCII identifiers inside Arabic narrative.
+
+    Without isolation an ``EMA20_ABOVE_EMA50`` style token embedded in a
+    right-to-left sentence reorders around the surrounding Arabic.
+    """
+    escaped = html.escape(str(text))
+    # A technical token is kept WHOLE: "ai-narrative@2" and "COMI.EGX" must not be
+    # fragmented into separate isolates, or a reader (or a grep) sees them split.
+    return re.sub(r"([A-Za-z][A-Za-z0-9_]*(?:[.@\-][A-Za-z0-9_]+)*)",
+                  r'<bdi dir="ltr">\1</bdi>', escaped)
+
+
 def _kv_table(rows):
-    """A compact right-to-left label/value table."""
-    body = "".join(
-        f'<tr><td class="k">{html.escape(str(label_ar))}'
-        f'<span class="en">{html.escape(str(label_en))}</span></td>'
-        f'<td class="v">{html.escape(str(value))}</td></tr>'
-        for label_ar, label_en, value in rows)
-    st.markdown(f'<table class="egx-kv">{body}</table>', unsafe_allow_html=True)
+    """A compact right-to-left label/value table.
+
+    Numeric values keep the LTR tabular look; narrative values render RTL and wrap
+    normally, so Arabic never degrades into one glyph per line.
+    """
+    cells = []
+    for label_ar, label_en, value in rows:
+        numeric = _is_numeric_value(value)
+        klass = "v num" if numeric else "v"
+        rendered = (html.escape(str(value)) if numeric
+                    else _isolate_identifiers(value))
+        cells.append(
+            f'<tr><td class="k">{html.escape(str(label_ar))}'
+            f'<span class="en">{html.escape(str(label_en))}</span></td>'
+            f'<td class="{klass}">{rendered}</td></tr>')
+    st.markdown(f'<table class="egx-kv">{"".join(cells)}</table>',
+                unsafe_allow_html=True)
+
+
+def _text_metric_card(label_ar, value, label_en=""):
+    """A metric card whose value is a PHRASE rather than a number.
+
+    Uses the smaller ``.text`` value style so a long localized label wraps on word
+    boundaries instead of force-breaking and inflating the whole row's height.
+    """
+    st.markdown(
+        f'<div class="egx-metric"><div class="v text">'
+        f'{_isolate_identifiers(value)}</div>'
+        f'<div class="lar">{html.escape(str(label_ar))}</div>'
+        + (f'<div class="len">{html.escape(str(label_en))}</div>' if label_en else "")
+        + "</div>", unsafe_allow_html=True)
 
 
 def _page_style():
@@ -139,14 +187,28 @@ def _page_style():
     st.markdown(
         """
         <style>
-        .egx-kv { width:100%; border-collapse:collapse; direction:rtl; }
-        .egx-kv td { padding:.34rem .55rem; border-bottom:1px solid var(--border); font-size:.86rem; }
+        .egx-kv { width:100%; border-collapse:collapse; direction:rtl;
+            table-layout:fixed; }
+        .egx-kv td { padding:.34rem .55rem; border-bottom:1px solid var(--border); font-size:.86rem;
+            vertical-align:top; }
         .egx-kv tr:last-child td { border-bottom:0; }
-        .egx-kv td.k { color:var(--muted); white-space:nowrap; }
+        /* The key column must YIELD rather than pin itself wide: a nowrap key kept
+           its full intrinsic width and squeezed the value column until long Arabic
+           narrative had almost no room to wrap in. */
+        .egx-kv td.k { color:var(--muted); width:34%; white-space:normal;
+            word-break:normal; overflow-wrap:break-word; }
         .egx-kv td.k .en { display:block; font-size:.62rem; letter-spacing:.03em;
             text-transform:uppercase; opacity:.72; direction:ltr; text-align:right; }
-        .egx-kv td.v { color:var(--text); font-weight:700; text-align:left;
-            direction:ltr; font-variant-numeric:tabular-nums; }
+        /* Default value cell is NARRATIVE-safe: Arabic reads right-to-left and wraps
+           on word boundaries. break-all/anywhere are deliberately NOT used — they are
+           what shattered Arabic into one glyph per line. */
+        .egx-kv td.v { color:var(--text); font-weight:700; direction:rtl;
+            text-align:right; white-space:normal; word-break:normal;
+            overflow-wrap:break-word; }
+        /* Numeric/technical values keep the tabular LTR presentation. */
+        .egx-kv td.v.num { direction:ltr; text-align:left;
+            font-variant-numeric:tabular-nums; }
+        .egx-kv td.v bdi { unicode-bidi:isolate; }
         .egx-panel { background:var(--surface); border:1px solid var(--border);
             border-radius:12px; padding:.7rem .85rem; height:100%; }
         .egx-panel h4 { margin:0 0 .45rem; font-size:.86rem; direction:rtl; }
@@ -162,7 +224,15 @@ def _page_style():
         .egx-conf .bar i { display:block; height:100%; background:linear-gradient(90deg,#2563eb,#34d399); }
         .egx-conf .num { min-width:52px; text-align:left; font-weight:750; font-size:.82rem;
             font-variant-numeric:tabular-nums; }
-        .egx-req { direction:rtl; font-size:.83rem; color:var(--muted); margin:.12rem 0; }
+        .egx-req { direction:rtl; font-size:.83rem; color:var(--muted); margin:.12rem 0;
+            white-space:normal; word-break:normal; overflow-wrap:break-word; }
+        /* A metric whose value is a PHRASE, not a number. The default .v is 1.45rem,
+           which forces a long token to break mid-word inside a ~200px card and adds
+           a phantom second line to every card in the row. */
+        .egx-metric .v.text { font-size:.92rem; font-weight:700; line-height:1.28;
+            direction:rtl; text-align:right; white-space:normal; word-break:normal;
+            overflow-wrap:break-word; }
+        .egx-metric .v.text bdi { unicode-bidi:isolate; }
         </style>
         """, unsafe_allow_html=True)
 
@@ -501,9 +571,12 @@ def _pullback_section(result):
             "تعذر حساب هذا الجزء محليًا؛ بقيت بقية صفحة التحليل متاحة. · "
             "Local Pullback diagnostic error; the rest of AI Analysis is unaffected."
         )
-    first = st.columns(6)
+    # Trend quality is a PHRASE — it gets its own wider cell and the text style, so a
+    # localized label never force-breaks the way the raw enum did.
+    trend_column, *first = st.columns([2, 1, 1, 1, 1, 1])
+    with trend_column:
+        _text_metric_card("جودة الاتجاه", view["trend"], label_en="Trend Quality")
     first_cells = (
-        ("جودة الاتجاه", "Trend Quality", view["trend"]),
         ("آخر قمة مؤكدة", "Last Confirmed Swing High", view["swing_high"]),
         ("قاع بداية الموجة", "Impulse Start Low", view["impulse_low"]),
         ("نسبة التصحيح", "Pullback", view["pullback_percent"]),
@@ -513,18 +586,21 @@ def _pullback_section(result):
     for column, cell in zip(first, first_cells):
         with column:
             metric_card(cell[0], cell[2], label_en=cell[1])
-    second = st.columns(6)
+    second = st.columns([1, 1, 1, 2, 1.4, 1])
     second_cells = (
-        ("عدد الجلسات", "Correction Bars", view["correction_bars"]),
-        ("EMA20", "EMA20", view["ema20"]),
-        ("EMA50", "EMA50", view["ema50"]),
-        ("علاقة المتوسطات", "EMA Relationship", view["ema_relation"]),
-        ("منطقة الدعم", "Support Zone", view["support_zone"]),
-        ("وصل للدعم؟", "Support Reached", view["support_reached"]),
+        ("عدد الجلسات", "Correction Bars", view["correction_bars"], False),
+        ("EMA20", "EMA20", view["ema20"], False),
+        ("EMA50", "EMA50", view["ema50"], False),
+        ("علاقة المتوسطات", "EMA Relationship", view["ema_relation"], True),
+        ("منطقة الدعم", "Support Zone", view["support_zone"], False),
+        ("وصل للدعم؟", "Support Reached", view["support_reached"], True),
     )
-    for column, cell in zip(second, second_cells):
+    for column, (label_ar, label_en, value, is_text) in zip(second, second_cells):
         with column:
-            metric_card(cell[0], cell[2], label_en=cell[1])
+            if is_text:
+                _text_metric_card(label_ar, value, label_en=label_en)
+            else:
+                metric_card(label_ar, value, label_en=label_en)
     details = [
         ("عناصر تداخل الدعم", "Support Confluence", view["confluence"]),
         ("سلوك حجم التداول", "Volume Behaviour", view["volume"]),
@@ -561,6 +637,18 @@ def _pullback_section(result):
             ("المقاومة الهيكلية", "Meaningful resistance",
              view["meaningful_resistance"]),
             ("المقاومة الأوسع", "Broader resistance", view["broader_resistance"]),
+        ])
+    with st.expander(
+            "تفاصيل تشخيصية · Diagnostic details (internal codes)", expanded=False):
+        st.caption(
+            "رموز داخلية للمراجعة الفنية فقط · Internal codes for technical review "
+            "only; the labels above are the user-facing meaning."
+        )
+        _kv_table([
+            ("رمز سبب الإبطال", "Invalidation code", view["invalidation_code"]),
+            ("رمز جودة الاتجاه", "Trend status code", view["trend_code"]),
+            ("رمز علاقة المتوسطات", "EMA alignment code", view["ema_relation_code"]),
+            ("رمز الهيكل السعري", "Structure code", view["structure_code"]),
         ])
     if view["missing"]:
         st.caption("قياسات غير موثوقة/غير متاحة · Missing or unreliable: "

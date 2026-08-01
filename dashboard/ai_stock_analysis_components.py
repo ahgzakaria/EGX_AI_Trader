@@ -133,6 +133,27 @@ PULLBACK_REASON_LABELS = {
     "VOLUME_BEHAVIOUR_UNAVAILABLE": "سلوك الحجم غير متاح بصورة موثوقة",
 }
 
+#: ``prior_trend_status`` and ``ema_alignment_status`` are INTERNAL enums. Rendered
+#: raw they are both meaningless to a trader and unbreakable 17-19 character tokens
+#: that force a metric card to wrap mid-word. Always display the mapped label.
+PULLBACK_TREND_LABELS = {
+    "VALID_UPTREND": "اتجاه صاعد مؤكد · Valid uptrend",
+    "INVALID_PRIOR_TREND": "الاتجاه السابق غير مؤهل · Prior trend not qualified",
+    "NOT_VALIDATED": "لم يتم التحقق · Not validated",
+}
+
+PULLBACK_EMA_LABELS = {
+    "EMA20_ABOVE_EMA50": "EMA20 أعلى من EMA50 · EMA20 above EMA50",
+    "EMA20_BELOW_EMA50": "EMA20 أدنى من EMA50 · EMA20 below EMA50",
+    "EMA20_EQUALS_EMA50": "EMA20 يساوي EMA50 · EMA20 equals EMA50",
+}
+
+PULLBACK_STRUCTURE_LABELS = {
+    "HIGHER_HIGH_HIGHER_LOW": "قمم وقيعان صاعدة · Higher high, higher low",
+    "LOWER_HIGH_LOWER_LOW": "قمم وقيعان هابطة · Lower high, lower low",
+    "MIXED_STRUCTURE": "هيكل مختلط · Mixed structure",
+}
+
 PULLBACK_VOLUME_LABELS = {
     "SELLING_VOLUME_CONTRACTING": "حجم البيع يتراجع · Selling volume contracting",
     "SELLING_VOLUME_EXPANDING": "حجم البيع يتوسع · Selling volume expanding",
@@ -594,9 +615,11 @@ def pullback_scenario_view(scenario: PullbackScenarioResult | None):
         confirmation = f"{confirmation}: " + " + ".join(reasons)
     raw_reason = scenario.invalidation_reason or ""
     if raw_reason.startswith("PULLBACK_DIAGNOSTIC_ERROR:"):
-        reason = f"تعذر حساب تحليل جودة التصحيح · {raw_reason}"
+        reason = "تعذر حساب تحليل جودة التصحيح · Pullback diagnostic could not be computed"
     elif raw_reason:
-        reason = f"{PULLBACK_REASON_LABELS.get(raw_reason, raw_reason)} · {raw_reason}"
+        # The user-facing string is the LOCALIZED reason only. The internal enum is
+        # returned separately so it can appear in the collapsed diagnostics section.
+        reason = PULLBACK_REASON_LABELS.get(raw_reason, raw_reason)
     else:
         reason = EM_DASH
     return {
@@ -604,8 +627,12 @@ def pullback_scenario_view(scenario: PullbackScenarioResult | None):
         "state_en": english,
         "tone": tone,
         "research_score": dash(scenario.research_score, fmt_score),
-        "trend": scenario.prior_trend_status or EM_DASH,
-        "structure": scenario.structure_status or EM_DASH,
+        "trend": (PULLBACK_TREND_LABELS.get(scenario.prior_trend_status,
+                                            scenario.prior_trend_status)
+                  if scenario.prior_trend_status else EM_DASH),
+        "structure": (PULLBACK_STRUCTURE_LABELS.get(scenario.structure_status,
+                                                    scenario.structure_status)
+                      if scenario.structure_status else EM_DASH),
         "swing_high": dash(scenario.swing_high),
         "swing_high_date": scenario.swing_high_date or EM_DASH,
         "swing_confirmation_date": scenario.swing_high_confirmation_date or EM_DASH,
@@ -626,7 +653,9 @@ def pullback_scenario_view(scenario: PullbackScenarioResult | None):
         "confirmation": confirmation,
         "ema20": dash(scenario.ema20),
         "ema50": dash(scenario.ema50),
-        "ema_relation": scenario.ema_alignment_status or EM_DASH,
+        "ema_relation": (PULLBACK_EMA_LABELS.get(scenario.ema_alignment_status,
+                                                 scenario.ema_alignment_status)
+                         if scenario.ema_alignment_status else EM_DASH),
         "trigger": dash(scenario.entry_trigger),
         "stop": dash(scenario.stop_loss),
         "target_1": dash(scenario.target_1),
@@ -640,6 +669,12 @@ def pullback_scenario_view(scenario: PullbackScenarioResult | None):
             scenario.reward_risk_meaningful_target, 2),
         "risk_reward_broader": fmt_ratio(scenario.reward_risk_broader_target, 2),
         "invalidation": reason,
+        #: The internal enum, for the COLLAPSED diagnostics section only. It must
+        #: never be concatenated into a user-facing sentence.
+        "invalidation_code": raw_reason or EM_DASH,
+        "trend_code": scenario.prior_trend_status or EM_DASH,
+        "ema_relation_code": scenario.ema_alignment_status or EM_DASH,
+        "structure_code": scenario.structure_status or EM_DASH,
         "calculation_error": raw_reason.startswith("PULLBACK_DIAGNOSTIC_ERROR:"),
         "explanation_ar": scenario.explanation_ar,
         "explanation_en": scenario.explanation_en,
@@ -1481,3 +1516,9 @@ CARD_SIZE_LABELS = {
     "STORY": "بطاقة طولية 1080×1920 · Story 1080×1920",
 }
 assert set(CARD_SIZE_LABELS) == set(CARD_SIZES)
+
+#: Export kinds. The compact card is unchanged; the detailed card is additive.
+CARD_KIND_LABELS = {
+    "COMPACT": "بطاقة مختصرة · Compact Summary",
+    "DETAILED": "بطاقة تحليل تفصيلية · Detailed Analysis",
+}
