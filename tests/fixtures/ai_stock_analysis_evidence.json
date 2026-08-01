@@ -1,6 +1,6 @@
 {
   "_comment": "Sample AI Stock Analysis evidence fixture. Illustrative values only — NOT real market data. Shape matches core/ai_stock_analysis_contract.py: every technical number is a dedicated typed field (SMA and EMA separate; MACD/OBV/volume_ratio/expected_range_position explicit). Numbers live only in the evidence layer; narrative/card reference them by evidence_version and never originate a number.",
-  "contract_version": "ai_stock_analysis_contract@1.2.0",
+  "contract_version": "ai_stock_analysis_contract@1.3.0",
   "request": {
     "symbol": "COMI",
     "request_id": "req-sample-0001",

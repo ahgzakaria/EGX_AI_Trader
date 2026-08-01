@@ -52,6 +52,7 @@ from dashboard.ai_stock_analysis_components import (
     normalize_symbol,
     price_summary_rows,
     provenance_rows,
+    pullback_scenario_view,
     scenario_view,
     trend_reading,
     volume_analysis_available,
@@ -459,6 +460,92 @@ def _scenario_section(result):
         st.markdown("<div style='height:.5rem'></div>", unsafe_allow_html=True)
 
 
+def _pullback_section(result):
+    section_header("تحليل جودة التصحيح", "Pullback Health Analysis")
+    view = pullback_scenario_view(getattr(result, "pullback_scenario", None))
+    if view is None:
+        empty_state("السيناريو غير متاح", "Pullback evidence was not supplied.")
+        return
+    state_badge = badge_html(f'{view["state_ar"]} · {view["state_en"]}', view["tone"])
+    research_badge = badge_html("Research Only — غير معتمد كإشارة دخول", "amber")
+    st.markdown(
+        f'<div class="egx-scenario"><div class="t">تحليل جودة التصحيح · '
+        f'Pullback Health Analysis</div><div style="margin:.4rem 0">'
+        f'{state_badge} {research_badge}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    st.warning(
+        "Historical calibration did not demonstrate a positive managed-trade edge. "
+        "This analysis describes correction quality and does not represent a BUY signal.\n\n"
+        "لم تثبت المعايرة التاريخية أفضلية إيجابية بعد تطبيق الوقف والأهداف.\n\n"
+        "هذا التحليل يصف جودة التصحيح ولا يمثل إشارة شراء."
+    )
+    first = st.columns(6)
+    first_cells = (
+        ("جودة الاتجاه", "Trend Quality", view["trend"]),
+        ("قمة مؤكدة", "Confirmed Swing High", view["swing_high"]),
+        ("قاع الدفعة", "Impulse Low", view["impulse_low"]),
+        ("نسبة التصحيح", "Pullback", view["pullback_percent"]),
+        ("عمق ATR", "Pullback ATR", view["pullback_atr"]),
+        ("ارتداد الدفعة", "Impulse Retracement", view["retracement"]),
+    )
+    for column, cell in zip(first, first_cells):
+        with column:
+            metric_card(cell[0], cell[2], label_en=cell[1])
+    second = st.columns(6)
+    second_cells = (
+        ("عدد الجلسات", "Correction Bars", view["correction_bars"]),
+        ("EMA20", "EMA20", view["ema20"]),
+        ("EMA50", "EMA50", view["ema50"]),
+        ("علاقة المتوسطات", "EMA Relationship", view["ema_relation"]),
+        ("منطقة الدعم", "Support Zone", view["support_zone"]),
+        ("وصل للدعم؟", "Support Reached", view["support_reached"]),
+    )
+    for column, cell in zip(second, second_cells):
+        with column:
+            metric_card(cell[0], cell[2], label_en=cell[1])
+    details = [
+        ("التداخل", "Confluence", view["confluence"]),
+        ("الحجم", "Volume", view["volume"]),
+        ("تأكيد الارتداد", "Reversal Confirmation", view["confirmation"]),
+        ("المقاومة القريبة", "Nearby Resistance", view["minor_resistance"]),
+        ("سبب عدم الأهلية/الإبطال", "Gate / Invalidation", view["invalidation"]),
+        ("تجميد البيانات", "Historical Cutoff", view["cutoff"]),
+    ]
+    _kv_table(details)
+    with st.expander(
+            "مستويات المحاكاة البحثية · Research simulation levels", expanded=False):
+        st.caption(
+            "محاكاة بحثية منفصلة عن مستويات التداول الإنتاجية · "
+            "Research simulation only; separate from production trade levels."
+        )
+        simulation = st.columns(6)
+        simulation_cells = (
+            ("التفعيل البحثي", "Research Trigger", view["trigger"]),
+            ("وقف المحاكاة", "Simulation Stop", view["stop"]),
+            ("الهدف الأول", "Target 1", view["target_1"]),
+            ("الهدف الثاني", "Target 2", view["target_2"]),
+            ("المقاومة الرئيسية", "Major Resistance", view["major_resistance"]),
+            ("ع/م تشخيصي", "Diagnostic R/R", view["risk_reward"]),
+        )
+        for column, cell in zip(simulation, simulation_cells):
+            with column:
+                metric_card(cell[0], cell[2], label_en=cell[1])
+        _kv_table([
+            ("ع/م للهدف الهيكلي", "Meaningful-target diagnostic R/R",
+             view["risk_reward_meaningful"]),
+            ("ع/م للهدف الأوسع", "Broader-target diagnostic R/R",
+             view["risk_reward_broader"]),
+            ("المقاومة الهيكلية", "Meaningful resistance",
+             view["meaningful_resistance"]),
+            ("المقاومة الأوسع", "Broader resistance", view["broader_resistance"]),
+        ])
+    if view["missing"]:
+        st.caption("قياسات غير موثوقة/غير متاحة · Missing or unreliable: "
+                   + ", ".join(view["missing"]))
+
+
 def _regenerate_narrative_only(bundle):
     """Re-run Layer 2 ONLY. No indicator, provider or full analysis is re-executed."""
     from core.ai_stock_analysis_service import regenerate_narrative
@@ -752,6 +839,7 @@ def show_ai_stock_analysis(runner=None):
     _technical_section(result)
     _levels_section(result)
     _scenario_section(result)
+    _pullback_section(result)
     _narrative_section(narrative, result, bundle=bundle)
     _confidence_section(result)
     _warnings_section(result)

@@ -35,6 +35,8 @@ from core.ai_stock_analysis_contract import (
     MarketPhase,
     NarrativeResult,
     PriceSummary,
+    PullbackScenarioResult,
+    PullbackState,
     Recommendation,
     ScenarioResult,
     ScenarioState,
@@ -93,6 +95,18 @@ SCENARIO_STATE_LABELS = {
     ScenarioState.INVALID: ("ملغى", "Invalidated", "red"),
     ScenarioState.AVOID: ("تجنب حاليًا", "Avoid For Now", "red"),
     ScenarioState.DATA_INSUFFICIENT: ("البيانات غير كافية", "Data Insufficient", "red"),
+}
+
+PULLBACK_STATE_LABELS = {
+    PullbackState.NOT_APPLICABLE: ("غير منطبق", "Not Applicable", "gray"),
+    PullbackState.DEVELOPING_PULLBACK: ("تصحيح قيد التكوين", "Developing Pullback", "blue"),
+    PullbackState.WAIT_REVERSAL_CONFIRMATION: (
+        "انتظار تأكيد الارتداد", "Wait Reversal Confirmation", "amber"),
+    PullbackState.HEALTHY_PULLBACK: ("تصحيح صحي", "Healthy Pullback", "blue"),
+    PullbackState.DEEP_PULLBACK: ("تصحيح عميق", "Deep Pullback", "amber"),
+    PullbackState.CONFIRMED_PULLBACK_ENTRY: (
+        "تأكيد بحثي فقط — غير صالح للتنفيذ", "RESEARCH_CONFIRMATION_ONLY", "amber"),
+    PullbackState.FAILED_PULLBACK: ("فشل التصحيح", "Failed Pullback", "red"),
 }
 
 MARKET_PHASE_LABELS = {
@@ -505,6 +519,73 @@ def scenario_view(scenario: ScenarioResult):
         "confidence": fmt_confidence_fraction(scenario.confidence),
         "confirmations": tuple(scenario.confirmation_requirements),
         "invalidations": tuple(scenario.invalidation_conditions),
+    }
+
+
+def pullback_scenario_view(scenario: PullbackScenarioResult | None):
+    """Typed PullbackScenarioResult -> display strings; no level is recalculated here."""
+    if scenario is None:
+        return None
+    arabic, english, tone = PULLBACK_STATE_LABELS.get(
+        scenario.state, ("غير معروف", "Unknown", "gray"))
+    zone = EM_DASH
+    if scenario.support_zone_low is not None and scenario.support_zone_high is not None:
+        zone = f"{fmt_price(scenario.support_zone_low)} – {fmt_price(scenario.support_zone_high)}"
+    correction = EM_DASH
+    if scenario.pullback_percent is not None or scenario.pullback_atr is not None:
+        percent = dash(scenario.pullback_percent, fmt_percent)
+        atr = (f"{scenario.pullback_atr:.2f} ATR"
+               if scenario.pullback_atr is not None else EM_DASH)
+        correction = f"{percent} / {atr}"
+    confluence = " + ".join(scenario.support_confluence) or EM_DASH
+    confirmation = scenario.confirmation_status or EM_DASH
+    if scenario.confirmation_reasons:
+        confirmation = f"{confirmation}: " + " + ".join(scenario.confirmation_reasons)
+    return {
+        "state_ar": arabic,
+        "state_en": english,
+        "tone": tone,
+        "research_score": dash(scenario.research_score, fmt_score),
+        "trend": scenario.prior_trend_status or EM_DASH,
+        "structure": scenario.structure_status or EM_DASH,
+        "swing_high": dash(scenario.swing_high),
+        "swing_high_date": scenario.swing_high_date or EM_DASH,
+        "swing_confirmation_date": scenario.swing_high_confirmation_date or EM_DASH,
+        "impulse_low": dash(scenario.impulse_low),
+        "impulse_low_date": scenario.impulse_low_date or EM_DASH,
+        "correction": correction,
+        "pullback_percent": dash(scenario.pullback_percent, fmt_percent),
+        "pullback_atr": (f"{scenario.pullback_atr:.2f} ATR"
+                         if scenario.pullback_atr is not None else EM_DASH),
+        "retracement": dash(scenario.impulse_retracement_percent, fmt_percent),
+        "correction_bars": (str(scenario.correction_bars)
+                            if scenario.correction_bars is not None else EM_DASH),
+        "support_zone": zone,
+        "support_reached": "نعم · Yes" if scenario.support_reached else "لا · No",
+        "confluence": confluence,
+        "volume": scenario.volume_behaviour or EM_DASH,
+        "confirmation": confirmation,
+        "ema20": dash(scenario.ema20),
+        "ema50": dash(scenario.ema50),
+        "ema_relation": scenario.ema_alignment_status or EM_DASH,
+        "trigger": dash(scenario.entry_trigger),
+        "stop": dash(scenario.stop_loss),
+        "target_1": dash(scenario.target_1),
+        "target_2": dash(scenario.target_2),
+        "major_resistance": dash(scenario.major_resistance),
+        "minor_resistance": dash(scenario.minor_pivot_resistance),
+        "meaningful_resistance": dash(scenario.meaningful_structural_target),
+        "broader_resistance": dash(scenario.broader_structural_target),
+        "risk_reward": fmt_ratio(scenario.reward_risk, 2),
+        "risk_reward_meaningful": fmt_ratio(
+            scenario.reward_risk_meaningful_target, 2),
+        "risk_reward_broader": fmt_ratio(scenario.reward_risk_broader_target, 2),
+        "invalidation": scenario.invalidation_reason or EM_DASH,
+        "explanation_ar": scenario.explanation_ar,
+        "explanation_en": scenario.explanation_en,
+        "evidence": tuple(scenario.evidence),
+        "missing": tuple(scenario.missing_measurements),
+        "cutoff": scenario.historical_data_cutoff or EM_DASH,
     }
 
 

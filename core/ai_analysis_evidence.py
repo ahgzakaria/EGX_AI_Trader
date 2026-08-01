@@ -54,12 +54,13 @@ from core.ai_stock_analysis_contract import (
     ScenarioState,
     TrendState,
 )
+from core.ai_pullback_scenario import evaluate_pullback_scenario
 
 # --------------------------------------------------------------------------- #
 # Versions / tunables (feature-local; nothing here overrides strategy config)
 # --------------------------------------------------------------------------- #
 
-EVIDENCE_ENGINE_VERSION = "ai_analysis_evidence@1.1.0"
+EVIDENCE_ENGINE_VERSION = "ai_analysis_evidence@1.2.0"
 CONFIDENCE_METHOD_VERSION = "confidence@1.0.0"
 
 RSI_PERIOD = 14
@@ -264,10 +265,13 @@ def build_evidence(
     )
 
     # ---- Indicators -------------------------------------------------------- #
-    sma_vals = {p: _last(_sma(close, p)) for p in SMA_PERIODS}
-    ema_vals = {p: _last(_ema(close, p)) for p in EMA_PERIODS}
+    sma_series = {p: _sma(close, p) for p in SMA_PERIODS}
+    ema_series = {p: _ema(close, p) for p in EMA_PERIODS}
+    sma_vals = {p: _last(series) for p, series in sma_series.items()}
+    ema_vals = {p: _last(series) for p, series in ema_series.items()}
     rsi_val = _last(_rsi_wilder(close))
-    atr_val = _last(_atr_wilder(high, low, close))
+    atr_series = _atr_wilder(high, low, close)
+    atr_val = _last(atr_series)
     macd_line, macd_signal_line, macd_hist = _macd(close)
     macd_line_val = _last(macd_line)
     macd_signal_val = _last(macd_signal_line)
@@ -338,6 +342,14 @@ def build_evidence(
         atr_val=atr_val, trend=trend.value, momentum=momentum.value,
         volume_safe=volume_safe, volume_ratio=volume_ratio, usable=usable,
     )
+    pullback_scenario = evaluate_pullback_scenario(
+        frame,
+        ema20=ema_series[20],
+        ema50=ema_series[50],
+        atr14=atr_series,
+        volume_safe=volume_safe,
+        data_cutoff=latest_session,
+    )
     primary_state = scenarios[0].state if scenarios else ScenarioState.DATA_INSUFFICIENT
 
     # ---- Confidence (pure function of completed-session evidence) ---------- #
@@ -378,6 +390,7 @@ def build_evidence(
         data_quality=data_quality, recommendation=recommendation,
         market_phase=market_phase, evidence_version="", generated_at=generated_at,
         key_levels=tuple(key_levels), scenarios=tuple(scenarios),
+        pullback_scenario=pullback_scenario,
         recommendation_reasons=tuple(reasons), evidence_hash=None,
         daily_chart_series=daily_series, intraday_chart_series=intraday_series,
     )
@@ -838,6 +851,8 @@ def _hash_payload(result: AnalysisResult) -> dict:
         "indicators": asdict(result.indicators),
         "key_levels": [asdict(k) for k in result.key_levels],
         "scenarios": [asdict(s) for s in result.scenarios],
+        "pullback_scenario": (
+            asdict(result.pullback_scenario) if result.pullback_scenario else None),
         "confidence": asdict(result.confidence),
         "data_quality": {k: v for k, v in asdict(result.data_quality).items()
                          if k not in _DQ_VOLATILE_FIELDS},
@@ -859,6 +874,7 @@ def _replace_result(result: AnalysisResult, **changes) -> AnalysisResult:
         "recommendation": result.recommendation, "market_phase": result.market_phase,
         "evidence_version": result.evidence_version, "generated_at": result.generated_at,
         "key_levels": result.key_levels, "scenarios": result.scenarios,
+        "pullback_scenario": result.pullback_scenario,
         "recommendation_reasons": result.recommendation_reasons,
         "daily_chart_series": result.daily_chart_series,
         "intraday_chart_series": result.intraday_chart_series,
