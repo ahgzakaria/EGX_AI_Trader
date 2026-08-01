@@ -209,3 +209,54 @@ def test_only_the_simulation_levels_stay_collapsed():
     assert any("simulation levels" in title for title in collapsed)
     for title in collapsed:
         assert ("simulation levels" in title) or ("Diagnostic details" in title), title
+
+
+# --------------------------------------------------------------------------- #
+# The two defects that survived the first fix
+# --------------------------------------------------------------------------- #
+
+def test_the_narrative_paragraph_never_leaks_a_reason_code():
+    """A SECOND reason map lived in core.ai_analysis_narrative and lacked
+    INVALID_PRIOR_UPTREND, so the raw enum still reached the reader through the
+    narrative sentence after the dashboard copy was fixed. One map now serves both.
+    """
+
+    from core.ai_pullback_labels import PULLBACK_REASON_AR, localize_pullback_reason
+    from dashboard.ai_stock_analysis_components import PULLBACK_REASON_LABELS
+
+    assert PULLBACK_REASON_LABELS is PULLBACK_REASON_AR      # one shared source
+    assert "INVALID_PRIOR_UPTREND" in PULLBACK_REASON_AR
+
+    narrative = inspect.getsource(
+        __import__("core.ai_analysis_narrative", fromlist=["x"]))
+    assert "_PULLBACK_REASON_AR = {" not in narrative        # duplicate map is gone
+    assert "localize_pullback_reason" in narrative
+
+    for code in list(PULLBACK_REASON_AR) + ["A_BRAND_NEW_UNMAPPED_REASON"]:
+        localized = localize_pullback_reason(code)
+        assert code not in localized, f"{code} leaked into user text"
+        assert localized
+
+
+def test_a_narrative_length_fact_value_can_wrap():
+    """`.egx-narr-facts .val` was `white-space: nowrap` against a
+    `minmax(0, 1fr)` label column: one long value became an unbreakable line that
+    overflowed the card and squeezed the label to ~0 — the one-glyph-per-line column.
+    """
+
+    from dashboard.ai_stock_analysis_components import NARRATIVE_CSS
+
+    def rule(selector):
+        start = NARRATIVE_CSS.index(selector + " {")
+        return NARRATIVE_CSS[start:NARRATIVE_CSS.index("}", start)]
+
+    value = rule(".egx-narr-facts .val")
+    assert "white-space: normal" in value
+    assert "word-break: normal" in value
+    assert "break-all" not in value and "anywhere" not in value
+    # Only the numeric variant stays on one line.
+    assert "white-space: nowrap" in rule(".egx-narr-facts .val.num")
+    # The label column can no longer collapse to zero width.
+    row = rule(".egx-narr-facts .row")
+    assert "minmax(0, 1fr) auto" not in row
+    assert "minmax(8ch" in row

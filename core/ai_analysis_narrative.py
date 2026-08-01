@@ -75,12 +75,7 @@ _PULLBACK_STATE_AR = {
     PullbackState.CONFIRMED_PULLBACK_ENTRY: "ظهر تأكيد ارتداد بحثي فقط",
 }
 
-_PULLBACK_REASON_AR = {
-    "INSUFFICIENT_COMPLETED_DAILY_HISTORY": "التاريخ اليومي المكتمل غير كافٍ",
-    "NO_CONFIRMED_SWING_HIGH": "لا توجد قمة محورية مؤكدة داخل النافذة المتاحة",
-    "NO_VALID_IMPULSE_LOW": "لا يوجد قاع صالح لبداية الموجة الصاعدة",
-    "EODHD_COMPLETED_DAILY_REQUIRED": "يلزم تاريخ يومي مكتمل من EODHD",
-}
+from core.ai_pullback_labels import localize_pullback_reason
 
 
 def pullback_health_narrative(result: AnalysisResult) -> str:
@@ -104,9 +99,9 @@ def pullback_health_narrative(result: AnalysisResult) -> str:
     elif pullback.confirmation_status == "CONFIRMED":
         clauses.append("ظهر تأكيد ارتداد بحثي فقط، ولا يمثل إشارة شراء.")
     if pullback.invalidation_reason and pullback.state == PullbackState.NOT_APPLICABLE:
-        reason = _PULLBACK_REASON_AR.get(
-            pullback.invalidation_reason, pullback.invalidation_reason)
-        clauses.append(f"سبب عدم قابلية التقييم: {reason}.")
+        reason = localize_pullback_reason(pullback.invalidation_reason)
+        if reason:
+            clauses.append(f"سبب عدم قابلية التقييم: {reason}.")
     clauses.append("هذه قراءة بحثية تشخيصية ولا تغيّر التوصية العامة.")
     return " ".join(clauses)
 

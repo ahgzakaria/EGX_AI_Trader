@@ -709,9 +709,13 @@ def _narrative_card_html(view):
     if view["prose"]:
         parts.append(f'<p class="prose">{isolate_ltr(view["prose"])}</p>')
     if view["rows"]:
+        # A short numeric value keeps the single-line tabular presentation; a
+        # narrative-length value must wrap, or it becomes one unbreakable line that
+        # overflows the card and collapses the label column.
         rows = "".join(
             f'<div class="row"><span class="lbl">{isolate_ltr(label)}</span>'
-            f'<span class="val">{isolate_ltr(value)}</span></div>'
+            f'<span class="val{" num" if _is_numeric_value(value) else ""}">'
+            f'{isolate_ltr(value)}</span></div>'
             for label, value in view["rows"])
         parts.append(f'<div class="egx-narr-facts">{rows}</div>')
     if view["chips"]:

@@ -23,6 +23,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from core.ai_pullback_labels import PULLBACK_REASON_AR, localize_pullback_reason
 from core.ai_stock_analysis_contract import (
     AnalysisRequest,
     AnalysisResult,
@@ -115,23 +116,7 @@ PULLBACK_STATE_LABELS = {
         "التصحيح فشل وكسر البنية الصاعدة", "FAILED_PULLBACK", "red"),
 }
 
-PULLBACK_REASON_LABELS = {
-    "INSUFFICIENT_COMPLETED_DAILY_HISTORY": "التاريخ اليومي المكتمل غير كافٍ",
-    "EODHD_COMPLETED_DAILY_REQUIRED": "يلزم تاريخ يومي مكتمل من EODHD حتى الجلسة السابقة",
-    "ATR_UNAVAILABLE": "قياس ATR غير متاح",
-    "NO_CONFIRMED_SWING_HIGH": "لا توجد قمة محورية مؤكدة داخل النافذة المتاحة",
-    "NO_VALID_IMPULSE_LOW": "لا يوجد قاع صالح لبداية الموجة الصاعدة",
-    "INVALID_PRIOR_UPTREND": "الاتجاه الصاعد السابق لم يستوفِ شروط القياس البحثية",
-    "CLOSE_BELOW_STRUCTURAL_SUPPORT": "الإغلاق كسر الدعم الهيكلي",
-    "CORRECTION_EXCEEDS_RESEARCH_DEPTH_LIMIT": "عمق التصحيح تجاوز الحد البحثي",
-    "ESTABLISHED_DESCENDING_CHANNEL": "تكوّنت قناة هابطة بدل تصحيح داخل اتجاه صاعد",
-    "EMA50_DECLINING_MATERIALLY": "ميل EMA50 أصبح هابطًا بصورة مؤثرة",
-    "AGGRESSIVE_SELLING_VOLUME_EXPANSION": "حجم البيع يتوسع بصورة غير داعمة",
-    "DEEP_PULLBACK_REQUIRES_STRONGER_CONFIRMATION": "التصحيح العميق يحتاج تأكيد ارتداد أقوى",
-    "REWARD_RISK_BELOW_RESEARCH_THRESHOLD": "العائد إلى المخاطرة دون الحد البحثي",
-    "SELLING_VOLUME_NOT_SUPPORTIVE": "سلوك حجم البيع غير داعم",
-    "VOLUME_BEHAVIOUR_UNAVAILABLE": "سلوك الحجم غير متاح بصورة موثوقة",
-}
+PULLBACK_REASON_LABELS = PULLBACK_REASON_AR
 
 #: ``prior_trend_status`` and ``ema_alignment_status`` are INTERNAL enums. Rendered
 #: raw they are both meaningless to a trader and unbreakable 17-19 character tokens
@@ -619,7 +604,7 @@ def pullback_scenario_view(scenario: PullbackScenarioResult | None):
     elif raw_reason:
         # The user-facing string is the LOCALIZED reason only. The internal enum is
         # returned separately so it can appear in the collapsed diagnostics section.
-        reason = PULLBACK_REASON_LABELS.get(raw_reason, raw_reason)
+        reason = localize_pullback_reason(raw_reason)
     else:
         reason = EM_DASH
     return {
@@ -1132,13 +1117,23 @@ NARRATIVE_CSS = f"""
 /* deterministic facts — a subtle secondary box, aligned label/value rows */
 .egx-narr-facts {{ margin-top: .8rem; background: var(--surface-2); border: 1px solid var(--border);
     border-radius: 10px; padding: .5rem .7rem; }}
-.egx-narr-facts .row {{ display: grid; grid-template-columns: minmax(0, 1fr) auto;
+/* The label column keeps a floor and the value column takes the rest. Previously
+   the label was minmax(0, 1fr) against an `auto` value that was `white-space:
+   nowrap`: a narrative-length value became one unbreakable line, overflowed the
+   card, and squeezed the label column to ~0 — which is what rendered Arabic one
+   character per line. */
+.egx-narr-facts .row {{ display: grid; grid-template-columns: minmax(8ch, max-content) minmax(0, 1fr);
     gap: .5rem 1rem; align-items: baseline; padding: .3rem .1rem;
     border-bottom: 1px solid var(--border); }}
 .egx-narr-facts .row:last-child {{ border-bottom: 0; }}
-.egx-narr-facts .lbl {{ font-size: 15px; font-weight: 500; color: var(--muted); }}
+.egx-narr-facts .lbl {{ font-size: 15px; font-weight: 500; color: var(--muted);
+    white-space: normal; word-break: normal; overflow-wrap: break-word; }}
+/* Narrative-safe by default. break-all/anywhere are deliberately never used. */
 .egx-narr-facts .val {{ font-size: 16px; font-weight: 700; color: var(--text);
-    font-variant-numeric: tabular-nums; unicode-bidi: isolate; white-space: nowrap; }}
+    unicode-bidi: isolate; white-space: normal; word-break: normal;
+    overflow-wrap: break-word; text-align: right; }}
+/* Only short numeric values keep the single-line tabular presentation. */
+.egx-narr-facts .val.num {{ white-space: nowrap; font-variant-numeric: tabular-nums; }}
 .egx-narr-chips {{ display: flex; flex-wrap: wrap; gap: .35rem .4rem; margin-top: .55rem; }}
 .egx-narr-chips .chip {{ font-size: 14px; font-weight: 650; color: var(--text);
     background: var(--surface-2); border: 1px solid var(--border);

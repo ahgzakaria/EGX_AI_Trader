@@ -40,7 +40,8 @@ from dashboard.ai_stock_analysis_components import (
 CARD_PATTERN = re.compile(r'<article class="egx-narr-card ([a-z]+)"')
 PROSE_PATTERN = re.compile(r'<p class="prose">(.*?)</p>', re.S)
 FACT_ROW_PATTERN = re.compile(
-    r'<div class="row"><span class="lbl">(.*?)</span><span class="val">(.*?)</span></div>', re.S)
+    r'<div class="row"><span class="lbl">(.*?)</span>'
+    r'<span class="val(?: num)?">(.*?)</span></div>', re.S)
 CHIP_PATTERN = re.compile(r'<span class="chip">(.*?)</span>', re.S)
 
 
@@ -304,7 +305,9 @@ def test_isolate_ltr_still_escapes_html():
 
 
 def test_numeric_values_are_tabular_so_columns_line_up():
-    assert "font-variant-numeric: tabular-nums" in _css_rule(".egx-narr-facts .val")
+    # Tabular figures belong to the NUMERIC variant; a narrative value must not
+    # inherit the single-line treatment that collapsed the row.
+    assert "font-variant-numeric: tabular-nums" in _css_rule(".egx-narr-facts .val.num")
 
 
 # --------------------------------------------------------------------------- #
@@ -337,8 +340,12 @@ def test_tablet_and_mobile_collapse_to_a_single_column():
 
 def test_nothing_forces_horizontal_scrolling():
     assert "overflow-x" not in NARRATIVE_CSS
-    assert "white-space: nowrap" in _css_rule(".egx-narr-facts .val")
-    # ...but a narrow screen must be allowed to wrap that value instead of clipping it.
+    # Only a SHORT numeric value stays on one line. The unqualified .val used to
+    # be nowrap, which turned a narrative-length value into one unbreakable line
+    # that overflowed the card and collapsed the label column to one glyph wide.
+    assert "white-space: nowrap" in _css_rule(".egx-narr-facts .val.num")
+    assert "white-space: normal" in _css_rule(".egx-narr-facts .val")
+    # ...and a narrow screen must be allowed to wrap that value instead of clipping it.
     assert "white-space: normal" in _media_block("max-width: 520px")
     # No fixed pixel floor anywhere: a percentage min-width still shrinks with the screen,
     # a pixel one would push the page wider than the viewport.
