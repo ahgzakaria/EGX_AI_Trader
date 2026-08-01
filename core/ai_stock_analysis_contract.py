@@ -30,7 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-CONTRACT_VERSION = "ai_stock_analysis_contract@1.2.0"
+CONTRACT_VERSION = "ai_stock_analysis_contract@1.3.0"
 
 
 # --------------------------------------------------------------------------- #
@@ -62,6 +62,18 @@ class ScenarioState(str, Enum):
     INVALID = "INVALID"
     AVOID = "AVOID"
     DATA_INSUFFICIENT = "DATA_INSUFFICIENT"
+
+
+class PullbackState(str, Enum):
+    """Research-only lifecycle for the daily pullback-continuation scenario."""
+
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+    DEVELOPING_PULLBACK = "DEVELOPING_PULLBACK"
+    WAIT_REVERSAL_CONFIRMATION = "WAIT_REVERSAL_CONFIRMATION"
+    HEALTHY_PULLBACK = "HEALTHY_PULLBACK"
+    DEEP_PULLBACK = "DEEP_PULLBACK"
+    CONFIRMED_PULLBACK_ENTRY = "CONFIRMED_PULLBACK_ENTRY"
+    FAILED_PULLBACK = "FAILED_PULLBACK"
 
 
 class DataStatus(str, Enum):
@@ -251,6 +263,76 @@ class ScenarioResult:
 
 
 @dataclass(frozen=True)
+class PullbackScenarioResult:
+    """Typed, deterministic D-1 evidence for the research-only pullback scenario.
+
+    Missing or unreliable measurements remain ``None`` and are named in
+    ``missing_measurements``.  The scenario is independent of the production decision and
+    of the EMA5/EMA10 scalping strategy.
+    """
+
+    state: PullbackState
+    research_only: bool = True
+    research_score: float | None = None
+    prior_trend_status: str = "UNAVAILABLE"
+    historical_data_cutoff: str | None = None
+    swing_high: float | None = None
+    swing_high_date: str | None = None
+    swing_high_confirmation_date: str | None = None
+    impulse_low: float | None = None
+    impulse_low_date: str | None = None
+    current_price: float | None = None
+    pullback_percent: float | None = None
+    pullback_atr: float | None = None
+    impulse_retracement_percent: float | None = None
+    correction_bars: int | None = None
+    impulse_strength_atr: float | None = None
+    impulse_duration_bars: int | None = None
+    ema20_slope_percent_per_bar: float | None = None
+    ema50_slope_percent_per_bar: float | None = None
+    ema20: float | None = None
+    ema50: float | None = None
+    price_vs_ema20_percent: float | None = None
+    price_vs_ema50_percent: float | None = None
+    ema_alignment_status: str = "UNAVAILABLE"
+    structure_status: str = "UNRELIABLE"
+    depth_classification: str = "UNAVAILABLE"
+    support_zone_low: float | None = None
+    support_zone_high: float | None = None
+    support_reached: bool = False
+    support_confluence: tuple[str, ...] = ()
+    support_distances_percent: tuple[tuple[str, float], ...] = ()
+    volume_behaviour: str = "UNAVAILABLE"
+    impulse_average_volume: float | None = None
+    correction_average_volume: float | None = None
+    current_volume_ratio: float | None = None
+    selling_volume_ratio: float | None = None
+    correction_to_impulse_volume_ratio: float | None = None
+    confirmation_status: str = "NOT_CONFIRMED"
+    confirmation_reasons: tuple[str, ...] = ()
+    entry_trigger: float | None = None
+    stop_loss: float | None = None
+    target_1: float | None = None
+    target_2: float | None = None
+    major_resistance: float | None = None
+    minor_pivot_resistance: float | None = None
+    meaningful_structural_target: float | None = None
+    broader_structural_target: float | None = None
+    risk_amount: float | None = None
+    reward_risk: float | None = None
+    reward_risk_meaningful_target: float | None = None
+    reward_risk_broader_target: float | None = None
+    invalidation_reason: str | None = None
+    explanation_ar: str = ""
+    explanation_en: str = ""
+    evidence: tuple[str, ...] = ()
+    missing_measurements: tuple[str, ...] = ()
+    gate_results: tuple[tuple[str, str], ...] = ()
+    primary_rejection_reason: str | None = None
+    rejection_reasons: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class ConfidenceComponent:
     """One weighted contributor to overall confidence (numeric)."""
     name: str
@@ -306,6 +388,7 @@ class AnalysisResult:
     daily_chart_series: ChartSeries | None = None
     intraday_chart_series: ChartSeries | None = None
     evidence_hash: str | None = None               # fingerprint for reproducibility/history
+    pullback_scenario: PullbackScenarioResult | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -435,11 +518,12 @@ class AnalysisHistoryRecord:
 # The public contract surface. Import from here; do not redefine these elsewhere.
 __all__ = [
     "CONTRACT_VERSION",
-    "MarketPhase", "Recommendation", "ScenarioState", "DataStatus",
+    "MarketPhase", "Recommendation", "ScenarioState", "PullbackState", "DataStatus",
     "TrendState", "MomentumState",
     "AnalysisRequest", "PriceSummary", "IndicatorSummary", "KeyLevel",
     "ChartPoint", "ChartSeries",
-    "ScenarioResult", "ConfidenceComponent", "ConfidenceBreakdown",
+    "ScenarioResult", "PullbackScenarioResult",
+    "ConfidenceComponent", "ConfidenceBreakdown",
     "DataQualitySummary", "AnalysisResult", "NarrativeProvenance", "NarrativeResult",
     "CardPayload",
     "AnalysisHistoryRecord",
