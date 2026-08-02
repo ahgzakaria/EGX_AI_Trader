@@ -22,6 +22,15 @@ from typing import Any
 
 EM_DASH = "—"
 
+#: Data-freshness codes are internal; a surface must never print one.
+_OPERATIONAL_STATUS_AR = {
+    "HISTORY_CURRENT": "التاريخ محدث · History current",
+    "HISTORY_LAG": "تأخر في التاريخ · History lag",
+    "TODAY_CANDLE_NOT_YET_COMPLETE": "شمعة اليوم لم تكتمل · Today incomplete",
+    "PROVIDER_FINALIZATION_PENDING": "في انتظار اعتماد المزود · Publish pending",
+    "MISSING": "غير متاح · Missing",
+}
+
 #: Currency-free numeric formatting shared by every surface, so the page, the
 #: cards and the chart cannot round the same number differently.
 _PRICE_DECIMALS = 2
@@ -214,10 +223,16 @@ class AnalysisPresentation:
     volume: float | None = None
     average_volume: float | None = None
     volume_ratio: float | None = None
+    turnover: float | None = None
     atr: float | None = None
     atr_percent: float | None = None
     recent_low: float | None = None
     recent_high: float | None = None
+    #: Already computed by the Core and previously unsurfaced. Never derived here.
+    rsi14: float | None = None
+    sma20: float | None = None
+    sma50: float | None = None
+    macd_histogram: float | None = None
 
     # -- levels ------------------------------------------------------------
     levels: tuple[LevelPoint, ...] = ()
@@ -234,8 +249,10 @@ class AnalysisPresentation:
     # -- narrative / evidence ---------------------------------------------
     summary_ar: str = ""
     summary_en: str = ""
-    positive_evidence: tuple[str, ...] = ()
-    negative_evidence: tuple[str, ...] = ()
+    #: ``recommendation_reasons`` is UNSIGNED — it mixes supporting and opposing
+    #: facts (audit: "price below SMA20" sat beside "OBV rising"). It is carried
+    #: as neutral assessment evidence and must never be rendered as "positive".
+    assessment_evidence: tuple[str, ...] = ()
     watch_next: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
     operational_status: str = EM_DASH
@@ -340,6 +357,7 @@ def build_presentation(result, narrative=None, *, company_name: str | None = Non
 
     # Imported lazily: the dashboard package pulls in Streamlit, and this model is
     # also used by headless renderers and tests.
+    from core.ai_pullback_labels import localize
     from dashboard.ai_stock_analysis_components import (
         RECOMMENDATION_LABELS,
         momentum_reading,
@@ -425,6 +443,19 @@ def build_presentation(result, narrative=None, *, company_name: str | None = Non
         from core.universe import company_name as universe_company_name
         company_name = universe_company_name(result.request.symbol)
 
+    # The narrative engine emits Arabic only. English mode gets a deterministic
+    # English summary composed from the same typed evidence — never a renderer
+    # translation, and never the Arabic text relabelled as English.
+    from core.ai_analysis_narrative import build_english_summary
+
+    narrative_language = str(getattr(narrative, "language", "") or "ar").lower()
+    narrative_text = (getattr(narrative, "summary", "") or "") if narrative else ""
+    arabic_summary = narrative_text if narrative_language.startswith("ar") else ""
+    english_summary = (narrative_text if narrative_language.startswith("en")
+                       else build_english_summary(result))
+
+    alignment_code = getattr(scenario, "ema_alignment_status", "") or "UNAVAILABLE"
+
     primary = scenarios[0] if scenarios else None
     invalidation_price = next(
         (lv.get("price") for key, lv in selected_levels(result).items()
@@ -451,11 +482,16 @@ def build_presentation(result, narrative=None, *, company_name: str | None = Non
         ema20=getattr(indicators, "ema_20", None),
         ema50=getattr(indicators, "ema_50", None),
         ema200=getattr(indicators, "ema_200", None),
-        ema_alignment_ar=pullback.ema_relation,
-        ema_alignment_en=pullback.ema_relation_code,
+        ema_alignment_ar=localize(alignment_code, "ema_alignment_status", "AR"),
+        ema_alignment_en=localize(alignment_code, "ema_alignment_status", "EN"),
         volume=price.volume,
         average_volume=getattr(indicators, "average_volume_20", None),
         volume_ratio=getattr(indicators, "volume_ratio", None),
+        turnover=getattr(price, "turnover", None),
+        rsi14=getattr(indicators, "rsi_14", None),
+        sma20=getattr(indicators, "sma_20", None),
+        sma50=getattr(indicators, "sma_50", None),
+        macd_histogram=getattr(indicators, "macd_histogram", None),
         atr=getattr(indicators, "atr_14", None),
         atr_percent=(float(indicators.atr_14) / float(price.close) * 100
                      if getattr(indicators, "atr_14", None) is not None and price.close
@@ -467,13 +503,13 @@ def build_presentation(result, narrative=None, *, company_name: str | None = Non
         upside_percent=primary.remaining_room_percent if primary else None,
         downside_percent=downside,
         diagnostic_risk_reward=primary.risk_reward if primary else None,
-        summary_ar=(getattr(narrative, "summary", "") or "") if narrative else "",
-        summary_en=(getattr(narrative, "headline", "") or "") if narrative else "",
-        positive_evidence=tuple(getattr(result, "recommendation_reasons", ()) or ()),
-        negative_evidence=tuple(primary.invalidations if primary else ()),
+        summary_ar=arabic_summary,
+        summary_en=english_summary,
+        assessment_evidence=tuple(getattr(result, "recommendation_reasons", ()) or ()),
         watch_next=tuple(primary.confirmations if primary else ()),
         warnings=tuple(getattr(quality, "warnings", ()) or ()),
-        operational_status=getattr(quality, "freshness_status", "") or EM_DASH,
+        operational_status=_OPERATIONAL_STATUS_AR.get(
+            getattr(quality, "freshness_status", ""), EM_DASH),
         candles=candles, chart_source=(daily.source if daily else ""),
         evidence_version=result.evidence_version, evidence_hash=result.evidence_hash,
     )

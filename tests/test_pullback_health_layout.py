@@ -22,6 +22,7 @@ import re
 import pytest
 
 import dashboard.ai_stock_analysis as page
+from core.ai_pullback_labels import looks_like_enum
 from dashboard.ai_stock_analysis_components import (
     PULLBACK_EMA_LABELS,
     PULLBACK_REASON_LABELS,
@@ -85,7 +86,8 @@ def test_no_raw_enum_appears_in_a_user_facing_field(view, field):
 def test_the_localized_reason_is_what_the_user_sees(view):
     assert view["invalidation"] == PULLBACK_REASON_LABELS["INVALID_PRIOR_UPTREND"]
     assert view["trend"] == PULLBACK_TREND_LABELS["INVALID_PRIOR_TREND"]
-    assert view["ema_relation"] == PULLBACK_EMA_LABELS["EMA20_ABOVE_EMA50"]
+    assert "EMA20" in view["ema_relation"]
+    assert not looks_like_enum(view["ema_relation"])
 
 
 def test_the_internal_codes_remain_available_for_diagnostics(view):

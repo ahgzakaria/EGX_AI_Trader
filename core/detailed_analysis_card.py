@@ -181,12 +181,10 @@ def _summary_lines(presentation: AnalysisPresentation, language: str):
         (p.pullback.explanation_ar if language != "EN" else p.pullback.explanation_en)
     if conclusion:
         blocks.append((_label("الخلاصة", "Conclusion", language), [conclusion]))
-    if p.positive_evidence:
-        blocks.append((_label("أدلة إيجابية", "Positive Evidence", language),
-                       list(p.positive_evidence[:3])))
-    if p.negative_evidence:
-        blocks.append((_label("أدلة سلبية", "Negative Evidence", language),
-                       list(p.negative_evidence[:3])))
+    # recommendation_reasons is UNSIGNED, so it is never labelled "positive".
+    if p.assessment_evidence:
+        blocks.append((_label("أسباب التقييم", "Assessment Evidence", language),
+                       list(p.assessment_evidence[:4])))
     if p.watch_next:
         blocks.append((_label("ما يجب متابعته", "Watch Next", language),
                        list(p.watch_next[:3])))

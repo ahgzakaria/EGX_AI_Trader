@@ -1,0 +1,51 @@
+[
+  {
+    "file": "FWRY_ar_1080x1920.png",
+    "dims": "1080x1920",
+    "company_full": true,
+    "enum": false,
+    "eng_leak_ar": false
+  },
+  {
+    "file": "RAYA_ar_1080x1920.png",
+    "dims": "1080x1920",
+    "company_full": true,
+    "enum": false,
+    "eng_leak_ar": false
+  },
+  {
+    "file": "SIPC_ar_1080x1920.png",
+    "dims": "1080x1920",
+    "company_full": true,
+    "enum": false,
+    "eng_leak_ar": false
+  },
+  {
+    "file": "FWRY_en_1080x1920.png",
+    "dims": "1080x1920",
+    "company_full": true,
+    "enum": false,
+    "eng_leak_ar": false
+  },
+  {
+    "file": "RAYA_bilingual_1080x1920.png",
+    "dims": "1080x1920",
+    "company_full": true,
+    "enum": false,
+    "eng_leak_ar": false
+  },
+  {
+    "file": "COMI_ar_1350x2400.png",
+    "dims": "1350x2400",
+    "company_full": true,
+    "enum": false,
+    "eng_leak_ar": false
+  },
+  {
+    "file": "FWRY_ar_1080x2400ext.png",
+    "dims": "1080x2400",
+    "company_full": true,
+    "enum": false,
+    "eng_leak_ar": false
+  }
+]

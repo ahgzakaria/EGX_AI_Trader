@@ -39,7 +39,7 @@ def test_pullback_card_maps_only_typed_values():
     assert view["correction"] == "7.40% / 1.30 ATR"
     assert view["support_zone"] == "7.30 – 7.37"
     assert view["support_reached"] == "نعم · Yes"
-    assert view["confluence"] == "HORIZONTAL_SUPPORT + EMA50"
+    assert view["confluence"] == "Horizontal Support + EMA50"
     assert view["trigger"] == "7.54"
     assert view["risk_reward"] == "2.10×"
 
@@ -57,7 +57,7 @@ def test_missing_pullback_measurements_remain_dashes():
 def test_internal_confirmation_is_presented_as_amber_research_only():
     view = pullback_scenario_view(PullbackScenarioResult(
         state=PullbackState.CONFIRMED_PULLBACK_ENTRY))
-    assert view["state_en"] == "RESEARCH_CONFIRMATION_ONLY"
+    assert view["state_en"] == "Research confirmation only"
     assert view["state_ar"] == "ظهر تأكيد ارتداد بحثي فقط"
     assert view["tone"] == "amber"
 
