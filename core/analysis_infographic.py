@@ -19,7 +19,7 @@ Deliberate deviations from the supplied references, both truthfulness-driven:
 
 from __future__ import annotations
 
-from core.ai_pullback_labels import localize, localize_assessment_reasons
+from core.ai_pullback_labels import bilingual, localize, localize_assessment_reasons
 from core.analysis_chart import (
     DEFAULT_TIMEFRAME,
     LAST_PRICE_KEY,
@@ -38,10 +38,12 @@ from core.infographic_layout import (
     PANEL_PAD,
     ROLE_COLOUR,
     SPACING,
+    BulletGrid,
     BulletList,
     Canvas,
     Panel,
     Row,
+    RowGrid,
     Tile,
     TileRow,
     TypeScale,
@@ -97,7 +99,7 @@ _T = {
     "indicators":    ("المؤشرات", "Indicators"),
     "scenarios":     ("السيناريوهات", "Scenarios"),
     "evidence":      ("أسباب التقييم", "Assessment Evidence"),
-    "pullback":      ("تحليل جودة التصحيح — بحثي فقط", "Pullback Health — Research Only"),
+    "pullback":      ("جودة التصحيح", "Pullback Health Analysis"),
     "summary":       ("الخلاصة", "Summary"),
     "watch":         ("ما يجب متابعته", "Watch next"),
     "trend":         ("الاتجاه", "Trend"),
@@ -111,10 +113,11 @@ _T = {
     "breakout":      ("نقطة الاختراق", "Breakout"),
     "invalidation":  ("مستوى الإبطال", "Invalidation"),
     "positive":      ("سيناريو إيجابي", "Positive"),
-    "waiting":       ("سيناريو الانتظار", "Waiting Range Restatement"),
+    "waiting":       ("سيناريو الانتظار", "Waiting range"),
     "negative":      ("سيناريو سلبي", "Negative"),
     "research_only": ("بحثي فقط — غير معتمد كإشارة دخول",
                       "Research Only — not an entry signal"),
+    "research_badge": ("بحثي فقط", "Research Only"),
     "no_english":    ("الملخص الإنجليزي غير متاح", "English summary unavailable"),
     "decision_only": ("دعم قرار فقط", "Decision Support Only"),
     "paper":         ("بحثي / ورقي", "Research / Paper"),
@@ -177,7 +180,8 @@ def _technical_lines(p: AnalysisPresentation, language: str) -> tuple:
     return tuple(lines[:4])
 
 
-def _level_rows(p: AnalysisPresentation, keys, language: str, role: str):
+def _level_rows(p: AnalysisPresentation, keys, language: str, role: str,
+                *, font_size: int | None = None):
     rows = []
     for key in keys:
         level = p.level(key)
@@ -185,7 +189,61 @@ def _level_rows(p: AnalysisPresentation, keys, language: str, role: str):
             continue
         rows.append(Row(label=t(key, language), value=level.display,
                         value_colour=ROLE_COLOUR[role if key.startswith(("support",))
-                                                 else role]))
+                                                 else role],
+                        font_size=font_size))
+    return rows
+
+
+def _same_at_display_precision(left, right, decimals: int = 2) -> bool:
+    """Whether two stored numbers render as the same value at this precision."""
+
+    if left is None or right is None:
+        return False
+    return fmt_value(left, decimals) == fmt_value(right, decimals)
+
+
+def _resistance_rows(p: AnalysisPresentation, language: str, *,
+                     font_size: int | None = None):
+    """Display levels once without changing any stored price."""
+
+    rows = []
+    resistance_1 = p.level("resistance_1")
+    resistance_2 = p.level("resistance_2")
+    breakout = p.level("breakout")
+    invalidation = p.level("invalidation")
+
+    combined = (resistance_1 is not None and resistance_1.present
+                and breakout is not None and breakout.present
+                and _same_at_display_precision(resistance_1.price, breakout.price))
+    if combined:
+        rows.append(Row(
+            label=_label_of("المقاومة / الاختراق", "Resistance / breakout", language),
+            value=resistance_1.display, value_colour=ROLE_COLOUR["breakout"],
+            font_size=font_size))
+    else:
+        if resistance_1 is not None and resistance_1.present:
+            rows.append(Row(label=t("resistance_1", language),
+                            value=resistance_1.display,
+                            value_colour=ROLE_COLOUR["resistance"],
+                            font_size=font_size))
+        if breakout is not None and breakout.present:
+            rows.append(Row(label=t("breakout", language), value=breakout.display,
+                            value_colour=ROLE_COLOUR["breakout"],
+                            font_size=font_size))
+
+    if resistance_2 is not None and resistance_2.present:
+        duplicate = any(_same_at_display_precision(resistance_2.price, level.price)
+                        for level in (resistance_1, breakout)
+                        if level is not None and level.present)
+        if not duplicate:
+            rows.append(Row(label=t("resistance_2", language),
+                            value=resistance_2.display,
+                            value_colour=ROLE_COLOUR["resistance"],
+                            font_size=font_size))
+    if invalidation is not None and invalidation.present:
+        rows.append(Row(label=t("invalidation", language), value=invalidation.display,
+                        value_colour=ROLE_COLOUR["invalidation"],
+                        font_size=font_size))
     return rows
 
 
@@ -209,8 +267,9 @@ def _label_of(arabic: str, english: str, language: str) -> str:
     return f"{arabic} · {english}"
 
 
-def _scenario_rows(p: AnalysisPresentation, language: str, *, full: bool = False):
-    """Two real scenarios plus a clearly-labelled range RESTATEMENT."""
+def _scenario_rows(p: AnalysisPresentation, language: str, *, full: bool = False,
+                   font_size: int | None = None):
+    """The three typed scenarios plus one diagnostic R/R, at most."""
 
     rows = []
     positive = next((s for s in p.scenarios if "breakout" in s.scenario_id), None)
@@ -219,35 +278,25 @@ def _scenario_rows(p: AnalysisPresentation, language: str, *, full: bool = False
     if positive is not None:
         rows.append(Row(label=t("positive", language),
                         value=f"{fmt_value(positive.trigger)} → {fmt_value(positive.target)}",
-                        value_colour=PALETTE["green"]))
+                        value_colour=PALETTE["green"], font_size=font_size))
     support_1 = p.level_price("support_1")
     resistance_1 = p.level_price("resistance_1")
     if support_1 is not None and resistance_1 is not None:
         # A RESTATEMENT of two levels the Core already computed — not a strategy.
         rows.append(Row(label=t("waiting", language),
                         value=f"{fmt_value(support_1)} – {fmt_value(resistance_1)}",
-                        value_colour=PALETTE["blue"]))
+                        value_colour=PALETTE["blue"], font_size=font_size))
     if negative is not None:
         rows.append(Row(label=t("negative", language),
                         value=f"{fmt_value(negative.trigger)} ↓",
-                        value_colour=PALETTE["red"]))
-    if full:
-        # Activation and invalidation levels for each real scenario.
-        # Localized side labels — the raw scenario_id is English and must not
-        # appear on an Arabic card.
-        side = {"breakout": ("إبطال السيناريو الإيجابي", "Positive invalidation"),
-                "breakdown": ("إبطال السيناريو السلبي", "Negative invalidation")}
-        for scenario in p.scenarios[:2]:
-            key = "breakout" if "breakout" in scenario.scenario_id else "breakdown"
-            if scenario.stop is not None:
-                rows.append(Row(label=_label_of(*side[key], language),
-                                value=fmt_value(scenario.stop),
-                                value_colour=PALETTE["red"]))
-            if scenario.risk_reward is not None:
-                rows.append(Row(
-                    label=_label_of("العائد إلى المخاطرة", "Reward / risk", language),
-                    value=fmt_value(scenario.risk_reward, 2)))
-    return rows
+                        value_colour=PALETTE["red"], font_size=font_size))
+    risk_reward = next((scenario.risk_reward for scenario in (positive, negative)
+                        if scenario is not None and scenario.risk_reward is not None), None)
+    if risk_reward is not None:
+        rows.append(Row(
+            label=_label_of("العائد إلى المخاطرة", "Reward / risk", language),
+            value=fmt_value(risk_reward, 2), font_size=font_size))
+    return rows[:4]
 
 
 def _methodology_lines(p: AnalysisPresentation, language: str) -> tuple:
@@ -270,45 +319,94 @@ def _methodology_lines(p: AnalysisPresentation, language: str) -> tuple:
     )
 
 
-def _pullback_rows(p: AnalysisPresentation, language: str, *, full: bool = False):
+def _pullback_rows(p: AnalysisPresentation, language: str, *, full: bool = False,
+                   font_size: int | None = None):
     pb = p.pullback
-    rows = [Row(label=t("assessment", language),
+    rows = [Row(label=_label_of("الحالة الحالية", "Current state", language),
                 value=pb.state_ar if language != "EN" else pb.state_en,
-                value_colour=PALETTE["purple"])]
+                value_colour=PALETTE["purple"], font_size=font_size)]
     if pb.pullback_percent is not None:
         rows.append(Row(label="نسبة التصحيح" if language != "EN" else "Pullback %",
-                        value=fmt_value(pb.pullback_percent, 2, "%")))
+                        value=fmt_value(pb.pullback_percent, 2, "%"),
+                        font_size=font_size))
     if pb.pullback_atr is not None:
         rows.append(Row(label="عمق ATR" if language != "EN" else "ATR depth",
-                        value=fmt_value(pb.pullback_atr, 2, " ATR")))
+                        value=fmt_value(pb.pullback_atr, 2, " ATR"),
+                        font_size=font_size))
     if pb.support_zone_low is not None:
-        rows.append(Row(label=t("pullback_zone", language),
-                        value=pb.support_zone_display, value_colour=PALETTE["purple"]))
+        rows.append(Row(label=_label_of("منطقة الدعم", "Support zone", language),
+                        value=pb.support_zone_display, value_colour=PALETTE["purple"],
+                        font_size=font_size))
     if pb.volume_behaviour != EM_DASH:
-        rows.append(Row(label="حجم التصحيح" if language != "EN" else "Correction volume",
-                        value=_first_clause(pb.volume_behaviour, language)))
+        rows.append(Row(label=_label_of("سلوك الحجم", "Volume behaviour", language),
+                        value=_first_clause(pb.volume_behaviour, language),
+                        font_size=font_size, span=2))
+    diagnostic = None
+    diagnostic_label = None
     if pb.invalidation_reason not in (EM_DASH, ""):
-        rows.append(Row(label="سبب عدم القابلية" if language != "EN" else "Reason",
-                        value=pb.invalidation_reason))
+        if pb.invalidation_code not in (EM_DASH, ""):
+            diagnostic = (bilingual(pb.invalidation_code, "invalidation_reason")
+                          if language == "BILINGUAL" else
+                          localize(pb.invalidation_code, "invalidation_reason", language))
+        else:
+            diagnostic = _first_clause(pb.invalidation_reason, language)
+        diagnostic_label = (_label_of("السبب", "Reason", language)
+                            if language == "BILINGUAL" else
+                            _label_of("سبب الفشل أو الإبطال", "Failure / invalidation",
+                                      language))
+    elif pb.reversal_evidence not in (EM_DASH, ""):
+        diagnostic = _first_clause(pb.reversal_evidence, language)
+        diagnostic_label = _label_of("دليل الارتداد", "Reversal evidence", language)
+    if diagnostic is not None:
+        rows.append(Row(label=diagnostic_label, value=diagnostic,
+                        font_size=font_size, span=2))
     if full:
-        # Complete diagnostics — Extended only. Every value copied from the model.
+        # Secondary diagnostics — Extended only. Every value is copied verbatim
+        # from the immutable presentation model.
         for label_ar, label_en, value in (
                 ("جودة الاتجاه السابق", "Prior trend",
                  _first_clause(pb.prior_trend, language)),
-                ("الهيكل السعري", "Structure", _first_clause(pb.structure, language)),
-                ("آخر قمة", "Swing high", fmt_value(pb.swing_high)),
-                ("قاع الموجة", "Impulse low", fmt_value(pb.impulse_low)),
+                ("آخر قمة مؤكدة", "Confirmed swing high", fmt_value(pb.swing_high)),
+                ("قاع بداية الموجة", "Impulse start low", fmt_value(pb.impulse_low)),
                 ("ارتداد الموجة", "Impulse retracement",
                  fmt_value(pb.impulse_retracement_percent, 2, "%")),
+                ("جلسات التصحيح", "Correction sessions",
+                 str(pb.correction_bars) if pb.correction_bars is not None else EM_DASH),
                 ("تداخل الدعم", "Support confluence", pb.confluence),
-                ("دليل الارتداد", "Reversal evidence",
-                 _first_clause(pb.reversal_evidence, language))):
+                ("المقاومة الرئيسية", "Major resistance",
+                 fmt_value(pb.major_resistance))):
             if value not in (EM_DASH, "", None):
+                span = 2 if label_ar in ("جودة الاتجاه السابق", "تداخل الدعم") else 1
                 rows.append(Row(label=_label_of(label_ar, label_en, language),
-                                value=str(value)))
-    # Extended shows the complete diagnostics, but still bounded so the
-    # evidence and summary panels below it keep their place.
-    return rows[:8] if full else rows[:4]
+                                value=str(value), font_size=font_size, span=span))
+    return rows
+
+
+def _summary_lines(p: AnalysisPresentation, language: str) -> tuple[str, ...]:
+    """A deterministic 2–3 line digest from existing typed fields only."""
+
+    if language == "EN":
+        conclusion = f"Conclusion: {p.recommendation_en}; {p.trend_en}."
+        risk_label, next_label = "Risk", "Next"
+        risk_suffix, next_suffix = "break", "confirmed close above"
+    elif language == "BILINGUAL":
+        conclusion = (f"الخلاصة: {p.recommendation_ar} · "
+                      f"Conclusion: {p.recommendation_en}")
+        risk_label, next_label = "الخطر · Risk", "التالي · Next"
+        risk_suffix, next_suffix = "كسر · break", "إغلاق مؤكد فوق · close above"
+    else:
+        conclusion = f"الخلاصة: {p.recommendation_ar}؛ {p.trend_ar}."
+        risk_label, next_label = "الخطر", "التالي"
+        risk_suffix, next_suffix = "كسر", "إغلاق مؤكد فوق"
+
+    lines = [conclusion]
+    invalidation = p.level_price("invalidation")
+    if invalidation is not None:
+        lines.append(f"{risk_label}: {risk_suffix} {fmt_value(invalidation)}.")
+    positive = next((s for s in p.scenarios if "breakout" in s.scenario_id), None)
+    if positive is not None and positive.trigger is not None:
+        lines.append(f"{next_label}: {next_suffix} {fmt_value(positive.trigger)}.")
+    return tuple(lines[:3])
 
 
 # --------------------------------------------------------------------------- #
@@ -363,11 +461,16 @@ def render_infographic_png(presentation: AnalysisPresentation, *,
     canvas.text_rtl(ticker_right, y + PANEL_PAD, p.ticker,
                     canvas.type(TypeScale.ticker), PALETTE["text"], bold=True)
     name_y = y + PANEL_PAD + canvas.line_height(canvas.type(TypeScale.ticker))
-    for line in canvas.wrap(p.company_name or EM_DASH, canvas.type(TypeScale.caption),
-                            ticker_right - mid - int(10 * s), max_lines=2):
-        canvas.text_rtl(ticker_right, name_y, line, canvas.type(TypeScale.caption),
+    name_size = canvas.type(TypeScale.caption)
+    name_width = ticker_right - mid - int(10 * s)
+    name_lines = canvas.wrap(p.company_name or EM_DASH, name_size, name_width)
+    while len(name_lines) > 2 and name_size > canvas.type(18):
+        name_size -= 1
+        name_lines = canvas.wrap(p.company_name or EM_DASH, name_size, name_width)
+    for line in name_lines:
+        canvas.text_rtl(ticker_right, name_y, line, name_size,
                         PALETTE["muted"])
-        name_y += canvas.line_height(canvas.type(TypeScale.caption))
+        name_y += canvas.line_height(name_size)
 
     # price block
     canvas.text_ltr(left + PANEL_PAD, y + PANEL_PAD, t("last_close", language),
@@ -388,12 +491,18 @@ def render_infographic_png(presentation: AnalysisPresentation, *,
     label_size = canvas.type(TypeScale.label)
     badge_y = change_y + canvas.line_height(label_size) + SPACING["sm"]
     badge_w = int(canvas.text_width(rec, label_size, bold=True) + label_size * 1.5)
-    canvas.badge(left + PANEL_PAD + badge_w, badge_y, rec, label_size,
-                 _tone_colour(p.recommendation_tone), solid=True)
-    canvas.text_ltr(left + PANEL_PAD + badge_w + SPACING["md"],
-                    badge_y + int(8 * s),
+    strip_left = left + PANEL_PAD
+    strip_right = mid - SPACING["md"]
+    strip_h = canvas.badge_height(label_size) + int(6 * s)
+    tone = _tone_colour(p.recommendation_tone)
+    canvas.draw.rounded_rectangle((strip_left, badge_y, strip_right, badge_y + strip_h),
+                                  radius=strip_h // 2, fill=tint(tone, 0.16),
+                                  outline=tint(tone, 0.65), width=2)
+    canvas.badge(strip_left + badge_w, badge_y + int(3 * s), rec, label_size,
+                 tone, solid=True)
+    canvas.text_rtl(strip_right - SPACING["md"], badge_y + int(9 * s),
                     f"{t('confidence', language)} {p.confidence_display}",
-                    canvas.type(TypeScale.caption), PALETTE["muted"])
+                    canvas.type(TypeScale.caption), PALETTE["text"], bold=True)
     y += header_h + SPACING["sm"]
 
     # quiet metadata strip
@@ -427,54 +536,44 @@ def render_infographic_png(presentation: AnalysisPresentation, *,
     y += chart_h + SPACING["lg"]
 
     # ------------------------------------- 4-9. panels, budgeted to fit --
-    sections = []
     technical = _technical_lines(p, language)
-    if technical:
-        sections.append(("technical_read",
-                         Panel(title=t("technical", language),
-                               children=(BulletList(items=technical),),
-                               accent=PALETTE["blue"]), 1.0))
+    extended = size == "INFOGRAPHIC_EXTENDED"
+    row_font = None if extended else 18 if language == "BILINGUAL" else 23
 
-    support_rows = _level_rows(p, ("support_1", "support_2"), language, "support")
+    support_rows = _level_rows(p, ("support_1", "support_2"), language, "support",
+                               font_size=row_font)
     if p.pullback.support_zone_low is not None:
         support_rows.append(Row(label=t("pullback_zone", language),
                                 value=p.pullback.support_zone_display,
-                                value_colour=PALETTE["purple"]))
-    resistance_rows = _level_rows(p, ("resistance_1", "resistance_2", "breakout",
-                                      "invalidation"), language, "resistance")
-    for row in resistance_rows:
-        if row.label == t("breakout", language):
-            row.value_colour = ROLE_COLOUR["breakout"]
-        if row.label == t("invalidation", language):
-            row.value_colour = ROLE_COLOUR["invalidation"]
+                                value_colour=PALETTE["purple"],
+                                font_size=row_font))
+    resistance_rows = _resistance_rows(p, language, font_size=row_font)
 
     indicator_rows = [
         Row(label=t("trend", language),
-            value=p.trend_ar if language != "EN" else p.trend_en),
+            value=p.trend_ar if language != "EN" else p.trend_en,
+            font_size=row_font),
         Row(label=t("momentum", language),
-            value=p.momentum_ar if language != "EN" else p.momentum_en),
-        Row(label="EMA20", value=fmt_value(p.ema20)),
-        Row(label="EMA50", value=fmt_value(p.ema50)),
-        Row(label="EMA200", value=fmt_value(p.ema200)),
+            value=p.momentum_ar if language != "EN" else p.momentum_en,
+            font_size=row_font),
+        Row(label="EMA20", value=fmt_value(p.ema20), font_size=row_font),
+        Row(label="EMA50", value=fmt_value(p.ema50), font_size=row_font),
+        Row(label="EMA200", value=fmt_value(p.ema200), font_size=row_font),
     ]
     if p.rsi14 is not None:
-        indicator_rows.append(Row(label=t("rsi", language), value=fmt_value(p.rsi14, 1)))
+        indicator_rows.append(Row(label=t("rsi", language), value=fmt_value(p.rsi14, 1),
+                                  font_size=row_font))
     if p.trend_strength is not None:
         indicator_rows.append(Row(label=t("trend_strength", language),
-                                  value=fmt_value(p.trend_strength, 0)))
+                                  value=fmt_value(p.trend_strength, 0),
+                                  font_size=row_font))
     # The primary card caps this; Extended shows the complete table.
     if size != "INFOGRAPHIC_EXTENDED":
-        indicator_rows = indicator_rows[:5]
+        indicator_rows = indicator_rows[:4]
 
-    extended = size == "INFOGRAPHIC_EXTENDED"
-    scenario_rows = _scenario_rows(p, language, full=extended)
-    pullback_rows = _pullback_rows(p, language, full=extended)
-
-    summary_text = (p.summary_ar if language == "AR"
-                    else p.summary_en if language == "EN"
-                    else (p.summary_ar or p.summary_en))
-    if language == "EN" and not p.summary_en:
-        summary_text = t("no_english", "EN")
+    scenario_rows = _scenario_rows(p, language, full=extended, font_size=row_font)
+    pullback_rows = _pullback_rows(p, language, full=extended, font_size=row_font)
+    summary_lines = _summary_lines(p, language)
 
     # Two-up: support beside resistance.
     y = _render_pair(canvas, left, right, y, content,
@@ -491,35 +590,34 @@ def render_infographic_png(presentation: AnalysisPresentation, *,
 
     footer_h = int(110 * s)
     footer_y = height - margin - footer_h
-    # Scenarios beside Pullback, then Evidence beside Summary. Pairing halves the
-    # height these four need, which is what lets all twelve sections fit 1920.
-    pairs = [
-        (Panel(title=t("pullback", language), children=tuple(pullback_rows),
-               accent=PALETTE["purple"], frame_colour=tint(PALETTE["purple"], 0.55)),
-         Panel(title=t("technical", language),
-               children=(BulletList(items=technical, max_items=3),),
-               accent=PALETTE["blue"])),
-        (Panel(title=t("evidence", language),
-               children=(BulletList(
-                   items=localize_assessment_reasons(p.assessment_evidence,
-                                                     language),
-                   max_items=4, max_lines_per_item=1),),
-               accent=PALETTE["gray"]),
-         Panel(title=t("summary", language),
-               children=(BulletList(items=(summary_text,) if summary_text else (),
-                                    max_items=3 if not extended else 6),),
-               accent=PALETTE["blue"])),
-    ]
-    each = (content - SPACING["md"]) // 2
-    stamp_limit = footer_y - canvas.badge_height(canvas.type(18)) - SPACING["lg"]
-    for first, second in pairs:
-        need = max(first.measure(canvas, each), second.measure(canvas, each))
-        if y + need > stamp_limit:
-            break
-        y = _render_pair(canvas, left, right, y, content, first, second)
+    pullback_panel = Panel(
+        title=t("pullback", language),
+        title_badge=t("research_badge", language),
+        children=(RowGrid(rows=tuple(pullback_rows)),),
+        accent=PALETTE["purple"], frame_colour=tint(PALETTE["purple"], 0.55))
+    need = pullback_panel.measure(canvas, content)
+    pullback_panel.render(canvas, (left, y, right, y + need))
+    # A narrow visual gutter leaves the compact summary/evidence strip enough
+    # room on the fixed 1920 canvas without shrinking text below its floor.
+    y += need + SPACING["xs"]
 
-    # The research-only stamp is never optional. It sits just above the footer so
-    # it is present whatever the section budget dropped.
+    evidence_panel = Panel(
+        title=t("evidence", language), compact=True,
+        children=(BulletGrid(
+            items=localize_assessment_reasons(p.assessment_evidence, language),
+            max_items=4, font_size=18),), accent=PALETTE["gray"])
+    summary_panel = Panel(
+        title=t("summary", language), compact=True,
+        children=(BulletList(items=summary_lines, max_items=3,
+                             max_lines_per_item=None, font_size=18),),
+        accent=PALETTE["blue"])
+    each = (content - SPACING["md"]) // 2
+    final_pair_need = max(evidence_panel.measure(canvas, each),
+                          summary_panel.measure(canvas, each))
+    if y + final_pair_need <= footer_y:
+        y = _render_pair(canvas, left, right, y, content,
+                         evidence_panel, summary_panel)
+
     if extended and y < footer_y - int(120 * s):
         # Provenance notes, drawn from fields the model already carries.
         note_size = canvas.type(TypeScale.caption)
@@ -533,10 +631,6 @@ def render_infographic_png(presentation: AnalysisPresentation, *,
             for line in canvas.wrap(f"• {note}", note_size, content, max_lines=1):
                 canvas.text_rtl(right, y, line, note_size, PALETTE["muted"])
             y += canvas.line_height(note_size)
-
-    stamp_y = footer_y - canvas.badge_height(canvas.type(18)) - SPACING["sm"]
-    canvas.badge(right, stamp_y, t("research_only", language), canvas.type(18),
-                 PALETTE["purple"])
 
     # ---------------------------------------------------------- research --
     _render_footer(canvas, left, right, footer_y, footer_h, p, language)

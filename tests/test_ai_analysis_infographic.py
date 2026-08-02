@@ -12,6 +12,7 @@ No provider call, no network, no database.
 from __future__ import annotations
 
 import ast
+import dataclasses
 import io
 import re
 
@@ -313,6 +314,103 @@ def test_the_extended_format_adds_sections_beyond_the_primary_card(presentation)
     assert len(module._scenario_rows(presentation, "AR", full=True)) >= \
         len(module._scenario_rows(presentation, "AR", full=False))
     assert module._methodology_lines(presentation, "AR")
+
+
+def test_pullback_heading_and_research_badge_are_separate():
+    import core.analysis_infographic as module
+
+    assert module.t("pullback", "AR") == "جودة التصحيح"
+    assert module.t("research_badge", "AR") == "بحثي فقط"
+    assert "بحثي" not in module.t("pullback", "AR")
+
+
+def test_primary_pullback_hierarchy_keeps_six_complete_diagnostics(presentation):
+    import core.analysis_infographic as module
+
+    rows = module._pullback_rows(presentation, "AR", full=False, font_size=23)
+    labels = [row.label for row in rows]
+    for required in ("الحالة الحالية", "نسبة التصحيح", "عمق ATR",
+                     "منطقة الدعم", "سلوك الحجم"):
+        assert required in labels
+    assert any(label in labels for label in ("دليل الارتداد", "سبب الفشل أو الإبطال"))
+    assert len(rows) <= 6
+    assert rows[-1].span == 2
+    assert len(module._pullback_rows(presentation, "AR", full=True)) > len(rows)
+
+
+def test_english_pullback_rows_use_verified_english_reason(presentation):
+    import core.analysis_infographic as module
+
+    rows = module._pullback_rows(presentation, "EN", full=False, font_size=23)
+    displayed = " ".join(f"{row.label} {row.value}" for row in rows)
+    assert not re.search(r"[؀-ۿ]", displayed)
+    assert "Prior uptrend requirements were not met" in displayed
+
+
+def test_scenario_panel_has_at_most_four_nonduplicated_primary_rows(presentation):
+    import core.analysis_infographic as module
+
+    rows = module._scenario_rows(presentation, "AR", full=True)
+    assert len(rows) <= 4
+    assert len({row.label for row in rows}) == len(rows)
+    assert not [row for row in rows if "إبطال السيناريو" in row.label]
+    expected = {"سيناريو إيجابي", "سيناريو الانتظار", "سيناريو سلبي",
+                "العائد إلى المخاطرة"}
+    assert {row.label for row in rows} <= expected
+
+
+def test_resistance_and_breakout_merge_only_at_display_precision(presentation):
+    import core.analysis_infographic as module
+
+    levels = []
+    for level in presentation.levels:
+        if level.key == "resistance_1":
+            levels.append(dataclasses.replace(level, price=19.014))
+        elif level.key == "breakout":
+            levels.append(dataclasses.replace(level, price=19.0144))
+        elif level.key == "resistance_2":
+            levels.append(dataclasses.replace(level, price=19.0142))
+        else:
+            levels.append(level)
+    model = dataclasses.replace(presentation, levels=tuple(levels))
+    rows = module._resistance_rows(model, "AR")
+    assert [row.label for row in rows].count("المقاومة / الاختراق") == 1
+    assert "مقاومة ثانية" not in [row.label for row in rows]
+    assert module._same_at_display_precision(19.014, 19.0144)
+    assert not module._same_at_display_precision(19.014, 19.016)
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_summary_is_a_complete_deterministic_two_or_three_line_digest(
+        presentation, language):
+    import core.analysis_infographic as module
+
+    lines = module._summary_lines(presentation, language)
+    assert 2 <= len(lines) <= 3
+    assert all(line and "…" not in line and "..." not in line for line in lines)
+    assert lines == module._summary_lines(presentation, language)
+
+
+def test_primary_labels_and_values_wrap_without_ellipsis_or_overflow():
+    from core.infographic_layout import Canvas, Row
+
+    canvas = Canvas(1080, 1920, scale=1.0)
+    row = Row(label="سبب الفشل أو الإبطال الكامل دون حذف",
+              value="هذا تفسير تشخيصي طويل يجب أن يلتف كاملًا دون حذف أي كلمة")
+    height = row.measure(canvas, 430)
+    row.render(canvas, (40, 40, 470, 40 + height))
+    assert not row.overflowed
+    assert "…" not in row.label and "…" not in row.value
+
+
+def test_recommendation_and_confidence_share_one_emphasised_strip():
+    import inspect
+    import core.analysis_infographic as module
+
+    source = inspect.getsource(module.render_infographic_png)
+    assert "strip_left" in source and "strip_right" in source
+    assert "p.confidence_display" in source
+    assert "fill=tint(tone, 0.16)" in source
 
 
 # --------------------------------------------------------------------------- #

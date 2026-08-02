@@ -241,44 +241,66 @@ class SectionHeader(Component):
 
 @dataclass
 class Row(Component):
-    """One label/value line. The label wraps; the value is never truncated."""
+    """One label/value line with a lossless stacked fallback.
+
+    Labels and values are never ellipsised.  When the two columns cannot hold
+    the complete text, the row measures and renders a labelled full-width value
+    underneath instead.  ``span`` is consumed by :class:`RowGrid` only.
+    """
 
     label: str
     value: str
     value_colour: tuple = PALETTE["text"]
     label_sub: str = ""
+    font_size: int | None = None
+    span: int = 1
+
+    def _layout(self, canvas: Canvas, width: int):
+        body = canvas.type(self.font_size or TypeScale.body)
+        label_size = canvas.type(min(self.font_size or TypeScale.label,
+                                     TypeScale.label))
+        value_w = canvas.text_width(self.value, body, bold=True)
+        label_w = canvas.text_width(self.label, label_size)
+        same_line = value_w + label_w + SPACING["md"] <= width
+        if same_line:
+            return body, label_size, True, (str(self.value),), (str(self.label),)
+        value_lines = tuple(canvas.wrap(self.value, body, width)) or (str(self.value),)
+        label_lines = tuple(canvas.wrap(self.label, label_size, width)) or (str(self.label),)
+        return body, label_size, False, value_lines, label_lines
 
     def measure(self, canvas: Canvas, width: int) -> int:
-        body = canvas.type(TypeScale.body)
-        height = canvas.line_height(body)
+        body, label_size, same_line, value_lines, label_lines = self._layout(canvas, width)
+        if same_line:
+            height = max(canvas.line_height(body), canvas.line_height(label_size))
+        else:
+            height = (len(label_lines) * canvas.line_height(label_size)
+                      + len(value_lines) * canvas.line_height(body)
+                      + SPACING["xs"])
         if self.label_sub:
             height += canvas.line_height(canvas.type(TypeScale.caption))
         return height
 
     def render(self, canvas: Canvas, box) -> None:
         x0, y0, x1, y1 = box
-        body, caption = canvas.type(TypeScale.body), canvas.type(TypeScale.caption)
-        # The value is bounded to its column. Without this a long diagnostic value
-        # ran straight past the panel edge and was clipped by the panel border.
-        value_limit = int((x1 - x0) * 0.62)
-        value = self.value
-        if canvas.text_width(value, body, bold=True) > value_limit:
-            lines = canvas.wrap(value, body, value_limit, max_lines=1)
-            value = lines[0] if lines else value
-            self.overflowed = True
-        value_w = canvas.text_width(value, body, bold=True)
-        canvas.text_ltr(x0, y0, value, body, self.value_colour, bold=True)
-        label_space = int((x1 - x0) - value_w - SPACING["md"])
-        if label_space > 40:
-            lines = canvas.wrap(self.label, canvas.type(TypeScale.label),
-                                label_space, max_lines=1)
-            if lines:
-                canvas.text_rtl(x1, y0 + 2, lines[0], canvas.type(TypeScale.label),
-                                PALETTE["muted"])
+        caption = canvas.type(TypeScale.caption)
+        body, label_size, same_line, value_lines, label_lines = self._layout(
+            canvas, x1 - x0)
+        y = y0
+        if same_line:
+            canvas.text_ltr(x0, y, value_lines[0], body, self.value_colour, bold=True)
+            canvas.text_rtl(x1, y + 2, label_lines[0], label_size, PALETTE["muted"])
+            y += max(canvas.line_height(body), canvas.line_height(label_size))
+        else:
+            for line in label_lines:
+                canvas.text_rtl(x1, y, line, label_size, PALETTE["muted"])
+                y += canvas.line_height(label_size)
+            y += SPACING["xs"]
+            for line in value_lines:
+                canvas.text_rtl(x1, y, line, body, self.value_colour, bold=True)
+                y += canvas.line_height(body)
 
         if self.label_sub:
-            canvas.text_rtl(x1, y0 + canvas.line_height(body), self.label_sub,
-                            caption, PALETTE["muted"])
+            canvas.text_rtl(x1, y, self.label_sub, caption, PALETTE["muted"])
 
 
 @dataclass
@@ -316,10 +338,11 @@ class BulletList(Component):
     max_items: int = 5
     #: Lines each bullet may occupy. Short deterministic reasons use 1; a summary
     #: paragraph uses more. Capping here is what keeps a panel's height bounded.
-    max_lines_per_item: int = 2
+    max_lines_per_item: int | None = 2
+    font_size: int | None = None
 
     def _lines(self, canvas: Canvas, width: int):
-        size = canvas.type(TypeScale.body)
+        size = canvas.type(self.font_size or TypeScale.body)
         out = []
         for item in list(self.items)[: self.max_items]:
             out.append(canvas.wrap(f"• {item}", size, width - SPACING["md"],
@@ -327,13 +350,13 @@ class BulletList(Component):
         return out
 
     def measure(self, canvas: Canvas, width: int) -> int:
-        size = canvas.type(TypeScale.body)
+        size = canvas.type(self.font_size or TypeScale.body)
         return sum(len(block) * canvas.line_height(size) + SPACING["xs"]
                    for block in self._lines(canvas, width))
 
     def render(self, canvas: Canvas, box) -> None:
         x0, y0, x1, y1 = box
-        size = canvas.type(TypeScale.body)
+        size = canvas.type(self.font_size or TypeScale.body)
         y = y0
         for block in self._lines(canvas, x1 - x0):
             for line in block:
@@ -346,6 +369,101 @@ class BulletList(Component):
 
 
 @dataclass
+class RowGrid(Component):
+    """Lossless two-column row grid; full-span rows keep long diagnostics clear."""
+
+    rows: tuple
+    columns: int = 2
+
+    def _bands(self):
+        bands, current = [], []
+        for row in self.rows:
+            if getattr(row, "span", 1) >= self.columns:
+                if current:
+                    bands.append(tuple(current))
+                    current = []
+                bands.append((row,))
+                continue
+            current.append(row)
+            if len(current) == self.columns:
+                bands.append(tuple(current))
+                current = []
+        if current:
+            bands.append(tuple(current))
+        return tuple(bands)
+
+    def measure(self, canvas: Canvas, width: int) -> int:
+        gap = SPACING["md"]
+        each = (width - gap * (self.columns - 1)) // self.columns
+        return sum(max(row.measure(canvas, width if len(band) == 1 and row.span >= self.columns
+                                   else each) for row in band)
+                   for band in self._bands())
+
+    def render(self, canvas: Canvas, box) -> None:
+        x0, y0, x1, y1 = box
+        gap = SPACING["md"]
+        each = (x1 - x0 - gap * (self.columns - 1)) // self.columns
+        y = y0
+        for band in self._bands():
+            full = len(band) == 1 and band[0].span >= self.columns
+            need = max(row.measure(canvas, x1 - x0 if full else each) for row in band)
+            if y + need > y1:
+                self.overflowed = True
+                return
+            for index, row in enumerate(band):
+                if full:
+                    child_box = (x0, y, x1, y + need)
+                else:
+                    right = x1 - index * (each + gap)
+                    child_box = (right - each, y, right, y + need)
+                row.render(canvas, child_box)
+                if row.overflowed:
+                    self.overflowed = True
+            y += need
+
+
+@dataclass
+class BulletGrid(Component):
+    """A concise bullet grid that wraps completely and never adds an ellipsis."""
+
+    items: tuple
+    columns: int = 2
+    max_items: int = 4
+    font_size: int = 18
+
+    def _bands(self, canvas: Canvas, width: int):
+        gap = SPACING["sm"]
+        each = (width - gap * (self.columns - 1)) // self.columns
+        size = canvas.type(self.font_size)
+        blocks = [tuple(canvas.wrap(f"• {item}", size, each))
+                  for item in self.items[:self.max_items]]
+        return tuple(tuple(blocks[i:i + self.columns])
+                     for i in range(0, len(blocks), self.columns)), each, size
+
+    def measure(self, canvas: Canvas, width: int) -> int:
+        bands, _, size = self._bands(canvas, width)
+        return sum(max((len(block) for block in band), default=0)
+                   * canvas.line_height(size) + SPACING["xs"] for band in bands)
+
+    def render(self, canvas: Canvas, box) -> None:
+        x0, y0, x1, y1 = box
+        bands, each, size = self._bands(canvas, x1 - x0)
+        y = y0
+        for band in bands:
+            band_h = max((len(block) for block in band), default=0) * canvas.line_height(size)
+            if y + band_h > y1:
+                self.overflowed = True
+                return
+            for index, block in enumerate(band):
+                right = x1 - index * (each + SPACING["sm"])
+                line_y = y
+                for line in block:
+                    canvas.text_rtl(right, line_y, line, size, PALETTE["text"])
+                    line_y += canvas.line_height(size)
+            y += band_h + SPACING["xs"]
+
+
+@dataclass
 class Panel(Component):
     """A titled frame that measures and lays out its own children."""
 
@@ -353,6 +471,14 @@ class Panel(Component):
     children: tuple
     accent: tuple = PALETTE["blue"]
     frame_colour: tuple | None = None
+    title_badge: str = ""
+    compact: bool = False
+
+    def _pad(self) -> int:
+        return 12 if self.compact else PANEL_PAD
+
+    def _title_size(self, canvas: Canvas) -> int:
+        return canvas.type(TypeScale.label if self.compact else TypeScale.title)
 
     @staticmethod
     def _gap(child) -> int:
@@ -360,29 +486,38 @@ class Panel(Component):
         return 0 if isinstance(child, Row) else SPACING["sm"]
 
     def measure(self, canvas: Canvas, width: int) -> int:
-        inner = width - PANEL_PAD * 2
-        height = PANEL_PAD
+        pad = self._pad()
+        inner = width - pad * 2
+        height = pad
         if self.title:
-            height += canvas.line_height(canvas.type(TypeScale.title)) + SPACING["sm"]
+            height += canvas.line_height(self._title_size(canvas)) + SPACING["sm"]
         last = 0
         for child in self.children:
             last = self._gap(child)
             height += child.measure(canvas, inner) + last
-        return height + PANEL_PAD - last
+        return height + pad - last
 
     def render(self, canvas: Canvas, box) -> None:
         x0, y0, x1, y1 = box
         canvas.panel(box, outline=self.frame_colour or PALETTE["border"],
                      accent=self.accent)
-        inner_left, inner_right = x0 + PANEL_PAD, x1 - PANEL_PAD
-        y = y0 + PANEL_PAD
+        pad = self._pad()
+        inner_left, inner_right = x0 + pad, x1 - pad
+        y = y0 + pad
         if self.title:
-            size = canvas.type(TypeScale.title)
+            size = self._title_size(canvas)
             canvas.text_rtl(inner_right, y, self.title, size, self.accent, bold=True)
+            if self.title_badge:
+                badge_size = canvas.type(16)
+                pad_x = int(badge_size * 0.72)
+                badge_w = int(canvas.text_width(self.title_badge, badge_size, bold=True)
+                              + pad_x * 2)
+                canvas.badge(inner_left + badge_w, y, self.title_badge, badge_size,
+                             self.accent)
             y += canvas.line_height(size) + SPACING["sm"]
         for child in self.children:
             need = child.measure(canvas, inner_right - inner_left)
-            if y + need > y1 - PANEL_PAD + SPACING["sm"]:
+            if y + need > y1 - pad + SPACING["sm"]:
                 self.overflowed = True
                 return
             child.render(canvas, (inner_left, y, inner_right, y + need))
@@ -425,7 +560,7 @@ class Divider(Component):
 
 
 __all__ = [
-    "PALETTE", "PANEL_PAD", "RADIUS", "ROLE_COLOUR", "SPACING", "BulletList",
-    "Canvas", "Component", "Divider", "Panel", "Row", "SectionHeader", "Tile",
-    "TileRow", "TypeScale", "tint",
+    "PALETTE", "PANEL_PAD", "RADIUS", "ROLE_COLOUR", "SPACING", "BulletGrid",
+    "BulletList", "Canvas", "Component", "Divider", "Panel", "Row", "RowGrid",
+    "SectionHeader", "Tile", "TileRow", "TypeScale", "tint",
 ]
