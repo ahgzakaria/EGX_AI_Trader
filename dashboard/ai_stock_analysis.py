@@ -21,6 +21,20 @@ import streamlit as st
 
 from core.ai_analysis_evidence import EVIDENCE_ENGINE_VERSION
 from core.analysis_card_generator import CARD_SIZES, DEFAULT_CARD_SIZE
+from core.analysis_export import (
+    CARD_TYPE_LABELS,
+    CARD_TYPES,
+    COMPACT,
+    LANGUAGE_LABELS as EXPORT_LANGUAGE_LABELS,
+    RESOLUTION_LABELS,
+    ExportRequest,
+    ExportUnavailable,
+    export_cache_key,
+    export_filename,
+    render_export,
+    resolutions_for,
+)
+from core.analysis_infographic import LANGUAGES as EXPORT_LANGUAGES
 from core.analysis_chart import (
     DEFAULT_TIMEFRAME,
     TIMEFRAME_LABELS,
@@ -819,74 +833,83 @@ def _warnings_section(result):
 
 
 def _card_section(result, narrative):
-    section_header("بطاقة التحليل", "Export card — compact summary or detailed analysis")
+    section_header("بطاقة التحليل",
+                   "Export card — compact, infographic or extended infographic")
     presentation = build_presentation(result, narrative)
     left, right = st.columns([1.2, 1])
     with left:
-        kind = st.radio(
-            "نوع البطاقة · Card type",
-            ("COMPACT", "DETAILED"),
-            format_func=lambda key: CARD_KIND_LABELS[key],
-            horizontal=True, key="_ai_analysis_card_kind")
-        if kind == "COMPACT":
-            size = st.radio("مقاس البطاقة · Card size", list(CARD_SIZES),
-                            format_func=lambda key: CARD_SIZE_LABELS[key],
-                            horizontal=True, key="_ai_analysis_card_size",
-                            index=list(CARD_SIZES).index(DEFAULT_CARD_SIZE))
-            language = DEFAULT_LANGUAGE
+        card_type = st.radio(
+            "نوع البطاقة · Card type", CARD_TYPES,
+            format_func=lambda key: CARD_TYPE_LABELS[key],
+            key="_ai_analysis_card_kind")
+
+        company = ""
+        if card_type == COMPACT:
+            resolution = st.radio(
+                "الدقة · Resolution", list(CARD_SIZES),
+                format_func=lambda key: CARD_SIZE_LABELS[key], horizontal=True,
+                key="_ai_analysis_card_size",
+                index=list(CARD_SIZES).index(DEFAULT_CARD_SIZE))
+            language = "AR"
             company = st.text_input(
                 "اسم الشركة بالعربية (اختياري) · Arabic company name (optional)",
-                value="", key="_ai_analysis_company",
-            ).strip()
+                value="", key="_ai_analysis_company").strip()
         else:
-            size = st.radio("مقاس البطاقة · Card size", list(DETAILED_CARD_SIZES),
-                            format_func=lambda key: DETAILED_SIZE_LABELS[key],
-                            key="_ai_analysis_detailed_size",
-                            index=list(DETAILED_CARD_SIZES).index(DEFAULT_DETAILED_SIZE))
-            language = st.radio("اللغة · Language", list(LANGUAGES),
-                                format_func=lambda key: LANGUAGE_LABELS[key],
-                                horizontal=True, key="_ai_analysis_card_language",
-                                index=list(LANGUAGES).index(DEFAULT_LANGUAGE))
-            company = ""
-            st.caption(f"{presentation.display_label} · جلسة {presentation.last_completed_session}")
+            language = st.radio(
+                "اللغة · Language", list(EXPORT_LANGUAGES),
+                format_func=lambda key: EXPORT_LANGUAGE_LABELS[key],
+                horizontal=True, key="_ai_analysis_card_language")
+            # Only the resolutions this card type genuinely supports are offered.
+            options = resolutions_for(card_type)
+            resolution = st.radio(
+                "الدقة · Resolution", list(options),
+                format_func=lambda key: RESOLUTION_LABELS[key], horizontal=True,
+                key=f"_ai_analysis_res_{card_type}")
+            st.caption(f"{presentation.display_label} · "
+                       f"جلسة {presentation.last_completed_session}")
         generate = st.button("🖼 إنشاء البطاقة · Generate Analysis Card",
                              key="_ai_analysis_card_go")
 
-    cache_key = f"{card_cache_key(result, size)}|{kind}|{language}|{company}"
+    request = ExportRequest(card_type=card_type, language=language,
+                            resolution=resolution)
+    # The key carries ticker, analysis identity, session, type, language and
+    # canvas size, so changing ANY control invalidates the previous image and a
+    # card from a previously selected stock can never be shown.
+    cache_key = export_cache_key(presentation, request)
+    if card_type == COMPACT:
+        cache_key = f"{cache_key}|{resolution}|{company}"
+
     if generate and st.session_state.get(STATE_CARD_KEY) != cache_key:
-        # Rendering is gated on the button AND the cache key, so a rerun never
-        # re-renders the same card.
         with st.spinner("جارٍ إنشاء البطاقة… · Rendering card…"):
             try:
-                if kind == "COMPACT":
-                    st.session_state[STATE_CARD] = generate_card_bytes(
-                        result, narrative, size=size, company_name=company or None)
-                else:
-                    # The detailed card consumes the SAME presentation model the page
-                    # rendered; it never recalculates a level or a decision.
-                    st.session_state[STATE_CARD] = render_detailed_card_png(
-                        presentation, size=size, language=language)
+                # Rendered ONCE. The same bytes feed the preview and the download.
+                st.session_state[STATE_CARD] = render_export(
+                    presentation, request,
+                    compact_renderer=lambda: generate_card_bytes(
+                        result, narrative, size=resolution,
+                        company_name=company or None))
                 st.session_state[STATE_CARD_KEY] = cache_key
-            except Exception as error:
+            except ExportUnavailable as error:
                 st.session_state[STATE_CARD] = None
                 st.session_state[STATE_CARD_KEY] = None
-                st.error(f"تعذر إنشاء البطاقة · Card generation failed: {error}")
+                st.error(f"تعذر إنشاء البطاقة · Card export failed: {error}")
 
     card = st.session_state.get(STATE_CARD)
+    # The image is shown ONLY when its key matches the current selection, so a
+    # stale card is never displayed after a control changes.
     if card and st.session_state.get(STATE_CARD_KEY) == cache_key:
         with right:
-            # The preview IS the exported bytes — the same object is shown and
-            # downloaded, so they can never differ.
-            st.image(card, caption=f"{presentation.ticker} · {kind.title()}",
+            st.image(card, caption=f"{presentation.ticker} · "
+                                   f"{CARD_TYPE_LABELS[card_type]}",
                      use_container_width=True)
             st.download_button(
                 "⬇ تنزيل PNG · Download PNG", data=card,
-                file_name=f"{presentation.ticker}_ai_analysis_{kind.lower()}_{size.lower()}.png",
+                file_name=export_filename(presentation, request),
                 mime="image/png", key="_ai_analysis_card_dl")
     elif not card:
         with right:
-            empty_state("لم تُنشأ بطاقة بعد", "Press Generate Analysis Card to render a PNG.",
-                        icon="🖼")
+            empty_state("لم تُنشأ بطاقة بعد",
+                        "Press Generate Analysis Card to render a PNG.", icon="🖼")
 
 
 def _history_section(symbol):

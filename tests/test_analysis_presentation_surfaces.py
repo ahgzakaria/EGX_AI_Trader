@@ -378,7 +378,8 @@ def test_decision_values_are_copied_not_recomputed(presentation):
     assert presentation.trend_strength == result.indicators.trend_strength
     assert presentation.pullback.pullback_percent == \
         result.pullback_scenario.pullback_percent
-    assert presentation.pullback.state_en == "NOT_APPLICABLE"
+    # The English label is real English now; the raw code lives in *_code.
+    assert presentation.pullback.state_en == "Not currently assessable"
 
 
 def test_the_lane_gap_budgets_for_the_TALLEST_chip_not_the_average(presentation):

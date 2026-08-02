@@ -23,7 +23,12 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from core.ai_pullback_labels import PULLBACK_REASON_AR, localize_pullback_reason
+from core.ai_pullback_labels import (
+    PULLBACK_REASON_AR,
+    bilingual,
+    localize,
+    localize_pullback_reason,
+)
 from core.ai_stock_analysis_contract import (
     AnalysisRequest,
     AnalysisResult,
@@ -100,20 +105,20 @@ SCENARIO_STATE_LABELS = {
 
 PULLBACK_STATE_LABELS = {
     PullbackState.NOT_APPLICABLE: (
-        "غير قابل للتقييم حاليًا", "NOT_APPLICABLE", "gray"),
+        "غير قابل للتقييم حاليًا", "Not currently assessable", "gray"),
     PullbackState.DEVELOPING_PULLBACK: (
-        "التصحيح ما زال يتطور", "DEVELOPING_PULLBACK", "blue"),
+        "التصحيح ما زال يتطور", "Pullback developing", "blue"),
     PullbackState.WAIT_REVERSAL_CONFIRMATION: (
         "وصل إلى منطقة مهمة وينتظر تأكيد الارتداد",
-        "WAIT_REVERSAL_CONFIRMATION", "amber"),
+        "Awaiting reversal confirmation", "amber"),
     PullbackState.HEALTHY_PULLBACK: (
-        "تصحيح صحي داخل اتجاه صاعد", "HEALTHY_PULLBACK", "blue"),
+        "تصحيح صحي داخل اتجاه صاعد", "Healthy pullback", "blue"),
     PullbackState.DEEP_PULLBACK: (
-        "تصحيح عميق ومخاطره أعلى", "DEEP_PULLBACK", "amber"),
+        "تصحيح عميق ومخاطره أعلى", "Deep pullback", "amber"),
     PullbackState.CONFIRMED_PULLBACK_ENTRY: (
-        "ظهر تأكيد ارتداد بحثي فقط", "RESEARCH_CONFIRMATION_ONLY", "amber"),
+        "ظهر تأكيد ارتداد بحثي فقط", "Research confirmation only", "amber"),
     PullbackState.FAILED_PULLBACK: (
-        "التصحيح فشل وكسر البنية الصاعدة", "FAILED_PULLBACK", "red"),
+        "التصحيح فشل وكسر البنية الصاعدة", "Failed pullback", "red"),
 }
 
 PULLBACK_REASON_LABELS = PULLBACK_REASON_AR
@@ -137,6 +142,13 @@ PULLBACK_STRUCTURE_LABELS = {
     "HIGHER_HIGH_HIGHER_LOW": "قمم وقيعان صاعدة · Higher high, higher low",
     "LOWER_HIGH_LOWER_LOW": "قمم وقيعان هابطة · Lower high, lower low",
     "MIXED_STRUCTURE": "هيكل مختلط · Mixed structure",
+}
+
+#: Support-confluence sources are internal tokens; show them readably.
+_CONFLUENCE_LABELS = {
+    "FIB_38_2": "Fib 38.2%", "FIB_50_0": "Fib 50%", "FIB_61_8": "Fib 61.8%",
+    "EMA20": "EMA20", "EMA50": "EMA50", "EMA200": "EMA200",
+    "PRIOR_SWING_LOW": "قاع سابق", "ROUND_NUMBER": "رقم نفسي",
 }
 
 PULLBACK_VOLUME_LABELS = {
@@ -591,7 +603,9 @@ def pullback_scenario_view(scenario: PullbackScenarioResult | None):
         atr = (f"{scenario.pullback_atr:.2f} ATR"
                if scenario.pullback_atr is not None else EM_DASH)
         correction = f"{percent} / {atr}"
-    confluence = " + ".join(scenario.support_confluence) or EM_DASH
+    confluence = " + ".join(
+        _CONFLUENCE_LABELS.get(item, item.replace("_", " ").title())
+        for item in scenario.support_confluence) or EM_DASH
     confirmation = PULLBACK_CONFIRMATION_LABELS.get(
         scenario.confirmation_status, scenario.confirmation_status or EM_DASH)
     if scenario.confirmation_reasons:
@@ -615,8 +629,7 @@ def pullback_scenario_view(scenario: PullbackScenarioResult | None):
         "trend": (PULLBACK_TREND_LABELS.get(scenario.prior_trend_status,
                                             scenario.prior_trend_status)
                   if scenario.prior_trend_status else EM_DASH),
-        "structure": (PULLBACK_STRUCTURE_LABELS.get(scenario.structure_status,
-                                                    scenario.structure_status)
+        "structure": (bilingual(scenario.structure_status, "structure_status")
                       if scenario.structure_status else EM_DASH),
         "swing_high": dash(scenario.swing_high),
         "swing_high_date": scenario.swing_high_date or EM_DASH,
@@ -633,13 +646,13 @@ def pullback_scenario_view(scenario: PullbackScenarioResult | None):
         "support_zone": zone,
         "support_reached": "نعم · Yes" if scenario.support_reached else "لا · No",
         "confluence": confluence,
-        "volume": PULLBACK_VOLUME_LABELS.get(
-            scenario.volume_behaviour, scenario.volume_behaviour or EM_DASH),
+        "volume": (bilingual(scenario.volume_behaviour, "volume_behaviour")
+                   if scenario.volume_behaviour else EM_DASH),
         "confirmation": confirmation,
         "ema20": dash(scenario.ema20),
         "ema50": dash(scenario.ema50),
-        "ema_relation": (PULLBACK_EMA_LABELS.get(scenario.ema_alignment_status,
-                                                 scenario.ema_alignment_status)
+        "ema_relation": (bilingual(scenario.ema_alignment_status,
+                                   "ema_alignment_status")
                          if scenario.ema_alignment_status else EM_DASH),
         "trigger": dash(scenario.entry_trigger),
         "stop": dash(scenario.stop_loss),

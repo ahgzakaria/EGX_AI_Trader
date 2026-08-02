@@ -298,3 +298,73 @@ def generate_narrative(
         model=str(model or produced.get("model") or "ai-narrative"),
         derived_from_evidence_version=result.evidence_version,
         contains_no_original_numbers=True)
+
+
+# --------------------------------------------------------------------------- #
+# Deterministic English summary
+# --------------------------------------------------------------------------- #
+
+#: The narrative engine produces Arabic only. English mode previously received
+#: ``summary_en`` populated from the Arabic headline, so an English card rendered
+#: Arabic prose. This builder composes a genuine English summary from the SAME
+#: typed evidence fields — no translation, no AI, no new numbers.
+_REC_EN = {
+    Recommendation.WAIT: "Wait",
+    Recommendation.WATCH: "Watch",
+    Recommendation.NEAR_READY: "Near activation",
+    Recommendation.READY_WITH_CONDITIONS: "Ready with conditions",
+    Recommendation.AVOID: "Avoid for now",
+    Recommendation.DATA_INSUFFICIENT: "Data insufficient",
+}
+
+_TREND_EN = {
+    "STRONG_UPTREND": "a strong uptrend", "UPTREND": "an uptrend",
+    "SIDEWAYS": "a sideways trend", "DOWNTREND": "a downtrend",
+    "STRONG_DOWNTREND": "a strong downtrend",
+    "DATA_INSUFFICIENT": "an undetermined trend",
+}
+
+_MOMENTUM_EN = {
+    "STRONG_POSITIVE": "strong positive momentum", "POSITIVE": "positive momentum",
+    "NEUTRAL": "neutral momentum", "NEGATIVE": "negative momentum",
+    "STRONG_NEGATIVE": "strong negative momentum",
+    "DATA_INSUFFICIENT": "undetermined momentum",
+}
+
+
+def build_english_summary(result: AnalysisResult) -> str:
+    """A deterministic English summary, or ``""`` when evidence is insufficient.
+
+    Composed only from typed fields the Core already calculated. Returning an
+    empty string is meaningful: the caller must then show an explicit
+    "unavailable" marker rather than silently falling back to Arabic.
+    """
+
+    if result.recommendation == Recommendation.DATA_INSUFFICIENT:
+        return ""
+
+    price, indicators = result.price, result.indicators
+    if price.close is None:
+        return ""
+
+    recommendation = _REC_EN.get(result.recommendation, "")
+    if not recommendation:
+        return ""
+
+    trend = _TREND_EN.get(getattr(indicators.trend, "value", ""), "")
+    momentum = _MOMENTUM_EN.get(getattr(indicators.momentum, "value", ""), "")
+
+    parts = [
+        f"{result.request.symbol} closed the last completed session at "
+        f"{_fmt(price.close)} {price.currency}"
+        + (f" ({_fmt(price.change_percent)}%)"
+           if price.change_percent is not None else "") + "."
+    ]
+    if trend and momentum:
+        parts.append(f"The daily structure shows {trend} with {momentum}.")
+    if indicators.ema_20 is not None and indicators.ema_50 is not None:
+        parts.append(f"EMA20 is at {_fmt(indicators.ema_20)} and EMA50 at "
+                     f"{_fmt(indicators.ema_50)}.")
+    parts.append(f"Overall assessment: {recommendation} at "
+                 f"{_fmt(result.confidence.overall, 0)}/100 confidence.")
+    return " ".join(parts)
