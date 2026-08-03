@@ -50,21 +50,24 @@ ENGLISH_CLAUSE = re.compile(
 
 @pytest.fixture(scope="module")
 def presentation():
-    """One real analysis for the whole module.
+    """One real analysis over a deterministic fixture frame, for the whole module.
 
-    ``analyze_symbol`` initialises the shared provider singletons, so they are
-    reset afterwards — otherwise later modules that monkeypatch the loader
-    inherit this module's warm instances and fail only when run in suite order.
+    The Core genuinely computes every figure — indicators, levels, scenarios and
+    pullback diagnostics — but its history comes from ``tests/fixtures`` instead
+    of the provider. That keeps this module honest to its own docstring: no
+    EODHD credential, no network, no Rubix, and no dependency on the
+    machine-local ``data/eodhd_cache/``, none of which exist in a fresh
+    worktree, a clean clone, or CI.
+
+    The shared market-data singletons are still reset afterwards so nothing
+    warm leaks into later modules that monkeypatch the loader.
     """
 
-    from core.ai_analysis_narrative import build_fallback_narrative
-    from core.ai_stock_analysis_service import analyze_symbol
     from core.data_provider import reset_provider_instances
 
-    # The deterministic generator is pinned so this module never reaches a live
-    # AI provider — an infographic never needs one. The shared market-data
-    # singletons are reset afterwards so nothing warm leaks into later modules.
-    response = analyze_symbol("FWRY", narrative_generator=build_fallback_narrative)
+    from tests.fixtures.analysis_history import analysis_response
+
+    response = analysis_response("FWRY")
     try:
         yield build_presentation(response.result, response.narrative)
     finally:
@@ -536,8 +539,7 @@ def test_this_module_never_contacts_a_local_ai_provider(monkeypatch):
 
     import urllib.request
 
-    from core.ai_analysis_narrative import build_fallback_narrative
-    from core.ai_stock_analysis_service import analyze_symbol
+    from tests.fixtures.analysis_history import analysis_response
 
     seen = []
     original = urllib.request.urlopen
@@ -547,11 +549,12 @@ def test_this_module_never_contacts_a_local_ai_provider(monkeypatch):
         return original(request, *args, **kwargs)
 
     monkeypatch.setattr(urllib.request, "urlopen", record)
-    response = analyze_symbol("FWRY", narrative_generator=build_fallback_narrative)
+    response = analysis_response("FWRY")
     model = build_presentation(response.result, response.narrative)
     render_infographic_png(model, size="INFOGRAPHIC", language="AR")
 
-    assert not [url for url in seen if "11434" in url or "ollama" in url.lower()]
+    # Nothing at all should have left the process, not merely nothing to Ollama.
+    assert seen == []
     assert response.narrative.model.startswith("deterministic-fallback")
 
 
