@@ -41,10 +41,53 @@ param(
     [string]$ResearchRoot = "data\research\orb_full_shadow",
     # Hard ceiling; the orchestrator also stops itself at the continuous end.
     [int]$MaxRuntimeHours = 7,
+    # Update only the power/availability settings of an already-registered
+    # task, leaving its action, arguments, working directory and trigger
+    # untouched. Used to enable WakeToRun on a task installed before that
+    # setting was added, without re-registering and risking a changed action.
+    [switch]$UpdateSettingsOnly,
     [switch]$WhatIfOnly
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($UpdateSettingsOnly) {
+    Write-Host "=== ORB Shadow Orchestrator - settings update only ===" -ForegroundColor Cyan
+    $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if (-not $existing) { throw "Task '$TaskName' is not registered; nothing to update." }
+
+    $action = $existing.Actions | Select-Object -First 1
+    if ($action.Arguments -notmatch [regex]::Escape("run_orb_shadow_orchestrator.py")) {
+        throw ("Task '$TaskName' does NOT invoke run_orb_shadow_orchestrator.py. " +
+               "Refusing to modify an unrelated task.")
+    }
+
+    Write-Host "  Action, arguments, working directory and trigger are NOT modified."
+    Write-Host "  Before: WakeToRun=$($existing.Settings.WakeToRun) " +
+               "StartWhenAvailable=$($existing.Settings.StartWhenAvailable) " +
+               "MultipleInstances=$($existing.Settings.MultipleInstances)"
+
+    if ($WhatIfOnly) {
+        Write-Host "-WhatIfOnly supplied; nothing was changed." -ForegroundColor Green
+        return
+    }
+
+    $settings = New-ScheduledTaskSettingsSet `
+        -MultipleInstances IgnoreNew `
+        -ExecutionTimeLimit (New-TimeSpan -Hours $MaxRuntimeHours) `
+        -StartWhenAvailable `
+        -WakeToRun `
+        -DontStopOnIdleEnd -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+        -RestartCount 2 -RestartInterval (New-TimeSpan -Minutes 5)
+    Set-ScheduledTask -TaskName $TaskName -Settings $settings | Out-Null
+
+    $after = Get-ScheduledTask -TaskName $TaskName
+    Write-Host "  After : WakeToRun=$($after.Settings.WakeToRun) " +
+               "StartWhenAvailable=$($after.Settings.StartWhenAvailable) " +
+               "MultipleInstances=$($after.Settings.MultipleInstances)"
+    Write-Host "Settings updated." -ForegroundColor Green
+    return
+}
 
 function Assert-PathExists {
     param([string]$Path, [string]$Label)
