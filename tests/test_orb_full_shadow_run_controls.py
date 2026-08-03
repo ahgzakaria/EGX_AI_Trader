@@ -832,7 +832,9 @@ def test_migration_six_upgrades_a_populated_v5_database_without_row_loss(tmp_pat
     assert before["orb_shadow_runs"] == 1
     assert before["orb_shadow_live_states"] == 1
 
-    upgraded = OrbResearchRepository(path)
+    # Pinned to 6 so this keeps testing the v5 -> v6 hop specifically, rather
+    # than whatever the newest schema version happens to be.
+    upgraded = OrbResearchRepository(path, target_schema_version=6)
     assert upgraded.database_status()["user_version"] == 6
     assert _snapshot(upgraded, V5_TABLES) == before
     assert upgraded.table_count("orb_shadow_cross_run_comparison") == 0
