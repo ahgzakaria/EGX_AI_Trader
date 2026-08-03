@@ -29,7 +29,7 @@ from scalping_orb.events import (
     UniverseMembershipStatus,
 )
 from scalping_orb.opening_range import OpeningRangeStatus
-from scalping_orb.repository import OrbResearchRepository
+from scalping_orb.repository import SCHEMA_VERSION, OrbResearchRepository
 from scalping_orb.session import OrbSessionClassifier, OrbSessionPhase
 from scalping_orb.shadow_service import (
     ComparisonReason,
@@ -1370,7 +1370,12 @@ def _snapshot(repository, tables):
 
 def test_migration_five_creates_every_shadow_table(tmp_path):
     repository = OrbResearchRepository(tmp_path / "orb.db")
-    assert repository.database_status()["user_version"] == 5
+    # Later phases add migrations, so pin what this test is about: migration 5
+    # has been applied and its tables exist.
+    assert repository.database_status()["user_version"] >= 5
+    with repository.connect() as connection:
+        applied = {r[0] for r in connection.execute("SELECT version FROM orb_schema_meta")}
+    assert 5 in applied
     for table in SHADOW_TABLES:
         assert repository.table_count(table) == 0
 
@@ -1383,7 +1388,7 @@ def test_upgrading_a_populated_v4_database_loses_no_row(tmp_path):
     assert before["orb_normalized_events"][0] > 0
     assert before["orb_bars"][0] > 0
 
-    upgraded = OrbResearchRepository(path)
+    upgraded = OrbResearchRepository(path, target_schema_version=5)
     assert upgraded.database_status()["user_version"] == 5
     # Identical row counts and identical CREATE TABLE text: additive only.
     assert _snapshot(upgraded, PHASE_AB_TABLES) == before
@@ -1411,7 +1416,7 @@ def test_repeating_the_shadow_migration_changes_nothing(tmp_path):
     for _ in range(3):
         OrbResearchRepository(path).migrate()
     final = OrbResearchRepository(path)
-    assert final.database_status()["user_version"] == 5
+    assert final.database_status()["user_version"] == SCHEMA_VERSION
     assert _snapshot(final, PHASE_AB_TABLES + SHADOW_TABLES) == before
 
 

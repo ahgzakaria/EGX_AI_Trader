@@ -48,6 +48,9 @@ from scalping_orb.repository import OrbResearchRepository
 from scalping_orb.session import OrbSessionClassifier
 from scalping_orb.shadow_service import (
     OrbShadowService,
+    ShadowRunSelectionError,
+    live_records_from_rows,
+    select_live_run,
     SessionClassification,
     ShadowCycleMetrics,
     ShadowLiveStatus,
@@ -164,11 +167,16 @@ class ShadowRunner:
             args.rubix_db_path, self.data_config, batch_size=args.batch_size
         )
         self.repository = OrbResearchRepository(args.research_db_path)
+        self.active_universe_only = bool(args.active_universe_only)
         self.service = OrbShadowService(
-            self.strategy_config, lateness_grace_seconds=args.lateness_grace_seconds
+            self.strategy_config,
+            lateness_grace_seconds=args.lateness_grace_seconds,
+            active_universe_only=self.active_universe_only,
         )
         self.builder = ShadowSnapshotBuilder(
-            self.data_config, lateness_grace_seconds=args.lateness_grace_seconds
+            self.data_config,
+            lateness_grace_seconds=args.lateness_grace_seconds,
+            active_universe_only=self.active_universe_only,
         )
         self.normalizer = RubixEventNormalizer(
             self.data_config,
@@ -193,6 +201,23 @@ class ShadowRunner:
         window = self.classifier.window(self.session_date)
         self.window = window
         self.started_before_open = self.started_at <= window.continuous_start_utc
+
+        # Resolve the prior live run *before* any work, so a bad selection
+        # fails immediately rather than after a full reconstruction.
+        self.compare_live_run = None
+        if args.compare_live_run_id or args.compare_latest_live_run:
+            if not args.reconstruct:
+                raise ValueError(
+                    "--compare-live-run-id/--compare-latest-live-run apply to "
+                    "--reconstruct only; a --follow run already holds both lanes"
+                )
+            self.compare_live_run = select_live_run(
+                self.repository.find_shadow_runs(session_date=self.session_date),
+                explicit_run_id=args.compare_live_run_id,
+                session_date=self.session_date,
+                source_path_identity=self.source_identity,
+                config_identity=self.data_config.fingerprint,
+            )
 
         # Accumulators
         self.all_events: list = []
@@ -328,6 +353,7 @@ class ShadowRunner:
             config_identity=self.data_config.fingerprint,
             strategy_fingerprint=self.strategy_config.strategy_fingerprint,
             engine_version=ENGINE_VERSION,
+            active_universe_only=self.active_universe_only,
         )
         cursor = self.repository.load_shadow_cursor(self.run_id, SOURCE_TABLE)
         if cursor is None:
@@ -395,10 +421,29 @@ class ShadowRunner:
         reconstruction = self.service.evaluate_reconstruction(snapshot)
         self.repository.persist_shadow_reconstruction(self.run_id, reconstruction)
 
+        # Which Lane A does this run compare against?
+        #
+        # A --follow run holds both lanes itself. A --reconstruct run has no
+        # Lane A of its own by design, so it must be pointed at a prior live
+        # run; comparing against its own empty Lane A would emit an
+        # all-HISTORICAL_ONLY report that looks like a finding and is not one.
+        comparison_live_records = self.live_records
+        if self.compare_live_run is not None:
+            comparison_live_records = live_records_from_rows(
+                self.repository.load_shadow_live_states_full(
+                    self.compare_live_run["run_id"]
+                )
+            )
+
         comparison = self.service.compare(
-            self.session_date, self.live_records, reconstruction
+            self.session_date, comparison_live_records, reconstruction
         )
-        self.repository.persist_shadow_comparison(self.run_id, comparison)
+        if self.compare_live_run is not None:
+            self.repository.persist_cross_run_comparison(
+                self.compare_live_run["run_id"], self.run_id, comparison
+            )
+        else:
+            self.repository.persist_shadow_comparison(self.run_id, comparison)
 
         lag = receive_lag_statistics(
             self.all_events,
@@ -482,7 +527,22 @@ class ShadowRunner:
             "session_loads_total": self.session_loads_total,
             "source_rows_read": self.rows_read_total,
             "normalized_events": len(self.all_events),
+            "active_universe_only": self.active_universe_only,
+            "compared_live_run_id": (
+                self.compare_live_run["run_id"] if self.compare_live_run else None
+            ),
+            "comparison_scope": (
+                "CROSS_RUN" if self.compare_live_run else "SINGLE_RUN"
+            ),
+            # Four distinct counts, deliberately not collapsed: filtering
+            # evaluation must never look like filtering observation.
             "symbols_observed": len(snapshot.tickers),
+            "normalized_symbols_observed": snapshot.quality_summary.normalized_symbols_observed,
+            "operationally_eligible_symbols": snapshot.quality_summary.operationally_eligible_symbols,
+            "symbols_withheld_by_universe_filter": (
+                snapshot.quality_summary.symbols_withheld_by_universe_filter
+            ),
+            "symbols_evaluated_reconstruction": len(reconstruction),
             "live_evaluations": len(self.live_records),
             "reconstruction_evaluations": len(reconstruction),
             "opening_ranges_ready": snapshot.quality_summary.opening_ranges_ready,
@@ -555,11 +615,19 @@ class ShadowRunner:
             [
                 {
                     "canonical_ticker": r.canonical_ticker,
+                    "live_run_id": (
+                        self.compare_live_run["run_id"]
+                        if self.compare_live_run
+                        else self.run_id
+                    ),
+                    "reconstruction_run_id": self.run_id,
                     "live_state": r.live_state,
                     "reconstruction_state": r.reconstruction_state,
+                    "live_status": r.live_status.value if r.live_status else None,
                     "states_match": int(r.states_match),
                     "opening_range_revised": int(r.opening_range_revised),
                     "difference_reason": r.difference_reason,
+                    "difference_evidence": ";".join(r.difference_evidence),
                     "evaluable_live": int(r.evaluable_live),
                     "evaluable_historically": int(r.evaluable_historically),
                 }
@@ -619,7 +687,36 @@ def parse_args(argv=None):
     parser.add_argument("--batch-size", type=int, default=50_000)
     parser.add_argument("--stop-at-continuous-end", action="store_true")
     parser.add_argument("--max-runtime-seconds", type=float, default=0.0)
-    parser.add_argument("--active-universe-only", action="store_true")
+    parser.add_argument(
+        "--active-universe-only",
+        action="store_true",
+        help=(
+            "evaluate Phase 2B only for active-universe members with a verified "
+            "Rubix mapping and operational eligibility. Observation, cursor "
+            "progress, deduplication and source-quality totals still cover every "
+            "row"
+        ),
+    )
+    parser.add_argument(
+        "--list-runs",
+        action="store_true",
+        help="read-only: list prior Shadow runs in the research DB, then exit",
+    )
+    comparison = parser.add_mutually_exclusive_group()
+    comparison.add_argument(
+        "--compare-live-run-id",
+        default=None,
+        help="reconstruction: compare Lane B against this prior live run's Lane A",
+    )
+    comparison.add_argument(
+        "--compare-latest-live-run",
+        action="store_true",
+        help=(
+            "reconstruction: select the prior live run automatically. Requires "
+            "exactly one eligible match on session date, source, config and a "
+            "non-reconstruction mode; refuses on zero or multiple matches"
+        ),
+    )
     parser.add_argument(
         "--smoke",
         action="store_true",
@@ -644,18 +741,73 @@ def parse_args(argv=None):
         ),
     )
     args = parser.parse_args(argv)
-    if not args.rubix_db_path:
+    if not args.rubix_db_path and not args.list_runs:
         parser.error("--rubix-db-path (or ORB_RUBIX_DB_PATH) is required")
     return args
 
 
+def list_runs(args) -> int:
+    """Read-only run discovery. Opens no source and evaluates nothing."""
+
+    repository = OrbResearchRepository(args.research_db_path)
+    rows = repository.find_shadow_runs(session_date=args.session_date)
+    print(RESEARCH_ONLY_BANNER)
+    print(f"  research database : {Path(args.research_db_path).resolve()}")
+    print(f"  runs found        : {len(rows)}")
+    print()
+    if not rows:
+        print("  (no Shadow runs recorded in this database)")
+        return 0
+    header = (
+        f"  {'RUN_ID (16)':18s} {'SESSION':11s} {'MODE':12s} {'CLASSIFICATION':24s} "
+        f"{'LANE_A':>7s} {'LANE_B':>7s} {'CYCLES':>7s} {'UNIV':>5s} {'DONE':>5s}"
+    )
+    print(header)
+    print("  " + "-" * (len(header) - 2))
+    for row in rows:
+        complete = "yes" if row["finished_at_utc"] else "no"
+        universe = "on" if row["active_universe_only"] else "off"
+        print(
+            f"  {row['run_id'][:16]:18s} {row['session_date']:11s} {row['mode']:12s} "
+            f"{(row['session_classification'] or '-'):24s} "
+            f"{row['lane_a_rows']:>7d} {row['lane_b_rows']:>7d} {row['cycles']:>7d} "
+            f"{universe:>5s} {complete:>5s}"
+        )
+    print()
+    print("  Eligible as a --compare-live-run-id source: mode != RECONSTRUCT")
+    print("  and LANE_A > 0, matching session date, source identity and config.")
+    print("  Source is identified only by an opaque path hash; no credential or")
+    print("  quote payload is shown.")
+    print()
+    for row in rows:
+        print(f"  full run_id: {row['run_id']}  (source {row['source_path_identity'][:12]}"
+              f", config {row['config_identity'][:12]})")
+    return 0
+
+
 def main(argv=None) -> int:
     args = parse_args(argv)
+    if args.list_runs:
+        return list_runs(args)
     print(RESEARCH_ONLY_BANNER)
     print(f"  source (mode=ro, query_only=ON) : {Path(args.rubix_db_path).resolve()}")
     print(f"  research destination            : {Path(args.research_db_path).resolve()}")
     print(f"  network                         : DISABLED")
     print(f"  collector lifecycle             : NOT MANAGED BY THIS RUNNER")
+    if args.active_universe_only:
+        print(
+            "  universe filter                 : ACTIVE_UNIVERSE_ONLY "
+            "(evaluate active+mapped+eligible; observe everything)"
+        )
+    else:
+        print(
+            "  universe filter                 : OFF "
+            "(broad observation; engine still rejects ineligible candidates)"
+        )
+    if getattr(args, "compare_live_run_id", None):
+        print(f"  compare against live run        : {args.compare_live_run_id}")
+    elif getattr(args, "compare_latest_live_run", False):
+        print("  compare against live run        : AUTO (exactly one match required)")
     print()
     for received in (getattr(signal, "SIGINT", None), getattr(signal, "SIGTERM", None)):
         if received is not None:

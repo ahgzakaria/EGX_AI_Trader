@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from enum import Enum
 import hashlib
+import json
 from typing import Iterable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
@@ -122,6 +123,121 @@ _FRESHNESS_REJECTED_REASONS = frozenset(
 )
 
 
+def classify_difference(live, reconstruction, revised: bool):
+    """Select a comparison category and record the evidence that selected it.
+
+    One deterministic precedence, applied in this order. Each branch returns the
+    facts it used, so a stored category can be re-derived instead of trusted.
+    """
+
+    unavailable = OrbResearchState.DATA_UNAVAILABLE.value
+    live_state = live.final_state if live else None
+    recon_state = reconstruction.final_state if reconstruction else None
+
+    if live is None and reconstruction is None:  # pragma: no cover - defensive
+        return ComparisonReason.DATA_UNAVAILABLE, ("no_row_in_either_lane",)
+    if live_state == unavailable and recon_state == unavailable:
+        return ComparisonReason.DATA_UNAVAILABLE, (
+            "live_state=DATA_UNAVAILABLE",
+            "reconstruction_state=DATA_UNAVAILABLE",
+        )
+    if live is None:
+        return ComparisonReason.HISTORICAL_ONLY, (
+            "no_live_row",
+            f"reconstruction_state={recon_state}",
+        )
+    if reconstruction is None:
+        return ComparisonReason.LIVE_ONLY, (
+            "no_reconstruction_row",
+            f"live_state={live_state}",
+        )
+    if live_state == recon_state:
+        return ComparisonReason.IDENTICAL, (f"both_states={live_state}",)
+    if _live_rejected_on_freshness(live):
+        # Before the revision: if live was refused on freshness or live-decision
+        # capability, that is why the state was unreachable live at all, and a
+        # concurrent opening-range revision is secondary detail.
+        evidence = [f"live_state={live_state}", f"live_status={live.live_status.value}"]
+        matched = sorted(_FRESHNESS_REJECTED_REASONS & set(live.rejection_reasons))
+        if matched:
+            evidence.append("live_rejection_reasons=" + ";".join(matched))
+        if revised:
+            evidence.append("opening_range_revised=true_but_not_primary")
+        return ComparisonReason.FRESHNESS_REJECTED_LIVE, tuple(evidence)
+    if revised:
+        return ComparisonReason.OPENING_RANGE_REVISED, (
+            f"live_or_version={live.opening_range_version_identity[:16]}",
+            f"reconstruction_or_version={reconstruction.opening_range_version_identity[:16]}",
+            f"live_state={live_state}",
+            f"reconstruction_state={recon_state}",
+        )
+    return ComparisonReason.STATE_DIFFERENCE, (
+        f"live_state={live_state}",
+        f"reconstruction_state={recon_state}",
+        "opening_range_identical",
+        "live_evidence_healthy",
+        "cause_not_established",
+    )
+
+
+def select_live_run(
+    candidates: Sequence[dict],
+    *,
+    explicit_run_id: str | None = None,
+    session_date: date,
+    source_path_identity: str,
+    config_identity: str,
+) -> dict:
+    """Pick exactly one prior live run, or refuse.
+
+    Never guesses. An ambiguous match is an error, not a heuristic: silently
+    comparing against the wrong session would produce a plausible-looking
+    report about the wrong day.
+    """
+
+    def _describe(row: dict) -> str:
+        return (
+            f"{row['run_id'][:16]} mode={row['mode']} "
+            f"started={row['started_at_utc']} laneA={row['lane_a_rows']}"
+        )
+
+    eligible = [
+        row
+        for row in candidates
+        if row["session_date"] == session_date.isoformat()
+        and row["source_path_identity"] == source_path_identity
+        and row["config_identity"] == config_identity
+        and row["mode"] != "RECONSTRUCT"
+        and int(row["research_only"]) == 1
+        and int(row["lane_a_rows"]) > 0
+    ]
+
+    if explicit_run_id:
+        chosen = [row for row in eligible if row["run_id"] == explicit_run_id]
+        if not chosen:
+            raise ShadowRunSelectionError(
+                f"run {explicit_run_id!r} is not an eligible live run for "
+                f"session {session_date.isoformat()} on this source and config. "
+                f"Eligible: {[_describe(r) for r in eligible] or 'none'}"
+            )
+        return chosen[0]
+
+    if not eligible:
+        raise ShadowRunSelectionError(
+            f"no prior live Shadow run with Lane A rows found for session "
+            f"{session_date.isoformat()} on this source and config. "
+            "Run --list-runs to inspect, or pass --compare-live-run-id. "
+            "Refusing to emit an all-HISTORICAL_ONLY comparison."
+        )
+    if len(eligible) > 1:
+        raise ShadowRunSelectionError(
+            f"{len(eligible)} eligible live runs for session "
+            f"{session_date.isoformat()}; pass --compare-live-run-id to choose. "
+            f"Candidates: {[_describe(r) for r in eligible]}"
+        )
+    return eligible[0]
+
+
 def _live_rejected_on_freshness(record) -> bool:
     """Two distinct signals, both meaning 'not knowable live'.
 
@@ -212,6 +328,17 @@ class ShadowComparisonRow:
     difference_reason: str
     evaluable_live: bool
     evaluable_historically: bool
+    #: The Lane A health that was actually observed, carried so the stored
+    #: category can be re-derived rather than trusted.
+    live_status: "ShadowLiveStatus | None" = None
+    live_rejection_reasons: tuple[str, ...] = ()
+    #: Exactly which facts selected `difference_reason`. Without this the
+    #: category is an assertion; with it, it is reproducible.
+    difference_evidence: tuple[str, ...] = ()
+
+
+class ShadowRunSelectionError(RuntimeError):
+    """No prior live run matched, or several did and none was named."""
 
 
 @dataclass(frozen=True)
@@ -311,11 +438,15 @@ class OrbShadowService:
         *,
         engine: OrbResearchEngine | None = None,
         lateness_grace_seconds: float = 90.0,
+        active_universe_only: bool = False,
     ):
         self.config = config or OrbStrategyConfig()
         self.engine = engine or OrbResearchEngine(self.config)
+        self.active_universe_only = bool(active_universe_only)
         self.builder = ShadowSnapshotBuilder(
-            self.config.data, lateness_grace_seconds=lateness_grace_seconds
+            self.config.data,
+            lateness_grace_seconds=lateness_grace_seconds,
+            active_universe_only=self.active_universe_only,
         )
         self.classifier = OrbSessionClassifier(self.config.data)
 
@@ -397,7 +528,9 @@ class OrbShadowService:
 
         overrides = dict(opening_range_overrides or {})
         records: list[ShadowReconstructionRecord] = []
-        for ticker in snapshot.tickers:
+        # Same universe filter as Lane A, so the two lanes are compared over
+        # the same candidate set rather than one being systematically wider.
+        for ticker in snapshot.evaluation_tickers:
             opening_range = overrides.get(ticker) or snapshot.opening_ranges.get(ticker)
             if opening_range is None:
                 continue
@@ -511,26 +644,7 @@ class OrbShadowService:
                 and a.opening_range_version_identity
                 != b.opening_range_version_identity
             )
-            unavailable = OrbResearchState.DATA_UNAVAILABLE.value
-            if a is None and b is None:  # pragma: no cover - defensive
-                reason = ComparisonReason.DATA_UNAVAILABLE
-            elif live_state == unavailable and recon_state == unavailable:
-                reason = ComparisonReason.DATA_UNAVAILABLE
-            elif a is None:
-                reason = ComparisonReason.HISTORICAL_ONLY
-            elif b is None:
-                reason = ComparisonReason.LIVE_ONLY
-            elif live_state == recon_state:
-                reason = ComparisonReason.IDENTICAL
-            elif _live_rejected_on_freshness(a):
-                # Checked before the revision: if live was refused on freshness
-                # or live-decision capability, that is why the state was
-                # unreachable live, and a concurrent OR revision is secondary.
-                reason = ComparisonReason.FRESHNESS_REJECTED_LIVE
-            elif revised:
-                reason = ComparisonReason.OPENING_RANGE_REVISED
-            else:
-                reason = ComparisonReason.STATE_DIFFERENCE
+            reason, evidence = classify_difference(a, b, revised)
             rows.append(
                 ShadowComparisonRow(
                     session_date=session_date,
@@ -548,9 +662,46 @@ class OrbShadowService:
                     difference_reason=reason.value,
                     evaluable_live=a is not None,
                     evaluable_historically=b is not None,
+                    live_status=a.live_status if a else None,
+                    live_rejection_reasons=tuple(a.rejection_reasons) if a else (),
+                    difference_evidence=evidence,
                 )
             )
         return tuple(rows)
+
+
+def live_records_from_rows(rows: Sequence[dict]) -> tuple[ShadowStateRecord, ...]:
+    """Rehydrate stored Lane A rows into records the comparison can use.
+
+    Read-only: the prior run's rows are never modified, only read. Reading them
+    back through the same type the comparison already consumes means the
+    cross-run path shares one code path with the single-run path.
+    """
+
+    records: list[ShadowStateRecord] = []
+    for row in rows:
+        records.append(
+            ShadowStateRecord(
+                session_date=date.fromisoformat(row["session_date"]),
+                canonical_ticker=row["canonical_ticker"],
+                opening_range_revision=int(row["opening_range_revision"]),
+                opening_range_version_identity=row["opening_range_version_identity"],
+                final_state=row["final_state"],
+                terminal=bool(row["terminal"]),
+                rejection_reasons=tuple(json.loads(row["rejection_reasons_json"])),
+                evidence_fingerprint=row["evidence_fingerprint"],
+                candidate_identity=row["candidate_identity"],
+                live_status=ShadowLiveStatus(row["live_status"]),
+                observed_at_utc=datetime.fromisoformat(row["observed_at_utc"]),
+                exchange_watermark_utc=(
+                    datetime.fromisoformat(row["exchange_watermark_utc"])
+                    if row["exchange_watermark_utc"]
+                    else None
+                ),
+                observed_receive_lag_seconds=row["observed_receive_lag_seconds"],
+            )
+        )
+    return tuple(records)
 
 
 def receive_lag_statistics(
@@ -588,6 +739,10 @@ def receive_lag_statistics(
 
 __all__ = [
     "ComparisonReason",
+    "ShadowRunSelectionError",
+    "classify_difference",
+    "live_records_from_rows",
+    "select_live_run",
     "OrbShadowService",
     "SessionClassification",
     "ShadowComparisonRow",
