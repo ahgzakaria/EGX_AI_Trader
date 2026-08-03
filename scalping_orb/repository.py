@@ -35,7 +35,7 @@ from scalping_orb.opening_range import OpeningRangeResult, OpeningRangeStatus
 from scalping_orb.session import OrbSessionPhase
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 PROTECTED_DATABASE_NAMES = frozenset(
     {
         "rubix_live_market.db",
@@ -252,10 +252,172 @@ CREATE INDEX IF NOT EXISTS idx_orb_events_live_freshness
 ON orb_normalized_events(session_id, live_freshness_status, canonical_ticker);
 """
 
+#: Phase 2B Core research evidence. Additive only — no Phase 2A table is
+#: altered. There is deliberately no order, execution, position, trade, P&L or
+#: broker table: the furthest this schema can record is a research candidate.
+MIGRATION_4 = """
+CREATE TABLE IF NOT EXISTS orb_candidates (
+    candidate_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES orb_sessions(session_id),
+    canonical_ticker TEXT NOT NULL,
+    session_date TEXT NOT NULL,
+    opening_range_revision INTEGER NOT NULL,
+    opening_range_version_identity TEXT NOT NULL,
+    opening_range_version_mode TEXT NOT NULL,
+    evaluation_mode TEXT NOT NULL,
+    strategy_fingerprint TEXT NOT NULL,
+    engine_version TEXT NOT NULL,
+    final_state TEXT NOT NULL,
+    terminal INTEGER NOT NULL CHECK (terminal IN (0,1)),
+    rejection_reasons_json TEXT NOT NULL,
+    evidence_fingerprint TEXT NOT NULL,
+    evaluated_at_utc TEXT NOT NULL,
+    recorded_at_utc TEXT NOT NULL,
+    UNIQUE(session_id, canonical_ticker, opening_range_revision,
+           evaluation_mode, strategy_fingerprint)
+);
+
+CREATE TABLE IF NOT EXISTS orb_state_transitions (
+    transition_row_id TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL REFERENCES orb_candidates(candidate_id),
+    transition_id TEXT NOT NULL,
+    sequence_index INTEGER NOT NULL,
+    canonical_ticker TEXT NOT NULL,
+    session_date TEXT NOT NULL,
+    opening_range_version_identity TEXT NOT NULL,
+    opening_range_revision INTEGER NOT NULL,
+    prior_state TEXT NOT NULL,
+    new_state TEXT NOT NULL,
+    exchange_timestamp_utc TEXT,
+    as_of_timestamp_utc TEXT NOT NULL,
+    rule_code TEXT NOT NULL,
+    evidence_json TEXT NOT NULL,
+    frozen_references_json TEXT NOT NULL,
+    market_time_status TEXT NOT NULL,
+    historical_replay_status TEXT NOT NULL,
+    live_freshness_status TEXT NOT NULL,
+    live_decision_capability TEXT NOT NULL,
+    evaluation_mode TEXT NOT NULL,
+    strategy_fingerprint TEXT NOT NULL,
+    engine_version TEXT NOT NULL,
+    recorded_at_utc TEXT NOT NULL,
+    UNIQUE(candidate_id, transition_id)
+);
+
+CREATE TABLE IF NOT EXISTS orb_breakouts (
+    breakout_row_id TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL REFERENCES orb_candidates(candidate_id),
+    breakout_identity TEXT NOT NULL,
+    bar_start_utc TEXT NOT NULL,
+    bar_end_utc TEXT NOT NULL,
+    close REAL NOT NULL,
+    high REAL NOT NULL,
+    low REAL NOT NULL,
+    opening_range_high REAL NOT NULL,
+    distance_above_or_high REAL NOT NULL,
+    distance_above_or_high_percent REAL NOT NULL,
+    bar_range REAL NOT NULL,
+    bar_range_percent REAL NOT NULL,
+    bar_range_atr REAL,
+    extension_atr REAL,
+    update_count INTEGER NOT NULL,
+    distance_to_daily_resistance REAL,
+    distance_to_daily_resistance_percent REAL,
+    intraday_atr_status TEXT NOT NULL,
+    intraday_atr_value REAL,
+    zone_lower REAL NOT NULL,
+    zone_upper REAL NOT NULL,
+    zone_construction_rule TEXT NOT NULL,
+    accepted INTEGER NOT NULL CHECK (accepted IN (0,1)),
+    too_extended INTEGER NOT NULL CHECK (too_extended IN (0,1)),
+    extension_reasons_json TEXT NOT NULL,
+    rejection_reasons_json TEXT NOT NULL,
+    recorded_at_utc TEXT NOT NULL,
+    UNIQUE(candidate_id, breakout_identity)
+);
+
+CREATE TABLE IF NOT EXISTS orb_pullbacks (
+    pullback_row_id TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL REFERENCES orb_candidates(candidate_id),
+    pullback_ordinal INTEGER NOT NULL,
+    start_bar_start_utc TEXT NOT NULL,
+    low REAL NOT NULL,
+    low_bar_start_utc TEXT NOT NULL,
+    post_breakout_high REAL NOT NULL,
+    depth_from_high REAL NOT NULL,
+    depth_from_high_percent REAL NOT NULL,
+    depth_atr REAL,
+    depth_versus_or_high_percent REAL NOT NULL,
+    bars_since_breakout INTEGER NOT NULL,
+    duration_bars INTEGER NOT NULL,
+    closes_below_or_high INTEGER NOT NULL,
+    structural_breach_bars INTEGER NOT NULL,
+    touched_or_high INTEGER NOT NULL CHECK (touched_or_high IN (0,1)),
+    entered_breakout_zone INTEGER NOT NULL CHECK (entered_breakout_zone IN (0,1)),
+    ema9_five_minute REAL,
+    ema20_five_minute REAL,
+    ema9_one_minute REAL,
+    breakout_bar_volume REAL,
+    pullback_volume_total REAL,
+    volume_assessed INTEGER NOT NULL CHECK (volume_assessed IN (0,1)),
+    price_only INTEGER NOT NULL CHECK (price_only IN (0,1)),
+    healthy INTEGER NOT NULL CHECK (healthy IN (0,1)),
+    rejection_reasons_json TEXT NOT NULL,
+    recorded_at_utc TEXT NOT NULL,
+    UNIQUE(candidate_id, pullback_ordinal)
+);
+
+CREATE TABLE IF NOT EXISTS orb_reclaims (
+    reclaim_row_id TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL REFERENCES orb_candidates(candidate_id),
+    reclaim_identity TEXT NOT NULL,
+    reclaim_rule TEXT NOT NULL,
+    confirmed INTEGER NOT NULL CHECK (confirmed IN (0,1)),
+    confirmation_bar_start_utc TEXT,
+    confirmation_bar_end_utc TEXT,
+    trigger_price REAL,
+    opening_range_high REAL NOT NULL,
+    zone_lower REAL NOT NULL,
+    zone_upper REAL NOT NULL,
+    pullback_low REAL NOT NULL,
+    bars_elapsed_since_pullback_low INTEGER NOT NULL,
+    rejection_reasons_json TEXT NOT NULL,
+    recorded_at_utc TEXT NOT NULL,
+    UNIQUE(candidate_id, reclaim_identity)
+);
+
+CREATE TABLE IF NOT EXISTS orb_research_setups (
+    candidate_id TEXT PRIMARY KEY REFERENCES orb_candidates(candidate_id),
+    trigger_price REAL NOT NULL,
+    proposed_stop REAL NOT NULL,
+    stop_basis TEXT NOT NULL,
+    raw_pullback_low REAL NOT NULL,
+    buffer_applied REAL NOT NULL,
+    buffer_basis TEXT NOT NULL,
+    stop_distance_absolute REAL NOT NULL,
+    stop_distance_percent REAL NOT NULL,
+    stop_distance_atr REAL,
+    risk_per_share REAL NOT NULL,
+    target_1 REAL NOT NULL,
+    target_2 REAL NOT NULL,
+    nearest_daily_resistance REAL,
+    usable_target REAL NOT NULL,
+    effective_reward_risk REAL NOT NULL,
+    research_only INTEGER NOT NULL CHECK (research_only = 1),
+    recorded_at_utc TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_orb_candidates_session_state
+ON orb_candidates(session_id, final_state, canonical_ticker);
+CREATE INDEX IF NOT EXISTS idx_orb_transitions_candidate_sequence
+ON orb_state_transitions(candidate_id, sequence_index);
+"""
+
 MIGRATIONS = {
     1: ("phase2a_initial", MIGRATION_1),
     2: ("phase2a_universe_membership", MIGRATION_2),
     3: ("phase2a_latency_and_live_readiness", MIGRATION_3),
+    4: ("phase2b_core_research_evidence", MIGRATION_4),
 }
 
 
@@ -306,6 +468,11 @@ class OrbResearchRepository:
             raise ValueError("Unsupported ORB target schema version")
         self._assert_safe_target()
         self.write_transaction_count = 0
+        #: Instrumentation for the replay-performance blocker. A session-scoped
+        #: load reads every event row, so `event_rows_read` growing as the
+        #: square of the symbol count is the signature of a per-symbol reload.
+        self.event_load_count = 0
+        self.event_rows_read = 0
         if self.read_only:
             if not self.path.is_file():
                 raise FileNotFoundError(f"ORB research database not found: {self.path}")
@@ -803,12 +970,28 @@ class OrbResearchRepository:
                 or 0
             )
 
-    def load_events(self, session_id: str) -> tuple[NormalizedIntradayEvent, ...]:
+    def load_events(
+        self, session_id: str, canonical_ticker: str | None = None
+    ) -> tuple[NormalizedIntradayEvent, ...]:
+        """Normalized events for a session, optionally for one symbol.
+
+        The per-symbol form is served by ``idx_orb_normalized_events`` on
+        ``(session_id, canonical_ticker, market_timestamp_utc)``. A caller that
+        wants one symbol must pass it rather than loading the whole session and
+        filtering in Python: at ~230 symbols a session that is 230 full-table
+        reads of the same rows.
+        """
+
+        sql = "SELECT * FROM orb_normalized_events WHERE session_id=?"
+        parameters: tuple = (session_id,)
+        if canonical_ticker is not None:
+            sql += " AND canonical_ticker=?"
+            parameters += (str(canonical_ticker).strip().upper(),)
+        sql += " ORDER BY market_timestamp_utc,canonical_ticker,source_identity"
         with self.connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM orb_normalized_events WHERE session_id=? ORDER BY market_timestamp_utc,canonical_ticker,source_identity",
-                (session_id,),
-            ).fetchall()
+            rows = connection.execute(sql, parameters).fetchall()
+        self.event_load_count += 1
+        self.event_rows_read += len(rows)
         return tuple(
             NormalizedIntradayEvent(
                 canonical_ticker=row["canonical_ticker"],
@@ -919,6 +1102,238 @@ class OrbResearchRepository:
             source_identity=row["source_identity"],
         )
 
+    # -- Phase 2B Core research evidence ----------------------------------
+
+    def persist_research_evaluation(self, session_id: str, evaluation) -> str:
+        """Store one research evaluation and all its evidence, idempotently.
+
+        A second identical replay inserts nothing anywhere: the candidate,
+        every transition, the breakout, the pullback, the reclaim and the setup
+        are each keyed on content-derived identities. Research only — this
+        method has no order, execution, position or P&L counterpart.
+        """
+
+        now = _utc_now()
+        candidate_id = evaluation.candidate_identity
+        with self.transaction() as connection:
+            connection.execute(
+                """INSERT OR IGNORE INTO orb_candidates VALUES
+                   (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    candidate_id,
+                    session_id,
+                    evaluation.canonical_ticker,
+                    evaluation.session_date.isoformat(),
+                    evaluation.opening_range_revision,
+                    evaluation.opening_range_version_identity,
+                    evaluation.opening_range_version_mode.value,
+                    evaluation.evaluation_mode.value,
+                    evaluation.strategy_fingerprint,
+                    evaluation.engine_version,
+                    evaluation.final_state.value,
+                    int(evaluation.terminal),
+                    _json([r.value for r in evaluation.rejection_reasons]),
+                    evaluation.evidence_fingerprint,
+                    evaluation.transitions[-1].as_of_timestamp_utc.isoformat()
+                    if evaluation.transitions
+                    else now,
+                    now,
+                ),
+            )
+            for transition in evaluation.transitions:
+                row_id = hashlib.sha256(
+                    f"{candidate_id}|{transition.transition_id}".encode("utf-8")
+                ).hexdigest()
+                connection.execute(
+                    """INSERT OR IGNORE INTO orb_state_transitions VALUES
+                       (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        row_id,
+                        candidate_id,
+                        transition.transition_id,
+                        transition.sequence_index,
+                        transition.canonical_ticker,
+                        transition.session_date.isoformat(),
+                        transition.opening_range_version_identity,
+                        transition.opening_range_revision,
+                        transition.prior_state.value,
+                        transition.new_state.value,
+                        transition.exchange_timestamp_utc.isoformat()
+                        if transition.exchange_timestamp_utc
+                        else None,
+                        transition.as_of_timestamp_utc.isoformat(),
+                        transition.rule_code.value,
+                        _json(list(transition.evidence)),
+                        _json([list(item) for item in transition.frozen_references]),
+                        transition.market_time_status.value,
+                        transition.historical_replay_status.value,
+                        transition.live_freshness_status.value,
+                        transition.live_decision_capability.value,
+                        transition.evaluation_mode.value,
+                        transition.strategy_fingerprint,
+                        transition.engine_version,
+                        now,
+                    ),
+                )
+            breakout = evaluation.breakout
+            if breakout is not None:
+                connection.execute(
+                    """INSERT OR IGNORE INTO orb_breakouts VALUES
+                       (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        hashlib.sha256(
+                            f"{candidate_id}|{breakout.breakout_identity}".encode("utf-8")
+                        ).hexdigest(),
+                        candidate_id,
+                        breakout.breakout_identity,
+                        breakout.bar_start_utc.isoformat(),
+                        breakout.bar_end_utc.isoformat(),
+                        breakout.close,
+                        breakout.high,
+                        breakout.low,
+                        breakout.opening_range_high,
+                        breakout.distance_above_or_high,
+                        breakout.distance_above_or_high_percent,
+                        breakout.bar_range,
+                        breakout.bar_range_percent,
+                        breakout.bar_range_atr,
+                        breakout.extension_atr,
+                        breakout.update_count,
+                        breakout.distance_to_daily_resistance,
+                        breakout.distance_to_daily_resistance_percent,
+                        breakout.intraday_atr.status.value,
+                        breakout.intraday_atr.value,
+                        breakout.zone.lower,
+                        breakout.zone.upper,
+                        breakout.zone.construction_rule,
+                        int(breakout.accepted),
+                        int(breakout.too_extended),
+                        _json([r.value for r in breakout.extension_reasons]),
+                        _json([r.value for r in breakout.rejection_reasons]),
+                        now,
+                    ),
+                )
+            pullback = evaluation.pullback
+            if pullback is not None:
+                connection.execute(
+                    """INSERT OR IGNORE INTO orb_pullbacks VALUES
+                       (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        hashlib.sha256(
+                            f"{candidate_id}|pullback|{pullback.ordinal}".encode("utf-8")
+                        ).hexdigest(),
+                        candidate_id,
+                        pullback.ordinal,
+                        pullback.start_bar_start_utc.isoformat(),
+                        pullback.low,
+                        pullback.low_bar_start_utc.isoformat(),
+                        pullback.post_breakout_high,
+                        pullback.depth_from_high,
+                        pullback.depth_from_high_percent,
+                        pullback.depth_atr,
+                        pullback.depth_versus_or_high_percent,
+                        pullback.bars_since_breakout,
+                        pullback.duration_bars,
+                        pullback.closes_below_or_high,
+                        pullback.structural_breach_bars,
+                        int(pullback.touched_or_high),
+                        int(pullback.entered_breakout_zone),
+                        pullback.ema9_five_minute,
+                        pullback.ema20_five_minute,
+                        pullback.ema9_one_minute,
+                        pullback.breakout_bar_volume,
+                        pullback.pullback_volume_total,
+                        int(pullback.volume_assessed),
+                        int(pullback.price_only),
+                        int(pullback.healthy),
+                        _json([r.value for r in pullback.rejection_reasons]),
+                        now,
+                    ),
+                )
+            reclaim = evaluation.reclaim
+            if reclaim is not None:
+                reclaim_identity = hashlib.sha256(
+                    "|".join(
+                        [
+                            candidate_id,
+                            reclaim.rule.value,
+                            reclaim.confirmation_bar_start_utc.isoformat()
+                            if reclaim.confirmation_bar_start_utc
+                            else "none",
+                        ]
+                    ).encode("utf-8")
+                ).hexdigest()
+                connection.execute(
+                    """INSERT OR IGNORE INTO orb_reclaims VALUES
+                       (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        reclaim_identity,
+                        candidate_id,
+                        reclaim_identity,
+                        reclaim.rule.value,
+                        int(reclaim.confirmed),
+                        reclaim.confirmation_bar_start_utc.isoformat()
+                        if reclaim.confirmation_bar_start_utc
+                        else None,
+                        reclaim.confirmation_bar_end_utc.isoformat()
+                        if reclaim.confirmation_bar_end_utc
+                        else None,
+                        reclaim.trigger_price,
+                        reclaim.opening_range_high,
+                        reclaim.zone_lower,
+                        reclaim.zone_upper,
+                        reclaim.pullback_low,
+                        reclaim.bars_elapsed_since_pullback_low,
+                        _json([r.value for r in reclaim.rejection_reasons]),
+                        now,
+                    ),
+                )
+            risk, targets = evaluation.risk, evaluation.targets
+            if (
+                evaluation.research_ready
+                and risk is not None
+                and targets is not None
+                and risk.proposed_stop is not None
+            ):
+                connection.execute(
+                    """INSERT OR IGNORE INTO orb_research_setups VALUES
+                       (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        candidate_id,
+                        targets.trigger_price,
+                        risk.proposed_stop,
+                        risk.stop_basis,
+                        risk.raw_pullback_low,
+                        risk.buffer_applied,
+                        risk.buffer_basis,
+                        risk.stop_distance_absolute,
+                        risk.stop_distance_percent,
+                        risk.stop_distance_atr,
+                        targets.risk_per_share,
+                        targets.target_1,
+                        targets.target_2,
+                        targets.nearest_daily_resistance,
+                        targets.usable_target,
+                        targets.effective_reward_risk,
+                        1,
+                        now,
+                    ),
+                )
+        return candidate_id
+
+    def load_state_transitions(self, candidate_id: str) -> tuple[dict, ...]:
+        """Ordered transition history for one candidate."""
+
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT prior_state,new_state,rule_code,sequence_index,
+                          exchange_timestamp_utc,transition_id
+                   FROM orb_state_transitions WHERE candidate_id=?
+                   ORDER BY sequence_index""",
+                (candidate_id,),
+            ).fetchall()
+        return tuple(dict(row) for row in rows)
+
     def table_count(self, table: str) -> int:
         allowed = {
             "orb_sessions",
@@ -928,6 +1343,12 @@ class OrbResearchRepository:
             "orb_data_quality_events",
             "orb_capabilities",
             "orb_collection_runs",
+            "orb_candidates",
+            "orb_state_transitions",
+            "orb_breakouts",
+            "orb_pullbacks",
+            "orb_reclaims",
+            "orb_research_setups",
         }
         if table not in allowed:
             raise ValueError("Unsupported ORB table")
