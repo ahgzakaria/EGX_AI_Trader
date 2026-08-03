@@ -82,3 +82,8 @@ outputs/
 reports/
 !reports/eodhd/
 !reports/eodhd/**
+
+# Rubix assisted start: auth-frame inbox and consumed frames. These hold
+# short-lived authentication material selected by the user for one launch.
+# They must never be committed, and neither must the local preference file.
+data/local/
