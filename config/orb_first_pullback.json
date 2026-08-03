@@ -1,0 +1,29 @@
+{
+  "timezone": "Africa/Cairo",
+  "continuous_start": "10:00",
+  "opening_range_end": "10:15",
+  "late_continuous_start": "13:30",
+  "continuous_end": "14:15",
+  "auction_end": "14:25",
+  "supported_bar_intervals": [
+    1,
+    5
+  ],
+  "maximum_quote_age_seconds": 60.0,
+  "duplicate_sequence_policy": "DROP_IDENTICAL_REJECT_CONFLICT",
+  "out_of_order_tolerance_seconds": 0.0,
+  "maximum_volume_delta_gap_seconds": 60.0,
+  "minimum_updates_per_completed_bar": 1,
+  "missing_volume_policy": "MARK_UNAVAILABLE",
+  "partial_bar_policy": "EXCLUDE",
+  "research_database_path": "data/research/orb_first_pullback.db",
+  "event_retention_days": 30,
+  "derived_data_retention_days": 365,
+  "retention_batch_size": 10000,
+  "maximum_seen_payloads_per_session": 250000,
+  "opening_range_minimum_bar_coverage": 1.0,
+  "complete_bar_coverage": 0.95,
+  "dense_session_coverage": 0.8,
+  "complete_session_symbol_fraction": 0.9,
+  "minimum_time_of_day_rvol_sessions": 20
+}
