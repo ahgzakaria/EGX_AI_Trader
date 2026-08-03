@@ -20,6 +20,8 @@ from pathlib import Path
 import os
 
 from services.rubix_auth_assistant import (
+    AUTH_EXPIRED,
+    AUTH_INVALID,
     DEFAULT_MAX_AGE_MINUTES,
     AuthFrameInspection,
     inspect_auth_frame,
@@ -48,6 +50,15 @@ PROTECTED_INBOX_NAMES = frozenset(
     {"data", "backups", "logs", "reports", "venv", ".git"}
 )
 
+#: The user's real, long-established export target.
+#:
+#: The Rubix authentication export has always written here, so the assisted
+#: mode watches this file **in place**. An earlier version watched a
+#: repository inbox instead, which added a manual copy step to a workflow that
+#: never had one. Watching the real file removes that step entirely: nothing is
+#: copied into the repository, moved to a consumed folder, or deleted.
+DEFAULT_AUTH_FRAME_PATH = Path(r"C:\secure-temp\rubix-price-auth-frame.txt")
+
 
 class FrameSelection(str, Enum):
     """Why the watcher did or did not choose a frame."""
@@ -57,6 +68,20 @@ class FrameSelection(str, Enum):
     #: Several equally-fresh valid frames; the user must disambiguate.
     AMBIGUOUS_REQUIRES_USER_SELECTION = "AMBIGUOUS_REQUIRES_USER_SELECTION"
     INBOX_UNAVAILABLE = "INBOX_UNAVAILABLE"
+
+
+class FrameStatus(str, Enum):
+    """What the window shows about the auth frame, in the user's terms.
+
+    Kept separate from `FrameSelection`, which is about *which* file to use:
+    with a single watched file there is nothing to select between, but the user
+    still needs to know whether it is usable.
+    """
+
+    WAITING_FOR_FRESH_AUTH_FRAME = "WAITING_FOR_FRESH_AUTH_FRAME"
+    AUTH_FRAME_VALID = "AUTH_FRAME_VALID"
+    AUTH_FRAME_EXPIRED = "AUTH_FRAME_EXPIRED"
+    AUTH_FRAME_REJECTED = "AUTH_FRAME_REJECTED"
 
 
 class AssistedState(str, Enum):
@@ -154,6 +179,30 @@ class InboxScan:
     def ready(self) -> bool:
         return self.selection is FrameSelection.FRAME_SELECTED
 
+    @property
+    def status(self) -> FrameStatus:
+        """The four states the window displays.
+
+        Expired and rejected are kept apart because they mean different things
+        to the user: re-export, versus something is wrong with the export.
+        """
+
+        if self.selection is FrameSelection.FRAME_SELECTED:
+            return FrameStatus.AUTH_FRAME_VALID
+        # Distinguish "the export is stale" from "the export is broken" using
+        # the official validator's own verdict, never a local re-derivation.
+        # The validator's own constants, imported rather than spelled out: it
+        # reports "EXPIRED"/"INVALID", and a hardcoded guess silently degrades
+        # every expired frame to WAITING, hiding the one state the user can act on.
+        statuses = {item.inspection.status for item in self.candidates}
+        if statuses and statuses <= {AUTH_EXPIRED}:
+            return FrameStatus.AUTH_FRAME_EXPIRED
+        if AUTH_INVALID in statuses:
+            return FrameStatus.AUTH_FRAME_REJECTED
+        if self.selection is FrameSelection.AMBIGUOUS_REQUIRES_USER_SELECTION:
+            return FrameStatus.AUTH_FRAME_REJECTED
+        return FrameStatus.WAITING_FOR_FRESH_AUTH_FRAME
+
 
 def resolve_inbox(root: Path, configured: str | os.PathLike) -> Path:
     """Resolve the inbox safely, or refuse.
@@ -204,6 +253,49 @@ def _is_candidate_file(path: Path, inbox: Path) -> bool:
     if not path.is_file():
         return False
     return True
+
+
+def scan_frame_file(
+    frame_path: Path,
+    *,
+    now: datetime | None = None,
+    max_age_minutes: float = DEFAULT_MAX_AGE_MINUTES,
+) -> InboxScan:
+    """Validate one known auth frame **in place**. The production path.
+
+    The user's export has always written to one well-known file, so there is
+    nothing to select between and no reason to relocate anything. This reads
+    the file where it already is and asks the existing official validator for
+    a verdict — it never copies, moves, renames or deletes it, and it never
+    returns or records its contents.
+
+    A missing file is not an error: at 09:10 the morning export simply has not
+    happened yet, which is `WAITING_FOR_FRESH_AUTH_FRAME`.
+
+    Freshness follows the official contract. `inspect_auth_frame` is re-run on
+    every poll, so overwriting the file with a newer export is picked up on the
+    next pass without any bookkeeping here.
+    """
+
+    moment = now or datetime.now(timezone.utc)
+    path = Path(frame_path)
+    if not path.is_file():
+        return InboxScan(
+            FrameSelection.WAITING_FOR_FRESH_AUTH_FRAME, None, (), (),
+            f"no auth frame yet at {path}",
+        )
+
+    inspection = inspect_auth_frame(path, now=moment, max_age_minutes=max_age_minutes)
+    candidate = FrameCandidate(path=path, inspection=inspection)
+    if candidate.valid:
+        return InboxScan(
+            FrameSelection.FRAME_SELECTED, candidate, (candidate,), (),
+            "auth frame is valid and fresh",
+        )
+    return InboxScan(
+        FrameSelection.WAITING_FOR_FRESH_AUTH_FRAME, None, (candidate,), (candidate,),
+        f"auth frame present but not usable: {inspection.status}",
+    )
 
 
 def scan_inbox(
@@ -470,6 +562,7 @@ def dispose_frame(
 
 
 __all__ = [
+    "DEFAULT_AUTH_FRAME_PATH",
     "FRAME_SUFFIXES",
     "PARTIAL_SUFFIXES",
     "PROTECTED_INBOX_NAMES",
@@ -479,6 +572,7 @@ __all__ = [
     "FrameCandidate",
     "FrameDisposal",
     "FrameSelection",
+    "FrameStatus",
     "HealthOutcome",
     "InboxScan",
     "build_collector_command",
@@ -486,5 +580,6 @@ __all__ = [
     "dispose_frame",
     "evaluate_health",
     "resolve_inbox",
+    "scan_frame_file",
     "scan_inbox",
 ]

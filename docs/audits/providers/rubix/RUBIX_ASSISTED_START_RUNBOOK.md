@@ -11,22 +11,23 @@ The morning sequence, reduced to one human action.
 Before: open the launcher GUI, browse for the auth frame, re-confirm adapter and
 database paths, press a button that also starts Streamlit.
 
-Now: a small window opens by itself, watches a folder, validates whatever frame
-appears using the existing official validator, and starts **only** the headless
-collector supervisor.
+Now: a small window opens by itself, watches **the file you already export to**,
+validates it in place using the existing official validator, and starts **only**
+the headless collector supervisor.
 
 **The human action is unchanged and unautomated:** perform your normal Rubix
-authentication/frame export and save the frame file into the inbox. In
-production that file is `rubix-price-auth-frame.txt` — a delimited envelope,
-**not** JSON. Nothing here
-drives a browser, logs in, or stores a credential.
+authentication/frame export. It already writes to
+`C:\secure-temp\rubix-price-auth-frame.txt`, and that is exactly where this
+reads it. There is **no copy step** — an earlier version introduced one, which
+was a mistake and has been removed. Nothing here drives a browser, logs in, or
+stores a credential.
 
 ## 2. Timeline
 
 | Time (Cairo) | Actor | What |
 |---|---|---|
 | 09:10 | scheduled task | assisted window opens |
-| 09:10–09:25 | **you** | export the auth frame into the inbox |
+| 09:10–09:25 | **you** | perform your normal auth-frame export (no copying) |
 | ~09:15 | assisted window | detects, validates, shows age and remaining validity |
 | one click | **you** | **START RUBIX COLLECTOR** (or opt-in countdown) |
 | before ~09:30 | assisted window | confirms the source is advancing, then minimises |
@@ -37,54 +38,69 @@ drives a browser, logs in, or stores a credential.
 If you do nothing, the window simply times out. **ORB still fails closed** with
 `SKIPPED_SOURCE_UNAVAILABLE` — nothing false is ever recorded.
 
-## 3. The inbox
+## 3. The auth frame
 
-Default: `data/local/rubix_auth_inbox/` — gitignored, along with the consumed
-folder and the preference file.
+**`C:\secure-temp\rubix-price-auth-frame.txt`** — your existing path, read
+where it is.
 
-Path rules, enforced:
+- **Never copied** into the repository, **never moved** to a consumed folder,
+  **never renamed**, **never deleted**. Disposal is refused outright in this
+  mode: the file is yours, not this code's to dispose of.
+- Its contents are never displayed, logged, persisted or included in any
+  summary — only the validator's non-secret verdict is shown.
+- A missing file is not an error. At 09:10 the export simply has not happened
+  yet, which reads as `WAITING_FOR_FRESH_AUTH_FRAME`.
+- Re-exporting over the same path is picked up on the next poll; the validator
+  re-runs every second, so there is no stale-cache bookkeeping to get wrong.
 
-- must resolve **inside the project root** — traversal is refused;
-- may not be the project root, nor a top-level `data`, `logs`, `reports`,
-  `backups`, `venv` or `.git` directory;
-- must be a directory;
-- only regular `.json` and `.txt` files are considered — `.txt` because the
-  real production frame is `PRICE_AUTH_DELIMITED`, not JSON; the extension is
-  only a pre-filter and never grants acceptance;
-- symlinks/junctions resolving outside the inbox are skipped;
-- `.tmp`, `.crdownload`, `.part`, `.partial`, `.download` are ignored entirely,
-  so a half-written download is never read as a malformed frame.
+Override with `--auth-frame <path>` for testing or a future relocation. The
+production default does not change.
 
-## 4. Frame selection rules
+### Optional advanced mode: an inbox directory
+
+`--watch-mode inbox` still watches `data/local/rubix_auth_inbox/` under the
+runtime root, with the original path rules (inside the project root; not the
+root itself; not a top-level `data`/`logs`/`reports`/`backups`/`venv`/`.git`;
+must be a directory; `.json` and `.txt` only; symlinks leaving the inbox
+skipped; `.tmp`/`.crdownload`/`.part`/`.partial`/`.download` ignored).
+
+**The normal workflow does not need it and does not use it.**
+
+## 4. Status contract
 
 Validity comes from the existing `inspect_auth_frame` — **nothing is
 reimplemented**. A `.txt` containing nonsense is refused exactly like a
 malformed `.json`.
 
+The window shows one of exactly four states:
+
+| Status | Meaning | What you do |
+|---|---|---|
+| `WAITING_FOR_FRESH_AUTH_FRAME` | no file yet at the path | perform the export |
+| `AUTH_FRAME_VALID` | validated and fresh | press **START RUBIX COLLECTOR** |
+| `AUTH_FRAME_EXPIRED` | well-formed but past its lifetime | re-export |
+| `AUTH_FRAME_REJECTED` | present but not a usable frame | check the export |
+
+Expired and rejected are deliberately separate: one means *do it again*, the
+other means *something is wrong*.
+
 **Freshness signal, by format:**
 
 | Format | Timestamp source |
 |---|---|
-| JSON frame with an internal stamp | the frame's own timestamp — authoritative |
 | `PRICE_AUTH_DELIMITED` `.txt` (the production format) | **file mtime only** — this format carries no embedded timestamp |
+| JSON frame with an internal stamp | the frame's own timestamp — authoritative |
 
 The window states which one it used (`timestamp_source`) rather than implying a
-stamp that is not there. Where an internal stamp exists it wins, because a copy
-or a sync client rewrites mtime freely.
+stamp that is not there.
 
-| Situation | Result |
-|---|---|
-| no valid frame | `WAITING_FOR_FRESH_AUTH_FRAME` |
-| exactly one valid | selected automatically |
-| several valid, one clearly newest | newest selected |
-| several within ~2 s, or one lacking a usable timestamp | `AMBIGUOUS_REQUIRES_USER_SELECTION` |
-
-Ambiguity is never resolved by guessing: silently picking one could start a
-session against the wrong credential.
-
-The window shows filename, validated timestamp, timestamp source, current age,
+The display carries filename, validated timestamp, timestamp source, age,
 remaining validity, validation result and rejection reason — and **never any
 field from inside the frame**, in either format.
+
+In the advanced inbox mode, several equally-fresh valid frames yield
+`AUTH_FRAME_REJECTED` rather than a guess: silently picking one could start a
+session against the wrong credential.
 
 ## 5. One-click and opt-in auto-start
 
@@ -132,14 +148,17 @@ merely existing. This reuses the read-only readiness checker's output.
 
 ## 8. Auth-frame disposal
 
-**Default: `LEAVE_UNTOUCHED`.** The existing security contract treats the frame
-as a short-lived file the user owns; moving or deleting it by default would mean
-this code taking custody of credential-adjacent material it has no business
-handling.
+**None. In the production mode the frame is never touched.**
 
-Two explicit opt-ins: `MOVE_TO_CONSUMED` (relocates into an ignored folder —
-moved, never copied) and `DELETE`. The frame is never copied elsewhere, never
-logged, never committed, and never retained as a reusable credential.
+The watched file is your own long-lived export path, so moving or deleting it
+would be this code taking custody of credential-adjacent material it has no
+business handling. Disposal is therefore *refused* in this mode — not merely
+defaulted off. Even an explicit `--disposal DELETE` leaves the file alone.
+
+The `MOVE_TO_CONSUMED` and `DELETE` options remain wired to the advanced inbox
+mode only, where the frame under management is one the user deliberately placed
+in a repository folder. The frame is never copied anywhere, never logged, never
+committed, and never retained as a reusable credential.
 
 ## 9. Install the schedule
 
@@ -150,6 +169,8 @@ logged, never committed, and never retained as a reusable credential.
     -AdapterPath  "<rubix adapter directory>" `
     -WhatIfOnly
 ```
+
+`-AuthFramePath` defaults to `C:\secure-temp\rubix-price-auth-frame.txt` and normally needs no override.
 
 Drop `-WhatIfOnly` to register; add `-EnableAutoStart` to opt in to the
 countdown. **Not installed by this change** — registration is a deliberate step.
