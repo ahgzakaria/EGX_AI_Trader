@@ -24,6 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 import logging
+import sys
 import threading
 import time
 import uuid
@@ -449,9 +450,33 @@ class ScanJobRegistry:
                 self._jobs.pop(workspace_key, None)
 
 
+#: Slot on ``sys`` holding the one registry for this OS process.
+#:
+#: Streamlit evicts changed local modules from ``sys.modules`` at the start of a
+#: script run (``local_sources_watcher``), so re-importing this module would
+#: otherwise build a brand-new registry while the worker thread from the
+#: previous module instance keeps updating the old one. The page would then look
+#: up a running job in an empty registry, find nothing, re-enable the Run button
+#: and let a second click start a duplicate concurrent scan - the exact incident
+#: this module exists to prevent, arriving through a different door.
+#:
+#: ``sys`` is never evicted, so a slot on it outlives every module reload in the
+#: process. It is not shared between processes and holds no serialized state.
+_REGISTRY_SLOT = "_egx_scan_job_registry_v1"
+
+
+def _process_registry():
+    """The one registry for this process, created at most once."""
+    registry = getattr(sys, _REGISTRY_SLOT, None)
+    if registry is None:
+        registry = ScanJobRegistry()
+        setattr(sys, _REGISTRY_SLOT, registry)
+    return registry
+
+
 #: The process-level registry. Thread objects live here and are never serialized into
 #: session state or any git-tracked file.
-REGISTRY = ScanJobRegistry()
+REGISTRY = _process_registry()
 
 
 def _repository_root():

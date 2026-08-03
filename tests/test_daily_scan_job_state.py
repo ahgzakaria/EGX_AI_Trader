@@ -365,6 +365,76 @@ def test_a_failed_or_cancelled_job_reports_itself_honestly(state):
 
 
 # =========================================================================== #
+# SURVIVING STREAMLIT MODULE RELOAD
+# =========================================================================== #
+
+
+def _evict_and_reimport():
+    """Exactly what Streamlit does to a changed local module.
+
+    ``LocalSourcesWatcher`` pops changed modules out of ``sys.modules`` at the
+    start of a script run, so the next import rebuilds them from source.
+    """
+
+    import importlib
+    import sys
+
+    for name in [n for n in sys.modules if n.startswith("core.scan_job_manager")]:
+        sys.modules.pop(name)
+    return importlib.import_module("core.scan_job_manager")
+
+
+def test_the_registry_survives_a_streamlit_module_reload():
+    """Observed live: a reload orphaned a running scan from the page.
+
+    Streamlit evicted core.scan_job_manager mid-session, the re-import built a
+    fresh registry, and the worker thread carried on updating the old one. The
+    page then found nothing, re-enabled the Run button, and a second click
+    could start a duplicate concurrent scan - the original incident arriving
+    through a different door.
+    """
+
+    job, created = jm.REGISTRY.create_or_get_active_job("workspace::reload", total=3)
+    assert created is True
+    registry_id = id(jm.REGISTRY)
+
+    reloaded = _evict_and_reimport()
+    try:
+        assert id(reloaded.REGISTRY) == registry_id, (
+            "the reloaded module built a second registry")
+        found = reloaded.REGISTRY.get("workspace::reload")
+        assert found is not None, "a running job became invisible after reload"
+        assert found.scan_id == job.scan_id
+        assert found.is_active
+    finally:
+        reloaded.REGISTRY.clear()
+
+
+def test_a_reload_does_not_permit_a_duplicate_scan():
+    workspace = jm.workspace_key_for("dashboard", SYMBOL_SOURCE)
+    running, created = jm.REGISTRY.create_or_get_active_job(workspace, total=5)
+    assert created is True
+
+    reloaded = _evict_and_reimport()
+    try:
+        again, created_again = reloaded.REGISTRY.create_or_get_active_job(
+            workspace, total=5)
+        assert created_again is False, "a reload allowed a second concurrent scan"
+        assert again.scan_id == running.scan_id
+        assert reloaded.REGISTRY.active_count() == 1
+    finally:
+        reloaded.REGISTRY.clear()
+
+
+def test_the_registry_is_pinned_to_the_process_not_the_module():
+    import sys
+
+    assert getattr(sys, jm._REGISTRY_SLOT, None) is jm.REGISTRY
+    # A second call must never mint a replacement.
+    assert jm._process_registry() is jm.REGISTRY
+
+
+# =========================================================================== #
 # SESSION STATE AND RECOVERY
 # =========================================================================== #
 
