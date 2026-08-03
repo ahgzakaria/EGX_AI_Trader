@@ -203,8 +203,7 @@ starts Streamlit without a collector.
 
 ## 12. The Rubix source database
 
-**Canonical path: `F:\EGX_AI_Trader\data
-ubix_live_market.db`.**
+**Canonical path: `F:\EGX_AI_Trader\data\rubix_live_market.db`.**
 
 `D:\EGX_AI_Trader` is a **junction** onto `F:\EGX_AI_Trader`, so both spellings
 are one physical database — confirmed by the reparse tag, identical Windows File

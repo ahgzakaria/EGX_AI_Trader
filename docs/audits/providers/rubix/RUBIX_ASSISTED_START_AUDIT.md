@@ -194,8 +194,7 @@ contradictory — a junction is allowed to cross volumes; the File ID and
 
 ### The canonical source
 
-**`F:\EGX_AI_Trader\data
-ubix_live_market.db`** — what ORB already reads,
+**`F:\EGX_AI_Trader\data\rubix_live_market.db`** — what ORB already reads,
 what the supervisor's PID file records, and what the collector child writes.
 
 ### Why no run-splitting can occur
@@ -205,12 +204,8 @@ what the supervisor's PID file records, and what the collector child writes.
 directly:
 
 ```
-D:\...
-ubix_live_market.db -> F:\...
-ubix_live_market.db   identity e15d1f79…
-F:\...
-ubix_live_market.db -> F:\...
-ubix_live_market.db   identity e15d1f79…
+D:\...\rubix_live_market.db -> F:\...\rubix_live_market.db   identity e15d1f79…
+F:\...\rubix_live_market.db -> F:\...\rubix_live_market.db   identity e15d1f79…
 ```
 
 Either spelling therefore records **one** `source_path_identity`. This is
@@ -236,12 +231,8 @@ Installed at a runtime worktree, that would have produced:
 
 | Path | Would have been | Must be |
 |---|---|---|
-| database | `…assisted_runtime_wt\data
-ubix_live_market.db` (empty) | `F:\EGX_AI_Trader\data
-ubix_live_market.db` |
-| PID file | `…assisted_runtime_wt\data
-ubix_supervisor.pid.json` (absent) | `F:\EGX_AI_Trader\data
-ubix_supervisor.pid.json` |
+| database | `…assisted_runtime_wt\data\rubix_live_market.db` (empty) | `F:\EGX_AI_Trader\data\rubix_live_market.db` |
+| PID file | `…assisted_runtime_wt\data\rubix_supervisor.pid.json` (absent) | `F:\EGX_AI_Trader\data\rubix_supervisor.pid.json` |
 | lock file | worktree copy | canonical |
 
 The database consequence is a split source — the exact failure section 8 exists
@@ -255,15 +246,13 @@ a spawn, and the UI would have reported a start that did not happen.
 supplying `scripts/rubix_collector_supervisor.py`; the runtime root supplies
 `data/` and `logs/` — database, universe, PID, lock, log and the inbox. The
 installer requires `-RuntimeRoot` and refuses one without a real
-`data
-ubix_live_market.db`.
+`data\rubix_live_market.db`.
 
 Verified against the live system, read-only:
 
 ```
 --runtime-root F:\EGX_AI_Trader
-  pid file : F:\EGX_AI_Trader\data
-ubix_supervisor.pid.json
+  pid file : F:\EGX_AI_Trader\data\rubix_supervisor.pid.json
   supervisor_status -> running=True, pid=11120
   => INSTANCE_ALREADY_RUNNING, nothing spawned
 ```
