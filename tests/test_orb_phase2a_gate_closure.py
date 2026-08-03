@@ -421,23 +421,54 @@ def test_latency_and_historical_capabilities_survive_persistence(tmp_path):
 
 
 def test_reviewed_universe_counts_keep_archived_observed_but_ineligible():
-    import csv
+    """The reviewed 225/40 split, re-derived from the tracked universe.
 
-    path = Path(
-        "reports/audits/strategies/orb_first_pullback/phase2a_review/"
-        "PHASE2A_SYMBOL_UNIVERSE_RECONCILIATION.csv"
+    The review reconciled 265 Rubix-observed symbols as 225 active-and-verified
+    plus 40 archived-with-verified-mapping. That reconciliation was written to a
+    generated CSV under the ignored ``reports/`` tree, which does not exist in a
+    fresh clone — so this asserts against ``core.universe`` and the ORB
+    membership resolver instead, which are the tracked sources the CSV was
+    derived from. The "observed in Rubix" half of the reconciliation needs the
+    production feed database and stays an audit finding, recorded in
+    ``docs/audits/strategies/orb_first_pullback/phase2a_review/``.
+    """
+
+    from core.universe import load_universe
+    from scalping_orb.events import (
+        OPERATIONALLY_ELIGIBLE_MEMBERSHIP,
+        _default_membership_resolver,
     )
-    with path.open(encoding="utf-8-sig", newline="") as handle:
-        rows = list(csv.DictReader(handle))
-    active = [row for row in rows if row["operationally_eligible_for_new_orb_entry"] == "YES"]
-    archived = [
-        row for row in rows
-        if row["operationally_eligible_for_new_orb_entry"] == "EXIT_MONITORING_EXCEPTION_ONLY"
+
+    by_status: dict[UniverseMembershipStatus, list[str]] = {}
+    for record in load_universe():
+        status = _default_membership_resolver(record.canonical_symbol)
+        by_status.setdefault(status, []).append(record.canonical_symbol)
+
+    active = by_status.get(UniverseMembershipStatus.ACTIVE_UNIVERSE_VERIFIED_RUBIX, [])
+    archived_verified = [
+        symbol
+        for symbol in by_status.get(UniverseMembershipStatus.ARCHIVED_INACTIVE_SYMBOL, [])
+        if _verified_rubix_mapping(symbol)
     ]
+
     assert len(active) == 225
-    assert len(archived) == 40
-    assert all(row["observed_in_rubix_quotes"] == "YES" for row in active + archived)
-    assert not any(row["operationally_eligible_for_new_orb_entry"] == "YES" for row in archived)
+    assert len(archived_verified) == 40
+    assert (
+        UniverseMembershipStatus.ACTIVE_UNIVERSE_VERIFIED_RUBIX
+        in OPERATIONALLY_ELIGIBLE_MEMBERSHIP
+    )
+    # An archived symbol stays readable history and is never a new-entry candidate.
+    for symbol in archived_verified:
+        status = _default_membership_resolver(symbol)
+        assert status == UniverseMembershipStatus.ARCHIVED_INACTIVE_SYMBOL
+        assert status not in OPERATIONALLY_ELIGIBLE_MEMBERSHIP
+
+
+def _verified_rubix_mapping(symbol: str) -> bool:
+    from core.universe import lookup
+
+    record = lookup(symbol)
+    return bool(record and record.has_verified_rubix_mapping)
 
 
 def test_durable_docs_are_tracked_path_and_mutable_artifacts_remain_ignored():
