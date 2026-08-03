@@ -117,6 +117,15 @@ class SessionQualitySummary:
     exact_redeliveries_removed: int = 0
     same_timestamp_distinct_retained: int = 0
     quality_event_count: int = 0
+    #: Distinct canonical tickers that survived normalization. Counted whatever
+    #: the universe filter says, so filtering never hides what the source sent.
+    normalized_symbols_observed: int = 0
+    #: Of those, how many are active-universe members with a verified Rubix
+    #: mapping and operational eligibility.
+    operationally_eligible_symbols: int = 0
+    #: How many symbols the universe filter withheld from Phase 2B evaluation.
+    #: Zero when the filter is disabled.
+    symbols_withheld_by_universe_filter: int = 0
     observed_one_minute_slots: int = 0
     completed_one_minute_bars: int = 0
     completed_five_minute_bars: int = 0
@@ -166,11 +175,52 @@ class ShadowSessionSnapshot:
     config_identity: str
     #: Tickers with a newly operationally-final 5m bar in this batch. The
     #: evaluator re-evaluates only these; an untouched symbol is not rebuilt.
+    #: Already filtered when ``active_universe_only`` is set.
     affected_tickers: tuple[str, ...] = ()
+    #: Whether the active-universe filter was applied when this snapshot was
+    #: built. Carried on the snapshot so every downstream record can state the
+    #: filter it was produced under.
+    active_universe_only: bool = False
 
     @property
     def tickers(self) -> tuple[str, ...]:
+        """Every symbol observed, filter or no filter.
+
+        Observation is never narrowed: source rows, deduplication and quality
+        accounting always cover everything the collector delivered.
+        """
+
         return tuple(sorted(self.events_by_ticker))
+
+    @property
+    def research_eligible_tickers(self) -> tuple[str, ...]:
+        """Symbols Phase 2B may evaluate for a *new* research candidate.
+
+        Requires an active universe member with a verified Rubix mapping **and**
+        operational eligibility. This narrows evaluation only; it never removes
+        a symbol from the observation totals.
+        """
+
+        return tuple(
+            ticker
+            for ticker in self.tickers
+            if self.operationally_eligible.get(ticker, False)
+            and self.eligibility.get(ticker)
+            is UniverseMembershipStatus.ACTIVE_UNIVERSE_VERIFIED_RUBIX
+        )
+
+    @property
+    def evaluation_tickers(self) -> tuple[str, ...]:
+        """The symbols this snapshot's filter admits for evaluation.
+
+        With the filter off this is every observed symbol — the Phase 2B engine
+        still refuses ineligible ones with an explicit rejection reason, so the
+        broad mode records *why* rather than silently skipping.
+        """
+
+        if not self.active_universe_only:
+            return self.tickers
+        return self.research_eligible_tickers
 
     @property
     def snapshot_identity(self) -> str:
@@ -247,6 +297,7 @@ class ShadowSnapshotBuilder:
         config: OrbDataConfig | None = None,
         *,
         lateness_grace_seconds: float = 90.0,
+        active_universe_only: bool = False,
     ):
         self.config = config or OrbDataConfig()
         self.zone = ZoneInfo(self.config.timezone)
@@ -254,6 +305,9 @@ class ShadowSnapshotBuilder:
         if float(lateness_grace_seconds) < 0:
             raise ValueError("lateness_grace_seconds cannot be negative")
         self.lateness_grace_seconds = float(lateness_grace_seconds)
+        #: Restrict *evaluation* to active mapped eligible symbols. Never
+        #: restricts observation, deduplication or quality accounting.
+        self.active_universe_only = bool(active_universe_only)
 
     def build(
         self,
@@ -366,10 +420,22 @@ class ShadowSnapshotBuilder:
                 unmapped += 1
 
         # --- which symbols actually need re-evaluation -------------------
+        #
+        # Bar finality is computed for *every* observed symbol so the stale and
+        # lateness counters stay honest. The universe filter is applied only
+        # when deciding what to hand the engine.
+        research_eligible = {
+            ticker
+            for ticker in events_by_ticker
+            if eligible.get(ticker, False)
+            and eligibility.get(ticker)
+            is UniverseMembershipStatus.ACTIVE_UNIVERSE_VERIFIED_RUBIX
+        }
         previous = previous_final_bar_keys or frozenset()
         affected: list[str] = []
         current_final: set[tuple[str, datetime]] = set()
         stale_bars = late_after_cutoff = 0
+        withheld = 0
         for ticker, bars in five_by_ticker.items():
             newly_final = False
             for bar in bars:
@@ -383,8 +449,12 @@ class ShadowSnapshotBuilder:
                     stale_bars += 1
                 elif finality is BarFinality.LATENESS_GRACE_PENDING:
                     late_after_cutoff += 1
-            if newly_final:
-                affected.append(ticker)
+            if not newly_final:
+                continue
+            if self.active_universe_only and ticker not in research_eligible:
+                withheld += 1
+                continue
+            affected.append(ticker)
 
         # --- quality counts ----------------------------------------------
         all_one = [bar for bars in one_by_ticker.values() for bar in bars]
@@ -398,6 +468,9 @@ class ShadowSnapshotBuilder:
         summary = SessionQualitySummary(
             source_rows_observed=int(source_rows_observed),
             normalized_events=len(collected),
+            normalized_symbols_observed=len(events_by_ticker),
+            operationally_eligible_symbols=len(research_eligible),
+            symbols_withheld_by_universe_filter=withheld,
             quality_event_count=len(derived_quality),
             observed_one_minute_slots=observed_slots,
             completed_one_minute_bars=len(all_one),
@@ -436,6 +509,7 @@ class ShadowSnapshotBuilder:
             quality_events=tuple(derived_quality),
             config_identity=self.config.fingerprint,
             affected_tickers=tuple(sorted(affected)),
+            active_universe_only=self.active_universe_only,
         )
 
     @staticmethod

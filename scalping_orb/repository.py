@@ -9,7 +9,7 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
-from typing import Iterable
+from typing import Iterable, Sequence
 from uuid import uuid4
 
 from scalping_orb.bars import CompletedBar
@@ -35,7 +35,7 @@ from scalping_orb.opening_range import OpeningRangeResult, OpeningRangeStatus
 from scalping_orb.session import OrbSessionPhase
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 PROTECTED_DATABASE_NAMES = frozenset(
     {
         "rubix_live_market.db",
@@ -579,12 +579,53 @@ CREATE INDEX IF NOT EXISTS idx_orb_shadow_reconstruction_run_ticker
 ON orb_shadow_reconstruction_states(run_id, canonical_ticker);
 """
 
+#: Full-shadow run controls. Additive only: two nullable columns, one new
+#: comparison table that supersedes the single-run one, and discovery indexes.
+#: No historical Phase 2C row is mutated or deleted.
+#:
+#: `orb_shadow_live_replay_comparison` keyed on one run cannot express a
+#: comparison *between* two runs, so cross-run results go to a new table that
+#: names both sides. The original table is left exactly as it is.
+MIGRATION_6 = """
+ALTER TABLE orb_shadow_runs ADD COLUMN active_universe_only INTEGER;
+ALTER TABLE orb_shadow_runs ADD COLUMN compared_live_run_id TEXT;
+
+CREATE TABLE IF NOT EXISTS orb_shadow_cross_run_comparison (
+    comparison_id TEXT PRIMARY KEY,
+    live_run_id TEXT NOT NULL REFERENCES orb_shadow_runs(run_id),
+    reconstruction_run_id TEXT NOT NULL REFERENCES orb_shadow_runs(run_id),
+    session_date TEXT NOT NULL,
+    canonical_ticker TEXT NOT NULL,
+    live_state TEXT,
+    reconstruction_state TEXT,
+    live_opening_range_version_identity TEXT,
+    reconstruction_opening_range_version_identity TEXT,
+    live_status TEXT,
+    live_rejection_reasons_json TEXT NOT NULL,
+    opening_range_revised INTEGER NOT NULL CHECK (opening_range_revised IN (0,1)),
+    states_match INTEGER NOT NULL CHECK (states_match IN (0,1)),
+    difference_reason TEXT NOT NULL,
+    difference_evidence_json TEXT NOT NULL,
+    evaluable_live INTEGER NOT NULL CHECK (evaluable_live IN (0,1)),
+    evaluable_historically INTEGER NOT NULL CHECK (evaluable_historically IN (0,1)),
+    research_only INTEGER NOT NULL CHECK (research_only = 1),
+    recorded_at_utc TEXT NOT NULL,
+    UNIQUE(live_run_id, reconstruction_run_id, canonical_ticker)
+);
+
+CREATE INDEX IF NOT EXISTS idx_orb_shadow_runs_discovery
+ON orb_shadow_runs(session_date, mode, source_path_identity, config_identity);
+CREATE INDEX IF NOT EXISTS idx_orb_shadow_cross_run_pair
+ON orb_shadow_cross_run_comparison(live_run_id, reconstruction_run_id);
+"""
+
 MIGRATIONS = {
     1: ("phase2a_initial", MIGRATION_1),
     2: ("phase2a_universe_membership", MIGRATION_2),
     3: ("phase2a_latency_and_live_readiness", MIGRATION_3),
     4: ("phase2b_core_research_evidence", MIGRATION_4),
     5: ("phase2c_shadow_integration", MIGRATION_5),
+    6: ("phase2c_full_shadow_run_controls", MIGRATION_6),
 }
 
 
@@ -1527,14 +1568,23 @@ class OrbResearchRepository:
         config_identity: str,
         strategy_fingerprint: str,
         engine_version: str,
+        active_universe_only: bool = False,
+        compared_live_run_id: str | None = None,
     ) -> str:
         """Register one Shadow run. Research only, production disabled."""
 
         now = _utc_now()
         with self.transaction() as connection:
             connection.execute(
-                """INSERT OR IGNORE INTO orb_shadow_runs VALUES
-                   (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                # Columns named explicitly: a later additive migration must not
+                # be able to break this insert by changing the column count.
+                """INSERT OR IGNORE INTO orb_shadow_runs
+                   (run_id, session_date, mode, started_at_utc, finished_at_utc,
+                    runner_started_before_open, stop_reason, session_classification,
+                    source_path_identity, config_identity, strategy_fingerprint,
+                    engine_version, research_only, production_disabled,
+                    recorded_at_utc, active_universe_only, compared_live_run_id)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     run_id,
                     session_date.isoformat(),
@@ -1551,6 +1601,8 @@ class OrbResearchRepository:
                     1,
                     1,
                     now,
+                    int(bool(active_universe_only)),
+                    compared_live_run_id,
                 ),
             )
         return run_id
@@ -1855,6 +1907,142 @@ class OrbResearchRepository:
                 ),
             )
 
+    def find_shadow_runs(
+        self,
+        *,
+        session_date: date | None = None,
+        source_path_identity: str | None = None,
+        config_identity: str | None = None,
+        modes: Sequence[str] | None = None,
+        require_live_rows: bool = False,
+    ) -> tuple[dict, ...]:
+        """List Shadow runs with their Lane A / Lane B row counts.
+
+        Read-only and deterministic: ordered by ``started_at_utc`` then
+        ``run_id`` so two callers always see the same sequence. Exposes no
+        credential and no quote payload — the source is identified only by its
+        opaque path hash.
+        """
+
+        clauses: list[str] = []
+        parameters: list = []
+        if session_date is not None:
+            clauses.append("r.session_date=?")
+            parameters.append(session_date.isoformat())
+        if source_path_identity is not None:
+            clauses.append("r.source_path_identity=?")
+            parameters.append(str(source_path_identity))
+        if config_identity is not None:
+            clauses.append("r.config_identity=?")
+            parameters.append(str(config_identity))
+        if modes:
+            clauses.append(f"r.mode IN ({','.join('?' for _ in modes)})")
+            parameters.extend(str(mode) for mode in modes)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        sql = f"""
+            SELECT r.run_id, r.session_date, r.mode, r.started_at_utc,
+                   r.finished_at_utc, r.stop_reason, r.session_classification,
+                   r.source_path_identity, r.config_identity,
+                   r.strategy_fingerprint, r.engine_version,
+                   r.runner_started_before_open, r.research_only,
+                   r.production_disabled, r.active_universe_only,
+                   r.compared_live_run_id,
+                   (SELECT count(*) FROM orb_shadow_live_states l
+                      WHERE l.run_id=r.run_id) AS lane_a_rows,
+                   (SELECT count(*) FROM orb_shadow_reconstruction_states s
+                      WHERE s.run_id=r.run_id) AS lane_b_rows,
+                   (SELECT count(*) FROM orb_shadow_cycles c
+                      WHERE c.run_id=r.run_id) AS cycles
+            FROM orb_shadow_runs r{where}
+            ORDER BY r.started_at_utc, r.run_id"""
+        with self.connect() as connection:
+            rows = connection.execute(sql, tuple(parameters)).fetchall()
+        results = [dict(row) for row in rows]
+        if require_live_rows:
+            results = [row for row in results if row["lane_a_rows"] > 0]
+        return tuple(results)
+
+    def persist_cross_run_comparison(
+        self, live_run_id: str, reconstruction_run_id: str, rows=()
+    ) -> int:
+        """Store a comparison naming *both* runs. Idempotent on rerun.
+
+        Neither run is merged or mutated: this is a third record about the pair.
+        """
+
+        now = _utc_now()
+        written = 0
+        with self.transaction() as connection:
+            for row in rows:
+                row_id = hashlib.sha256(
+                    f"{live_run_id}|{reconstruction_run_id}|{row.canonical_ticker}".encode(
+                        "utf-8"
+                    )
+                ).hexdigest()
+                cursor = connection.execute(
+                    """INSERT OR IGNORE INTO orb_shadow_cross_run_comparison VALUES
+                       (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        row_id,
+                        live_run_id,
+                        reconstruction_run_id,
+                        row.session_date.isoformat(),
+                        row.canonical_ticker,
+                        row.live_state,
+                        row.reconstruction_state,
+                        row.live_opening_range_version_identity,
+                        row.reconstruction_opening_range_version_identity,
+                        _enum_value(row.live_status) if row.live_status else None,
+                        _json(list(row.live_rejection_reasons)),
+                        int(row.opening_range_revised),
+                        int(row.states_match),
+                        _enum_value(row.difference_reason),
+                        _json(list(row.difference_evidence)),
+                        int(row.evaluable_live),
+                        int(row.evaluable_historically),
+                        1,
+                        now,
+                    ),
+                )
+                written += int(cursor.rowcount == 1)
+            connection.execute(
+                "UPDATE orb_shadow_runs SET compared_live_run_id=? WHERE run_id=?",
+                (live_run_id, reconstruction_run_id),
+            )
+        return written
+
+    def load_cross_run_comparison(
+        self, live_run_id: str, reconstruction_run_id: str
+    ) -> tuple[dict, ...]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT canonical_ticker, live_state, reconstruction_state,
+                          difference_reason, difference_evidence_json,
+                          opening_range_revised, states_match
+                   FROM orb_shadow_cross_run_comparison
+                   WHERE live_run_id=? AND reconstruction_run_id=?
+                   ORDER BY canonical_ticker""",
+                (live_run_id, reconstruction_run_id),
+            ).fetchall()
+        return tuple(dict(row) for row in rows)
+
+    def load_shadow_live_states_full(self, run_id: str) -> tuple[dict, ...]:
+        """Every stored field of a run's Lane A rows, for cross-run comparison."""
+
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT canonical_ticker, session_date, final_state, terminal,
+                          live_status, rejection_reasons_json,
+                          opening_range_revision, opening_range_version_identity,
+                          evidence_fingerprint, candidate_identity,
+                          observed_at_utc, exchange_watermark_utc,
+                          observed_receive_lag_seconds
+                   FROM orb_shadow_live_states WHERE run_id=?
+                   ORDER BY observed_at_utc, canonical_ticker""",
+                (run_id,),
+            ).fetchall()
+        return tuple(dict(row) for row in rows)
+
     def load_shadow_live_states(self, run_id: str) -> tuple[dict, ...]:
         with self.connect() as connection:
             rows = connection.execute(
@@ -1900,6 +2088,7 @@ class OrbResearchRepository:
             "orb_shadow_live_states",
             "orb_shadow_reconstruction_states",
             "orb_shadow_live_replay_comparison",
+            "orb_shadow_cross_run_comparison",
         }
         if table not in allowed:
             raise ValueError("Unsupported ORB table")
