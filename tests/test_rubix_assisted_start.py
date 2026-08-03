@@ -878,14 +878,28 @@ def test_the_orb_automation_is_unchanged():
     assert result.stdout.strip() == ""
 
 
-def test_no_dashboard_source_changed():
+def test_the_assisted_start_change_touched_no_dashboard_source():
+    """The Rubix assisted-start work is collector-only, and stays that way.
+
+    Pinned to that work's own commit range rather than to HEAD. Against HEAD
+    this guard would fail for any later, separately authorised Dashboard change
+    - and it did, when the Daily Market Scan single-click fix legitimately
+    modified dashboard/home.py. A guard that forbids all future work is not
+    protecting this change; it is just blocking the repository.
+    """
+
     import subprocess as sp
 
+    # 38ca393 = the branch point; 43db834 = the assisted-start merge.
     result = sp.run(
-        ["git", "diff", "--name-only", "38ca393", "HEAD"],
+        ["git", "diff", "--name-only", "38ca393", "43db834"],
         capture_output=True, text=True,
     )
-    for name in result.stdout.splitlines():
+    if result.returncode != 0:
+        pytest.skip("the assisted-start merge is not present in this checkout")
+    names = [line for line in result.stdout.splitlines() if line.strip()]
+    assert names, "the assisted-start merge changed nothing"
+    for name in names:
         lowered = name.lower()
         assert "dashboard" not in lowered
         assert "streamlit" not in lowered

@@ -88,7 +88,13 @@ def test_a_terminal_job_releases_the_workspace_for_a_new_scan():
 def test_different_repositories_do_not_share_a_workspace():
     """A worktree and the main repository must never attach to one another's scan."""
     key = jm.workspace_key_for("dashboard", SYMBOL_SOURCE)
-    assert str(pathlib.Path(__file__).resolve().parents[1]) in key
+    # The key identifies the repository by file identity rather than by path
+    # text, so D: and F: spellings of one junctioned repository collapse. The
+    # human-readable path stays available on the typed workspace.
+    workspace = jm.resolve_workspace("dashboard", SYMBOL_SOURCE)
+    root = pathlib.Path(__file__).resolve().parents[1]
+    assert pathlib.Path(workspace.source_path).is_relative_to(root)
+    assert workspace.repository_identity == jm._physical_identity(root)
     assert key != jm.workspace_key_for("scanner", SYMBOL_SOURCE)
     assert key != jm.workspace_key_for("dashboard", "data/other_universe.csv")
 

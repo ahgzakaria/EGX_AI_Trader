@@ -1840,12 +1840,25 @@ def test_phase_2b_engine_module_is_untouched_by_this_phase():
 
 
 def test_no_dashboard_file_is_touched_by_this_phase():
+    """Phase 2C is a research foundation and touches no presentation layer.
+
+    Pinned to Phase 2C's own range (6d10334..02250f5) rather than to HEAD.
+    Against HEAD this asserted that no Dashboard file may ever change again in
+    the repository, which is a claim about the future rather than about this
+    phase - and it failed the moment a separately authorised Dashboard fix
+    landed. The assertions are unchanged; only the range they judge is.
+    """
+
     import subprocess
 
     result = subprocess.run(
-        ["git", "diff", "--name-only", "6d10334", "HEAD"], capture_output=True, text=True
+        ["git", "diff", "--name-only", "6d10334", "02250f5"],
+        capture_output=True, text=True,
     )
+    if result.returncode != 0:
+        pytest.skip("the Phase 2C merge is not present in this checkout")
     changed = [line for line in result.stdout.splitlines() if line.strip()]
+    assert changed, "the Phase 2C merge changed nothing"
     for name in changed:
         lowered = name.lower()
         assert "dashboard" not in lowered

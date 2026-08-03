@@ -33,6 +33,24 @@ SCAN_POLL_SECONDS = 0.75
 TERMINAL_RERUN_KEY = "scan_terminal_rerun_scan_id"
 TERMINAL_CONSUMED_KEY = "terminal_result_consumed"
 
+#: The workspace this page owns, resolved ONCE and kept. Recomputing it on every
+#: render is what lost a running scan: the old key resolved a relative universe
+#: path against the process working directory and degraded to "unknown" on any
+#: configuration read failure, so one render could look up a different key than
+#: the one the running job was registered under. The page then showed no
+#: progress, re-enabled the button, and a second click started a duplicate
+#: concurrent scan — observed as RUN_20260803_223656 and RUN_20260803_223829.
+WORKSPACE_KEY = "daily_scan_workspace_key"
+WORKSPACE_FINGERPRINT_KEY = "daily_scan_workspace_fingerprint"
+ACTIVE_JOB_KEY = "daily_scan_active_job_id"
+LAST_ADOPTED_JOB_KEY = "daily_scan_last_adopted_job_id"
+LAST_RESULT_KEY = "daily_scan_last_result"
+#: Bounded diagnostic: how many polls saw a terminal job with no result yet.
+PENDING_RESULT_POLLS_KEY = "daily_scan_pending_result_polls"
+#: Beyond this many consecutive polls, terminal-without-result stops being a race
+#: and is surfaced to the operator instead of spun on silently.
+MAX_PENDING_RESULT_POLLS = 40
+
 #: Headline per terminal state. A run with gaps is never announced as a clean success.
 TERMINAL_HEADLINES = {
     job_manager.COMPLETED: ("success", "Scan complete"),
@@ -59,6 +77,50 @@ def _observed_metadata(results):
         # historical source.
         "live_quote_freshness": "STALE" if "STALE" in statuses else "",
     }
+
+
+def _workspace_fingerprint(workspace):
+    """What must change before the stored key may be replaced.
+
+    Only genuine workspace configuration — never widget state, never a path
+    spelling, never a clock value.
+    """
+    return (workspace.purpose, workspace.source_identity, workspace.provider_mode)
+
+
+def resolve_page_workspace():
+    """The workspace this page owns, resolved once and reused across reruns.
+
+    Returns ``(workspace, error)``. The key is recomputed only when the actual
+    configuration changes; otherwise the stored key is returned unchanged so a
+    rerun can never look up a different workspace than the running job's.
+    """
+    try:
+        workspace = job_manager.resolve_workspace("dashboard", SCAN_SOURCE)
+    except job_manager.WorkspaceConfigurationError as error:
+        # Explicit and visible. Never a placeholder key: a guessed workspace is
+        # how one page loses another's job.
+        return None, str(error)
+
+    fingerprint = _workspace_fingerprint(workspace)
+    if st.session_state.get(WORKSPACE_FINGERPRINT_KEY) != fingerprint:
+        st.session_state[WORKSPACE_FINGERPRINT_KEY] = fingerprint
+        st.session_state[WORKSPACE_KEY] = workspace.key
+    return workspace, None
+
+
+def discover_job(workspace_key):
+    """Reattach to whatever the registry still owns for this workspace.
+
+    The registry — not session state — is the source of truth. A browser
+    refresh, a script rerun or a navigation away and back all land here, and all
+    of them must find the same job rather than offer to start another.
+    """
+    job = job_manager.REGISTRY.get(workspace_key)
+    if job is None:
+        return None
+    st.session_state[ACTIVE_JOB_KEY] = job.scan_id if job.is_active else None
+    return job
 
 
 def _render_terminal_summary(job):
@@ -118,6 +180,13 @@ def _render_scan_job(job):
         snapshot = job.progress()
         state, total = snapshot.state, max(1, snapshot.total)
         st.markdown(f"**{snapshot.stage}** · scan `{snapshot.scan_id}` · `{state}`")
+        # Job identity and start time, so an operator can tell at a glance that a
+        # rerun reattached to the SAME scan rather than starting another.
+        st.caption(
+            f"job `{snapshot.scan_id}` · started {job.started_at or job.created_at or '—'}"
+            f" · {snapshot.completed}/{snapshot.total} processed"
+            f" · {snapshot.success} successful · {snapshot.failed} failed"
+        )
         st.progress(min(1.0, snapshot.completed / total),
                     text=f"{snapshot.completed} / {snapshot.total}")
 
@@ -168,11 +237,20 @@ def _render_scan_job(job):
         fragment ticks, page reruns and a second observer cannot repeat the handoff.
         """
         _body()
-        if not job.is_active and st.session_state.get(TERMINAL_RERUN_KEY) != job.scan_id:
+        if job.is_active or job.result_pending:
+            # Still working, or terminal but the result has not been published
+            # yet. Releasing the page now would hand the results renderer an
+            # empty job; keep polling instead.
+            return
+        if st.session_state.get(TERMINAL_RERUN_KEY) != job.scan_id:
             st.session_state[TERMINAL_RERUN_KEY] = job.scan_id
             st.rerun(scope="app")
 
-    if job.is_active:
+    # Mounted whenever the job still owes the page something: while it runs, and
+    # through the window where it is terminal but has not published its result.
+    # A page that stopped polling at the first terminal reading is exactly how a
+    # finished scan stayed invisible until the operator clicked again.
+    if job.is_active or job.result_pending:
         st.fragment(_polling_body, run_every=SCAN_POLL_SECONDS)()
     else:
         # Terminal: progress stays available but must never stand in for the results.
@@ -183,21 +261,69 @@ def _render_scan_job(job):
 def _adopt_finished_job(job):
     """Publish a terminal job's result into session state exactly once.
 
-    Idempotent on ``scan_id``: reruns, refreshes and a second observer all re-enter
-    here, and none of them may repeat the decision-support snapshot or re-expose a
-    cancelled run as a completed one. Nothing here re-runs analysis, contacts a
-    provider, archives, or finalizes — the worker already did all of that.
+    Ordering is the fix. The previous version marked the job consumed and *then*
+    read ``final_result``; a single observer arriving between the worker's
+    ``final_result = result`` and its terminal ``publish`` therefore burned the
+    idempotency key while the result was still None, and the finished scan could
+    never be adopted afterwards. The rows were on disk and invisible in the app.
+
+    Now nothing is claimed until there is something real to claim:
+
+      1. the job must be terminal,
+      2. ``final_result`` must actually be present,
+      3. the claim is atomic in the registry (one observer wins),
+      4. only then is the result stored.
+
+    A terminal job with no result yet is left completely untouched, so the next
+    poll retries. Nothing here re-runs analysis, contacts a provider, archives or
+    finalizes — the worker already did all of that.
     """
-    if st.session_state.get(TERMINAL_CONSUMED_KEY) == job.scan_id:
-        return
-    st.session_state[TERMINAL_CONSUMED_KEY] = job.scan_id
-    st.session_state.adopted_scan_id = job.scan_id
+    if job.is_active:
+        return False
+
+    if job.result_pending:
+        # The worker is terminal but has not published its result yet. Count the
+        # wait so an abnormal stall becomes visible rather than silent, and never
+        # consume the job — consuming here is precisely what lost a finished scan.
+        polls = int(st.session_state.get(PENDING_RESULT_POLLS_KEY, 0)) + 1
+        st.session_state[PENDING_RESULT_POLLS_KEY] = polls
+        if polls > MAX_PENDING_RESULT_POLLS:
+            st.session_state["scan_pending_result_warning"] = (
+                f"scan `{job.scan_id}` reported {job.progress().state} but published "
+                f"no result after {polls} checks"
+            )
+        return False
+
+    st.session_state[PENDING_RESULT_POLLS_KEY] = 0
     result = job.final_result
+
+    # The claim is the registry's, not the page's: two browser sessions observing
+    # the same finished job must not both run the decision-support snapshot.
+    if not job.claim_result(f"dashboard:{job.scan_id}"):
+        if st.session_state.get(LAST_ADOPTED_JOB_KEY) == job.scan_id:
+            return False
+        # Another observer claimed it. This session still renders the same rows;
+        # it simply does not repeat the one-time downstream work.
+        st.session_state[TERMINAL_CONSUMED_KEY] = job.scan_id
+        st.session_state[LAST_ADOPTED_JOB_KEY] = job.scan_id
+        if result is not None:
+            st.session_state.results = result
+            st.session_state[LAST_RESULT_KEY] = result
+        st.session_state.live_scan_completed = bool(result) and not job.cancelled
+        return False
+
+    st.session_state[TERMINAL_CONSUMED_KEY] = job.scan_id
+    st.session_state[LAST_ADOPTED_JOB_KEY] = job.scan_id
+    st.session_state.adopted_scan_id = job.scan_id
     if result is None:
-        return
-    # A cancelled or failed run keeps its partial rows as diagnostics but is never
+        # A FAILED run produced nothing. It is settled honestly — the operator
+        # may retry — but no empty result is published as if it were a scan.
+        st.session_state.live_scan_completed = False
+        return True
+    # A cancelled run keeps its partial rows as diagnostics but is never
     # presented as a recorded session.
     st.session_state.results = result
+    st.session_state[LAST_RESULT_KEY] = result
     st.session_state.live_scan_completed = bool(result) and not job.cancelled
     st.session_state.archive_warning = _archive_warning(result)
     if result and not job.cancelled:
@@ -210,6 +336,7 @@ def _adopt_finished_job(job):
         except Exception as error:
             logger.exception("Decision-support snapshot failed")
             st.session_state.decision_support_error = str(error)
+    return True
 
 
 SWING_PRIMARY_COLUMNS = (
@@ -434,15 +561,44 @@ def show_dashboard():
     if "results" not in st.session_state:
         st.session_state.results = None
 
+    # One workspace identity for the whole session. Resolved from the repository
+    # root and a validated provider setting, never from the process working
+    # directory, so every rerun looks up the SAME job.
+    workspace, workspace_error = resolve_page_workspace()
+    if workspace_error:
+        st.error(
+            "لا يمكن تحديد مساحة عمل الفحص، ولن يبدأ أي فحص: " + workspace_error
+        )
+        st.caption(
+            "A scan workspace that cannot be identified is never guessed: a "
+            "placeholder key is what allowed two concurrent scans of the same "
+            "universe on 2026-08-03."
+        )
+        return
+    workspace_key = st.session_state[WORKSPACE_KEY]
+
+    # The registry is the source of truth. A refresh, a rerun or a navigation
+    # away and back all reattach here instead of offering to start another scan.
+    job = discover_job(workspace_key)
+
     # The provider banner reads the configured operational route and the live job — it
     # never infers a Yahoo fallback from Rubix quote health.
-    job = job_manager.REGISTRY.get(job_manager.workspace_key_for("dashboard", SCAN_SOURCE))
     provider_placeholder = st.empty()
     with provider_placeholder.container():
         _render_scan_status(job.progress() if job is not None else None)
 
-    scan_col, status_col = st.columns([3, 1])
+    # Read job state ONCE per render. Reading ``is_active`` separately for the
+    # button, the panel and the early return let one render disagree with
+    # itself: the page could return early on a stale True while the panel had
+    # already taken the terminal branch, leaving a frozen page with no poller.
     active = job is not None and job.is_active
+    awaiting_result = job is not None and job.result_pending
+
+    pending_warning = st.session_state.pop("scan_pending_result_warning", None)
+    if pending_warning:
+        st.warning(pending_warning)
+
+    scan_col, status_col = st.columns([3, 1])
     scan_completed = st.session_state.get("live_scan_completed", False)
     # A zero-result run is a recorded failed experiment, not a completed live
     # scan. Keep the evidence, but allow the operator to retry after repairing
@@ -455,15 +611,21 @@ def show_dashboard():
             "فحص السوق اليومي",
             type="primary",
             use_container_width=True,
-            disabled=active or scan_completed,
+            disabled=active or awaiting_result or scan_completed,
             help="One immutable market scan is recorded per application session.",
             key="run_market_scan",
         ):
-            # Atomic: a double click, a rerun or a second tab attaches to the job that
-            # already owns this workspace instead of starting a second scan.
-            job, created = job_manager.start_scan_job(SCAN_SOURCE, "dashboard")
+            # Atomic in the registry, not merely disabled in the UI: a double
+            # click, a rerun or a second tab attaches to the job that already
+            # owns this workspace instead of starting a second scan.
+            try:
+                job, created = job_manager.start_scan_job(SCAN_SOURCE, "dashboard")
+            except job_manager.WorkspaceConfigurationError as error:
+                st.error(f"تعذّر بدء الفحص: {error}")
+                return
+            st.session_state[ACTIVE_JOB_KEY] = job.scan_id
             if not created:
-                st.info("يوجد فحص سوق قيد التشغيل بالفعل.")
+                st.info("يوجد فحص سوق قيد التشغيل بالفعل؛ تم الالتحاق به.")
             st.rerun()
     with status_col:
         if active:
@@ -486,9 +648,11 @@ def show_dashboard():
             _adopt_finished_job(job)
             _render_terminal_summary(job)
         _render_scan_job(job)
-        if active:
-            # An active scan owns the page: results are published only once the worker
-            # reaches a terminal state, and the fragment releases the page then.
+        if active or job.result_pending:
+            # The scan still owns the page. ``terminal_without_result`` keeps the
+            # poller mounted through the brief window between the worker's
+            # terminal state and its published result, so the handoff cannot be
+            # missed by a render that arrived a moment early.
             return
 
     archive_warning = st.session_state.get("archive_warning")

@@ -198,6 +198,10 @@ class ScanJob:
     sanitized_error: str = ""
     finalization_started: bool = False
     finalization_completed: bool = False
+    #: Set once the page has stored this job's result. The registry never clears
+    #: it: a result adopted is a result that can never be silently re-adopted.
+    result_consumed_by: str = ""
+    _worker_claimed: bool = False
     _progress: ScanProgress = None
     _worker: threading.Thread = None
     _lock: threading.RLock = field(default_factory=threading.RLock)
@@ -250,6 +254,77 @@ class ScanJob:
     @property
     def cancelled(self) -> bool:
         return self.cancellation_event.is_set()
+
+    def claim_worker(self) -> bool:
+        """Claim the right to run this job's worker. True for exactly one caller.
+
+        ``create_or_get_active_job`` already returns ``created=True`` to one
+        caller only, but the worker starts *outside* that lock. This makes the
+        single-worker invariant a property of the job itself rather than of one
+        call site, so no future caller can start a second thread for one scan.
+        """
+        with self._lock:
+            if self._worker_claimed:
+                return False
+            self._worker_claimed = True
+            return True
+
+    @property
+    def worker_started(self) -> bool:
+        with self._lock:
+            return self._worker_claimed
+
+    @property
+    def result_available(self) -> bool:
+        """A terminal job whose result is actually here.
+
+        Terminal is not the same as ready: the worker publishes its state after
+        assigning ``final_result``, but a reader that arrives between those two
+        moments must wait rather than conclude the result is missing.
+        """
+        return (not self.is_active) and self.final_result is not None
+
+    @property
+    def result_consumed(self) -> bool:
+        with self._lock:
+            return bool(self.result_consumed_by)
+
+    def claim_result(self, observer) -> bool:
+        """Claim the right to adopt this result. True for exactly one observer.
+
+        Refuses while the result is absent, so a reader that arrives early can
+        retry on its next poll instead of permanently consuming a scan that had
+        not finished publishing. That ordering is the whole fix: the previous
+        code marked the job consumed *before* looking at ``final_result``, and a
+        single early call destroyed the run's visibility for good.
+        """
+        with self._lock:
+            state = self._progress.state
+            if state in ACTIVE_STATES:
+                return False
+            # FAILED means the worker raised before producing anything, so there
+            # is nothing to wait for. Every other terminal state owes a result.
+            if self.final_result is None and state != FAILED:
+                return False
+            if self.result_consumed_by:
+                return False
+            self.result_consumed_by = str(observer)
+            return True
+
+    @property
+    def result_pending(self) -> bool:
+        """Terminal, no result yet, and a result is still owed.
+
+        This is the window the old page fell into: the worker assigns
+        ``final_result`` and only then publishes its terminal state, so a reader
+        that samples between the two sees a finished job carrying nothing. It
+        must wait, never conclude the scan produced no rows.
+        """
+        with self._lock:
+            state = self._progress.state
+        return (state not in ACTIVE_STATES
+                and self.final_result is None
+                and state != FAILED)
 
     def begin_finalization(self) -> bool:
         """Claim the right to finalize. Returns True for exactly one caller."""
@@ -339,6 +414,24 @@ class ScanJobRegistry:
         with self._lock:
             return self._jobs.get(workspace_key)
 
+    def active_job(self, workspace_key):
+        """The job still owning this workspace, or None."""
+        with self._lock:
+            job = self._jobs.get(workspace_key)
+            return job if job is not None and job.is_active else None
+
+    def unconsumed_job(self, workspace_key):
+        """A finished job whose result nobody has adopted yet, or None.
+
+        This is what lets a refreshed page recover a completed scan instead of
+        offering to run it again.
+        """
+        with self._lock:
+            job = self._jobs.get(workspace_key)
+        if job is None or job.is_active or job.result_consumed:
+            return None
+        return job
+
     def active_count(self):
         with self._lock:
             return sum(1 for job in self._jobs.values() if job.is_active)
@@ -367,36 +460,165 @@ def _repository_root():
     return str(Path(__file__).resolve().parents[1])
 
 
-def workspace_key_for(purpose="dashboard", source=SYMBOL_SOURCE,
-                      provider_mode=None):
-    """A stable key identifying ONE market-scan workspace.
+class WorkspaceConfigurationError(RuntimeError):
+    """The scan workspace could not be identified with confidence.
 
-    Scope — resolved repository root, data purpose, resolved universe path and the
-    operational provider mode. Every one of those is stable across reruns, so two
-    browser tabs on the same repository and workspace attach to the same job, while a
-    test worktree and the main repository never share one.
+    Raised instead of guessing. A workspace key that silently degrades to a
+    placeholder is worse than no key at all: two pages would compute different
+    keys for the same workspace, the page would lose its running job, and a
+    second click would start a duplicate concurrent scan. That is exactly what
+    happened on 2026-08-03 (RUN_20260803_223656 and RUN_20260803_223829).
+    """
 
-    Deliberately excluded: session ids, tab ids, tokens, secrets and any wall-clock
-    value — anything that changes per rerun would defeat duplicate-run prevention.
+
+def _physical_identity(path):
+    """A stable identity for one file, independent of how it is spelled.
+
+    ``D:\\EGX_AI_Trader`` is a junction onto ``F:\\EGX_AI_Trader``, so the same
+    universe file has two path spellings. Windows file identity
+    (``st_dev``/``st_ino``) collapses them; ``Path.resolve()`` alone would not if
+    only one spelling were ever used. Falls back to the resolved path when the
+    file cannot be stat-ed, which keeps a missing universe from being silently
+    equal to every other missing universe.
     """
     from pathlib import Path
 
-    if provider_mode is None:
-        try:
-            from config.settings_manager import settings
-            provider_mode = str(settings.data.get(
-                {"dashboard": "dashboard_provider",
-                 "scanner": "scanner_provider",
-                 "forward_testing": "forward_testing_provider"}.get(
-                     str(purpose).strip().lower(), "dashboard_provider"), "")).lower()
-        except Exception:
-            provider_mode = "unknown"
+    resolved = Path(path)
     try:
-        resolved_source = str(Path(source).resolve())
-    except Exception:
-        resolved_source = str(source).strip()
-    return "::".join((_repository_root(), str(purpose).strip().lower(),
-                      resolved_source, str(provider_mode).strip().lower()))
+        stat = resolved.stat()
+    except OSError:
+        return "path:" + str(resolved)
+    return "file:{}:{}".format(stat.st_dev, stat.st_ino)
+
+
+def repository_root():
+    """The resolved repository root this module belongs to.
+
+    Derived from this file's location, never from the process working directory,
+    so a ``chdir`` anywhere in the app cannot move it.
+    """
+    from pathlib import Path
+
+    return Path(__file__).resolve().parents[1]
+
+
+def resolve_symbol_source(source=SYMBOL_SOURCE):
+    """Resolve a possibly relative universe path against the repository root.
+
+    ``SYMBOL_SOURCE`` is relative (``data/universe/egx_universe.csv``). Resolving
+    it with ``Path(source).resolve()`` anchors it to the *current working
+    directory*, so any ``chdir`` in the process silently produces a different
+    workspace key. Anchoring to the repository root removes that dependency
+    entirely.
+    """
+    from pathlib import Path
+
+    candidate = Path(source)
+    if not candidate.is_absolute():
+        candidate = repository_root() / candidate
+    try:
+        return candidate.resolve()
+    except OSError:                       # pragma: no cover - unresolvable path
+        return candidate
+
+
+#: Settings key per data purpose. Unknown purposes are a configuration error,
+#: not a reason to guess.
+PROVIDER_SETTING_BY_PURPOSE = {
+    "dashboard": "dashboard_provider",
+    "scanner": "scanner_provider",
+    "forward_testing": "forward_testing_provider",
+}
+
+
+def resolve_provider_mode(purpose="dashboard"):
+    """The configured operational provider for this purpose, or raise.
+
+    The previous implementation swallowed every exception and substituted
+    ``"unknown"``. That turned a transient configuration read failure into a
+    *different workspace key*, which is how one page lost track of a running
+    scan. A workspace whose provider cannot be established is a workspace no
+    scan may start in.
+    """
+    key = PROVIDER_SETTING_BY_PURPOSE.get(str(purpose).strip().lower())
+    if key is None:
+        raise WorkspaceConfigurationError(
+            "unknown scan purpose {!r}; expected one of {}".format(
+                purpose, sorted(PROVIDER_SETTING_BY_PURPOSE)))
+    try:
+        from config.settings_manager import settings
+
+        value = settings.data.get(key, "")
+    except Exception as error:
+        raise WorkspaceConfigurationError(
+            "cannot read {} from settings: {}: {}".format(
+                key, type(error).__name__, error)) from error
+    text = str(value).strip().lower()
+    if not text:
+        raise WorkspaceConfigurationError(
+            "{} is not configured; a scan workspace cannot be identified".format(key))
+    return text
+
+
+@dataclass(frozen=True)
+class ScanWorkspace:
+    """Typed identity of ONE market-scan workspace.
+
+    Every field genuinely decides whether two scans would collide: the physical
+    repository, the data purpose, the physical universe file and the operational
+    provider. Nothing here changes between reruns, so the key is stable by
+    construction rather than by convention.
+
+    Deliberately excluded: session ids, tab ids, widget state, wall-clock values
+    and the process working directory — anything that varies per rerun would
+    defeat duplicate-run prevention, which is the whole point of the key.
+    """
+
+    repository_identity: str
+    purpose: str
+    source_identity: str
+    source_path: str
+    provider_mode: str
+
+    @property
+    def key(self) -> str:
+        return "::".join((self.repository_identity, self.purpose,
+                          self.source_identity, self.provider_mode))
+
+    def describe(self) -> dict:
+        """Display-safe fields for the page. No secret, no path guessing."""
+        return {
+            "workspace_key": self.key,
+            "purpose": self.purpose,
+            "universe": self.source_path,
+            "provider_mode": self.provider_mode,
+        }
+
+
+def resolve_workspace(purpose="dashboard", source=SYMBOL_SOURCE, provider_mode=None):
+    """Build the typed workspace identity, or raise WorkspaceConfigurationError."""
+    resolved_source = resolve_symbol_source(source)
+    if provider_mode is None:
+        provider_mode = resolve_provider_mode(purpose)
+    provider_mode = str(provider_mode).strip().lower()
+    if not provider_mode:
+        raise WorkspaceConfigurationError("provider mode may not be empty")
+    return ScanWorkspace(
+        repository_identity=_physical_identity(repository_root()),
+        purpose=str(purpose).strip().lower(),
+        source_identity=_physical_identity(resolved_source),
+        source_path=str(resolved_source),
+        provider_mode=provider_mode,
+    )
+
+
+def workspace_key_for(purpose="dashboard", source=SYMBOL_SOURCE, provider_mode=None):
+    """A stable key identifying ONE market-scan workspace.
+
+    Thin wrapper over :func:`resolve_workspace`; kept because callers and tests
+    address the workspace by key. It raises rather than returning a degraded key.
+    """
+    return resolve_workspace(purpose, source, provider_mode).key
 
 
 def start_scan_job(source=SYMBOL_SOURCE, purpose="dashboard", *, runner=None,
@@ -410,6 +632,9 @@ def start_scan_job(source=SYMBOL_SOURCE, purpose="dashboard", *, runner=None,
     from core.symbols import load_symbols
 
     registry = registry or REGISTRY
+    # Raises WorkspaceConfigurationError rather than starting a scan in a
+    # workspace it cannot identify. A guessed key is how two concurrent scans
+    # were started against one workspace on 2026-08-03.
     key = workspace_key_for(purpose, source)
     if symbols is None:
         try:
@@ -422,7 +647,7 @@ def start_scan_job(source=SYMBOL_SOURCE, purpose="dashboard", *, runner=None,
 
     # The STARTING snapshot already exists at this point, so the page can render real
     # state on its very next run rather than waiting for the Rubix batch.
-    if autostart:
+    if autostart and job.claim_worker():
         worker = threading.Thread(
             target=_run_job, args=(job, source, purpose, runner),
             name=f"scan-{job.scan_id}", daemon=True)
