@@ -208,7 +208,10 @@ def test_stop_is_offered_and_run_disabled_only_while_active():
     from dashboard import home
 
     source = pathlib.Path(home.__file__).read_text(encoding="utf-8")
-    assert "disabled=active or scan_completed" in source
+    # The Run button is disabled while the job is active AND through the window
+    # where it is terminal but has not published its result yet - clicking then
+    # is what started a duplicate concurrent scan.
+    assert "disabled=active or awaiting_result or scan_completed" in source
     assert "if active:" in source and "Stop Scan" in source
     # Stop lives in the active branch only
     status_block = source.split("with status_col:")[1].split("if job is not None:")[0]
