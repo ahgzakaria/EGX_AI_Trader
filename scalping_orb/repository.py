@@ -35,7 +35,7 @@ from scalping_orb.opening_range import OpeningRangeResult, OpeningRangeStatus
 from scalping_orb.session import OrbSessionPhase
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 PROTECTED_DATABASE_NAMES = frozenset(
     {
         "rubix_live_market.db",
@@ -619,6 +619,116 @@ CREATE INDEX IF NOT EXISTS idx_orb_shadow_cross_run_pair
 ON orb_shadow_cross_run_comparison(live_run_id, reconstruction_run_id);
 """
 
+#: Shadow orchestrator state. Additive only. Records how an unattended run was
+#: driven — never what it decided to trade, because it decides nothing.
+#: Still no order, execution, position, trade, P&L, broker or alert table.
+MIGRATION_7 = """
+CREATE TABLE IF NOT EXISTS orb_shadow_orchestrator_runs (
+    orchestrator_run_id TEXT PRIMARY KEY,
+    session_date TEXT NOT NULL,
+    state TEXT NOT NULL,
+    started_at_utc TEXT NOT NULL,
+    finished_at_utc TEXT,
+    live_run_id TEXT,
+    reconstruction_run_id TEXT,
+    session_classification TEXT,
+    final_verdict TEXT,
+    calendar_identity TEXT NOT NULL,
+    calendar_status TEXT NOT NULL,
+    config_identity TEXT NOT NULL,
+    strategy_fingerprint TEXT NOT NULL,
+    source_path_identity TEXT NOT NULL,
+    active_universe_only INTEGER NOT NULL CHECK (active_universe_only IN (0,1)),
+    research_only INTEGER NOT NULL CHECK (research_only = 1),
+    production_disabled INTEGER NOT NULL CHECK (production_disabled = 1),
+    recorded_at_utc TEXT NOT NULL,
+    UNIQUE(session_date, source_path_identity, config_identity, started_at_utc)
+);
+
+CREATE TABLE IF NOT EXISTS orb_shadow_orchestrator_transitions (
+    transition_row_id TEXT PRIMARY KEY,
+    orchestrator_run_id TEXT NOT NULL
+        REFERENCES orb_shadow_orchestrator_runs(orchestrator_run_id),
+    sequence_index INTEGER NOT NULL,
+    session_date TEXT NOT NULL,
+    prior_state TEXT NOT NULL,
+    new_state TEXT NOT NULL,
+    occurred_at_utc TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    live_run_id TEXT,
+    reconstruction_run_id TEXT,
+    source_cursor_id INTEGER,
+    heartbeat_at_utc TEXT,
+    config_identity TEXT NOT NULL,
+    error_detail TEXT,
+    recorded_at_utc TEXT NOT NULL,
+    UNIQUE(orchestrator_run_id, sequence_index)
+);
+
+CREATE TABLE IF NOT EXISTS orb_shadow_orchestrator_leases (
+    lease_scope TEXT PRIMARY KEY,
+    instance_id TEXT NOT NULL,
+    orchestrator_run_id TEXT NOT NULL,
+    session_date TEXT NOT NULL,
+    process_id INTEGER NOT NULL,
+    machine_identity TEXT NOT NULL,
+    acquired_at_utc TEXT NOT NULL,
+    last_heartbeat_utc TEXT NOT NULL,
+    lease_expires_utc TEXT NOT NULL,
+    released_at_utc TEXT
+);
+
+CREATE TABLE IF NOT EXISTS orb_shadow_orchestrator_health (
+    health_row_id TEXT PRIMARY KEY,
+    orchestrator_run_id TEXT NOT NULL
+        REFERENCES orb_shadow_orchestrator_runs(orchestrator_run_id),
+    observed_at_utc TEXT NOT NULL,
+    state TEXT NOT NULL,
+    source_cursor_id INTEGER,
+    last_source_row_utc TEXT,
+    cycle_index INTEGER,
+    cycle_duration_seconds REAL,
+    poll_failures INTEGER,
+    maximum_polling_gap_seconds REAL,
+    source_rows_this_cycle INTEGER,
+    normalized_events_total INTEGER,
+    symbols_observed INTEGER,
+    symbols_eligible INTEGER,
+    symbols_evaluated INTEGER,
+    completed_one_minute_bars INTEGER,
+    completed_five_minute_bars INTEGER,
+    opening_ranges_ready INTEGER,
+    lane_a_states INTEGER,
+    freshness_median_seconds REAL,
+    freshness_p90_seconds REAL,
+    freshness_p95_seconds REAL,
+    percent_above_freshness_budget REAL,
+    process_rss_bytes INTEGER,
+    recorded_at_utc TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS orb_shadow_orchestrator_failures (
+    failure_row_id TEXT PRIMARY KEY,
+    orchestrator_run_id TEXT NOT NULL
+        REFERENCES orb_shadow_orchestrator_runs(orchestrator_run_id),
+    occurred_at_utc TEXT NOT NULL,
+    state TEXT NOT NULL,
+    failure_code TEXT NOT NULL,
+    detail TEXT NOT NULL,
+    recoverable INTEGER NOT NULL CHECK (recoverable IN (0,1)),
+    recorded_at_utc TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_orb_orchestrator_runs_session
+ON orb_shadow_orchestrator_runs(session_date, state);
+CREATE INDEX IF NOT EXISTS idx_orb_orchestrator_transitions_run
+ON orb_shadow_orchestrator_transitions(orchestrator_run_id, sequence_index);
+CREATE INDEX IF NOT EXISTS idx_orb_orchestrator_health_run
+ON orb_shadow_orchestrator_health(orchestrator_run_id, observed_at_utc);
+CREATE INDEX IF NOT EXISTS idx_orb_orchestrator_failures_run
+ON orb_shadow_orchestrator_failures(orchestrator_run_id, occurred_at_utc);
+"""
+
 MIGRATIONS = {
     1: ("phase2a_initial", MIGRATION_1),
     2: ("phase2a_universe_membership", MIGRATION_2),
@@ -626,6 +736,7 @@ MIGRATIONS = {
     4: ("phase2b_core_research_evidence", MIGRATION_4),
     5: ("phase2c_shadow_integration", MIGRATION_5),
     6: ("phase2c_full_shadow_run_controls", MIGRATION_6),
+    7: ("phase2c_shadow_orchestrator", MIGRATION_7),
 }
 
 
@@ -1907,6 +2018,298 @@ class OrbResearchRepository:
                 ),
             )
 
+    # -- Shadow orchestrator ----------------------------------------------
+
+    def acquire_orchestrator_lease(
+        self,
+        *,
+        lease_scope: str,
+        instance_id: str,
+        orchestrator_run_id: str,
+        session_date: date,
+        process_id: int,
+        machine_identity: str,
+        now: datetime,
+        lease_seconds: float,
+    ):
+        """Atomically claim the lease, or refuse.
+
+        The whole decision happens inside one ``BEGIN IMMEDIATE`` transaction,
+        so two processes racing at 09:40 cannot both read "free" and both
+        write. An *active* lease is never stolen; an expired or released one is
+        taken over and the takeover is visible in the row.
+        """
+
+        from scalping_orb.shadow_orchestrator import LeaseHolder, LeaseUnavailable
+
+        expires = now + timedelta(seconds=float(lease_seconds))
+        with self.transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM orb_shadow_orchestrator_leases WHERE lease_scope=?",
+                (lease_scope,),
+            ).fetchone()
+            if row is not None:
+                released = row["released_at_utc"]
+                current_expiry = datetime.fromisoformat(row["lease_expires_utc"])
+                still_live = released is None and now < current_expiry
+                if still_live and row["instance_id"] != instance_id:
+                    raise LeaseUnavailable(
+                        f"lease {lease_scope!r} is held by instance "
+                        f"{row['instance_id'][:12]} (pid {row['process_id']}, "
+                        f"machine {row['machine_identity']}) until "
+                        f"{row['lease_expires_utc']}"
+                    )
+            connection.execute(
+                """INSERT INTO orb_shadow_orchestrator_leases
+                   (lease_scope, instance_id, orchestrator_run_id, session_date,
+                    process_id, machine_identity, acquired_at_utc,
+                    last_heartbeat_utc, lease_expires_utc, released_at_utc)
+                   VALUES (?,?,?,?,?,?,?,?,?,NULL)
+                   ON CONFLICT(lease_scope) DO UPDATE SET
+                     instance_id=excluded.instance_id,
+                     orchestrator_run_id=excluded.orchestrator_run_id,
+                     session_date=excluded.session_date,
+                     process_id=excluded.process_id,
+                     machine_identity=excluded.machine_identity,
+                     acquired_at_utc=excluded.acquired_at_utc,
+                     last_heartbeat_utc=excluded.last_heartbeat_utc,
+                     lease_expires_utc=excluded.lease_expires_utc,
+                     released_at_utc=NULL""",
+                (
+                    lease_scope, instance_id, orchestrator_run_id,
+                    session_date.isoformat(), int(process_id), machine_identity,
+                    now.isoformat(), now.isoformat(), expires.isoformat(),
+                ),
+            )
+        return LeaseHolder(
+            lease_scope=lease_scope,
+            instance_id=instance_id,
+            orchestrator_run_id=orchestrator_run_id,
+            session_date=session_date,
+            process_id=int(process_id),
+            machine_identity=machine_identity,
+            acquired_at_utc=now,
+            last_heartbeat_utc=now,
+            lease_expires_utc=expires,
+        )
+
+    def heartbeat_orchestrator_lease(
+        self, lease_scope: str, instance_id: str, *, now: datetime, lease_seconds: float
+    ) -> bool:
+        """Extend our own lease. Returns False if we no longer hold it."""
+
+        expires = now + timedelta(seconds=float(lease_seconds))
+        with self.transaction() as connection:
+            cursor = connection.execute(
+                """UPDATE orb_shadow_orchestrator_leases
+                   SET last_heartbeat_utc=?, lease_expires_utc=?
+                   WHERE lease_scope=? AND instance_id=? AND released_at_utc IS NULL""",
+                (now.isoformat(), expires.isoformat(), lease_scope, instance_id),
+            )
+            return cursor.rowcount == 1
+
+    def release_orchestrator_lease(
+        self, lease_scope: str, instance_id: str, *, now: datetime
+    ) -> None:
+        with self.transaction() as connection:
+            connection.execute(
+                """UPDATE orb_shadow_orchestrator_leases SET released_at_utc=?
+                   WHERE lease_scope=? AND instance_id=?""",
+                (now.isoformat(), lease_scope, instance_id),
+            )
+
+    def load_orchestrator_lease(self, lease_scope: str):
+        from scalping_orb.shadow_orchestrator import LeaseHolder
+
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM orb_shadow_orchestrator_leases WHERE lease_scope=?",
+                (lease_scope,),
+            ).fetchone()
+        if row is None:
+            return None
+        return LeaseHolder(
+            lease_scope=row["lease_scope"],
+            instance_id=row["instance_id"],
+            orchestrator_run_id=row["orchestrator_run_id"],
+            session_date=date.fromisoformat(row["session_date"]),
+            process_id=int(row["process_id"]),
+            machine_identity=row["machine_identity"],
+            acquired_at_utc=datetime.fromisoformat(row["acquired_at_utc"]),
+            last_heartbeat_utc=datetime.fromisoformat(row["last_heartbeat_utc"]),
+            lease_expires_utc=datetime.fromisoformat(row["lease_expires_utc"]),
+            released_at_utc=(
+                datetime.fromisoformat(row["released_at_utc"])
+                if row["released_at_utc"]
+                else None
+            ),
+        )
+
+    def start_orchestrator_run(self, run) -> str:
+        now = _utc_now()
+        with self.transaction() as connection:
+            connection.execute(
+                """INSERT OR IGNORE INTO orb_shadow_orchestrator_runs
+                   (orchestrator_run_id, session_date, state, started_at_utc,
+                    finished_at_utc, live_run_id, reconstruction_run_id,
+                    session_classification, final_verdict, calendar_identity,
+                    calendar_status, config_identity, strategy_fingerprint,
+                    source_path_identity, active_universe_only, research_only,
+                    production_disabled, recorded_at_utc)
+                   VALUES (?,?,?,?,NULL,NULL,NULL,NULL,NULL,?,?,?,?,?,?,1,1,?)""",
+                (
+                    run["orchestrator_run_id"], run["session_date"].isoformat(),
+                    _enum_value(run["state"]), run["started_at_utc"].isoformat(),
+                    run["calendar_identity"], _enum_value(run["calendar_status"]),
+                    run["config_identity"], run["strategy_fingerprint"],
+                    run["source_path_identity"], int(bool(run["active_universe_only"])),
+                    now,
+                ),
+            )
+        return run["orchestrator_run_id"]
+
+    def update_orchestrator_run(self, orchestrator_run_id: str, **fields) -> None:
+        allowed = {
+            "state", "finished_at_utc", "live_run_id", "reconstruction_run_id",
+            "session_classification", "final_verdict",
+        }
+        unknown = set(fields) - allowed
+        if unknown:
+            raise ValueError(f"unsupported orchestrator run fields: {sorted(unknown)}")
+        if not fields:
+            return
+        assignments = ", ".join(f"{name}=?" for name in fields)
+        values = []
+        for value in fields.values():
+            if isinstance(value, datetime):
+                values.append(value.isoformat())
+            elif value is None:
+                values.append(None)
+            else:
+                values.append(_enum_value(value))
+        with self.transaction() as connection:
+            connection.execute(
+                f"UPDATE orb_shadow_orchestrator_runs SET {assignments} "
+                "WHERE orchestrator_run_id=?",
+                (*values, orchestrator_run_id),
+            )
+
+    def record_orchestrator_transition(
+        self, orchestrator_run_id: str, transition
+    ) -> None:
+        now = _utc_now()
+        row_id = hashlib.sha256(
+            f"{orchestrator_run_id}|{transition.sequence_index}".encode("utf-8")
+        ).hexdigest()
+        with self.transaction() as connection:
+            connection.execute(
+                """INSERT OR IGNORE INTO orb_shadow_orchestrator_transitions VALUES
+                   (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    row_id, orchestrator_run_id, int(transition.sequence_index),
+                    transition.session_date.isoformat(),
+                    _enum_value(transition.prior_state),
+                    _enum_value(transition.new_state),
+                    transition.occurred_at_utc.isoformat(), transition.reason,
+                    transition.live_run_id, transition.reconstruction_run_id,
+                    transition.source_cursor_id,
+                    transition.heartbeat_at_utc.isoformat()
+                    if transition.heartbeat_at_utc else None,
+                    transition.config_identity, transition.error_detail, now,
+                ),
+            )
+
+    def load_orchestrator_transitions(self, orchestrator_run_id: str) -> tuple[dict, ...]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT sequence_index, prior_state, new_state, occurred_at_utc,
+                          reason, error_detail
+                   FROM orb_shadow_orchestrator_transitions
+                   WHERE orchestrator_run_id=? ORDER BY sequence_index""",
+                (orchestrator_run_id,),
+            ).fetchall()
+        return tuple(dict(row) for row in rows)
+
+    def record_orchestrator_health(self, orchestrator_run_id: str, sample) -> None:
+        now = _utc_now()
+        row_id = hashlib.sha256(
+            f"{orchestrator_run_id}|{sample.observed_at_utc.isoformat()}|"
+            f"{sample.cycle_index}".encode("utf-8")
+        ).hexdigest()
+        with self.transaction() as connection:
+            connection.execute(
+                # Columns named explicitly: an additive migration must never be
+                # able to break this insert by shifting the column count.
+                """INSERT OR IGNORE INTO orb_shadow_orchestrator_health
+                   (health_row_id, orchestrator_run_id, observed_at_utc, state,
+                    source_cursor_id, last_source_row_utc, cycle_index,
+                    cycle_duration_seconds, poll_failures,
+                    maximum_polling_gap_seconds, source_rows_this_cycle,
+                    normalized_events_total, symbols_observed, symbols_eligible,
+                    symbols_evaluated, completed_one_minute_bars,
+                    completed_five_minute_bars, opening_ranges_ready,
+                    lane_a_states, freshness_median_seconds, freshness_p90_seconds,
+                    freshness_p95_seconds, percent_above_freshness_budget,
+                    process_rss_bytes, recorded_at_utc)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    row_id, orchestrator_run_id, sample.observed_at_utc.isoformat(),
+                    _enum_value(sample.state), sample.source_cursor_id,
+                    sample.last_source_row_utc.isoformat()
+                    if sample.last_source_row_utc else None,
+                    sample.cycle_index, sample.cycle_duration_seconds,
+                    sample.poll_failures, sample.maximum_polling_gap_seconds,
+                    sample.source_rows_this_cycle, sample.normalized_events_total,
+                    sample.symbols_observed, sample.symbols_eligible,
+                    sample.symbols_evaluated, sample.completed_one_minute_bars,
+                    sample.completed_five_minute_bars, sample.opening_ranges_ready,
+                    sample.lane_a_states, sample.freshness_median_seconds,
+                    sample.freshness_p90_seconds, sample.freshness_p95_seconds,
+                    sample.percent_above_freshness_budget, sample.process_rss_bytes,
+                    now,
+                ),
+            )
+
+    def record_orchestrator_failure(self, orchestrator_run_id: str, failure) -> None:
+        now = _utc_now()
+        row_id = hashlib.sha256(
+            f"{orchestrator_run_id}|{failure.occurred_at_utc.isoformat()}|"
+            f"{failure.failure_code}".encode("utf-8")
+        ).hexdigest()
+        with self.transaction() as connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO orb_shadow_orchestrator_failures VALUES "
+                "(?,?,?,?,?,?,?,?)",
+                (
+                    row_id, orchestrator_run_id, failure.occurred_at_utc.isoformat(),
+                    _enum_value(failure.state), failure.failure_code, failure.detail,
+                    int(bool(failure.recoverable)), now,
+                ),
+            )
+
+    def load_orchestrator_failures(self, orchestrator_run_id: str) -> tuple[dict, ...]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT occurred_at_utc, state, failure_code, detail, recoverable
+                   FROM orb_shadow_orchestrator_failures
+                   WHERE orchestrator_run_id=? ORDER BY occurred_at_utc""",
+                (orchestrator_run_id,),
+            ).fetchall()
+        return tuple(dict(row) for row in rows)
+
+    def find_orchestrator_runs(
+        self, *, session_date: date | None = None
+    ) -> tuple[dict, ...]:
+        clause = " WHERE session_date=?" if session_date else ""
+        parameters = (session_date.isoformat(),) if session_date else ()
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"""SELECT * FROM orb_shadow_orchestrator_runs{clause}
+                    ORDER BY started_at_utc, orchestrator_run_id""",
+                parameters,
+            ).fetchall()
+        return tuple(dict(row) for row in rows)
+
     def find_shadow_runs(
         self,
         *,
@@ -2089,6 +2492,11 @@ class OrbResearchRepository:
             "orb_shadow_reconstruction_states",
             "orb_shadow_live_replay_comparison",
             "orb_shadow_cross_run_comparison",
+            "orb_shadow_orchestrator_runs",
+            "orb_shadow_orchestrator_transitions",
+            "orb_shadow_orchestrator_leases",
+            "orb_shadow_orchestrator_health",
+            "orb_shadow_orchestrator_failures",
         }
         if table not in allowed:
             raise ValueError("Unsupported ORB table")
