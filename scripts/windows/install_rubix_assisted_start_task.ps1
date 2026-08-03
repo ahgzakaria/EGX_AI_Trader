@@ -33,7 +33,9 @@ param(
     [string]$TaskName = "EGX Rubix Assisted Start",
     [string]$CairoStartTime = "09:10",
     [string]$LocalStartTimeOverride = "",
-    [string]$Inbox = "data\local\rubix_auth_inbox",
+    # The user's existing export target, read in place. Overridable for testing
+    # or a future relocation; the production default never changes.
+    [string]$AuthFramePath = "C:\secure-temp\rubix-price-auth-frame.txt",
     [int]$MaxRuntimeHours = 2,
     [switch]$EnableAutoStart,
     [switch]$WhatIfOnly
@@ -140,10 +142,12 @@ else {
 
 # No credential, and no session date: the schedule is daily and the frame is a
 # file the user refreshes each morning.
+# The user's real, long-established export target. The window reads it in
+# place: no inbox is involved, and nothing is copied, moved or deleted.
 $argumentList = @(
     """$scriptRelative"""
     "--runtime-root"; """$runtimeResolved"""
-    "--inbox"; """$Inbox"""
+    "--auth-frame"; """$AuthFramePath"""
     "--adapter-path"; """$AdapterPath"""
 )
 if ($EnableAutoStart) { $argumentList += "--auto-start" }

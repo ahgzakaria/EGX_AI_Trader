@@ -18,17 +18,20 @@ import sys
 import pytest
 
 from services.rubix_assisted_start import (
+    DEFAULT_AUTH_FRAME_PATH,
     FRAME_SUFFIXES,
     PARTIAL_SUFFIXES,
     AssistedState,
     CountdownState,
     FrameDisposal,
     FrameSelection,
+    FrameStatus,
     build_collector_command,
     countdown_should_abort,
     dispose_frame,
     evaluate_health,
     resolve_inbox,
+    scan_frame_file,
     scan_inbox,
 )
 from scripts.run_orb_shadow_session import _path_identity
@@ -51,6 +54,17 @@ NOW = datetime(2026, 8, 4, 9, 15, tzinfo=timezone.utc)
 
 def _no_spawn(command):
     raise AssertionError("no test may spawn a collector")
+
+
+def inbox_args(*extra):
+    """Args for the advanced inbox mode.
+
+    Every inbox test states the mode explicitly so none of them can silently
+    fall through to the production default and read the real machine's
+    C:\secure-temp frame - a test that passes or fails with the time of day.
+    """
+
+    return parse_args(["--headless", "--watch-mode", "inbox", *extra])
 
 
 def write_frame(inbox: Path, name: str, *, minutes_old: float = 1.0, valid=True,
@@ -350,7 +364,7 @@ def test_the_assisted_session_never_starts_a_second_supervisor(tmp_path, inbox, 
     import scripts.run_rubix_assisted_start as module
 
     frame = write_frame(inbox, "frame.json")
-    args = parse_args(["--inbox", "data/local/rubix_auth_inbox", "--headless"])
+    args = inbox_args("--inbox", "data/local/rubix_auth_inbox")
     args.pid_file = str(tmp_path / "sup.pid.json")
     session = AssistedStartSession(args, clock=lambda: NOW, runner=lambda c: "SPAWNED")
     object.__setattr__(session, "inbox", inbox)
@@ -367,7 +381,7 @@ def test_a_rejected_frame_never_starts_the_collector(tmp_path, inbox, monkeypatc
     import scripts.run_rubix_assisted_start as module
 
     write_frame(inbox, "old.json", minutes_old=90.0)
-    args = parse_args(["--headless"])
+    args = inbox_args()
     args.pid_file = str(tmp_path / "sup.pid.json")
     spawned = []
     session = AssistedStartSession(
@@ -385,7 +399,7 @@ def test_a_spawn_failure_is_surfaced_not_swallowed(tmp_path, inbox, monkeypatch)
     import scripts.run_rubix_assisted_start as module
 
     write_frame(inbox, "frame.json")
-    args = parse_args(["--headless"])
+    args = inbox_args()
     args.pid_file = str(tmp_path / "sup.pid.json")
 
     def boom(_command):
@@ -590,7 +604,7 @@ def test_headless_detection_starts_nothing(tmp_path, inbox, capsys):
     import scripts.run_rubix_assisted_start as module
 
     write_frame(inbox, "frame.json")
-    args = parse_args(["--headless"])
+    args = inbox_args()
     session = AssistedStartSession(args, clock=lambda: NOW, runner=lambda c: "SPAWNED")
     object.__setattr__(session, "inbox", inbox)
     scan = session.scan()
@@ -742,19 +756,31 @@ def run_installer(tmp_path, *extra):
     )
 
 
+def task_registration_state() -> str:
+    check = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-Command",
+         f"$t = Get-ScheduledTask -TaskName '{TASK_NAME}' -ErrorAction SilentlyContinue; "
+         "if ($t) { ($t.Actions | Select-Object -First 1).Arguments } else { 'ABSENT' }"],
+        capture_output=True, text=True,
+    )
+    return check.stdout.strip()
+
+
 def test_the_installer_whatif_registers_nothing(tmp_path):
+    """-WhatIfOnly must leave the registered state exactly as it found it.
+
+    Asserting the task is simply absent would be wrong on any machine where it
+    is legitimately installed - and would then pass for the wrong reason
+    everywhere else. What matters is that a dry run changes nothing.
+    """
+
+    before = task_registration_state()
     result = run_installer(
         tmp_path, "-RuntimeRoot", str(make_runtime_root(tmp_path)), "-WhatIfOnly",
     )
     assert result.returncode == 0, result.stderr
     assert "nothing was registered" in result.stdout.lower()
-    check = subprocess.run(
-        ["powershell.exe", "-NoProfile", "-Command",
-         f"if (Get-ScheduledTask -TaskName '{TASK_NAME}' -ErrorAction SilentlyContinue) "
-         "{'YES'} else {'NO'}"],
-        capture_output=True, text=True,
-    )
-    assert check.stdout.strip() == "NO"
+    assert task_registration_state() == before
 
 
 def test_the_installer_refuses_a_runtime_root_without_the_real_database(tmp_path):
@@ -808,14 +834,15 @@ def test_the_inbox_follows_the_runtime_root(tmp_path):
     """The morning export target must not move when a worktree is recreated."""
 
     root = make_runtime_root(tmp_path)
-    args = parse_args(["--runtime-root", str(root)])
+    args = parse_args(["--runtime-root", str(root), "--watch-mode", "inbox"])
     session = AssistedStartSession(args, clock=lambda: NOW, runner=_no_spawn)
     assert session.inbox.is_relative_to(root.resolve())
 
 
 def test_an_inbox_outside_the_runtime_root_is_still_refused(tmp_path):
     root = make_runtime_root(tmp_path)
-    args = parse_args(["--runtime-root", str(root), "--inbox", str(tmp_path / "elsewhere")])
+    args = parse_args(["--runtime-root", str(root), "--watch-mode", "inbox",
+                       "--inbox", str(tmp_path / "elsewhere")])
     with pytest.raises(ValueError, match="inside the project root"):
         AssistedStartSession(args, clock=lambda: NOW, runner=_no_spawn)
 
@@ -1081,3 +1108,238 @@ def test_orb_and_assisted_start_agree_on_the_source_identity(tmp_path):
     nested = tmp_path / "sub" / ".." / "rubix_live_market.db"
     (tmp_path / "sub").mkdir()
     assert _path_identity(real) == _path_identity(Path(nested))
+
+
+# =========================================================================== #
+# THE EXISTING AUTH FRAME, WATCHED IN PLACE
+# =========================================================================== #
+
+
+def frame_args(frame: Path, *extra):
+    """Production mode, pointed at a test file instead of the real one."""
+
+    return parse_args(["--headless", "--auth-frame", str(frame), *extra])
+
+
+def test_the_existing_txt_path_is_the_production_default():
+    """The user's long-established export target, not a repository inbox."""
+
+    assert DEFAULT_AUTH_FRAME_PATH == Path(r"C:\secure-temp\rubix-price-auth-frame.txt")
+    args = parse_args(["--headless"])
+    assert Path(args.auth_frame) == DEFAULT_AUTH_FRAME_PATH
+    assert args.watch_mode == "auth-frame"
+
+
+def test_the_default_needs_no_inbox(tmp_path):
+    """No inbox is resolved, created or required in the normal workflow."""
+
+    args = parse_args(["--headless", "--runtime-root", str(tmp_path)])
+    session = AssistedStartSession(args, clock=lambda: NOW, runner=_no_spawn)
+    assert session.inbox is None
+    assert session.watched == DEFAULT_AUTH_FRAME_PATH
+    assert not (tmp_path / "data" / "local" / "rubix_auth_inbox").exists()
+
+
+def test_a_fresh_valid_file_is_detected_in_place(tmp_path):
+    frame = write_delimited_frame(tmp_path, "rubix-price-auth-frame.txt", minutes_old=1.0)
+    scan = scan_frame_file(frame, now=NOW)
+    assert scan.status is FrameStatus.AUTH_FRAME_VALID
+    assert scan.ready
+    assert scan.selected.path == frame
+
+
+def test_an_expired_file_is_refused(tmp_path):
+    frame = write_delimited_frame(tmp_path, "rubix-price-auth-frame.txt", minutes_old=45.0)
+    scan = scan_frame_file(frame, now=NOW)
+    assert scan.status is FrameStatus.AUTH_FRAME_EXPIRED
+    assert not scan.ready
+
+
+def test_a_malformed_file_is_refused(tmp_path):
+    frame = tmp_path / "rubix-price-auth-frame.txt"
+    frame.write_text("this is not a frame", encoding="utf-8")
+    scan = scan_frame_file(frame, now=NOW)
+    assert scan.status is FrameStatus.AUTH_FRAME_REJECTED
+    assert not scan.ready
+
+
+def test_a_missing_file_is_simply_waiting(tmp_path):
+    """At 09:10 the export has not happened yet. That is not an error."""
+
+    scan = scan_frame_file(tmp_path / "absent.txt", now=NOW)
+    assert scan.status is FrameStatus.WAITING_FOR_FRESH_AUTH_FRAME
+    assert scan.candidates == ()
+
+
+def test_the_four_display_statuses_are_exactly_the_contract():
+    assert {item.value for item in FrameStatus} == {
+        "WAITING_FOR_FRESH_AUTH_FRAME",
+        "AUTH_FRAME_VALID",
+        "AUTH_FRAME_EXPIRED",
+        "AUTH_FRAME_REJECTED",
+    }
+
+
+def test_a_refreshed_export_is_picked_up_on_the_next_poll(tmp_path):
+    """Overwriting the same path with a newer frame must be detected."""
+
+    frame = write_delimited_frame(tmp_path, "rubix-price-auth-frame.txt", minutes_old=45.0)
+    assert scan_frame_file(frame, now=NOW).status is FrameStatus.AUTH_FRAME_EXPIRED
+    write_delimited_frame(tmp_path, "rubix-price-auth-frame.txt", minutes_old=0.5)
+    assert scan_frame_file(frame, now=NOW).status is FrameStatus.AUTH_FRAME_VALID
+
+
+def test_no_copy_move_or_delete_occurs(tmp_path):
+    """The user's file must be exactly as it was, and stay the only one."""
+
+    frame = write_delimited_frame(tmp_path, "rubix-price-auth-frame.txt")
+    before = frame.read_bytes()
+    stat_before = frame.stat()
+    listing_before = sorted(item.name for item in tmp_path.iterdir())
+
+    args = frame_args(frame)
+    session = AssistedStartSession(args, clock=lambda: NOW, runner=_no_spawn)
+    scan = session.scan()
+    assert scan.ready
+    session.dispose(scan.selected.path)
+
+    assert frame.exists()
+    assert frame.read_bytes() == before
+    assert frame.stat().st_mtime == stat_before.st_mtime
+    assert sorted(item.name for item in tmp_path.iterdir()) == listing_before
+
+
+def test_disposal_cannot_touch_the_users_own_file(tmp_path):
+    """Even an explicit DELETE opt-in must not act on a file we do not own."""
+
+    frame = write_delimited_frame(tmp_path, "rubix-price-auth-frame.txt")
+    args = frame_args(frame, "--disposal", "DELETE")
+    session = AssistedStartSession(args, clock=lambda: NOW, runner=_no_spawn)
+    session.dispose(frame)
+    assert frame.exists(), "the watched file is the user's, not ours to delete"
+
+
+def test_frame_contents_are_never_rendered_or_logged(tmp_path):
+    import scripts.run_rubix_assisted_start as module
+
+    frame = write_delimited_frame(tmp_path, "rubix-price-auth-frame.txt")
+    secret = "SYNTHETIC-PLACEHOLDER-NOT-REAL"
+    assert secret in frame.read_text(encoding="utf-8")
+
+    args = frame_args(frame)
+    session = AssistedStartSession(args, clock=lambda: NOW, runner=_no_spawn)
+    scan = session.scan()
+    text = module.render_text_status(session, scan)
+    assert secret not in text
+    assert "\x02" not in text and "\x1c" not in text
+    assert secret not in json.dumps(session.frame_summary(scan))
+
+
+def test_the_rendered_status_names_the_path_and_the_state(tmp_path):
+    import scripts.run_rubix_assisted_start as module
+
+    frame = write_delimited_frame(tmp_path, "rubix-price-auth-frame.txt")
+    session = AssistedStartSession(frame_args(frame), clock=lambda: NOW, runner=_no_spawn)
+    text = module.render_text_status(session, session.scan())
+    assert "Auth frame:" in text
+    assert str(frame) in text
+    assert FrameStatus.AUTH_FRAME_VALID.value in text
+
+
+def test_an_alternative_path_still_works(tmp_path):
+    """Explicit override for testing or a future relocation."""
+
+    other_dir = tmp_path / "elsewhere"
+    other_dir.mkdir()
+    other = write_delimited_frame(other_dir, "custom-frame.txt")
+    session = AssistedStartSession(frame_args(other), clock=lambda: NOW, runner=_no_spawn)
+    assert session.watched == other
+    assert session.scan().status is FrameStatus.AUTH_FRAME_VALID
+
+
+def test_the_inbox_mode_remains_available_as_an_advanced_mode(inbox):
+    write_frame(inbox, "frame.json", minutes_old=1.0)
+    session = AssistedStartSession(inbox_args(), clock=lambda: NOW, runner=_no_spawn)
+    object.__setattr__(session, "inbox", inbox)
+    assert session.watch_mode == "inbox"
+    assert session.scan().status is FrameStatus.AUTH_FRAME_VALID
+
+
+def test_a_running_collector_does_not_spawn_another_in_frame_mode(tmp_path, monkeypatch):
+    import scripts.run_rubix_assisted_start as module
+
+    frame = write_delimited_frame(tmp_path, "rubix-price-auth-frame.txt")
+    args = frame_args(frame)
+    args.pid_file = str(tmp_path / "sup.pid.json")
+    session = AssistedStartSession(args, clock=lambda: NOW, runner=_no_spawn)
+    monkeypatch.setattr(
+        module, "supervisor_status",
+        lambda _p: {"running": True, "pid": 11120, "record": {}},
+    )
+    assert session.start(session.scan()) is AssistedState.INSTANCE_ALREADY_RUNNING
+    assert session.process is None
+
+
+def test_the_collector_command_receives_the_existing_frame_path(tmp_path, monkeypatch):
+    import scripts.run_rubix_assisted_start as module
+
+    frame = write_delimited_frame(tmp_path, "rubix-price-auth-frame.txt")
+    args = frame_args(frame)
+    args.pid_file = str(tmp_path / "sup.pid.json")
+    captured = []
+    session = AssistedStartSession(
+        args, clock=lambda: NOW, runner=lambda command: captured.append(command),
+    )
+    monkeypatch.setattr(
+        module, "supervisor_status", lambda _p: {"running": False, "pid": None, "record": {}},
+    )
+    session.start(session.scan())
+    assert captured, "a valid frame should have started the supervisor"
+    arguments = list(captured[0].arguments)
+    assert arguments[arguments.index("--auth-frame-file") + 1] == str(frame)
+
+
+def test_no_dashboard_is_ever_launched_in_frame_mode(tmp_path, monkeypatch):
+    import scripts.run_rubix_assisted_start as module
+
+    frame = write_delimited_frame(tmp_path, "rubix-price-auth-frame.txt")
+    args = frame_args(frame)
+    args.pid_file = str(tmp_path / "sup.pid.json")
+    captured = []
+    session = AssistedStartSession(
+        args, clock=lambda: NOW, runner=lambda command: captured.append(command),
+    )
+    monkeypatch.setattr(
+        module, "supervisor_status", lambda _p: {"running": False, "pid": None, "record": {}},
+    )
+    session.start(session.scan())
+    rendered = " ".join(captured[0].as_list()).lower()
+    assert "streamlit" not in rendered
+    assert "app.py" not in rendered
+    assert "rubix_collector_supervisor.py" in rendered
+
+
+def test_the_scheduled_task_uses_the_existing_path():
+    text = INSTALL_PS1.read_text(encoding="utf-8")
+    assert "--auth-frame" in text
+    assert r"C:\secure-temp\rubix-price-auth-frame.txt" in text
+
+
+def test_the_installer_passes_the_existing_frame_path_to_the_task(tmp_path):
+    result = run_installer(
+        tmp_path, "-RuntimeRoot", str(make_runtime_root(tmp_path)), "-WhatIfOnly",
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--auth-frame" in result.stdout
+    assert r"C:\secure-temp\rubix-price-auth-frame.txt" in result.stdout
+
+
+def test_the_installer_does_not_require_an_inbox(tmp_path):
+    """The normal install must not carry an inbox argument at all."""
+
+    result = run_installer(
+        tmp_path, "-RuntimeRoot", str(make_runtime_root(tmp_path)), "-WhatIfOnly",
+    )
+    arguments = [line for line in result.stdout.splitlines() if "Arguments" in line]
+    assert arguments, result.stdout
+    assert "--inbox" not in arguments[0]

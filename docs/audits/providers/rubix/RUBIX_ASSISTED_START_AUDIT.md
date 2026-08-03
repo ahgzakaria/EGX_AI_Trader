@@ -236,8 +236,12 @@ Installed at a runtime worktree, that would have produced:
 
 | Path | Would have been | Must be |
 |---|---|---|
-| database | `…assisted_runtime_wt\dataubix_live_market.db` (empty) | `F:\EGX_AI_Trader\dataubix_live_market.db` |
-| PID file | `…assisted_runtime_wt\dataubix_supervisor.pid.json` (absent) | `F:\EGX_AI_Trader\dataubix_supervisor.pid.json` |
+| database | `…assisted_runtime_wt\data
+ubix_live_market.db` (empty) | `F:\EGX_AI_Trader\data
+ubix_live_market.db` |
+| PID file | `…assisted_runtime_wt\data
+ubix_supervisor.pid.json` (absent) | `F:\EGX_AI_Trader\data
+ubix_supervisor.pid.json` |
 | lock file | worktree copy | canonical |
 
 The database consequence is a split source — the exact failure section 8 exists
@@ -251,13 +255,15 @@ a spawn, and the UI would have reported a start that did not happen.
 supplying `scripts/rubix_collector_supervisor.py`; the runtime root supplies
 `data/` and `logs/` — database, universe, PID, lock, log and the inbox. The
 installer requires `-RuntimeRoot` and refuses one without a real
-`dataubix_live_market.db`.
+`data
+ubix_live_market.db`.
 
 Verified against the live system, read-only:
 
 ```
 --runtime-root F:\EGX_AI_Trader
-  pid file : F:\EGX_AI_Trader\dataubix_supervisor.pid.json
+  pid file : F:\EGX_AI_Trader\data
+ubix_supervisor.pid.json
   supervisor_status -> running=True, pid=11120
   => INSTANCE_ALREADY_RUNNING, nothing spawned
 ```
@@ -265,3 +271,35 @@ Verified against the live system, read-only:
 Pinned by `test_runtime_paths_follow_the_runtime_root_not_the_code_location`
 and `test_the_installer_refuses_a_runtime_root_without_the_real_database`;
 reverting either protection fails a test.
+
+## 10. Watching the existing frame path instead of a repository inbox
+
+The first implementation watched a new directory,
+`data/local/rubix_auth_inbox/`, and asked the user to save the frame there.
+
+That was an implementation proposal mistaken for a requirement. The real
+workflow has always exported to **`C:\secure-temp\rubix-price-auth-frame.txt`** — the same file the launcher's
+own `-AuthFrameFile` argument has always received, and the same file this audit
+inspected in section 2a. Introducing an inbox therefore added a manual copy
+step to a workflow that never had one, for no gain.
+
+**Corrected:** the assisted mode now reads that file in place.
+
+| Concern | How it is handled |
+|---|---|
+| copy | never — the path is passed straight to the supervisor |
+| move / rename | never |
+| delete | refused outright in this mode, even with `--disposal DELETE` |
+| contents | never displayed, logged, persisted or summarised |
+| freshness | `inspect_auth_frame` re-run every poll, so a re-export is picked up next pass |
+| missing file | `WAITING_FOR_FRESH_AUTH_FRAME` — the normal 09:10 state, not an error |
+
+The four display states (`WAITING_FOR_FRESH_AUTH_FRAME`, `AUTH_FRAME_VALID`,
+`AUTH_FRAME_EXPIRED`, `AUTH_FRAME_REJECTED`) are derived from the validator's
+own `VALID`/`EXPIRED`/`INVALID` constants, imported rather than spelled out —
+a hardcoded guess at those strings silently degraded every expired frame to
+"waiting", hiding the one state the user can act on. Caught by running the
+detector against the real file.
+
+The inbox remains available as `--watch-mode inbox` for testing and future use.
+It is not required, not installed, and not part of the normal morning.
