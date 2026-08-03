@@ -36,7 +36,7 @@ from scalping_orb.indicators import (
     intraday_atr,
 )
 from scalping_orb.opening_range import OpeningRangeStatus
-from scalping_orb.repository import OrbResearchRepository
+from scalping_orb.repository import SCHEMA_VERSION, OrbResearchRepository
 from scalping_orb.session import OrbSessionPhase
 from scalping_orb.states import (
     LEGAL_TRANSITIONS,
@@ -1283,7 +1283,15 @@ def _session(repository):
 
 def test_migration_four_creates_every_phase_2b_table(tmp_path):
     repository = OrbResearchRepository(tmp_path / "orb.db")
-    assert repository.database_status()["user_version"] == 4
+    # Later phases add their own migrations, so pin what this test is about:
+    # migration 4 has been applied and its tables exist.
+    assert repository.database_status()["user_version"] >= 4
+    with repository.connect() as connection:
+        applied = {
+            row[0]
+            for row in connection.execute("SELECT version FROM orb_schema_meta")
+        }
+    assert 4 in applied
     for table in (
         "orb_candidates",
         "orb_state_transitions",
@@ -1300,7 +1308,9 @@ def test_migration_three_to_four_is_in_place(tmp_path):
     old = OrbResearchRepository(path, target_schema_version=3)
     _session(old)
     assert old.database_status()["user_version"] == 3
-    upgraded = OrbResearchRepository(path)
+    # Pinned to 4 so this keeps testing the v3 -> v4 hop specifically, rather
+    # than whatever the newest schema version happens to be.
+    upgraded = OrbResearchRepository(path, target_schema_version=4)
     assert upgraded.database_status()["user_version"] == 4
     assert upgraded.table_count("orb_sessions") == 1
     assert upgraded.table_count("orb_candidates") == 0
@@ -1379,7 +1389,7 @@ def test_upgrading_a_populated_v3_database_loses_no_phase_2a_row(tmp_path):
     assert before["orb_bars"][0] > 0
     assert before["orb_opening_ranges"][0] > 0
 
-    upgraded = OrbResearchRepository(path)
+    upgraded = OrbResearchRepository(path, target_schema_version=4)
     assert upgraded.database_status()["user_version"] == 4
     after = _table_snapshot(upgraded)
 
@@ -1415,7 +1425,7 @@ def test_repeating_the_migration_changes_nothing(tmp_path):
         again = OrbResearchRepository(path)
         again.migrate()
     final = OrbResearchRepository(path)
-    assert final.database_status()["user_version"] == 4
+    assert final.database_status()["user_version"] == SCHEMA_VERSION
     assert _table_snapshot(final) == snapshot
     with final.connect() as connection:
         assert [tuple(row) for row in connection.execute(

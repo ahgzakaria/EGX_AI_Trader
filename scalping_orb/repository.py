@@ -35,7 +35,7 @@ from scalping_orb.opening_range import OpeningRangeResult, OpeningRangeStatus
 from scalping_orb.session import OrbSessionPhase
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 PROTECTED_DATABASE_NAMES = frozenset(
     {
         "rubix_live_market.db",
@@ -413,11 +413,178 @@ CREATE INDEX IF NOT EXISTS idx_orb_transitions_candidate_sequence
 ON orb_state_transitions(candidate_id, sequence_index);
 """
 
+#: Phase 2C Shadow integration evidence. Additive only — no Phase 2A or 2B
+#: table is altered. Still no order, execution, position, trade, P&L, broker or
+#: notification table: the furthest this schema records is a research state and
+#: the quality of the observation that produced it.
+#:
+#: Lane A (`orb_shadow_live_states`) is append-only by construction: its unique
+#: key includes the observation cycle, so a later correction is a *new row*, not
+#: an update. Lane B (`orb_shadow_reconstruction_states`) is keyed without a
+#: cycle so an identical reconstruction is idempotent.
+MIGRATION_5 = """
+CREATE TABLE IF NOT EXISTS orb_shadow_runs (
+    run_id TEXT PRIMARY KEY,
+    session_date TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    started_at_utc TEXT NOT NULL,
+    finished_at_utc TEXT,
+    runner_started_before_open INTEGER NOT NULL CHECK (runner_started_before_open IN (0,1)),
+    stop_reason TEXT,
+    session_classification TEXT,
+    source_path_identity TEXT NOT NULL,
+    config_identity TEXT NOT NULL,
+    strategy_fingerprint TEXT NOT NULL,
+    engine_version TEXT NOT NULL,
+    research_only INTEGER NOT NULL CHECK (research_only = 1),
+    production_disabled INTEGER NOT NULL CHECK (production_disabled = 1),
+    recorded_at_utc TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS orb_shadow_cursors (
+    run_id TEXT NOT NULL REFERENCES orb_shadow_runs(run_id),
+    source_table TEXT NOT NULL,
+    last_source_id INTEGER NOT NULL,
+    last_market_timestamp_utc TEXT,
+    last_receive_timestamp_utc TEXT,
+    rows_observed INTEGER NOT NULL,
+    updated_at_utc TEXT NOT NULL,
+    PRIMARY KEY (run_id, source_table)
+);
+
+CREATE TABLE IF NOT EXISTS orb_shadow_cycles (
+    cycle_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES orb_shadow_runs(run_id),
+    cycle_index INTEGER NOT NULL,
+    started_at_utc TEXT NOT NULL,
+    finished_at_utc TEXT NOT NULL,
+    cursor_low_source_id INTEGER NOT NULL,
+    cursor_high_source_id INTEGER NOT NULL,
+    source_rows_read INTEGER NOT NULL,
+    normalized_events INTEGER NOT NULL,
+    session_loads INTEGER NOT NULL,
+    symbols_in_snapshot INTEGER NOT NULL,
+    symbols_evaluated INTEGER NOT NULL,
+    snapshot_identity TEXT NOT NULL,
+    live_status TEXT NOT NULL,
+    duration_seconds REAL NOT NULL,
+    source_failure TEXT,
+    recorded_at_utc TEXT NOT NULL,
+    UNIQUE(run_id, cycle_index)
+);
+
+CREATE TABLE IF NOT EXISTS orb_shadow_heartbeats (
+    run_id TEXT NOT NULL REFERENCES orb_shadow_runs(run_id),
+    observed_at_utc TEXT NOT NULL,
+    live_status TEXT NOT NULL,
+    last_source_id INTEGER NOT NULL,
+    latest_market_timestamp_utc TEXT,
+    observed_receive_lag_seconds REAL,
+    PRIMARY KEY (run_id, observed_at_utc)
+);
+
+CREATE TABLE IF NOT EXISTS orb_shadow_session_quality (
+    run_id TEXT PRIMARY KEY REFERENCES orb_shadow_runs(run_id),
+    session_date TEXT NOT NULL,
+    classification TEXT NOT NULL,
+    classification_reasons_json TEXT NOT NULL,
+    source_rows_observed INTEGER NOT NULL,
+    normalized_events INTEGER NOT NULL,
+    exact_redeliveries_removed INTEGER NOT NULL,
+    same_timestamp_distinct_retained INTEGER NOT NULL,
+    source_polling_failures INTEGER NOT NULL,
+    maximum_polling_gap_seconds REAL,
+    median_receive_lag_seconds REAL,
+    p90_receive_lag_seconds REAL,
+    p95_receive_lag_seconds REAL,
+    percent_above_freshness_budget REAL,
+    negative_lag_events INTEGER NOT NULL,
+    out_of_order_events INTEGER NOT NULL,
+    late_events_after_cutoff INTEGER NOT NULL,
+    active_mapped_symbols INTEGER NOT NULL,
+    completed_one_minute_bars INTEGER NOT NULL,
+    completed_five_minute_bars INTEGER NOT NULL,
+    opening_ranges_ready INTEGER NOT NULL,
+    live_evaluations INTEGER NOT NULL,
+    reconstruction_evaluations INTEGER NOT NULL,
+    heartbeat_count INTEGER NOT NULL,
+    process_runtime_seconds REAL NOT NULL,
+    quality_json TEXT NOT NULL,
+    recorded_at_utc TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS orb_shadow_live_states (
+    live_state_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES orb_shadow_runs(run_id),
+    cycle_id TEXT NOT NULL REFERENCES orb_shadow_cycles(cycle_id),
+    session_date TEXT NOT NULL,
+    canonical_ticker TEXT NOT NULL,
+    opening_range_revision INTEGER NOT NULL,
+    opening_range_version_identity TEXT NOT NULL,
+    final_state TEXT NOT NULL,
+    terminal INTEGER NOT NULL CHECK (terminal IN (0,1)),
+    rejection_reasons_json TEXT NOT NULL,
+    evidence_fingerprint TEXT NOT NULL,
+    candidate_identity TEXT NOT NULL,
+    live_status TEXT NOT NULL,
+    observed_at_utc TEXT NOT NULL,
+    exchange_watermark_utc TEXT,
+    observed_receive_lag_seconds REAL,
+    research_only INTEGER NOT NULL CHECK (research_only = 1),
+    recorded_at_utc TEXT NOT NULL,
+    UNIQUE(run_id, cycle_id, canonical_ticker, opening_range_version_identity)
+);
+
+CREATE TABLE IF NOT EXISTS orb_shadow_reconstruction_states (
+    reconstruction_state_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES orb_shadow_runs(run_id),
+    session_date TEXT NOT NULL,
+    canonical_ticker TEXT NOT NULL,
+    opening_range_revision INTEGER NOT NULL,
+    opening_range_version_identity TEXT NOT NULL,
+    final_state TEXT NOT NULL,
+    terminal INTEGER NOT NULL CHECK (terminal IN (0,1)),
+    rejection_reasons_json TEXT NOT NULL,
+    evidence_fingerprint TEXT NOT NULL,
+    candidate_identity TEXT NOT NULL,
+    evaluation_mode TEXT NOT NULL,
+    research_only INTEGER NOT NULL CHECK (research_only = 1),
+    recorded_at_utc TEXT NOT NULL,
+    UNIQUE(run_id, canonical_ticker, opening_range_version_identity, evaluation_mode)
+);
+
+CREATE TABLE IF NOT EXISTS orb_shadow_live_replay_comparison (
+    comparison_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES orb_shadow_runs(run_id),
+    session_date TEXT NOT NULL,
+    canonical_ticker TEXT NOT NULL,
+    live_state TEXT,
+    reconstruction_state TEXT,
+    live_opening_range_version_identity TEXT,
+    reconstruction_opening_range_version_identity TEXT,
+    opening_range_revised INTEGER NOT NULL CHECK (opening_range_revised IN (0,1)),
+    states_match INTEGER NOT NULL CHECK (states_match IN (0,1)),
+    difference_reason TEXT NOT NULL,
+    evaluable_live INTEGER NOT NULL CHECK (evaluable_live IN (0,1)),
+    evaluable_historically INTEGER NOT NULL CHECK (evaluable_historically IN (0,1)),
+    recorded_at_utc TEXT NOT NULL,
+    UNIQUE(run_id, canonical_ticker)
+);
+
+CREATE INDEX IF NOT EXISTS idx_orb_shadow_cycles_run
+ON orb_shadow_cycles(run_id, cycle_index);
+CREATE INDEX IF NOT EXISTS idx_orb_shadow_live_states_run_ticker
+ON orb_shadow_live_states(run_id, canonical_ticker, observed_at_utc);
+CREATE INDEX IF NOT EXISTS idx_orb_shadow_reconstruction_run_ticker
+ON orb_shadow_reconstruction_states(run_id, canonical_ticker);
+"""
+
 MIGRATIONS = {
     1: ("phase2a_initial", MIGRATION_1),
     2: ("phase2a_universe_membership", MIGRATION_2),
     3: ("phase2a_latency_and_live_readiness", MIGRATION_3),
     4: ("phase2b_core_research_evidence", MIGRATION_4),
+    5: ("phase2c_shadow_integration", MIGRATION_5),
 }
 
 
@@ -425,6 +592,18 @@ MIGRATIONS = {
 class RetentionResult:
     normalized_events_deleted: int
     derived_sessions_deleted: int
+
+
+def _enum_value(value) -> str:
+    """Persist an enum by its VALUE, never its repr.
+
+    On Python 3.11+ ``str(member)`` of a ``str``-mixin Enum returns
+    ``"ClassName.MEMBER"``, not the member value. Writing that to the database
+    silently corrupts every stored status and breaks any later equality check
+    against the declared vocabulary.
+    """
+
+    return str(getattr(value, "value", value))
 
 
 def _utc_now() -> str:
@@ -1334,6 +1513,370 @@ class OrbResearchRepository:
             ).fetchall()
         return tuple(dict(row) for row in rows)
 
+    # -- Phase 2C Shadow integration --------------------------------------
+
+    def start_shadow_run(
+        self,
+        run_id: str,
+        session_date: date,
+        *,
+        mode: str,
+        started_at_utc: datetime,
+        runner_started_before_open: bool,
+        source_path_identity: str,
+        config_identity: str,
+        strategy_fingerprint: str,
+        engine_version: str,
+    ) -> str:
+        """Register one Shadow run. Research only, production disabled."""
+
+        now = _utc_now()
+        with self.transaction() as connection:
+            connection.execute(
+                """INSERT OR IGNORE INTO orb_shadow_runs VALUES
+                   (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    run_id,
+                    session_date.isoformat(),
+                    _enum_value(mode),
+                    started_at_utc.isoformat(),
+                    None,
+                    int(bool(runner_started_before_open)),
+                    None,
+                    None,
+                    str(source_path_identity),
+                    str(config_identity),
+                    str(strategy_fingerprint),
+                    str(engine_version),
+                    1,
+                    1,
+                    now,
+                ),
+            )
+        return run_id
+
+    def finish_shadow_run(
+        self,
+        run_id: str,
+        *,
+        finished_at_utc: datetime,
+        stop_reason: str,
+        session_classification: str,
+    ) -> None:
+        with self.transaction() as connection:
+            connection.execute(
+                """UPDATE orb_shadow_runs
+                   SET finished_at_utc=?, stop_reason=?, session_classification=?
+                   WHERE run_id=?""",
+                (
+                    finished_at_utc.isoformat(),
+                    str(stop_reason),
+                    _enum_value(session_classification),
+                    run_id,
+                ),
+            )
+
+    def save_shadow_cursor(self, run_id: str, cursor, connection=None) -> None:
+        """Persist the source cursor.
+
+        ``connection`` exists so the cursor can be written **inside the same
+        transaction** as the batch it describes. That is what makes restart
+        exact: the cursor can never be ahead of committed data, nor behind it
+        in a way that would replay state.
+        """
+
+        payload = (
+            run_id,
+            cursor.source_table,
+            int(cursor.last_source_id),
+            cursor.last_market_timestamp_utc.isoformat()
+            if cursor.last_market_timestamp_utc
+            else None,
+            cursor.last_receive_timestamp_utc.isoformat()
+            if cursor.last_receive_timestamp_utc
+            else None,
+            int(cursor.rows_observed),
+            _utc_now(),
+        )
+        sql = """INSERT INTO orb_shadow_cursors VALUES (?,?,?,?,?,?,?)
+                 ON CONFLICT(run_id,source_table) DO UPDATE SET
+                   last_source_id=excluded.last_source_id,
+                   last_market_timestamp_utc=excluded.last_market_timestamp_utc,
+                   last_receive_timestamp_utc=excluded.last_receive_timestamp_utc,
+                   rows_observed=excluded.rows_observed,
+                   updated_at_utc=excluded.updated_at_utc"""
+        if connection is not None:
+            connection.execute(sql, payload)
+            return
+        with self.transaction() as own:
+            own.execute(sql, payload)
+
+    def load_shadow_cursor(self, run_id: str, source_table: str):
+        """Restore a cursor, or ``None`` when the run has never committed one."""
+
+        from scalping_orb.shadow_source import ShadowCursor
+
+        with self.connect() as connection:
+            row = connection.execute(
+                """SELECT * FROM orb_shadow_cursors
+                   WHERE run_id=? AND source_table=?""",
+                (run_id, source_table),
+            ).fetchone()
+        if row is None:
+            return None
+        return ShadowCursor(
+            source_table=row["source_table"],
+            last_source_id=int(row["last_source_id"]),
+            last_market_timestamp_utc=(
+                datetime.fromisoformat(row["last_market_timestamp_utc"])
+                if row["last_market_timestamp_utc"]
+                else None
+            ),
+            last_receive_timestamp_utc=(
+                datetime.fromisoformat(row["last_receive_timestamp_utc"])
+                if row["last_receive_timestamp_utc"]
+                else None
+            ),
+            rows_observed=int(row["rows_observed"]),
+        )
+
+    def record_shadow_heartbeat(
+        self,
+        run_id: str,
+        *,
+        observed_at_utc: datetime,
+        live_status: str,
+        last_source_id: int,
+        latest_market_timestamp_utc: datetime | None,
+        observed_receive_lag_seconds: float | None,
+    ) -> None:
+        """Small independent transaction so a long cycle still shows liveness."""
+
+        with self.transaction() as connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO orb_shadow_heartbeats VALUES (?,?,?,?,?,?)",
+                (
+                    run_id,
+                    observed_at_utc.isoformat(),
+                    _enum_value(live_status),
+                    int(last_source_id),
+                    latest_market_timestamp_utc.isoformat()
+                    if latest_market_timestamp_utc
+                    else None,
+                    observed_receive_lag_seconds,
+                ),
+            )
+
+    def persist_shadow_cycle(
+        self,
+        run_id: str,
+        cycle,
+        live_evaluations=(),
+        *,
+        cursor=None,
+    ) -> str:
+        """One atomic cycle: metrics, Lane A states and the cursor together.
+
+        Lane A rows are keyed on the cycle, so a later observation of the same
+        symbol appends rather than overwrites. Live history stays immutable.
+        """
+
+        now = _utc_now()
+        with self.transaction() as connection:
+            connection.execute(
+                """INSERT OR IGNORE INTO orb_shadow_cycles VALUES
+                   (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    cycle.cycle_id,
+                    run_id,
+                    int(cycle.cycle_index),
+                    cycle.started_at_utc.isoformat(),
+                    cycle.finished_at_utc.isoformat(),
+                    int(cycle.cursor_low_source_id),
+                    int(cycle.cursor_high_source_id),
+                    int(cycle.source_rows_read),
+                    int(cycle.normalized_events),
+                    int(cycle.session_loads),
+                    int(cycle.symbols_in_snapshot),
+                    int(cycle.symbols_evaluated),
+                    str(cycle.snapshot_identity),
+                    _enum_value(cycle.live_status),
+                    float(cycle.duration_seconds),
+                    cycle.source_failure,
+                    now,
+                ),
+            )
+            for record in live_evaluations:
+                row_id = hashlib.sha256(
+                    "|".join(
+                        [
+                            run_id,
+                            cycle.cycle_id,
+                            record.canonical_ticker,
+                            record.opening_range_version_identity,
+                        ]
+                    ).encode("utf-8")
+                ).hexdigest()
+                connection.execute(
+                    """INSERT OR IGNORE INTO orb_shadow_live_states VALUES
+                       (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        row_id,
+                        run_id,
+                        cycle.cycle_id,
+                        record.session_date.isoformat(),
+                        record.canonical_ticker,
+                        int(record.opening_range_revision),
+                        record.opening_range_version_identity,
+                        record.final_state,
+                        int(record.terminal),
+                        _json(list(record.rejection_reasons)),
+                        record.evidence_fingerprint,
+                        record.candidate_identity,
+                        _enum_value(record.live_status),
+                        record.observed_at_utc.isoformat(),
+                        record.exchange_watermark_utc.isoformat()
+                        if record.exchange_watermark_utc
+                        else None,
+                        record.observed_receive_lag_seconds,
+                        1,
+                        now,
+                    ),
+                )
+            if cursor is not None:
+                self.save_shadow_cursor(run_id, cursor, connection=connection)
+        return cycle.cycle_id
+
+    def persist_shadow_reconstruction(self, run_id: str, records=()) -> int:
+        """Lane B. Idempotent: an identical reconstruction inserts nothing."""
+
+        now = _utc_now()
+        written = 0
+        with self.transaction() as connection:
+            for record in records:
+                row_id = hashlib.sha256(
+                    "|".join(
+                        [
+                            run_id,
+                            record.canonical_ticker,
+                            record.opening_range_version_identity,
+                            record.evaluation_mode,
+                        ]
+                    ).encode("utf-8")
+                ).hexdigest()
+                cursor = connection.execute(
+                    """INSERT OR IGNORE INTO orb_shadow_reconstruction_states VALUES
+                       (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        row_id,
+                        run_id,
+                        record.session_date.isoformat(),
+                        record.canonical_ticker,
+                        int(record.opening_range_revision),
+                        record.opening_range_version_identity,
+                        record.final_state,
+                        int(record.terminal),
+                        _json(list(record.rejection_reasons)),
+                        record.evidence_fingerprint,
+                        record.candidate_identity,
+                        _enum_value(record.evaluation_mode),
+                        1,
+                        now,
+                    ),
+                )
+                written += int(cursor.rowcount == 1)
+        return written
+
+    def persist_shadow_comparison(self, run_id: str, rows=()) -> int:
+        now = _utc_now()
+        written = 0
+        with self.transaction() as connection:
+            for row in rows:
+                row_id = hashlib.sha256(
+                    f"{run_id}|{row.canonical_ticker}".encode("utf-8")
+                ).hexdigest()
+                cursor = connection.execute(
+                    """INSERT OR IGNORE INTO orb_shadow_live_replay_comparison VALUES
+                       (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        row_id,
+                        run_id,
+                        row.session_date.isoformat(),
+                        row.canonical_ticker,
+                        row.live_state,
+                        row.reconstruction_state,
+                        row.live_opening_range_version_identity,
+                        row.reconstruction_opening_range_version_identity,
+                        int(row.opening_range_revised),
+                        int(row.states_match),
+                        _enum_value(row.difference_reason),
+                        int(row.evaluable_live),
+                        int(row.evaluable_historically),
+                        now,
+                    ),
+                )
+                written += int(cursor.rowcount == 1)
+        return written
+
+    def persist_shadow_session_quality(self, run_id: str, quality) -> None:
+        now = _utc_now()
+        with self.transaction() as connection:
+            connection.execute(
+                """INSERT OR REPLACE INTO orb_shadow_session_quality VALUES
+                   (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    run_id,
+                    quality.session_date.isoformat(),
+                    _enum_value(quality.classification),
+                    _json(list(quality.classification_reasons)),
+                    int(quality.source_rows_observed),
+                    int(quality.normalized_events),
+                    int(quality.exact_redeliveries_removed),
+                    int(quality.same_timestamp_distinct_retained),
+                    int(quality.source_polling_failures),
+                    quality.maximum_polling_gap_seconds,
+                    quality.median_receive_lag_seconds,
+                    quality.p90_receive_lag_seconds,
+                    quality.p95_receive_lag_seconds,
+                    quality.percent_above_freshness_budget,
+                    int(quality.negative_lag_events),
+                    int(quality.out_of_order_events),
+                    int(quality.late_events_after_cutoff),
+                    int(quality.active_mapped_symbols),
+                    int(quality.completed_one_minute_bars),
+                    int(quality.completed_five_minute_bars),
+                    int(quality.opening_ranges_ready),
+                    int(quality.live_evaluations),
+                    int(quality.reconstruction_evaluations),
+                    int(quality.heartbeat_count),
+                    float(quality.process_runtime_seconds),
+                    _json(quality.detail),
+                    now,
+                ),
+            )
+
+    def load_shadow_live_states(self, run_id: str) -> tuple[dict, ...]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT canonical_ticker,final_state,live_status,observed_at_utc,
+                          opening_range_version_identity,cycle_id
+                   FROM orb_shadow_live_states WHERE run_id=?
+                   ORDER BY observed_at_utc,canonical_ticker""",
+                (run_id,),
+            ).fetchall()
+        return tuple(dict(row) for row in rows)
+
+    def load_shadow_reconstruction_states(self, run_id: str) -> tuple[dict, ...]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT canonical_ticker,final_state,opening_range_version_identity,
+                          evaluation_mode
+                   FROM orb_shadow_reconstruction_states WHERE run_id=?
+                   ORDER BY canonical_ticker""",
+                (run_id,),
+            ).fetchall()
+        return tuple(dict(row) for row in rows)
+
     def table_count(self, table: str) -> int:
         allowed = {
             "orb_sessions",
@@ -1349,6 +1892,14 @@ class OrbResearchRepository:
             "orb_pullbacks",
             "orb_reclaims",
             "orb_research_setups",
+            "orb_shadow_runs",
+            "orb_shadow_cursors",
+            "orb_shadow_cycles",
+            "orb_shadow_heartbeats",
+            "orb_shadow_session_quality",
+            "orb_shadow_live_states",
+            "orb_shadow_reconstruction_states",
+            "orb_shadow_live_replay_comparison",
         }
         if table not in allowed:
             raise ValueError("Unsupported ORB table")
