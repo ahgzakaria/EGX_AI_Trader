@@ -185,6 +185,69 @@ def test_an_exact_redelivery_inside_the_retention_window_is_still_collapsed():
     assert engine.deduplication_telemetry().exact_redeliveries == 1
 
 
+def test_a_payload_recurring_beyond_the_window_is_a_bounded_documented_expansion():
+    """The exact accounting for admitted events, pinned.
+
+    Rolling retention means the identity ledger is not the session. A payload
+    that recurs after more distinct admissions than the window holds is
+    admitted a second time, because nothing remains that could recognise it.
+
+    This is the one way `events admitted` can exceed `unique source payload
+    identities`, and it is why the controlled replay of 2026-08-04 admitted
+    459,230 events against 459,223 distinct identities. It is a deterministic
+    function of the retention size, not duplicate inflation: within the window
+    the same payload is always collapsed.
+    """
+
+    retention = 50
+    config = OrbDataConfig(deduplication_retention_payloads=retention)
+    day = date(2026, 8, 2)
+    evaluated = moment(day, 9, 0)
+    # An unchanged quote for an illiquid symbol: the market timestamp is
+    # frozen, so the recurrence is not out-of-order. Traffic from a busier
+    # symbol is what pushes the identity out of the window.
+    stale = quote(moment(day, 7, 0), ticker="AALR", row_id=1)
+
+    def churn(engine, count):
+        for index in range(count):
+            engine.normalize(
+                quote(moment(day, 7, 0) + timedelta(seconds=index + 1),
+                      ticker="COMI", row_id=index + 2,
+                      price=10 + (index + 1) / 1000),
+                evaluated_at=evaluated,
+            )
+
+    engine = normalizer(config)
+    first, _ = engine.normalize(stale, evaluated_at=evaluated)
+    churn(engine, retention)          # enough to evict the identity above
+    readmitted, issues = engine.normalize(
+        quote(moment(day, 7, 0), ticker="AALR", row_id=10_000),
+        evaluated_at=evaluated,
+    )
+
+    assert first is not None
+    assert readmitted is not None, "nothing retained could recognise it"
+    assert not any(
+        issue.code == "DUPLICATE_MARKET_PAYLOAD_IDENTICAL" for issue in issues
+    )
+
+    # The complementary half of the contract: inside the window it collapses,
+    # so the expansion is bounded by retention rather than open-ended.
+    inside = normalizer(config)
+    inside.normalize(stale, evaluated_at=evaluated)
+    churn(inside, retention - 2)
+    collapsed, issues = inside.normalize(
+        quote(moment(day, 7, 0), ticker="AALR", row_id=10_000),
+        evaluated_at=evaluated,
+    )
+
+    assert collapsed is None
+    assert any(
+        issue.code == "DUPLICATE_MARKET_PAYLOAD_IDENTICAL" for issue in issues
+    )
+    assert inside.deduplication_telemetry().exact_redeliveries == 1
+
+
 def test_breaching_the_hard_capacity_is_reported_but_still_admits_the_payload():
     """The backstop names a regression. It must not become the old defect.
 

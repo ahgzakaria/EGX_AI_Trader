@@ -114,10 +114,11 @@ collector writing the same payload twice under different row ids — and that
 happens within the narrow window measured above. Retaining identities for an
 entire session bought nothing and cost the session.
 
-Memory cost per identity is roughly 100–150 bytes (a 64-character hex digest,
-a tuple key, and dict overhead), so 250,000 identities is on the order of
-30 MB. The original ceiling was a memory guard. It was the correct concern
-solved by the wrong mechanism: a hard stop instead of a bound.
+Memory cost per identity is **274 bytes measured** (`tracemalloc` over a
+100,000-entry store: a 64-character hex digest, the tuple key, and dict
+overhead), so the original 250,000-entry ceiling was about 69 MB. The ceiling
+was a memory guard. It was the correct concern solved by the wrong mechanism:
+a hard stop instead of a bound.
 
 ## 4. The fix
 
@@ -138,7 +139,8 @@ unseen payload is never discarded for capacity reasons.
 
 Retention of 100,000 entries covers roughly 25 minutes of source rows at the
 observed 4,028 rows/minute — about **288× the p99.9 redelivery span**. Memory
-stays bounded at approximately 12 MB.
+stays bounded at a measured **27.4 MB**, below the old ceiling's 69 MB despite
+admitting every payload the old ceiling discarded.
 
 The trade-off is stated explicitly: an identity evicted after 100,000 newer
 rows and then re-observed is treated as new. Given the measured redelivery

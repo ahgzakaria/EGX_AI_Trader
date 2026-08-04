@@ -39,13 +39,79 @@ reporting the session healthy.
 
 Two properties hold simultaneously, which is the whole point of the fix:
 
-* every distinct payload is admitted — 459,230 against 459,223 distinct
-  identities measured independently by SQL over the same rows,
+* every distinct payload is admitted,
 * memory stays bounded — the identity store never exceeded its 100,000-entry
   retention window across a million rows.
 
 Deduplication still works: 567,943 exact redeliveries were collapsed and were
 the *only* quality code emitted across the entire replay.
+
+### 1.1 Identity-level reconciliation
+
+The replay admitted 459,230 events against 459,223 distinct identities measured
+by SQL. Those seven events are accounted for exactly, not approximately.
+
+| Quantity | Value |
+|---|---|
+| `A` events admitted | 459,230 |
+| `P` distinct Python payload identities (unbounded ledger) | 459,223 |
+| `S` distinct SQL identities | 459,223 |
+| `P − S` identity-expression drift | **0** |
+| `A − P` re-admissions after rolling-window eviction | **7** |
+| `A + exact redeliveries = raw rows` | 459,230 + 567,943 = 1,027,173 ✔ |
+
+**The two identity expressions agree perfectly.** Every row is either admitted
+or collapsed as an exact redelivery; nothing is dropped, and no row expands
+into more than one event. The seven are not a measurement artefact and not
+rounding.
+
+They are re-admissions of an *unchanged* payload whose identity had already
+been evicted:
+
+| Source row | First seen | Gap (raw rows) | Symbol | Market timestamp | Received |
+|---|---|---|---|---|---|
+| 5,029,737 | 4,002,888 | 1,026,849 | DEIN | 07:00:01 | 11:15:01 |
+| 5,029,833 | 4,722,080 | 307,753 | ICLE | 09:56:47 | 11:15:03 |
+| 5,029,837 | 4,003,289 | 1,026,548 | SIMO | 07:00:01 | 11:15:03 |
+| 5,029,893 | 4,287,015 | 742,878 | SAIB | 07:57:33 | 11:15:04 |
+| 5,029,894 | 4,003,273 | 1,026,621 | GPPL | 07:00:01 | 11:15:04 |
+| 5,029,931 | 4,322,026 | 707,905 | MEGM | 08:06:12 | 11:15:04 |
+| 5,029,963 | 4,185,572 | 844,391 | SPHT | 07:34:20 | 11:15:04 |
+
+All seven share the same shape:
+
+* **`last_price = 0.0` and `volume = 0.0`** on every one — non-trading
+  placeholder quotes carrying at most a lone bid or ask. `_number(...,
+  positive=True)` maps zero to `None`, so the normalized events carry no
+  price and cannot move any bar's open, high, low or close.
+* **frozen market timestamps** (07:00:01 through 09:56:47) for symbols that
+  never traded again that session, which is why the recurrence is not
+  out-of-order.
+* **received at 11:15:01–11:15:04 UTC** — 14:15:01–14:15:04 Cairo, the
+  collector's sweep at the continuous close.
+* **gaps of 307,753 to 1,026,849 raw rows**, far beyond the 100,000-admission
+  retention window.
+
+An unchanged quote re-emitted hours later, after nothing retained could
+recognise it, is admitted again. This is **outcome A**: a legitimate, bounded,
+deterministic expansion — 7 events in 459,230, or 0.0015%. It is not duplicate
+inflation, because within the retention window the identical payload is always
+collapsed, and Lane B replays the same rows in the same order under the same
+retention, so it reproduces the same seven.
+
+### 1.2 The invariant
+
+```
+events admitted
+  = unique source payload identities
+  + payloads recurring after more than `deduplication_retention_payloads`
+    distinct admissions
+```
+
+with the second term deterministic in the retention size and zero when
+retention exceeds the session's distinct-identity count. Pinned by
+`test_a_payload_recurring_beyond_the_window_is_a_bounded_documented_expansion`,
+which asserts both halves: re-admitted beyond the window, collapsed inside it.
 
 ## 2. Test suite
 
