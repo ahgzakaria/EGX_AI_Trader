@@ -1163,6 +1163,9 @@ def _classify(**overrides):
         opening_ranges_ready=50,
         observed_exchange_minutes=250,
         minimum_exchange_minutes=200,
+        normalization_progress_through_continuous_end=True,
+        evaluation_progress_through_continuous_end=True,
+        no_critical_evaluation_stall=True,
     )
     base.update(overrides)
     return classify_session(**base)
@@ -1234,6 +1237,9 @@ def test_a_fabricated_session_date_cannot_manufacture_a_full_classification():
         opening_ranges_ready=500,
         observed_exchange_minutes=100_000,
         minimum_exchange_minutes=200,
+        normalization_progress_through_continuous_end=True,
+        evaluation_progress_through_continuous_end=True,
+        no_critical_evaluation_stall=True,
     )
     assert classification is SessionClassification.PARTIAL_SHADOW_SESSION
     assert "RUNNER_STARTED_AFTER_CONTINUOUS_OPEN" in reasons

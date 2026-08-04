@@ -58,7 +58,17 @@ class OrbDataConfig:
     event_retention_days: int = 30
     derived_data_retention_days: int = 365
     retention_batch_size: int = 10_000
-    maximum_seen_payloads_per_session: int = 250_000
+    # Rubix redelivers the same market payload within a narrow row-id window
+    # (2026-08-04 evidence: p50 39 rows, p99 140, p99.9 347). A session-wide
+    # identity set is therefore unnecessary and, at ~494k distinct identities
+    # per day, unbounded. Retention keeps a rolling window far wider than any
+    # observed redelivery; the hard capacity is a memory backstop that fails
+    # closed instead of silently discarding unseen payloads.
+    deduplication_retention_payloads: int = 100_000
+    deduplication_hard_capacity: int = 400_000
+    normalization_stall_max_cycles: int = 20
+    normalization_stall_max_seconds: float = 300.0
+    evaluation_stall_max_seconds: float = 600.0
     opening_range_minimum_bar_coverage: float = 1.0
     complete_bar_coverage: float = 0.95
     dense_session_coverage: float = 0.80
@@ -107,11 +117,26 @@ class OrbDataConfig:
             self.event_retention_days,
             self.derived_data_retention_days,
             self.retention_batch_size,
-            self.maximum_seen_payloads_per_session,
+            self.deduplication_retention_payloads,
+            self.deduplication_hard_capacity,
+            self.normalization_stall_max_cycles,
             self.minimum_time_of_day_rvol_sessions,
         ):
             if int(value) <= 0:
                 raise ValueError("Retention and history settings must be positive")
+        for value in (
+            self.normalization_stall_max_seconds,
+            self.evaluation_stall_max_seconds,
+        ):
+            if float(value) <= 0:
+                raise ValueError("Stall thresholds must be positive")
+        if int(self.deduplication_hard_capacity) < int(
+            self.deduplication_retention_payloads
+        ):
+            raise ValueError(
+                "deduplication_hard_capacity must be at least "
+                "deduplication_retention_payloads"
+            )
         if not str(self.research_database_path).strip():
             raise ValueError("research_database_path is required")
 

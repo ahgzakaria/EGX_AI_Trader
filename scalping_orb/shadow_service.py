@@ -47,6 +47,11 @@ from scalping_orb.events import (
     UniverseMembershipStatus,
     VolumeCapability,
 )
+from scalping_orb.liveness import (
+    HEALTHY_EVALUATION,
+    HEALTHY_NORMALIZATION,
+    LivenessVerdict,
+)
 from scalping_orb.session import OrbSessionClassifier, require_aware
 from scalping_orb.shadow_snapshot import (
     BarFinality,
@@ -72,6 +77,10 @@ class ShadowLiveStatus(str, Enum):
     LIVE_SHADOW_PARTIAL_SESSION = "LIVE_SHADOW_PARTIAL_SESSION"
     LIVE_SHADOW_FULL_SESSION = "LIVE_SHADOW_FULL_SESSION"
     LIVE_SHADOW_DISABLED_FRESHNESS = "LIVE_SHADOW_DISABLED_FRESHNESS"
+    # A live source is not a live pipeline. These two exist because
+    # 2026-08-04 reported HEALTHY while normalization produced nothing.
+    LIVE_SHADOW_NORMALIZATION_STALLED = "LIVE_SHADOW_NORMALIZATION_STALLED"
+    LIVE_SHADOW_EVALUATION_STALLED = "LIVE_SHADOW_EVALUATION_STALLED"
 
 
 class SessionClassification(str, Enum):
@@ -433,6 +442,9 @@ def classify_session(
     opening_ranges_ready: int,
     observed_exchange_minutes: int,
     minimum_exchange_minutes: int,
+    normalization_progress_through_continuous_end: bool,
+    evaluation_progress_through_continuous_end: bool,
+    no_critical_evaluation_stall: bool,
     smoke: bool = False,
 ) -> tuple[SessionClassification, tuple[str, ...]]:
     """Strict FULL classification. Existence of data is never sufficient.
@@ -440,6 +452,12 @@ def classify_session(
     A run started after 10:00 Cairo is always partial — it cannot have observed
     the opening range forming, so its Lane A history has a hole no later
     evidence can fill.
+
+    Reading rows is not observing a session. The three liveness arguments are
+    required rather than defaulted: a caller that cannot prove the pipeline
+    kept normalizing and evaluating to the continuous close must say so, and
+    the 2026-08-04 session — which read a million rows and normalized nothing
+    after 12:11 Cairo — must classify as PARTIAL on that evidence alone.
     """
 
     classifier = OrbSessionClassifier(config)
@@ -463,6 +481,12 @@ def classify_session(
         reasons.append("NO_OPENING_RANGE_OBSERVED")
     if observed_exchange_minutes < minimum_exchange_minutes:
         reasons.append("INSUFFICIENT_EXCHANGE_MINUTE_COVERAGE")
+    if not normalization_progress_through_continuous_end:
+        reasons.append("NORMALIZATION_STALLED_BEFORE_CONTINUOUS_END")
+    if not evaluation_progress_through_continuous_end:
+        reasons.append("EVALUATION_STALLED_BEFORE_CONTINUOUS_END")
+    if not no_critical_evaluation_stall:
+        reasons.append("CRITICAL_EVALUATION_STALL_OBSERVED")
 
     if smoke:
         return SessionClassification.PARTIAL_SMOKE_SESSION, tuple(
@@ -501,11 +525,29 @@ class OrbShadowService:
 
     # -- Lane A -----------------------------------------------------------
 
-    def live_status_for(self, snapshot: ShadowSessionSnapshot) -> ShadowLiveStatus:
+    def live_status_for(
+        self,
+        snapshot: ShadowSessionSnapshot,
+        *,
+        liveness: LivenessVerdict | None = None,
+    ) -> ShadowLiveStatus:
+        """Health requires a live source *and* a live pipeline behind it.
+
+        Source freshness alone was the 2026-08-04 failure: rows kept arriving,
+        the cursor kept advancing, and every one of them was discarded. When a
+        liveness verdict is supplied, normalization and evaluation progress
+        must both hold before this reports HEALTHY.
+        """
+
         if not snapshot.events_by_ticker:
             return ShadowLiveStatus.LIVE_SHADOW_SOURCE_UNAVAILABLE
         if not snapshot.watermark.live_evidence_fresh:
             return ShadowLiveStatus.LIVE_SHADOW_STALE
+        if liveness is not None:
+            if liveness.normalization not in HEALTHY_NORMALIZATION:
+                return ShadowLiveStatus.LIVE_SHADOW_NORMALIZATION_STALLED
+            if liveness.evaluation not in HEALTHY_EVALUATION:
+                return ShadowLiveStatus.LIVE_SHADOW_EVALUATION_STALLED
         return ShadowLiveStatus.LIVE_SHADOW_HEALTHY
 
     def evaluate_live(

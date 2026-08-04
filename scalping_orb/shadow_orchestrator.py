@@ -185,6 +185,11 @@ class FullSessionCriteria:
     cursor_progressed: bool = False
     no_excessive_polling_outage: bool = False
     sufficient_exchange_minute_coverage: bool = False
+    # Source coverage says rows arrived. These say the pipeline behind the
+    # source was still alive to turn them into evaluated symbols.
+    normalization_progressed_to_continuous_end: bool = False
+    evaluation_progressed_to_continuous_end: bool = False
+    no_critical_evaluation_stall: bool = False
     graceful_shutdown: bool = False
     lane_a_persisted: bool = False
     reconstruction_completed: bool = False
