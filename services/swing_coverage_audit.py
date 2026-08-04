@@ -25,11 +25,22 @@ class ScanResults(list):
     completed immutable forward session.
     """
 
-    def __init__(self, values=(), *, coverage=None, failures=None, status="COMPLETED"):
+    def __init__(self, values=(), *, coverage=None, failures=None, status="COMPLETED",
+                 freshness=None, universe_coverage=None, expected_session=""):
         super().__init__(values)
         self.coverage = list(coverage or [])
         self.failures = list(failures or [])
         self.status = str(status)
+        #: Typed per-symbol freshness for EVERY symbol the scan loaded history
+        #: for - including the ones excluded from decisions. A stale symbol
+        #: dropped without a record would be indistinguishable from one that
+        #: was never attempted.
+        self.freshness = list(freshness or [])
+        #: The universe coverage summary, or None when freshness was not
+        #: evaluated (older callers).
+        self.universe_coverage = universe_coverage
+        #: The expected completed EGX session every symbol was judged against.
+        self.expected_session = str(expected_session or "")
 
     @property
     def cancelled(self) -> bool:

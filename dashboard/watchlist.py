@@ -4,9 +4,54 @@ import pandas as pd
 import streamlit as st
 
 from core.scanner import scan_symbols
+from dashboard.freshness_panel import withheld_badge
 from core.watchlist import Watchlist
 from dashboard.formatting import NAME_COLUMN, with_company_name_column
 from dashboard.ui import empty_state, page_header, section_header
+
+
+def render_data_update_required(symbols, results):
+    """Symbols the user still tracks whose data cannot support a decision.
+
+    The scanner excludes a stale symbol before the decision engine, so it
+    produces no row at all - which previously made it vanish from the user's
+    own watchlist. It stays here instead, with its decision withheld rather
+    than guessed, and it is never removed automatically.
+    """
+
+    freshness = {item.symbol: item for item in getattr(results, "freshness", []) or []}
+    analysed = {str(row.get("Ticker")) for row in results or ()}
+    excluded = [symbol for symbol in symbols if symbol not in analysed]
+    if not excluded:
+        return
+
+    rows = []
+    for symbol in excluded:
+        item = freshness.get(symbol)
+        rows.append({
+            "Ticker": symbol,
+            "ExpectedSession": getattr(item, "expected_session", "") or "—",
+            "ActualSession": getattr(item, "actual_latest_session", "") or "—",
+            "FreshnessStatus": (item.freshness_status.value if item else "UNAVAILABLE"),
+            "SessionsBehind": getattr(item, "trading_sessions_behind", 0),
+            "Decision": withheld_badge(),
+            "ExclusionReason": getattr(item, "exclusion_reason", "")
+                               or "no current daily data was loaded",
+        })
+
+    section_header("Data Update Required",
+                   f"{len(rows)} tracked symbols without current daily data")
+    st.warning(withheld_badge())
+    st.dataframe(
+        with_company_name_column(pd.DataFrame(rows), "Ticker"),
+        hide_index=True, use_container_width=True,
+    )
+    st.caption(
+        "These symbols remain on your watchlist. They carry no current "
+        "BUY/WATCH/AVOID decision because their latest daily candle is not the "
+        "expected completed session. Any previous decision shown elsewhere is "
+        "historical and NOT CURRENT."
+    )
 
 
 def show_watchlist():
@@ -53,12 +98,17 @@ def show_watchlist():
         ["Confidence", "Score"], ascending=False
     )
     metrics = st.columns(4)
+    # Counted from CURRENT rows only: the scanner excludes stale symbols before
+    # the decision engine, so no withheld symbol can inflate a badge count.
     metrics[0].metric("BUY", int((frame["Signal"] == "BUY").sum()))
     metrics[1].metric("WATCH", int((frame["Signal"] == "WATCH").sum()))
     metrics[2].metric("AVOID", int((frame["Signal"] == "AVOID").sum()))
     metrics[3].metric("Average Score", f"{frame['Score'].mean():.1f}")
 
-    section_header("Latest Watchlist Scan", f"{len(frame)} symbols evaluated")
+    render_data_update_required(symbols, results)
+
+    section_header("Current Opportunities",
+                   f"{len(frame)} symbols with current daily data")
     st.dataframe(
         with_company_name_column(frame[[
             "Rank", "Ticker", "Rating", "Regime", "Signal", "Confidence",

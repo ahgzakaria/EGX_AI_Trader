@@ -39,6 +39,13 @@ logger = logging.getLogger(__name__)
 # WHY a symbol was dropped; these map the real cause so a coverage gap is visible
 # instead of being hidden behind a success rate.
 SYMBOL_SUCCESS = "SUCCESS"
+# Freshness exclusions. Deliberately NOT provider failures: a symbol whose
+# provider simply has not published the latest session yet is a coverage fact,
+# and reporting it as an error would hide a data-coverage problem inside an
+# error rate.
+SYMBOL_SKIPPED_STALE_DAILY_DATA = "SKIPPED_STALE_DAILY_DATA"
+SYMBOL_SKIPPED_MISSING_DAILY_DATE = "SKIPPED_MISSING_DAILY_DATE"
+SYMBOL_SKIPPED_FUTURE_DAILY_DATE = "SKIPPED_FUTURE_DAILY_DATE"
 SYMBOL_EODHD_CACHE_MISS = "EODHD_CACHE_MISS"
 SYMBOL_EODHD_REFRESH_FAILED = "EODHD_REFRESH_FAILED"
 SYMBOL_EODHD_TIMEOUT = "EODHD_TIMEOUT"
@@ -119,6 +126,167 @@ def classify_symbol_failure(error):
     return SYMBOL_INTERNAL_ERROR
 
 
+def _latest_accepted_candle_date(frame):
+    """The date of the FINAL accepted candle row, or None.
+
+    Read from the frame's own index - the bar the analysis would actually use.
+    Never a file mtime, a cache refresh timestamp, the run date or the expected
+    session, each of which describes something other than which bar is held.
+    """
+    try:
+        if frame is None or len(frame) == 0:
+            return None
+        import pandas as _pd
+
+        return _pd.Timestamp(frame.index[len(frame) - 1]).date()
+    except Exception:
+        return None
+
+
+def _publish_versioned_exports(experiment, results, freshness_results, symbols,
+                               failures, expected_session):
+    """Build and atomically publish the v2 archive.
+
+    Every operational-universe symbol gets exactly one audit row, including the
+    ones that never produced a result: a symbol dropped without a record is
+    indistinguishable from one that was never attempted.
+    """
+    from core.daily_data_guard import SymbolFreshness, summarize_universe_coverage
+    from services.daily_scan_export import (
+        build_export_metadata,
+        coverage_audit_row,
+        current_decision_row,
+        publish_archive,
+    )
+
+    run_id = getattr(experiment, "run_id", "")
+    by_symbol = {row.get("Ticker"): row for row in results}
+    freshness_by_symbol = {item.symbol: item for item in freshness_results}
+    failure_by_symbol = {record.get("Symbol"): record for record in failures}
+
+    decisions, audit, outcome_counts = [], [], {}
+    for ordinal, symbol in enumerate(symbols):
+        row = by_symbol.get(symbol)
+        item = freshness_by_symbol.get(symbol)
+        failure = failure_by_symbol.get(symbol)
+        if item is not None:
+            outcome = item.outcome_status
+        elif failure is not None:
+            outcome = str(failure.get("Status") or "PROVIDER_ERROR")
+        else:
+            outcome = "NOT_ATTEMPTED"
+        audit.append(coverage_audit_row(
+            symbol, run_id=run_id, ordinal=ordinal, freshness=item,
+            result_row=row, outcome=outcome,
+            error=None if failure is None else {
+                "category": "SCAN", "code": failure.get("Status"),
+                "message": failure.get("Error"),
+            }))
+        outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
+        if row is not None and item is not None and \
+                item.freshness_status is SymbolFreshness.CURRENT:
+            decisions.append(current_decision_row(row, run_id=run_id,
+                                                  freshness=item))
+
+    run_dir = getattr(experiment, "run_dir", None)
+    if not run_dir:
+        # No archive directory means no archive. Inventing one would scatter
+        # real exports wherever the caller happened to be running.
+        return
+
+    coverage = summarize_universe_coverage(freshness_results, expected_session,
+                                           universe_total=len(symbols))
+    now = datetime.now(timezone.utc).isoformat()
+    metadata = build_export_metadata(
+        run_id=run_id, run_status="COMPLETED", generated_at_utc=now,
+        evaluation_time_utc=now, coverage=coverage, decisions=decisions,
+        outcome_counts=outcome_counts)
+    # Raises ArchiveInvariantError rather than publishing a half-valid archive.
+    publish_archive(run_dir, decisions=decisions, audit=audit,
+                    metadata=metadata, universe_symbols=symbols)
+
+
+def _rubix_provenance(symbol, provider_metadata, expected_session, daily_freshness):
+    """Classify the Rubix overlay and record what it was allowed to do.
+
+    Runs AFTER the daily gate and the decision, and never feeds back into
+    either: the strategy reads a daily candle, so a quote may only overlay a
+    display price or - when everything qualifies - enter decision inputs on a
+    symbol whose daily candle is already CURRENT.
+    """
+    from core.daily_data_guard import SymbolFreshness
+    from core.rubix_quote_freshness import (
+        classify_rubix_quote,
+        evaluate_overlay_permission,
+        freshness_budget_seconds,
+    )
+
+    metadata = dict(provider_metadata or {})
+    assessment = classify_rubix_quote(
+        symbol,
+        evaluated_at=datetime.now(timezone.utc),
+        mapping_verified=bool(metadata.get("live_quote_available")),
+        quote_price=metadata.get("live_quote_last"),
+        market_timestamp=metadata.get("live_quote_timestamp"),
+        receive_timestamp=metadata.get("live_quote_received_timestamp"),
+        permitted_session=expected_session,
+        budget_seconds=freshness_budget_seconds(),
+    )
+    permission = evaluate_overlay_permission(
+        assessment,
+        daily_symbol_current=(
+            daily_freshness.freshness_status is SymbolFreshness.CURRENT),
+    )
+    row = assessment.as_row()
+    row.update(permission.as_row())
+    row["DailyCandleSession"] = daily_freshness.actual_latest_session
+    row["DailyFreshnessStatus"] = daily_freshness.freshness_status.value
+    return row
+
+
+def _classify_symbol_freshness(symbol, frame, expected_session, provider_metadata):
+    """Classify one symbol against the expected completed EGX session."""
+    from core.daily_data_guard import classify_symbol_freshness
+
+    metadata = dict(provider_metadata or {})
+    actual = _latest_accepted_candle_date(frame)
+    ohlcv = {}
+    try:
+        if frame is not None and len(frame):
+            last = frame.iloc[len(frame) - 1]
+            ohlcv = {key: float(last[key]) for key in
+                     ("Open", "High", "Low", "Close", "Volume") if key in last}
+    except Exception:
+        ohlcv = {}
+    return classify_symbol_freshness(
+        symbol,
+        actual,
+        expected_session,
+        source_provider=str(metadata.get("provider") or ""),
+        source_mode=str(metadata.get("source_type") or metadata.get("mode") or ""),
+        candle_identity=str(metadata.get("dataset_hash")
+                            or metadata.get("source_row_hash") or ""),
+        ohlcv=ohlcv,
+    )
+
+
+def _expected_completed_session():
+    """The authoritative expected completed EGX session, or "" when unknown.
+
+    An unavailable calendar never becomes permission to call anything current:
+    ``classify_symbol_freshness`` refuses every symbol without an expectation.
+    """
+    try:
+        from core.egx_calendar import effective_holidays
+        from core.egx_session import expected_latest_completed_session
+
+        value = expected_latest_completed_session(holidays=effective_holidays())
+        return value.isoformat() if value else ""
+    except Exception:
+        logger.warning("expected completed session unavailable", exc_info=True)
+        return ""
+
+
 def _open_archive_session(experiment, scan_ctx):
     """Start the run-scoped archive writer, or fall back to synchronous capture.
 
@@ -155,7 +323,17 @@ def _close_archive_session(session, token, *, cancelled):
 
 
 def scan_symbols(source, data_purpose="scanner", scan_context=None, *,
-                 progress=None, cancellation_event=None, job=None):
+                 progress=None, cancellation_event=None, job=None,
+                 expected_session=None):
+    """Scan the universe, admitting only symbols whose daily data is current.
+
+    ``expected_session`` names the completed EGX session every symbol is judged
+    against. Production leaves it None so the exchange calendar decides. An
+    offline or fixture-driven scan supplies its own, because "current" means
+    current *relative to the data being scanned* - deriving today's session for
+    a frame that legitimately ends earlier would exclude every symbol and say
+    nothing useful about the run.
+    """
 
     # يضمن أن أي تعديل محفوظ من شاشة Settings أو من ملف الإعدادات
     # يُطبّق على أول Scan تالي حتى لو ظلّ Streamlit مفتوحاً.
@@ -190,6 +368,11 @@ def scan_symbols(source, data_purpose="scanner", scan_context=None, *,
     results = []
     failures = []
     coverage = []
+    # One authoritative expectation for the whole scan, resolved before any
+    # symbol is judged so every symbol is measured against the same session.
+    expected_session = (str(expected_session)[:10] if expected_session
+                        else _expected_completed_session())
+    freshness_results = []
     required_lookback = int(settings.get("data").get("min_bars", 250))
 
     # One scan-scoped context: one EODHD session, one expected-completed-session
@@ -235,6 +418,29 @@ def scan_symbols(source, data_purpose="scanner", scan_context=None, *,
 
             df = load_history(symbol, purpose=data_purpose, scan_context=scan_ctx)
             provider_metadata = dict(df.attrs.get("market_data", {}))
+
+            # ------------------------------------------------------------------
+            # Per-symbol daily-data freshness gate.
+            #
+            # This runs BEFORE indicators and before the decision engine, so a
+            # stale symbol never has a current score computed and then hidden.
+            # The date comes from the final accepted candle row - never from a
+            # file mtime, a cache refresh time, the run date or the expected
+            # session. Only CURRENT symbols continue.
+            # ------------------------------------------------------------------
+            freshness = _classify_symbol_freshness(symbol, df, expected_session,
+                                                   provider_metadata)
+            freshness_results.append(freshness)
+            if not freshness.eligible_for_current_analysis:
+                emit("SYMBOL_FAILED", symbol=symbol,
+                     status=freshness.outcome_status, seconds=0.0)
+                failures.append({
+                    "Symbol": symbol,
+                    "Error": freshness.exclusion_reason,
+                    "Status": freshness.outcome_status,
+                })
+                continue
+
             df = calculate_indicators(df)
             # Pandas indicator operations may drop attrs; restore provider
             # evidence so the post-strategy actionability layer is auditable.
@@ -307,6 +513,11 @@ def scan_symbols(source, data_purpose="scanner", scan_context=None, *,
                     "live_quote_received_timestamp"
                 ),
                 "LivePriceStatus": provider_metadata.get("live_quote_freshness"),
+                # Typed, phase-aware Rubix verdict. Independent of the daily
+                # candle verdict: they answer different questions, and a live
+                # tick can never make a stale daily candle current.
+                **_rubix_provenance(symbol, provider_metadata, expected_session,
+                                    freshness),
                 "LiveProvider": provider_metadata.get("live_quote_provider"),
                 "SnapshotStatus": (
                     "FROZEN + LIVE OVERLAY"
@@ -535,7 +746,14 @@ def scan_symbols(source, data_purpose="scanner", scan_context=None, *,
         experiment.fail(error)
         raise RuntimeError(f"Forward testing session failed: {error}") from error
 
-    experiment.save_records("scan_results.csv", results)
+    # Schema v2: current decisions, full coverage audit and versioned metadata
+    # published together or not at all. scan_results.csv remains as an explicit
+    # compatibility alias of the decisions file - every file-based consumer in
+    # the audit wants decisions, and the meaning is now written down rather
+    # than implied.
+    _publish_versioned_exports(
+        experiment, results, freshness_results, symbols, failures,
+        expected_session)
     experiment.save_records("failed_symbols.csv", failures)
     coverage_frame = write_coverage_report(coverage)
     experiment.save_dataframe("swing_symbol_coverage_audit.csv", coverage_frame)
@@ -574,7 +792,14 @@ def scan_symbols(source, data_purpose="scanner", scan_context=None, *,
     emit("SCAN_COMPLETED", success=len(results), failed=len(failures),
          total=len(symbols))
     status = "COMPLETED" if not failures else "COMPLETED_WITH_GAPS"
-    return ScanResults(results, coverage=coverage, failures=failures, status=status)
+    from core.daily_data_guard import summarize_universe_coverage
+
+    universe_coverage = summarize_universe_coverage(
+        freshness_results, expected_session, universe_total=len(symbols))
+    return ScanResults(results, coverage=coverage, failures=failures, status=status,
+                       freshness=freshness_results,
+                       universe_coverage=universe_coverage,
+                       expected_session=expected_session)
 
 
 def _numeric_sort_value(value):
