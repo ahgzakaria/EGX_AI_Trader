@@ -214,15 +214,31 @@ def test_cache_metadata_cannot_advance_freshness_on_its_own():
     coverage = session_coverage(rows_for({ACTUAL_SESSION: 200}))
     decision = evaluate_daily_data(coverage, EXPECTED_SESSION)
     assert decision.blocked is True
-    # The guard's inputs contain no clock, mtime or refresh marker at all.
+    # Checked as executable code: the module *documents* that it ignores mtime
+    # and refresh markers, so a text search would match its own explanation.
+    import ast
     import inspect
 
     from core import daily_data_guard
 
-    source = inspect.getsource(daily_data_guard)
-    for forbidden in ("mtime", "st_mtime", "fetched_at", "time.time(",
-                      "datetime.now", "refreshed_at"):
-        assert forbidden not in source, f"the guard consults {forbidden}"
+    tree = ast.parse(inspect.getsource(daily_data_guard))
+    docstrings = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef)):
+            doc = ast.get_docstring(node, clean=False)
+            if doc:
+                docstrings.add(doc)
+    forbidden = ("mtime", "st_mtime", "fetched_at", "refreshed_at", "now")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute):
+            assert node.attr not in forbidden, f"the guard reads .{node.attr}"
+        elif isinstance(node, ast.Name):
+            assert node.id not in forbidden, f"the guard reads {node.id}"
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if node.value in docstrings:
+                continue
+            for token in ("mtime", "fetched_at", "refreshed_at"):
+                assert token not in node.value, f"the guard keys on {token}"
 
 
 # =========================================================================== #

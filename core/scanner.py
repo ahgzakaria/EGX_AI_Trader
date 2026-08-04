@@ -39,6 +39,13 @@ logger = logging.getLogger(__name__)
 # WHY a symbol was dropped; these map the real cause so a coverage gap is visible
 # instead of being hidden behind a success rate.
 SYMBOL_SUCCESS = "SUCCESS"
+# Freshness exclusions. Deliberately NOT provider failures: a symbol whose
+# provider simply has not published the latest session yet is a coverage fact,
+# and reporting it as an error would hide a data-coverage problem inside an
+# error rate.
+SYMBOL_SKIPPED_STALE_DAILY_DATA = "SKIPPED_STALE_DAILY_DATA"
+SYMBOL_SKIPPED_MISSING_DAILY_DATE = "SKIPPED_MISSING_DAILY_DATE"
+SYMBOL_SKIPPED_FUTURE_DAILY_DATE = "SKIPPED_FUTURE_DAILY_DATE"
 SYMBOL_EODHD_CACHE_MISS = "EODHD_CACHE_MISS"
 SYMBOL_EODHD_REFRESH_FAILED = "EODHD_REFRESH_FAILED"
 SYMBOL_EODHD_TIMEOUT = "EODHD_TIMEOUT"
@@ -119,6 +126,66 @@ def classify_symbol_failure(error):
     return SYMBOL_INTERNAL_ERROR
 
 
+def _latest_accepted_candle_date(frame):
+    """The date of the FINAL accepted candle row, or None.
+
+    Read from the frame's own index - the bar the analysis would actually use.
+    Never a file mtime, a cache refresh timestamp, the run date or the expected
+    session, each of which describes something other than which bar is held.
+    """
+    try:
+        if frame is None or len(frame) == 0:
+            return None
+        import pandas as _pd
+
+        return _pd.Timestamp(frame.index[len(frame) - 1]).date()
+    except Exception:
+        return None
+
+
+def _classify_symbol_freshness(symbol, frame, expected_session, provider_metadata):
+    """Classify one symbol against the expected completed EGX session."""
+    from core.daily_data_guard import classify_symbol_freshness
+
+    metadata = dict(provider_metadata or {})
+    actual = _latest_accepted_candle_date(frame)
+    ohlcv = {}
+    try:
+        if frame is not None and len(frame):
+            last = frame.iloc[len(frame) - 1]
+            ohlcv = {key: float(last[key]) for key in
+                     ("Open", "High", "Low", "Close", "Volume") if key in last}
+    except Exception:
+        ohlcv = {}
+    return classify_symbol_freshness(
+        symbol,
+        actual,
+        expected_session,
+        source_provider=str(metadata.get("provider") or ""),
+        source_mode=str(metadata.get("source_type") or metadata.get("mode") or ""),
+        candle_identity=str(metadata.get("dataset_hash")
+                            or metadata.get("source_row_hash") or ""),
+        ohlcv=ohlcv,
+    )
+
+
+def _expected_completed_session():
+    """The authoritative expected completed EGX session, or "" when unknown.
+
+    An unavailable calendar never becomes permission to call anything current:
+    ``classify_symbol_freshness`` refuses every symbol without an expectation.
+    """
+    try:
+        from core.egx_calendar import effective_holidays
+        from core.egx_session import expected_latest_completed_session
+
+        value = expected_latest_completed_session(holidays=effective_holidays())
+        return value.isoformat() if value else ""
+    except Exception:
+        logger.warning("expected completed session unavailable", exc_info=True)
+        return ""
+
+
 def _open_archive_session(experiment, scan_ctx):
     """Start the run-scoped archive writer, or fall back to synchronous capture.
 
@@ -155,7 +222,17 @@ def _close_archive_session(session, token, *, cancelled):
 
 
 def scan_symbols(source, data_purpose="scanner", scan_context=None, *,
-                 progress=None, cancellation_event=None, job=None):
+                 progress=None, cancellation_event=None, job=None,
+                 expected_session=None):
+    """Scan the universe, admitting only symbols whose daily data is current.
+
+    ``expected_session`` names the completed EGX session every symbol is judged
+    against. Production leaves it None so the exchange calendar decides. An
+    offline or fixture-driven scan supplies its own, because "current" means
+    current *relative to the data being scanned* - deriving today's session for
+    a frame that legitimately ends earlier would exclude every symbol and say
+    nothing useful about the run.
+    """
 
     # يضمن أن أي تعديل محفوظ من شاشة Settings أو من ملف الإعدادات
     # يُطبّق على أول Scan تالي حتى لو ظلّ Streamlit مفتوحاً.
@@ -190,6 +267,11 @@ def scan_symbols(source, data_purpose="scanner", scan_context=None, *,
     results = []
     failures = []
     coverage = []
+    # One authoritative expectation for the whole scan, resolved before any
+    # symbol is judged so every symbol is measured against the same session.
+    expected_session = (str(expected_session)[:10] if expected_session
+                        else _expected_completed_session())
+    freshness_results = []
     required_lookback = int(settings.get("data").get("min_bars", 250))
 
     # One scan-scoped context: one EODHD session, one expected-completed-session
@@ -235,6 +317,29 @@ def scan_symbols(source, data_purpose="scanner", scan_context=None, *,
 
             df = load_history(symbol, purpose=data_purpose, scan_context=scan_ctx)
             provider_metadata = dict(df.attrs.get("market_data", {}))
+
+            # ------------------------------------------------------------------
+            # Per-symbol daily-data freshness gate.
+            #
+            # This runs BEFORE indicators and before the decision engine, so a
+            # stale symbol never has a current score computed and then hidden.
+            # The date comes from the final accepted candle row - never from a
+            # file mtime, a cache refresh time, the run date or the expected
+            # session. Only CURRENT symbols continue.
+            # ------------------------------------------------------------------
+            freshness = _classify_symbol_freshness(symbol, df, expected_session,
+                                                   provider_metadata)
+            freshness_results.append(freshness)
+            if not freshness.eligible_for_current_analysis:
+                emit("SYMBOL_FAILED", symbol=symbol,
+                     status=freshness.outcome_status, seconds=0.0)
+                failures.append({
+                    "Symbol": symbol,
+                    "Error": freshness.exclusion_reason,
+                    "Status": freshness.outcome_status,
+                })
+                continue
+
             df = calculate_indicators(df)
             # Pandas indicator operations may drop attrs; restore provider
             # evidence so the post-strategy actionability layer is auditable.
@@ -574,7 +679,14 @@ def scan_symbols(source, data_purpose="scanner", scan_context=None, *,
     emit("SCAN_COMPLETED", success=len(results), failed=len(failures),
          total=len(symbols))
     status = "COMPLETED" if not failures else "COMPLETED_WITH_GAPS"
-    return ScanResults(results, coverage=coverage, failures=failures, status=status)
+    from core.daily_data_guard import summarize_universe_coverage
+
+    universe_coverage = summarize_universe_coverage(
+        freshness_results, expected_session, universe_total=len(symbols))
+    return ScanResults(results, coverage=coverage, failures=failures, status=status,
+                       freshness=freshness_results,
+                       universe_coverage=universe_coverage,
+                       expected_session=expected_session)
 
 
 def _numeric_sort_value(value):

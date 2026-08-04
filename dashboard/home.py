@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from core import scan_job_manager as job_manager
-from core.daily_data_guard import evaluate_daily_data
+from core.daily_data_guard import INSUFFICIENT_CURRENT_COVERAGE
 from core.data_provider import summarize_frames
 from core.symbols import SYMBOL_SOURCE
 from dashboard.formatting import (
@@ -582,6 +582,62 @@ def _render_swing_advanced_research(
         )
 
 
+def render_coverage_panel(coverage, results=None):
+    """State the coverage plainly, and separate excluded symbols from decisions.
+
+    A partial scan is never presented as a plain "Scan Complete": the operator
+    needs to know that most of the market was not analysed before reading a
+    ranking of what was.
+    """
+
+    if not coverage.complete:
+        st.warning(coverage.partial_message())
+
+    row = st.columns(6)
+    row[0].metric("Expected session", coverage.expected_session or "—")
+    row[1].metric("Universe", coverage.universe_total)
+    row[2].metric("History loaded", coverage.history_loaded)
+    row[3].metric("Current", coverage.current)
+    row[4].metric("Stale", coverage.stale)
+    row[5].metric("Current coverage", f"{coverage.current_percent:.1f}%")
+
+    if coverage.distribution:
+        st.caption("Observed candle sessions: " + " · ".join(
+            f"`{date}` {count}"
+            for date, count in sorted(coverage.distribution.items(), reverse=True)))
+
+    if not coverage.market_wide_allowed:
+        # Symbol-level results stay visible; only the market-wide claim stops.
+        st.error(coverage.blocked_message())
+        st.caption(
+            f"Market regime: {INSUFFICIENT_CURRENT_COVERAGE} — the gate is the "
+            f"data-quality setting `{coverage.threshold_source}` "
+            f"({coverage.threshold_percent:.0f}%), not a strategy threshold."
+        )
+
+    excluded = [item for item in getattr(results, "freshness", []) or []
+                if not item.eligible_for_current_analysis]
+    if not excluded:
+        return
+    with st.expander(f"Excluded due to daily-data freshness ({len(excluded)})"):
+        statuses = sorted({item.freshness_status.value for item in excluded})
+        chosen = st.multiselect("Filter by status", statuses, default=statuses,
+                                key="freshness_exclusion_filter")
+        frame = pd.DataFrame([
+            item.as_row() for item in excluded
+            if item.freshness_status.value in chosen
+        ])
+        if frame.empty:
+            st.caption("No excluded symbols match this filter.")
+            return
+        frame = with_company_name_column(frame, ticker_column="Ticker")
+        st.dataframe(frame, use_container_width=True, hide_index=True)
+        st.caption(
+            "These symbols were NOT analyzed as current opportunities and carry "
+            "no BUY/WATCH/AVOID decision."
+        )
+
+
 def show_dashboard():
     page_header(
         "لوحة التداول اليومي",
@@ -724,43 +780,17 @@ def show_dashboard():
             f"snapshot failed: {st.session_state.decision_support_error}"
         )
 
-    # --- Fail closed on candle provenance ---------------------------------- #
-    # The rows carry their own session dates. If those disagree with each other
-    # or lag the exchange calendar, the table below would present one session's
-    # prices under another session's name, so no decision is rendered from it.
-    coverage = session_coverage(results)
-    try:
-        from core.egx_calendar import effective_holidays
-        from core.egx_session import expected_latest_completed_session
-
-        expected = expected_latest_completed_session(holidays=effective_holidays())
-        expected_session = expected.isoformat() if expected else ""
-    except Exception as error:              # never guess a date to unblock
-        logger.warning("expected session unavailable: %s", error)
-        expected_session = ""
-
-    decision = evaluate_daily_data(coverage, expected_session)
-    if decision.blocked:
-        st.error(decision.message)
-        if decision.detail:
-            st.caption(decision.detail)
-        st.caption(
-            "Observed session dates across the scanned rows: "
-            + ", ".join(f"{date} ({count})"
-                        for date, count in sorted(decision.distribution.items()))
-        )
-        with st.expander("Rows as scanned (provenance only, not a recommendation)"):
-            st.dataframe(
-                pd.DataFrame(results)[
-                    [column for column in ("Ticker", "LastCompletedSession",
-                                           "CompletedSessionClose", "Price",
-                                           "CompletedSessionProvider",
-                                           "LivePriceStatus")
-                     if column in pd.DataFrame(results).columns]
-                ],
-                use_container_width=True, hide_index=True,
-            )
-        return
+    # --- Daily-data coverage -------------------------------------------------
+    # The scan already excluded every symbol whose latest candle was not the
+    # expected completed session, so `results` holds CURRENT symbols only and
+    # no stale row can reach a decision table. What remains is to say so
+    # honestly: how much of the universe that represents, and whether it is
+    # enough to support a market-WIDE claim.
+    coverage = getattr(results, "universe_coverage", None)
+    if coverage is not None:
+        render_coverage_panel(coverage, results)
+        if not coverage.market_wide_allowed:
+            st.session_state["market_regime_label"] = INSUFFICIENT_CURRENT_COVERAGE
 
     df = pd.DataFrame(results)
     # The final banner is rendered from what the scan actually observed. It must NOT go

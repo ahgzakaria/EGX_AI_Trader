@@ -616,7 +616,13 @@ def test_scanner_provenance_is_additive_to_frozen_golden_output(monkeypatch):
     )
     monkeypatch.setattr(scanner.settings, "reload", lambda: None)
 
-    rows = scanner.scan_symbols("unused.csv", data_purpose="scanner")
+    # The fixture frames end on their own synthetic session, so the freshness
+    # gate is told which session counts as current HERE. Deriving today's
+    # exchange session would exclude every fixture symbol and the test would
+    # stop saying anything about provenance additivity.
+    fixture_session = pd.date_range("2025-07-01", periods=260, freq="D")[-1].date()
+    rows = scanner.scan_symbols("unused.csv", data_purpose="scanner",
+                                expected_session=fixture_session.isoformat())
     by_symbol = {row["Ticker"]: row for row in rows}
 
     assert len(provider_calls) == len(basket)  # pre-fix baseline: one per symbol

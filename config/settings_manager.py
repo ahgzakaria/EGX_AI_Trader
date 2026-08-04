@@ -41,6 +41,13 @@ DEFAULT_SETTINGS = {
     # completed* Rubix daily sessions newer than Yahoo. Production activation is
     # a separate, explicit, user-approved step; leave `enabled` false until the
     # capability audit and reconciliation reports justify it.
+    # DATA-QUALITY gate, not a strategy threshold. It changes no indicator, no
+    # score, no reward/risk requirement and no BUY/WATCH/AVOID rule, and no
+    # symbol-level decision depends on it. It governs only whether MARKET-WIDE
+    # aggregates (regime, breadth, "top market opportunity") may be stated at
+    # all. Set against observed runs: healthy scans analyse ~194/241 (~80%),
+    # while the 2026-08-04 partial-provider morning had 6/241 (2.5%) current.
+    "minimum_daily_market_coverage_percent": 60.0,
     "rubix_daily_bridge": {
         "enabled": False,
         "shadow_mode": True,
