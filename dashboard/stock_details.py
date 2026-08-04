@@ -21,6 +21,12 @@ from core.level_status import (
     state_label,
 )
 from core.watchlist import Watchlist
+from dashboard.freshness_panel import (
+    render_freshness_provenance,
+    render_historical_labels,
+    render_rubix_status,
+    render_stale_block,
+)
 from dashboard.provenance_panel import (
     FROZEN,
     MIXED,
@@ -32,7 +38,45 @@ from dashboard.ui import section_header
 from portfolio.sizing import PositionSizer
 
 
-def show_stock_details(stock):
+def stock_freshness_context(stock, *, evaluated_at=None, expected_session=None):
+    """Re-classify the row this page is about to render as current.
+
+    The page computes no decision of its own - it renders a row an earlier scan
+    produced. That row was gated when it was made, but the expectation moves:
+    a row computed while 2026-07-30 was current keeps rendering as a current
+    BUY once the expected session advances unless it is re-checked here.
+    """
+
+    from datetime import datetime, timezone
+
+    from services.analysis_freshness_service import build_analysis_context
+
+    if expected_session is None:
+        try:
+            from core.egx_calendar import effective_holidays
+            from core.egx_session import expected_latest_completed_session
+
+            value = expected_latest_completed_session(holidays=effective_holidays())
+            expected_session = value.isoformat() if value else ""
+        except Exception:            # never guess a date to unblock a decision
+            expected_session = ""
+
+    return build_analysis_context(
+        stock.get("Ticker", ""),
+        evaluated_at=evaluated_at or datetime.now(timezone.utc),
+        expected_session=expected_session,
+        actual_session=str(stock.get("LastCompletedSession")
+                           or stock.get("CompletedSessionTimestamp") or "")[:10],
+        mapping_verified=bool(stock.get("LivePrice")),
+        quote_price=stock.get("LivePrice"),
+        quote_market_timestamp=stock.get("LivePriceTimestamp"),
+        quote_receive_timestamp=stock.get("LivePriceReceivedTimestamp"),
+        source_identity=str(stock.get("DataSource") or ""),
+    )
+
+
+def show_stock_details(stock, *, freshness=None):
+    freshness = freshness if freshness is not None else stock_freshness_context(stock)
     watchlist = Watchlist()
     symbols = watchlist.load()
     title_col, action_col, count_col = st.columns([2, 1, 1])
@@ -51,6 +95,25 @@ def show_stock_details(stock):
             st.rerun()
     count_col.metric("Watchlist", len(symbols))
 
+    # A non-current symbol shows the blocking panel INSTEAD of any decision
+    # surface - not above or below one. Leaving a stale BUY card visible beside
+    # a warning is how an operator reads the card and ignores the warning.
+    render_rubix_status(freshness)
+    if not freshness.current_analysis_allowed:
+        render_stale_block(freshness)
+        with st.expander("HISTORICAL SNAPSHOT — not a current decision"):
+            render_historical_labels()
+            st.caption(
+                f"Candle session: {freshness.actual_daily_session or 'unavailable'}"
+            )
+            st.dataframe(
+                pd.DataFrame([{k: v for k, v in stock.items()
+                               if k not in ("Data",)}]).T,
+                use_container_width=True,
+            )
+        return
+
+    render_freshness_provenance(freshness)
     overview, decision, sizing_tab, chart_tab = st.tabs([
         "Overview", "Decision Trace", "Position Sizing", "Chart & Indicators"
     ])

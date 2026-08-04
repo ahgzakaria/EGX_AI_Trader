@@ -133,11 +133,12 @@ commit.
 - **No live production scan was performed.** The gate is proven by replaying
   real archived rows and by structural assertions on the scan loop, not by a
   fresh 241-symbol run.
-- **Not every UI surface is wired yet.** See the audit's scope notes: the
-  Dashboard coverage panel, exclusion table and market-wide block are
-  implemented; Stock Details, Watchlist and AI Analysis per-symbol gating, and the split current-vs-audit CSV export are
-  **not** part of this change. The shared Rubix quote-freshness taxonomy IS
-  now complete - see RUBIX_QUOTE_FRESHNESS_TAXONOMY_VALIDATION.md. Because ineligible symbols never reach the
-  decision engine, no stale decision can be produced anywhere in the meantime —
-  but a stale symbol opened directly in Stock Details will not yet show the
-  dedicated "DAILY DATA STALE FOR THIS SYMBOL" panel.
+- **The UI surfaces are now wired.** The Dashboard coverage panel, exclusion
+  table and market-wide block landed with this change; the shared Rubix
+  quote-freshness taxonomy is complete (see
+  `RUBIX_QUOTE_FRESHNESS_TAXONOMY_VALIDATION.md`); and Stock Details, Watchlist
+  and AI Analysis now apply the shared contracts through
+  `services/analysis_freshness_service.py` (see
+  `ANALYSIS_VIEWS_FRESHNESS_INTEGRATION_VALIDATION.md`).
+- **The split current-vs-audit CSV export remains outstanding.** It is the one
+  piece of the original brief not yet implemented.

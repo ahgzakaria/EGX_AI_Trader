@@ -133,10 +133,59 @@ def _default_runner(symbol: str):
     return analyze_symbol(symbol, history_store=AnalysisHistoryStore())
 
 
-def run_analysis(symbol, runner=None):
+def analysis_is_permitted(context):
+    """Whether the AI engine may be invoked for a current analysis.
+
+    Checked BEFORE the runner, so a stale symbol never spends an external
+    request only to be refused afterwards.
+    """
+
+    return bool(context is not None and context.may_invoke_ai)
+
+
+def run_analysis(symbol, runner=None, *, context=None):
+    """Invoke the AI engine, or refuse without invoking it.
+
+    ``context`` is an ``AnalysisFreshnessContext``. When it is supplied and the
+    symbol is not current, the runner is never called: the audit found this
+    path had no freshness gate at all, so a 2026-07-30 candle produced a
+    current-looking advisory and consumed an external request doing it.
+    """
+
+    if context is not None and not analysis_is_permitted(context):
+        return {
+            "blocked": True,
+            "reason": context.blocking_reason,
+            "message": context.ai_blocked_message(),
+            "freshness": context,
+        }
     """Analyze exactly ONE symbol. Raises on a collection — there is no batch path here."""
     ticker = normalize_symbol(symbol)
     return (runner or _default_runner)(ticker)
+
+
+STATE_FRESHNESS_IDENTITY = "ai_analysis_freshness_identity"
+
+
+def _discard_outdated_analysis(selected_symbol, context=None):
+    """Drop a cached bundle whose freshness identity no longer holds.
+
+    Comparing the symbol alone was not enough: an analysis produced while
+    2026-07-30 was current stayed cached and was re-rendered under a
+    2026-08-03 heading, because the symbol had not changed.
+    """
+
+    from services.analysis_freshness_service import cached_result_is_current
+
+    _discard_stale_analysis(selected_symbol)
+    if context is None:
+        return
+    stored = st.session_state.get(STATE_FRESHNESS_IDENTITY)
+    if not cached_result_is_current(context, stored):
+        st.session_state[STATE_BUNDLE] = None
+        st.session_state[STATE_CARD] = None
+        st.session_state[STATE_CARD_KEY] = None
+        st.session_state[STATE_FRESHNESS_IDENTITY] = None
 
 
 def _discard_stale_analysis(selected_symbol):

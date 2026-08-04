@@ -159,3 +159,8 @@ the run valid, and it is not retroactively re-blessed.
 - **Freshness is judged on the daily candle only.** Intraday and live-quote
   freshness are separate questions handled elsewhere.
 - The gate does not attempt to repair or backfill data. It decides eligibility.
+- **Direct analysis views** (Stock Details, Watchlist, AI Analysis) now apply
+  the same per-symbol contract through `services/analysis_freshness_service.py`
+  rather than reimplementing it - see
+  `ANALYSIS_VIEWS_FRESHNESS_INTEGRATION_VALIDATION.md`. The split
+  current-vs-audit CSV export is the remaining outstanding item.
