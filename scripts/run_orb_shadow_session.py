@@ -50,6 +50,7 @@ from scalping_orb.shadow_service import (
     OrbShadowService,
     ShadowRunSelectionError,
     live_records_from_rows,
+    live_source_disqualification,
     select_live_run,
     SessionClassification,
     ShadowCycleMetrics,
@@ -767,15 +768,21 @@ def list_runs(args) -> int:
     for row in rows:
         complete = "yes" if row["finished_at_utc"] else "no"
         universe = "on" if row["active_universe_only"] else "off"
+        blocked = live_source_disqualification(row)
         print(
             f"  {row['run_id'][:16]:18s} {row['session_date']:11s} {row['mode']:12s} "
             f"{(row['session_classification'] or '-'):24s} "
             f"{row['lane_a_rows']:>7d} {row['lane_b_rows']:>7d} {row['cycles']:>7d} "
-            f"{universe:>5s} {complete:>5s}"
+            f"{universe:>5s} {complete:>5s} "
+            f"{'-' if blocked is None else blocked}"
         )
     print()
-    print("  Eligible as a --compare-live-run-id source: mode != RECONSTRUCT")
-    print("  and LANE_A > 0, matching session date, source identity and config.")
+    print("  Eligible as a --compare-live-run-id source: an in-session FOLLOW run")
+    print("  that started before the continuous open, was classified as an observed")
+    print("  session (never PARTIAL_SMOKE_SESSION) and recorded Lane A rows, on a")
+    print("  matching session date, source identity and config. A post-session")
+    print("  --once --smoke run may hold Lane A telemetry and still never qualify:")
+    print("  it observed no session, so it is not that session's live account.")
     print("  Source is identified only by an opaque path hash; no credential or")
     print("  quote payload is shown.")
     print()
