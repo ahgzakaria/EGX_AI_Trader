@@ -200,6 +200,73 @@ def _render_terminal_summary(job):
                                         key=lambda item: -item[1])))
 
 
+ARCHIVE_FAILURE_HEADLINE = "SCAN COMPLETED BUT ARCHIVE PUBLICATION FAILED"
+
+
+def _render_failed_archive_provenance(job):
+    """Show what a refused publication actually saw. Returns True if rendered.
+
+    A scan that analysed 241 symbols and then failed its archive invariant is
+    not "no market scan yet". Falling back to the empty state discarded the
+    one screen that could explain the refusal, and left the date banner
+    claiming there was no dated candle while the audit was full of them.
+
+    Nothing here adopts the archive: it was correctly not published, and the
+    counts below are evidence, not decisions.
+    """
+
+    if job is None or not getattr(job, "sanitized_error", ""):
+        return False
+    error = str(job.sanitized_error)
+    if "ArchiveInvariantError" not in error:
+        return False
+
+    st.error(f"### {ARCHIVE_FAILURE_HEADLINE}")
+    st.caption(
+        "The scan ran to completion. Its archive failed cross-file validation "
+        "and was therefore not published — no partial archive was adopted."
+    )
+    st.markdown("**Invariant failure**")
+    st.code(error, language=None)
+
+    snapshot = job.progress()
+    row = st.columns(4)
+    row[0].metric("Universe completed", f"{snapshot.completed} / {snapshot.total}")
+    row[1].metric("Successful", snapshot.success)
+    row[2].metric("Skipped", snapshot.skipped)
+    row[3].metric("Failed", snapshot.failed)
+
+    expected = _expected_completed_session_label()
+    _, provenance = (error.split(" | ", 1) + [""])[:2]
+    status_bar([
+        ("Expected completed session", expected or "unknown", "blue"),
+        ("Archive status", "FAILED VALIDATION", "red"),
+        ("Decisions published", "none", "amber"),
+    ])
+    if provenance:
+        st.caption(f"Observed provenance — {provenance}")
+    if snapshot.status_breakdown:
+        st.caption("Typed outcome breakdown")
+        st.markdown(" · ".join(
+            f"`{status}` **{count}**"
+            for status, count in sorted(snapshot.status_breakdown.items(),
+                                        key=lambda item: -item[1])))
+    return True
+
+
+def _expected_completed_session_label():
+    """The authoritative completed EGX session, for the failure banner."""
+
+    try:
+        from core.egx_calendar import effective_holidays
+        from core.egx_session import authoritative_completed_session
+
+        value = authoritative_completed_session(holidays=effective_holidays())
+        return value.isoformat() if value else ""
+    except Exception:
+        return ""
+
+
 def _format_duration(seconds):
     if seconds is None:
         return "—"
@@ -790,6 +857,8 @@ def show_dashboard():
         st.warning(archive_warning)
 
     if st.session_state.results is None:
+        if _render_failed_archive_provenance(job):
+            return
         empty_state(
             "No market scan yet",
             "Run the scanner to create an immutable Phase 6/7 experiment.",

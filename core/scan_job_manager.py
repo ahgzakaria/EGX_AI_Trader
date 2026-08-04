@@ -703,7 +703,9 @@ def _run_job(job, source, purpose, runner=None):
             job.publish(state=final_state, stage="Scan complete")
     except Exception as error:  # sanitized: the class and message only, no secrets
         logger.exception("Market scan job failed")
-        job.sanitized_error = f"{type(error).__name__}: {str(error)[:300]}"
+        # 300 characters truncated an archive failure mid-provenance, which is
+        # exactly the detail the operator needs. Still class + message only.
+        job.sanitized_error = f"{type(error).__name__}: {str(error)[:800]}"
         job.publish(state=FAILED, stage="Scan failed")
     finally:
         # The context is closed on every path — success, cancellation and exception.
