@@ -114,16 +114,14 @@ independently.
 | `test_daily_scan_export_schema.py` | **43 passed** |
 | Full suite | **2834 passed, 8 skipped, 0 failed** |
 
-## 7. What is NOT in this change
+## 7. Scope notes
 
-- **Run History, Compare Runs and the Dashboard export buttons are not
-  wired to the new files.** Sections 8 and 9 of the brief remain outstanding.
-  The contract, the exports, the invariants, the atomic publication and the
-  scanner integration are complete; the three archive-reading surfaces still
-  read what they read before. That is safe — `scan_results.csv` retains its
-  meaning as the decisions file and no reader is broken — but Compare Runs
-  will still not distinguish a coverage-driven BUY-count change from a
-  strategy-driven one.
+- **The archive-reading surfaces were wired in a follow-up commit.** Run History, Compare Runs and
+  the download controls consume schema v2 through
+  `services/daily_scan_archive_reader.py` - see
+  `DAILY_SCAN_SCHEMA_V2_READER_VALIDATION.md`. Compare Runs now separates a
+  strategy difference from a data-coverage difference and refuses to call a
+  coverage-driven decision drop a strategy change.
 - No historical archive was migrated. `RUN_20260804_005327` keeps its original
   files, its original hashes and its `INVALID_DATA_PROVENANCE.md` marker, and
   no v2 files were written into it.

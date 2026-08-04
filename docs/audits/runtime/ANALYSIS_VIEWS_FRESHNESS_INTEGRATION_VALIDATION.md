@@ -155,7 +155,7 @@ file reads the wall clock.
   compatibility alias of `scan_current_decisions.csv`, with a full
   `scan_coverage_audit.csv` alongside it - see
   `DAILY_SCAN_EXPORT_SCHEMA_VALIDATION.md`. Run History, Compare Runs and the
-  Dashboard export buttons still read the archive as before.
+  Dashboard export controls consume it through the versioned archive reader.
 - **Stock Details renders rows produced elsewhere.** It re-checks freshness
   before rendering, but it does not recompute a decision; a row that never
   existed cannot be shown at all.

@@ -11,6 +11,10 @@ from services.run_status import (
     RECOVERED_COMPLETED,
     status_label,
 )
+from dashboard.scan_archive_panel import (
+    render_archive_summary,
+    render_download_controls,
+)
 from dashboard.formatting import with_company_name_column
 from dashboard.ui import empty_state, page_header, section_header
 from core.universe import read_symbol_frame
@@ -152,11 +156,34 @@ def show_run_history():
         _show_run(selected, metadata)
 
 
+def _render_scan_archive(directory):
+    """Show schema-aware coverage and downloads when this run is a scan."""
+
+    from services.daily_scan_archive_reader import SchemaStatus, read_archive
+
+    if not (directory / "run_metadata.json").is_file():
+        return
+    try:
+        archive = read_archive(directory)
+    except Exception as error:              # never break the page on a bad run
+        st.warning(f"archive could not be read: {type(error).__name__}: {error}")
+        return
+    if archive.schema_status is SchemaStatus.LEGACY_UNKNOWN and \
+            not archive.compatibility_decisions:
+        return                              # not a scan archive at all
+    render_archive_summary(archive)
+    render_download_controls(archive)
+
+
 def _show_run(run_id, metadata):
     st.divider()
     st.subheader(run_id)
-    st.json(metadata)
     directory = REPORTS_ROOT / run_id
+    # A scan archive is interpreted through the versioned reader, so its
+    # coverage and decision counts carry their real semantics rather than
+    # whatever a raw row count would imply.
+    _render_scan_archive(directory)
+    st.json(metadata)
     artifacts = sorted(path.name for path in directory.iterdir() if path.is_file())
     selected_artifact = st.selectbox("Artifact", artifacts, key=f"artifact_{run_id}")
     path = directory / Path(selected_artifact).name

@@ -140,6 +140,7 @@ commit.
   and AI Analysis now apply the shared contracts through
   `services/analysis_freshness_service.py` (see
   `ANALYSIS_VIEWS_FRESHNESS_INTEGRATION_VALIDATION.md`).
-- **The split current-vs-audit CSV export is implemented** as schema v2 - see
-  `DAILY_SCAN_EXPORT_SCHEMA_VALIDATION.md`. Run History, Compare Runs and the
-  Dashboard export buttons are not yet wired to the new files.
+- **The split current-vs-audit CSV export is implemented** as schema v2, and
+  Run History, Compare Runs and the Dashboard export controls consume it - see
+  `DAILY_SCAN_EXPORT_SCHEMA_VALIDATION.md` and
+  `DAILY_SCAN_SCHEMA_V2_READER_VALIDATION.md`.

@@ -4,7 +4,55 @@ import pandas as pd
 import streamlit as st
 
 from services.experiment_tracking import RunRepository
+from dashboard.scan_archive_panel import render_comparison
 from dashboard.ui import empty_state, page_header, section_header
+
+
+def _scan_run_directories():
+    """Run directories that look like Daily Scan archives."""
+
+    from pathlib import Path
+
+    root = Path("reports")
+    if not root.is_dir():
+        return []
+    return sorted(
+        (path for path in root.iterdir()
+         if path.is_dir() and (path / "run_metadata.json").is_file()),
+        key=lambda path: path.name, reverse=True)
+
+
+def _render_scan_comparison():
+    """Compare two Daily Scan archives: strategy and coverage, separately.
+
+    Decisions always come from the decisions file and coverage from the audit.
+    Mixing them is how a provider outage gets reported as a strategy change.
+    """
+
+    from services.daily_scan_archive_reader import compare_archives, read_archive
+
+    directories = _scan_run_directories()
+    if len(directories) < 2:
+        return
+
+    section_header("Daily Scan archives", "Strategy and data coverage, separated")
+    names = [path.name for path in directories]
+    columns = st.columns(2)
+    first = columns[0].selectbox("Run A", names, index=min(1, len(names) - 1),
+                                 key="scan_compare_a")
+    second = columns[1].selectbox("Run B", names, index=0, key="scan_compare_b")
+    if first == second:
+        st.info("Select two different runs.")
+        return
+
+    lookup = {path.name: path for path in directories}
+    try:
+        archive_a = read_archive(lookup[first])
+        archive_b = read_archive(lookup[second])
+    except Exception as error:
+        st.warning(f"archives could not be read: {type(error).__name__}: {error}")
+        return
+    render_comparison(compare_archives(archive_a, archive_b), archive_a, archive_b)
 
 
 def show_compare_runs():
@@ -14,6 +62,8 @@ def show_compare_runs():
         icon="⚖️",
         badge="REPRODUCIBLE RESEARCH",
     )
+
+    _render_scan_comparison()
 
     runs = [
         run for run in RunRepository.list_runs()

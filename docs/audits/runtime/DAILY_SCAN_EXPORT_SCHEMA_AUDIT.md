@@ -91,3 +91,8 @@ place with typed freshness outcomes.
 Publication is atomic: both exports and the metadata are validated against
 cross-file invariants and published together, or the run is marked failed and
 the previous archive is left untouched.
+
+Readers consume this contract through `services/daily_scan_archive_reader.py`,
+which classifies each archive from its declared version - never from a
+filename - and refuses to give a legacy archive a coverage percentage. See
+`DAILY_SCAN_SCHEMA_V2_READER_VALIDATION.md`.
