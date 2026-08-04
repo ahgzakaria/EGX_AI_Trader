@@ -252,10 +252,16 @@ def _expected_completed_session():
 
 
 def _compute_expected_completed_session():
+    """The completed EGX session, from the exchange calendar in Cairo.
+
+    Deliberately not ``expected_latest_completed_session``: that answers what
+    a provider should have published, and using it here made a finished
+    session look unfinished. See ``authoritative_completed_session``.
+    """
     from core.egx_calendar import effective_holidays
-    from core.egx_session import expected_latest_completed_session
+    from core.egx_session import authoritative_completed_session
     try:
-        return expected_latest_completed_session(holidays=effective_holidays())
+        return authoritative_completed_session(holidays=effective_holidays())
     except Exception:
         return None
 

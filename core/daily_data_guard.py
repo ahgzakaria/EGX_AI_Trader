@@ -489,8 +489,14 @@ def summarize_universe_coverage(results, expected_session, universe_total=None,
     distribution = {}
     current = stale = unavailable = 0
     for item in results:
-        date = item.actual_latest_session or "unknown"
-        distribution[date] = distribution.get(date, 0) + 1
+        # A distribution OF OBSERVED SESSIONS. A symbol with no candle has not
+        # observed one, so it belongs in the unavailable count below and not in
+        # a session bucket: an "unknown" bucket both broke the archive's
+        # distribution invariant and could win the dominant-session vote,
+        # printing "Unknown - no dated candle" over a run full of dated rows.
+        date = item.actual_latest_session
+        if date:
+            distribution[date] = distribution.get(date, 0) + 1
         if item.freshness_status is SymbolFreshness.CURRENT:
             current += 1
         elif item.freshness_status is SymbolFreshness.STALE:

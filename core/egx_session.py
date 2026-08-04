@@ -348,6 +348,64 @@ def last_completed_exchange_session(now=None, holidays=None):
     return previous_trading_date(today, holidays)
 
 
+#: Minutes after the closing auction before today's session is treated as the
+#: authoritative completed session. It covers settlement and the provider's
+#: normal publication delay; it is a data-availability allowance, not a
+#: strategy parameter, and no indicator, score or decision rule reads it.
+SETTLEMENT_GRACE_MINUTES = 120
+
+SETTLEMENT_GRACE_SETTING_KEY = "egx_settlement_grace_minutes"
+
+
+def settlement_grace_minutes(settings_data=None):
+    """Configured settlement grace, falling back to the default."""
+
+    if settings_data is None:
+        try:
+            from config.settings_manager import settings
+
+            settings_data = settings.data
+        except Exception:
+            return float(SETTLEMENT_GRACE_MINUTES)
+    try:
+        value = float((settings_data or {}).get(
+            SETTLEMENT_GRACE_SETTING_KEY, SETTLEMENT_GRACE_MINUTES))
+    except (TypeError, ValueError):
+        return float(SETTLEMENT_GRACE_MINUTES)
+    return value if value >= 0 else float(SETTLEMENT_GRACE_MINUTES)
+
+
+def authoritative_completed_session(now=None, holidays=None, grace_minutes=None):
+    """The latest EGX session that is definitively complete, in Cairo terms.
+
+    This answers "which trading session has finished", which is the floor a
+    daily candle is measured against. It is deliberately NOT
+    ``expected_latest_completed_session``: that one answers a different
+    question - "which candle should a provider have published by now" - and
+    withholds today until publication is confirmed.
+
+    Reusing the provider question as the exchange question is what classified
+    real, completed 2026-08-04 candles as FUTURE_DATE at 21:56 Cairo, hours
+    after the auction closed. A candle dated today, after today's session has
+    finished, is current data; a provider that has not published it yet makes
+    that symbol *stale*, never the exchange calendar wrong.
+
+    Today counts only once the closing auction has ended AND the settlement
+    grace has elapsed. Cairo wall clock, Sunday-Thursday, holiday aware; never
+    a UTC date and never a generic Monday-Friday business day.
+    """
+
+    current = cairo_now(now)
+    today = current.date()
+    grace = (settlement_grace_minutes() if grace_minutes is None
+             else float(grace_minutes))
+    if is_regular_trading_day(today, holidays):
+        auction_end = datetime.combine(today, AUCTION_END, tzinfo=current.tzinfo)
+        if current >= auction_end + timedelta(minutes=grace):
+            return today
+    return previous_trading_date(today, holidays)
+
+
 def expected_latest_completed_session(now=None, provider_finalized=None, holidays=None):
     """Return the completed daily session a provider is expected to have published.
 
