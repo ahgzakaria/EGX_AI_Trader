@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from enum import Enum
@@ -162,6 +163,30 @@ class NormalizationBatch:
     quality_events: tuple[DataQualityEvent, ...]
 
 
+@dataclass(frozen=True)
+class DeduplicationTelemetry:
+    """Bounded-dedup state, recorded per cycle as liveness evidence."""
+
+    entries: int
+    capacity: int
+    hard_capacity: int
+    admitted: int
+    evictions: int
+    exact_redeliveries: int
+    capacity_exhausted: bool
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "dedupe_entries": self.entries,
+            "dedupe_capacity": self.capacity,
+            "dedupe_hard_capacity": self.hard_capacity,
+            "dedupe_admitted": self.admitted,
+            "dedupe_evictions": self.evictions,
+            "exact_redeliveries": self.exact_redeliveries,
+            "dedupe_capacity_exhausted": self.capacity_exhausted,
+        }
+
+
 def _number(value, *, nonnegative=False, positive=False) -> float | None:
     if value is None:
         return None
@@ -262,11 +287,29 @@ class RubixEventNormalizer:
         self.membership_resolver = membership_resolver or _default_membership_resolver
         self.mode = NormalizationMode(mode)
         self._seen_sequences: dict[tuple[str, date], dict[int, str]] = {}
-        self._seen_payloads: dict[tuple[str, date], dict[str, None]] = {}
+        self._seen_payloads: OrderedDict[tuple[tuple[str, date], str], None] = (
+            OrderedDict()
+        )
         self._last_market: dict[tuple[str, date], datetime] = {}
         self._last_sequence: dict[tuple[str, date], int] = {}
         self._active_session_date: date | None = None
         self._seen_payload_count = 0
+        self._dedupe_evictions = 0
+        self._exact_redeliveries = 0
+        self._capacity_exhausted = False
+
+    def deduplication_telemetry(self) -> DeduplicationTelemetry:
+        """Expose bounded-dedup counters so a run can prove it is still live."""
+
+        return DeduplicationTelemetry(
+            entries=len(self._seen_payloads),
+            capacity=int(self.config.deduplication_retention_payloads),
+            hard_capacity=int(self.config.deduplication_hard_capacity),
+            admitted=self._seen_payload_count,
+            evictions=self._dedupe_evictions,
+            exact_redeliveries=self._exact_redeliveries,
+            capacity_exhausted=self._capacity_exhausted,
+        )
 
     def _roll_session(self, session_date: date) -> bool:
         """Keep live dedup/order state bounded to one current market session."""
@@ -284,6 +327,9 @@ class RubixEventNormalizer:
         self._last_market.clear()
         self._last_sequence.clear()
         self._seen_payload_count = 0
+        self._dedupe_evictions = 0
+        self._exact_redeliveries = 0
+        self._capacity_exhausted = False
         return True
 
     def normalize_many(
@@ -358,19 +404,26 @@ class RubixEventNormalizer:
         # Two events that differ in any verified market field keep distinct
         # identities even when they share a timestamp; an exact redelivery
         # (reconnect or replay) collapses regardless of receive time or row id.
-        seen_payloads = self._seen_payloads.setdefault(key, {})
-        if sequence_identity in seen_payloads:
+        #
+        # Retention is a rolling window, not a session-wide set: the source
+        # redelivers within a few hundred rows, while a full session carries
+        # roughly half a million distinct identities. Evicting the oldest
+        # identity keeps memory bounded without ever discarding an unseen
+        # payload — the failure that silently truncated 2026-08-04.
+        payload_key = (key, sequence_identity)
+        if payload_key in self._seen_payloads:
+            self._seen_payloads.move_to_end(payload_key)
+            self._exact_redeliveries += 1
             issue("DUPLICATE_MARKET_PAYLOAD_IDENTICAL")
             return None, tuple(issues)
-        if (
-            self._seen_payload_count
-            >= self.config.maximum_seen_payloads_per_session
-        ):
+        if len(self._seen_payloads) > int(self.config.deduplication_hard_capacity):
+            # Unreachable while eviction works; latched so that a regression
+            # surfaces as an explicit defect instead of silent data loss.
+            self._capacity_exhausted = True
             issue(
-                "DEDUP_MEMORY_LIMIT_REACHED",
-                f"limit={self.config.maximum_seen_payloads_per_session}",
+                "DEDUPLICATION_CAPACITY_EXHAUSTED",
+                f"capacity={self.config.deduplication_hard_capacity}",
             )
-            return None, tuple(issues)
 
         flags: list[str] = []
         last_market = self._last_market.get(key)
@@ -502,7 +555,12 @@ class RubixEventNormalizer:
             receive_lag_seconds=receive_lag,
             collector_age_seconds=collector_age,
         )
-        seen_payloads[sequence_identity] = None
+        while len(self._seen_payloads) >= int(
+            self.config.deduplication_retention_payloads
+        ):
+            self._seen_payloads.popitem(last=False)
+            self._dedupe_evictions += 1
+        self._seen_payloads[payload_key] = None
         self._seen_payload_count += 1
         if sequence is not None:
             self._seen_sequences.setdefault(key, {})[sequence] = sequence_identity

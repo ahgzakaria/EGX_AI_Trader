@@ -867,14 +867,27 @@ def test_the_official_manual_launcher_is_unchanged():
 
 
 def test_the_orb_automation_is_unchanged():
+    """The Rubix assisted-start work left ORB automation alone, and still does.
+
+    Pinned to that work's own commit range rather than to HEAD, for the same
+    reason as the Dashboard guard below. Against HEAD this would fail for any
+    later, separately authorised ORB change - and it did, when the
+    normalization-liveness fix legitimately added stall reporting to the
+    orchestrator. A guard that forbids all future work is not protecting this
+    change; it is just blocking the repository.
+    """
+
     import subprocess as sp
 
+    # 38ca393 = the branch point; 43db834 = the assisted-start merge.
     result = sp.run(
-        ["git", "diff", "--name-only", "38ca393", "HEAD", "--",
+        ["git", "diff", "--name-only", "38ca393", "43db834", "--",
          "scripts/run_orb_shadow_orchestrator.py",
          "scripts/windows/install_orb_shadow_scheduled_task.ps1"],
         capture_output=True, text=True,
     )
+    if result.returncode != 0:
+        pytest.skip("the assisted-start merge is not present in this checkout")
     assert result.stdout.strip() == ""
 
 

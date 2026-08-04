@@ -128,21 +128,178 @@ def test_late_correction_is_historical_only_and_live_policy_stays_zero_tolerance
 
 
 def test_dedup_memory_is_bounded_and_cleared_on_session_rollover():
-    config = OrbDataConfig(maximum_seen_payloads_per_session=1)
+    """Bounded memory must never cost an unseen payload.
+
+    The 2026-08-04 session proved the old contract wrong: once the identity
+    store was full, every genuinely new payload was discarded while the run
+    still reported itself healthy. Retention now evicts the oldest identity
+    instead of rejecting new data.
+    """
+
+    config = OrbDataConfig(
+        deduplication_retention_payloads=1, deduplication_hard_capacity=1
+    )
     engine = normalizer(config)
     first_day = date(2026, 8, 2)
     next_day = date(2026, 8, 3)
-    first, _ = engine.normalize(quote(moment(first_day, 7, 1)), evaluated_at=moment(first_day, 7, 1, 1))
-    blocked, issues = engine.normalize(
+    first, _ = engine.normalize(
+        quote(moment(first_day, 7, 1)), evaluated_at=moment(first_day, 7, 1, 1)
+    )
+    beyond_capacity, issues = engine.normalize(
         quote(moment(first_day, 7, 2), row_id=2, price=10.1),
         evaluated_at=moment(first_day, 7, 2, 1),
     )
+    telemetry = engine.deduplication_telemetry()
     rolled, _ = engine.normalize(
         quote(moment(next_day, 7, 1), row_id=3),
         evaluated_at=moment(next_day, 7, 1, 1),
     )
+
     assert first is not None and rolled is not None
-    assert blocked is None and issues[0].code == "DEDUP_MEMORY_LIMIT_REACHED"
+    assert beyond_capacity is not None, "an unseen payload must never be dropped"
+    assert not any(
+        event.code in {"DEDUP_MEMORY_LIMIT_REACHED", "DEDUPLICATION_CAPACITY_EXHAUSTED"}
+        for event in issues
+    )
+    assert telemetry.entries <= 1, "retention must bound the identity store"
+    assert telemetry.evictions == 1
+    assert not telemetry.capacity_exhausted
+    assert engine.deduplication_telemetry().evictions == 0, "rollover resets counters"
+
+
+def test_an_exact_redelivery_inside_the_retention_window_is_still_collapsed():
+    config = OrbDataConfig(deduplication_retention_payloads=64)
+    engine = normalizer(config)
+    day = date(2026, 8, 2)
+    original, _ = engine.normalize(
+        quote(moment(day, 7, 1)), evaluated_at=moment(day, 7, 1, 1)
+    )
+    # Same market payload, later row id and receive time: a reconnect replay.
+    redelivered, issues = engine.normalize(
+        quote(moment(day, 7, 1), row_id=99), evaluated_at=moment(day, 7, 1, 30)
+    )
+
+    assert original is not None
+    assert redelivered is None
+    assert [event.code for event in issues] == ["DUPLICATE_MARKET_PAYLOAD_IDENTICAL"]
+    assert engine.deduplication_telemetry().exact_redeliveries == 1
+
+
+def test_a_payload_recurring_beyond_the_window_is_a_bounded_documented_expansion():
+    """The exact accounting for admitted events, pinned.
+
+    Rolling retention means the identity ledger is not the session. A payload
+    that recurs after more distinct admissions than the window holds is
+    admitted a second time, because nothing remains that could recognise it.
+
+    This is the one way `events admitted` can exceed `unique source payload
+    identities`, and it is why the controlled replay of 2026-08-04 admitted
+    459,230 events against 459,223 distinct identities. It is a deterministic
+    function of the retention size, not duplicate inflation: within the window
+    the same payload is always collapsed.
+    """
+
+    retention = 50
+    config = OrbDataConfig(deduplication_retention_payloads=retention)
+    day = date(2026, 8, 2)
+    evaluated = moment(day, 9, 0)
+    # An unchanged quote for an illiquid symbol: the market timestamp is
+    # frozen, so the recurrence is not out-of-order. Traffic from a busier
+    # symbol is what pushes the identity out of the window.
+    stale = quote(moment(day, 7, 0), ticker="AALR", row_id=1)
+
+    def churn(engine, count):
+        for index in range(count):
+            engine.normalize(
+                quote(moment(day, 7, 0) + timedelta(seconds=index + 1),
+                      ticker="COMI", row_id=index + 2,
+                      price=10 + (index + 1) / 1000),
+                evaluated_at=evaluated,
+            )
+
+    engine = normalizer(config)
+    first, _ = engine.normalize(stale, evaluated_at=evaluated)
+    churn(engine, retention)          # enough to evict the identity above
+    readmitted, issues = engine.normalize(
+        quote(moment(day, 7, 0), ticker="AALR", row_id=10_000),
+        evaluated_at=evaluated,
+    )
+
+    assert first is not None
+    assert readmitted is not None, "nothing retained could recognise it"
+    assert not any(
+        issue.code == "DUPLICATE_MARKET_PAYLOAD_IDENTICAL" for issue in issues
+    )
+
+    # The complementary half of the contract: inside the window it collapses,
+    # so the expansion is bounded by retention rather than open-ended.
+    inside = normalizer(config)
+    inside.normalize(stale, evaluated_at=evaluated)
+    churn(inside, retention - 2)
+    collapsed, issues = inside.normalize(
+        quote(moment(day, 7, 0), ticker="AALR", row_id=10_000),
+        evaluated_at=evaluated,
+    )
+
+    assert collapsed is None
+    assert any(
+        issue.code == "DUPLICATE_MARKET_PAYLOAD_IDENTICAL" for issue in issues
+    )
+    assert inside.deduplication_telemetry().exact_redeliveries == 1
+
+
+def test_breaching_the_hard_capacity_is_reported_but_still_admits_the_payload():
+    """The backstop names a regression. It must not become the old defect.
+
+    Eviction makes this branch unreachable in normal operation, so the store
+    is corrupted directly to reach it. Even then the correct response is to
+    latch the defect and keep the data, never to discard an unseen payload.
+    """
+
+    config = OrbDataConfig(
+        deduplication_retention_payloads=10, deduplication_hard_capacity=10
+    )
+    engine = normalizer(config)
+    day = date(2026, 8, 2)
+    for index in range(20):
+        engine._seen_payloads[(("AALR", day), f"injected-{index}")] = None
+
+    event, issues = engine.normalize(
+        quote(moment(day, 7, 1)), evaluated_at=moment(day, 7, 1, 1)
+    )
+    telemetry = engine.deduplication_telemetry()
+
+    assert event is not None, "a breached backstop must not cost live data"
+    assert any(
+        issue.code == "DEDUPLICATION_CAPACITY_EXHAUSTED" for issue in issues
+    )
+    assert telemetry.capacity_exhausted
+
+
+def test_a_high_volume_session_admits_every_distinct_payload():
+    """Well past the old 250,000 cap, with memory still bounded."""
+
+    config = OrbDataConfig(deduplication_retention_payloads=1_000)
+    engine = normalizer(config)
+    day = date(2026, 8, 2)
+    admitted = 0
+    for index in range(5_000):
+        event, _ = engine.normalize(
+            quote(
+                moment(day, 7, 0) + timedelta(seconds=index),
+                row_id=index + 1,
+                price=10 + index / 1000,
+            ),
+            evaluated_at=moment(day, 8, 30),
+        )
+        if event is not None:
+            admitted += 1
+
+    telemetry = engine.deduplication_telemetry()
+    assert admitted == 5_000, "no distinct payload may be silently discarded"
+    assert telemetry.entries <= 1_000
+    assert telemetry.evictions == 4_000
+    assert telemetry.exact_redeliveries == 0
 
 
 def _rubix_fixture(path: Path):

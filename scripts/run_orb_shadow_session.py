@@ -46,10 +46,18 @@ from scalping_orb.events import (
 )
 from scalping_orb.repository import OrbResearchRepository
 from scalping_orb.session import OrbSessionClassifier
+from scalping_orb.liveness import (
+    CycleObservation,
+    EvaluationLivenessMonitor,
+    HEALTHY_EVALUATION,
+    HEALTHY_NORMALIZATION,
+    LivenessVerdict,
+)
 from scalping_orb.shadow_service import (
     OrbShadowService,
     ShadowRunSelectionError,
     live_records_from_rows,
+    live_source_disqualification,
     select_live_run,
     SessionClassification,
     ShadowCycleMetrics,
@@ -230,6 +238,42 @@ class ShadowRunner:
         self.heartbeats = 0
         self.session_loads_total = 0
         self.rows_read_total = 0
+        self.liveness = EvaluationLivenessMonitor(self.data_config)
+        self.last_liveness: LivenessVerdict | None = None
+        self.normalization_progress_utc: datetime | None = None
+        self.evaluation_progress_utc: datetime | None = None
+
+    def _progressed_to_close(self, last_progress_utc: datetime | None) -> bool:
+        """Did the pipeline still make progress at the continuous close?
+
+        Progress recorded only in the morning does not describe a session that
+        ran to 14:15 Cairo. The last progress must fall inside the allowed
+        polling gap of the continuous end, otherwise the tail was unobserved.
+        """
+
+        if last_progress_utc is None:
+            return False
+        window = self.classifier.window(self.session_date)
+        allowed = float(self.args.allowed_polling_gap_seconds)
+        return (
+            window.continuous_end_utc - last_progress_utc
+        ).total_seconds() <= allowed
+
+    def _idle_live_status(self) -> ShadowLiveStatus:
+        """An empty poll is only healthy if the pipeline behind it still is.
+
+        A latched normalization stall must survive a quiet source; otherwise
+        an exhausted run reports HEALTHY every time no new rows arrive.
+        """
+
+        verdict = self.last_liveness
+        if verdict is None:
+            return ShadowLiveStatus.LIVE_SHADOW_HEALTHY
+        if verdict.normalization not in HEALTHY_NORMALIZATION:
+            return ShadowLiveStatus.LIVE_SHADOW_NORMALIZATION_STALLED
+        if verdict.evaluation not in HEALTHY_EVALUATION:
+            return ShadowLiveStatus.LIVE_SHADOW_EVALUATION_STALLED
+        return ShadowLiveStatus.LIVE_SHADOW_HEALTHY
 
     # -- one cycle ---------------------------------------------------------
 
@@ -272,7 +316,7 @@ class ShadowRunner:
             self.repository.record_shadow_heartbeat(
                 self.run_id,
                 observed_at_utc=finished,
-                live_status=ShadowLiveStatus.LIVE_SHADOW_HEALTHY.value,
+                live_status=self._idle_live_status().value,
                 last_source_id=cursor.last_source_id,
                 latest_market_timestamp_utc=cursor.last_market_timestamp_utc,
                 observed_receive_lag_seconds=None,
@@ -316,6 +360,21 @@ class ShadowRunner:
             self.live_records.extend(records)
 
         finished = _utc_now()
+        dedupe = self.normalizer.deduplication_telemetry()
+        verdict = self.liveness.observe(
+            CycleObservation(
+                observed_at_utc=finished,
+                source_rows_read=batch.rows_read,
+                normalized_events=len(enriched),
+                symbols_evaluated=len(records),
+                dedupe_capacity_exhausted=dedupe.capacity_exhausted,
+            )
+        )
+        self.last_liveness = verdict
+        if enriched:
+            self.normalization_progress_utc = finished
+        if records:
+            self.evaluation_progress_utc = finished
         metrics = ShadowCycleMetrics(
             cycle_id=hashlib.sha256(f"{self.run_id}|{index}".encode()).hexdigest(),
             cycle_index=index,
@@ -329,7 +388,7 @@ class ShadowRunner:
             symbols_in_snapshot=len(snapshot.tickers),
             symbols_evaluated=len(records),
             snapshot_identity=snapshot.snapshot_identity,
-            live_status=self.service.live_status_for(snapshot),
+            live_status=self.service.live_status_for(snapshot, liveness=verdict),
             duration_seconds=(finished - started).total_seconds(),
         )
         self.cycles.append(metrics)
@@ -468,6 +527,13 @@ class ShadowRunner:
             opening_ranges_ready=snapshot.quality_summary.opening_ranges_ready,
             observed_exchange_minutes=observed_minutes,
             minimum_exchange_minutes=self.args.minimum_exchange_minutes,
+            normalization_progress_through_continuous_end=self._progressed_to_close(
+                self.normalization_progress_utc
+            ),
+            evaluation_progress_through_continuous_end=self._progressed_to_close(
+                self.evaluation_progress_utc
+            ),
+            no_critical_evaluation_stall=not self.liveness.critical_stall_observed,
             smoke=self.args.smoke,
         )
 
@@ -477,8 +543,11 @@ class ShadowRunner:
             classification_reasons=reasons,
             source_rows_observed=self.rows_read_total,
             normalized_events=len(self.all_events),
-            exact_redeliveries_removed=max(
-                0, self.rows_read_total - len(self.all_events)
+            # Count real redeliveries, not "everything the normalizer did not
+            # emit". The old subtraction reported 778,125 redeliveries on
+            # 2026-08-04 when most of that number was silently dropped data.
+            exact_redeliveries_removed=(
+                self.normalizer.deduplication_telemetry().exact_redeliveries
             ),
             same_timestamp_distinct_retained=snapshot.quality_summary.observed_one_minute_slots,
             source_polling_failures=self.polling_failures,
@@ -527,6 +596,34 @@ class ShadowRunner:
             "session_loads_total": self.session_loads_total,
             "source_rows_read": self.rows_read_total,
             "normalized_events": len(self.all_events),
+            # Pipeline liveness, kept separate from source health: a live
+            # source behind a dead normalizer is the 2026-08-04 failure.
+            "normalization_last_progress_utc": (
+                self.normalization_progress_utc.isoformat()
+                if self.normalization_progress_utc
+                else None
+            ),
+            "evaluation_last_progress_utc": (
+                self.evaluation_progress_utc.isoformat()
+                if self.evaluation_progress_utc
+                else None
+            ),
+            "normalization_progress_through_continuous_end": (
+                self._progressed_to_close(self.normalization_progress_utc)
+            ),
+            "evaluation_progress_through_continuous_end": (
+                self._progressed_to_close(self.evaluation_progress_utc)
+            ),
+            "critical_evaluation_stall_observed": (
+                self.liveness.critical_stall_observed
+            ),
+            "critical_evaluation_stall_reason": self.liveness.critical_stall_reason,
+            "critical_evaluation_stall_first_seen_utc": (
+                self.liveness.critical_stall_first_seen.isoformat()
+                if self.liveness.critical_stall_first_seen
+                else None
+            ),
+            **self.normalizer.deduplication_telemetry().as_dict(),
             "active_universe_only": self.active_universe_only,
             "compared_live_run_id": (
                 self.compare_live_run["run_id"] if self.compare_live_run else None
@@ -767,15 +864,21 @@ def list_runs(args) -> int:
     for row in rows:
         complete = "yes" if row["finished_at_utc"] else "no"
         universe = "on" if row["active_universe_only"] else "off"
+        blocked = live_source_disqualification(row)
         print(
             f"  {row['run_id'][:16]:18s} {row['session_date']:11s} {row['mode']:12s} "
             f"{(row['session_classification'] or '-'):24s} "
             f"{row['lane_a_rows']:>7d} {row['lane_b_rows']:>7d} {row['cycles']:>7d} "
-            f"{universe:>5s} {complete:>5s}"
+            f"{universe:>5s} {complete:>5s} "
+            f"{'-' if blocked is None else blocked}"
         )
     print()
-    print("  Eligible as a --compare-live-run-id source: mode != RECONSTRUCT")
-    print("  and LANE_A > 0, matching session date, source identity and config.")
+    print("  Eligible as a --compare-live-run-id source: an in-session FOLLOW run")
+    print("  that started before the continuous open, was classified as an observed")
+    print("  session (never PARTIAL_SMOKE_SESSION) and recorded Lane A rows, on a")
+    print("  matching session date, source identity and config. A post-session")
+    print("  --once --smoke run may hold Lane A telemetry and still never qualify:")
+    print("  it observed no session, so it is not that session's live account.")
     print("  Source is identified only by an opaque path hash; no credential or")
     print("  quote payload is shown.")
     print()

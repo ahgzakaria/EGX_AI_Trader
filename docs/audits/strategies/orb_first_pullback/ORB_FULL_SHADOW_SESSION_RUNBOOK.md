@@ -89,8 +89,35 @@ Watch the per-cycle output and the research DB.
 | `live_status` | `LIVE_SHADOW_HEALTHY` | sustained `LIVE_SHADOW_STALE` |
 | polling gap | < 300 s | a gap beyond the limit disqualifies `FULL` |
 | heartbeats | one per cycle | none for minutes |
+| `normalized_events` per cycle | > 0 while rows are being read | rows read but nothing normalized — see below |
+| `symbols_evaluated` | non-zero as bars finalize | flat while bars keep completing |
+| `dedupe_entries` | at or below `dedupe_capacity` | `dedupe_capacity_exhausted` is ever `True` |
 
 At ~15 s polling over 4h35m expect roughly 1,100 cycles.
+
+### Reading rows is not observing a session
+
+On 2026-08-04 the runner read 1,027,173 rows, advanced its cursor all day, and
+reported `LIVE_SHADOW_HEALTHY` for more than two hours after it had stopped
+producing a single normalized event. Source health answers only whether data
+*arrived*.
+
+Three statuses now carry the difference:
+
+| `live_status` | Meaning |
+|---|---|
+| `LIVE_SHADOW_HEALTHY` | source fresh **and** normalization and evaluation both progressing |
+| `LIVE_SHADOW_NORMALIZATION_STALLED` | rows keep arriving and stop becoming events |
+| `LIVE_SHADOW_EVALUATION_STALLED` | events keep arriving and stop reaching evaluation |
+
+A quiet source is reported as `NORMALIZATION_IDLE_NO_SOURCE_ROWS`, not as a
+stall — no rows is a source condition, not a broken normalizer.
+
+**A stall is latched for the run.** A session that stalls at 12:11 and
+resumes at 13:30 still carries the gap and cannot classify as `FULL`. If you
+see a normalization or evaluation stall, the remainder of that session is not
+full shadow evidence no matter how healthy it looks afterwards. See
+[ORB_NORMALIZATION_CAP_INCIDENT_2026-08-04.md](ORB_NORMALIZATION_CAP_INCIDENT_2026-08-04.md).
 
 ## 5. Stop conditions
 
@@ -112,7 +139,34 @@ state, and completion — plus the full run ids at the end. The source appears
 only as an opaque path hash; no credential and no quote payload is shown.
 
 **Copy the `run_id` of the `FOLLOW` run with `LANE_A > 0`.** That is the only
-kind of run eligible as a comparison source.
+kind of run eligible as a comparison source. The listing now prints the
+disqualification reason for every other run, so there is nothing to infer.
+
+### What qualifies as the Lane A source
+
+Derived from facts the run already persisted — never from run-id text, and
+never from a mutable eligibility flag that could later become untrue:
+
+| Requirement | Persisted as |
+|---|---|
+| in-session poller, not a bounded batch | `mode = FOLLOW` |
+| not a reconstruction | `mode != RECONSTRUCT` |
+| observed a real session, not a smoke run | `session_classification != PARTIAL_SMOKE_SESSION` |
+| finished, so it can state what it observed | `session_classification` present |
+| watched the opening range form | `runner_started_before_open = 1` |
+| actually recorded live evidence | `lane_a_rows > 0` |
+| same session, source and config | `session_date`, `source_path_identity`, `config_identity` |
+| Research Only | `research_only = 1` |
+
+**A post-session `--once --smoke` run does not qualify, even though it holds
+Lane A rows.** Those rows are rejection and telemetry evidence, which is
+legitimate — but the run watched no session, so it is not that session's live
+account. The earlier rule was `mode != RECONSTRUCT and lane_a_rows > 0`, and
+both clauses are true of such a run.
+
+Naming a run explicitly does not bypass any of this. `--compare-live-run-id`
+says *which* run to compare against, not that it qualifies; an ineligible id
+fails with `RUN_NOT_ELIGIBLE_AS_LIVE_SOURCE` and the reason.
 
 ## 7. Post-session reconstruction with cross-run comparison
 
@@ -122,8 +176,9 @@ python scripts/run_orb_shadow_session.py --reconstruct --rubix-db-path "F:\EGX_A
 
 `--compare-latest-live-run` may replace `--compare-live-run-id <id>` when
 exactly one eligible run exists. It requires an exact match on session date,
-source identity, config identity, a non-reconstruction mode, Research Only
-status, and Lane A rows present. **Zero matches fails with a clear message
+source identity, config identity and Research Only status, plus the full
+qualification above — a FOLLOW run that started before the continuous open,
+was classified as an observed session, and recorded Lane A rows. **Zero matches fails with a clear message
 rather than emitting an all-`HISTORICAL_ONLY` report that would look like a
 finding and is not one. Multiple matches demand an explicit run id — the
 selector never guesses.**
@@ -191,7 +246,7 @@ of it is committed.
 | Source briefly unreadable | the cycle records `LIVE_SHADOW_SOURCE_UNAVAILABLE` and continues; a gap beyond `--allowed-polling-gap-seconds` disqualifies `FULL` |
 | Started late by accident | let it run — the data is still useful; the classification will honestly say `PARTIAL_SHADOW_SESSION` |
 | Wrong `--session-date` | classification computes from the runner's real start/finish against that date's window, so backdating makes a run look *more* partial, never full |
-| `--list-runs` shows no eligible live run | you have no Lane A rows; a `--once` or post-close run never produces them. Only an in-session `--follow` run does. |
+| `--list-runs` shows no eligible live run | no run qualifies. A `--once` or post-close run may still show Lane A rows — those are rejection/telemetry evidence, not an observed session — so the listing prints each run's disqualification reason. Only an in-session `--follow` run that started before the open qualifies. |
 | Reconstruction refuses to select a run | that is the guard working. Use `--list-runs` and pass an explicit `--compare-live-run-id`. |
 | Disk full | stop gracefully with Ctrl+C; committed cycles are intact |
 
@@ -222,17 +277,20 @@ The session may claim this verdict only when **all** hold:
 5. polling outages stayed within `--allowed-polling-gap-seconds`;
 6. heartbeat coverage met the configured minimum;
 7. exchange-minute coverage met the configured minimum;
-8. the auction stayed separated from continuous-session state;
-9. freshness and latency distributions were recorded;
-10. complete 1-minute and 5-minute bars were produced;
-11. Lane A remained append-only, and delayed evidence did not rewrite it;
-12. Lane B reconstruction was deterministic and idempotent;
-13. a genuine cross-run Lane A / Lane B comparison was generated;
-14. shutdown was graceful;
-15. no production execution occurred.
+8. normalization was still producing events at the continuous close;
+9. evaluation was still producing symbol states at the continuous close;
+10. no critical evaluation stall was recorded at any point in the session;
+11. the auction stayed separated from continuous-session state;
+12. freshness and latency distributions were recorded;
+13. complete 1-minute and 5-minute bars were produced;
+14. Lane A remained append-only, and delayed evidence did not rewrite it;
+15. Lane B reconstruction was deterministic and idempotent;
+16. a genuine cross-run Lane A / Lane B comparison was generated;
+17. shutdown was graceful;
+18. no production execution occurred.
 
-The runner classifies 1–8 itself and will not be talked into `FULL`. Items 9–15
-are verified from the generated reports and the research database.
+The runner classifies 1–11 itself and will not be talked into `FULL`. Items
+12–18 are verified from the generated reports and the research database.
 
 **Achieving `FULL_SHADOW_SESSION_OBSERVED` still does not mean live-ready,
 calibrated, profitable or production-ready.** It means one session was observed

@@ -512,6 +512,19 @@ class ShadowOrchestrator:
                 "INSUFFICIENT_EXCHANGE_MINUTE_COVERAGE"
                 not in self.live_summary["classification_reasons"]
             ),
+            normalization_progressed_to_continuous_end=bool(
+                self.live_summary.get(
+                    "normalization_progress_through_continuous_end", False
+                )
+            ),
+            evaluation_progressed_to_continuous_end=bool(
+                self.live_summary.get(
+                    "evaluation_progress_through_continuous_end", False
+                )
+            ),
+            no_critical_evaluation_stall=not self.live_summary.get(
+                "critical_evaluation_stall_observed", False
+            ),
         )
         if classification == "FULL_SHADOW_SESSION":
             self.move(OrchestratorState.LIVE_SHADOW_COMPLETE, "classified FULL by the runner")
@@ -629,6 +642,19 @@ class ShadowOrchestrator:
         )
         failed = self.criteria.failures()
 
+        stall_warning = ""
+        if live.get("critical_evaluation_stall_observed"):
+            stall_warning = (
+                "> ## EVALUATION PIPELINE STALLED\n>\n"
+                "> This run stopped turning source rows into evaluated symbols "
+                "while the session was still open. Source coverage below "
+                "describes what was *read*, not what was *observed*. Lane A "
+                "for this session is incomplete and is not admissible as full "
+                "shadow evidence.\n>\n"
+                f"> First seen: `{live.get('critical_evaluation_stall_first_seen_utc') or 'n/a'}`  \n"
+                f"> Reason: {live.get('critical_evaluation_stall_reason') or 'n/a'}"
+            )
+
         def table(mapping: dict[str, int]) -> str:
             if not mapping:
                 return "| _(none)_ | 0 |"
@@ -679,6 +705,34 @@ trade signal, a recommendation, or a performance claim.
 | Completed 1-minute bars | {live.get('completed_one_minute_bars', 0):,} |
 | Completed 5-minute bars | {live.get('completed_five_minute_bars', 0):,} |
 | Opening ranges READY | {live.get('opening_ranges_ready', 0)} |
+
+{stall_warning}
+
+## Evaluation pipeline liveness
+
+Reading rows is not observing a session. These measures answer a different
+question from source health: did the rows actually become events, and did the
+events actually reach evaluation?
+
+| Measure | Value |
+|---|---|
+| Normalization progressed to the continuous close | **{live.get('normalization_progress_through_continuous_end', False)}** |
+| Evaluation progressed to the continuous close | **{live.get('evaluation_progress_through_continuous_end', False)}** |
+| Last normalized event | `{live.get('normalization_last_progress_utc') or 'never'}` |
+| Last symbol evaluated | `{live.get('evaluation_last_progress_utc') or 'never'}` |
+| Critical stall observed | **{live.get('critical_evaluation_stall_observed', False)}** |
+| Critical stall first seen | `{live.get('critical_evaluation_stall_first_seen_utc') or 'n/a'}` |
+| Critical stall reason | {live.get('critical_evaluation_stall_reason') or '_(none)_'} |
+
+## Deduplication
+
+| Measure | Value |
+|---|---|
+| Exact redeliveries collapsed | {live.get('exact_redeliveries', 0):,} |
+| Distinct payloads admitted | {live.get('dedupe_admitted', 0):,} |
+| Identity store entries | {live.get('dedupe_entries', 0):,} / {live.get('dedupe_capacity', 0):,} |
+| Rolling-window evictions | {live.get('dedupe_evictions', 0):,} |
+| Capacity exhausted | **{live.get('dedupe_capacity_exhausted', False)}** |
 
 ## Freshness distribution
 

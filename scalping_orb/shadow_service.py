@@ -47,6 +47,11 @@ from scalping_orb.events import (
     UniverseMembershipStatus,
     VolumeCapability,
 )
+from scalping_orb.liveness import (
+    HEALTHY_EVALUATION,
+    HEALTHY_NORMALIZATION,
+    LivenessVerdict,
+)
 from scalping_orb.session import OrbSessionClassifier, require_aware
 from scalping_orb.shadow_snapshot import (
     BarFinality,
@@ -72,6 +77,10 @@ class ShadowLiveStatus(str, Enum):
     LIVE_SHADOW_PARTIAL_SESSION = "LIVE_SHADOW_PARTIAL_SESSION"
     LIVE_SHADOW_FULL_SESSION = "LIVE_SHADOW_FULL_SESSION"
     LIVE_SHADOW_DISABLED_FRESHNESS = "LIVE_SHADOW_DISABLED_FRESHNESS"
+    # A live source is not a live pipeline. These two exist because
+    # 2026-08-04 reported HEALTHY while normalization produced nothing.
+    LIVE_SHADOW_NORMALIZATION_STALLED = "LIVE_SHADOW_NORMALIZATION_STALLED"
+    LIVE_SHADOW_EVALUATION_STALLED = "LIVE_SHADOW_EVALUATION_STALLED"
 
 
 class SessionClassification(str, Enum):
@@ -180,6 +189,49 @@ def classify_difference(live, reconstruction, revised: bool):
     )
 
 
+#: Run modes the CLI persists. ONCE is the default single-batch mode, FOLLOW
+#: is the in-session poller the orchestrator uses, RECONSTRUCT is Lane B only.
+LIVE_SOURCE_MODE = "FOLLOW"
+
+
+def live_source_disqualification(row) -> str | None:
+    """Why this run may NOT serve as the Lane A source, or None if it may.
+
+    Derived entirely from immutable facts the run already persisted - mode,
+    session classification, whether the runner started before the continuous
+    open, and whether Lane A actually recorded anything. Nothing here is a
+    mutable eligibility flag that could be set once and later become untrue,
+    and no mode is inferred from run-id text.
+
+    The previous rule was ``mode != "RECONSTRUCT" and lane_a_rows > 0``. That
+    admits a post-session ``--once --smoke`` run: such a run legitimately
+    persists Lane A rejection and telemetry rows, so it satisfied both clauses
+    while having observed nothing live. Comparing a reconstruction against it
+    would have produced a confident report measured against a run that never
+    watched the session.
+    """
+
+    if row is None:
+        return "run not found"
+    mode = str(row.get("mode") or "")
+    if mode == "RECONSTRUCT":
+        return "RECONSTRUCTION_RUN_WRITES_NO_LIVE_EVIDENCE"
+    if mode != LIVE_SOURCE_MODE:
+        # ONCE is a bounded single batch. It cannot have observed a session.
+        return f"MODE_{mode or 'UNKNOWN'}_IS_NOT_AN_IN_SESSION_LIVE_RUN"
+    classification = str(row.get("session_classification") or "")
+    if classification == SessionClassification.PARTIAL_SMOKE_SESSION.value:
+        return "PARTIAL_SMOKE_SESSION_IS_NOT_AN_OBSERVED_LIVE_SESSION"
+    if not classification:
+        # An unfinished or pre-migration row cannot prove it observed anything.
+        return "SESSION_CLASSIFICATION_MISSING"
+    if not int(row.get("runner_started_before_open") or 0):
+        return "RUNNER_STARTED_AFTER_CONTINUOUS_OPEN"
+    if int(row.get("lane_a_rows") or 0) <= 0:
+        return "NO_LANE_A_ROWS"
+    return None
+
+
 def select_live_run(
     candidates: Sequence[dict],
     *,
@@ -198,26 +250,32 @@ def select_live_run(
     def _describe(row: dict) -> str:
         return (
             f"{row['run_id'][:16]} mode={row['mode']} "
+            f"classification={row.get('session_classification')} "
             f"started={row['started_at_utc']} laneA={row['lane_a_rows']}"
         )
 
     eligible = [
-        row
-        for row in candidates
+        row for row in candidates
         if row["session_date"] == session_date.isoformat()
         and row["source_path_identity"] == source_path_identity
         and row["config_identity"] == config_identity
-        and row["mode"] != "RECONSTRUCT"
         and int(row["research_only"]) == 1
-        and int(row["lane_a_rows"]) > 0
+        and live_source_disqualification(row) is None
     ]
 
     if explicit_run_id:
         chosen = [row for row in eligible if row["run_id"] == explicit_run_id]
         if not chosen:
+            named = next((row for row in candidates
+                          if row["run_id"] == explicit_run_id), None)
+            reason = (live_source_disqualification(named) if named else None)
+            detail = f" ({reason})" if reason else ""
+            # An explicit id never bypasses the contract. Naming a run states
+            # which run to compare against, not that it qualifies.
             raise ShadowRunSelectionError(
-                f"run {explicit_run_id!r} is not an eligible live run for "
-                f"session {session_date.isoformat()} on this source and config. "
+                f"RUN_NOT_ELIGIBLE_AS_LIVE_SOURCE: run {explicit_run_id!r}{detail}. "
+                "Expected an in-session FOLLOW run with qualifying live coverage "
+                f"for session {session_date.isoformat()} on this source and config. "
                 f"Eligible: {[_describe(r) for r in eligible] or 'none'}"
             )
         return chosen[0]
@@ -384,6 +442,9 @@ def classify_session(
     opening_ranges_ready: int,
     observed_exchange_minutes: int,
     minimum_exchange_minutes: int,
+    normalization_progress_through_continuous_end: bool,
+    evaluation_progress_through_continuous_end: bool,
+    no_critical_evaluation_stall: bool,
     smoke: bool = False,
 ) -> tuple[SessionClassification, tuple[str, ...]]:
     """Strict FULL classification. Existence of data is never sufficient.
@@ -391,6 +452,12 @@ def classify_session(
     A run started after 10:00 Cairo is always partial — it cannot have observed
     the opening range forming, so its Lane A history has a hole no later
     evidence can fill.
+
+    Reading rows is not observing a session. The three liveness arguments are
+    required rather than defaulted: a caller that cannot prove the pipeline
+    kept normalizing and evaluating to the continuous close must say so, and
+    the 2026-08-04 session — which read a million rows and normalized nothing
+    after 12:11 Cairo — must classify as PARTIAL on that evidence alone.
     """
 
     classifier = OrbSessionClassifier(config)
@@ -414,6 +481,12 @@ def classify_session(
         reasons.append("NO_OPENING_RANGE_OBSERVED")
     if observed_exchange_minutes < minimum_exchange_minutes:
         reasons.append("INSUFFICIENT_EXCHANGE_MINUTE_COVERAGE")
+    if not normalization_progress_through_continuous_end:
+        reasons.append("NORMALIZATION_STALLED_BEFORE_CONTINUOUS_END")
+    if not evaluation_progress_through_continuous_end:
+        reasons.append("EVALUATION_STALLED_BEFORE_CONTINUOUS_END")
+    if not no_critical_evaluation_stall:
+        reasons.append("CRITICAL_EVALUATION_STALL_OBSERVED")
 
     if smoke:
         return SessionClassification.PARTIAL_SMOKE_SESSION, tuple(
@@ -452,11 +525,29 @@ class OrbShadowService:
 
     # -- Lane A -----------------------------------------------------------
 
-    def live_status_for(self, snapshot: ShadowSessionSnapshot) -> ShadowLiveStatus:
+    def live_status_for(
+        self,
+        snapshot: ShadowSessionSnapshot,
+        *,
+        liveness: LivenessVerdict | None = None,
+    ) -> ShadowLiveStatus:
+        """Health requires a live source *and* a live pipeline behind it.
+
+        Source freshness alone was the 2026-08-04 failure: rows kept arriving,
+        the cursor kept advancing, and every one of them was discarded. When a
+        liveness verdict is supplied, normalization and evaluation progress
+        must both hold before this reports HEALTHY.
+        """
+
         if not snapshot.events_by_ticker:
             return ShadowLiveStatus.LIVE_SHADOW_SOURCE_UNAVAILABLE
         if not snapshot.watermark.live_evidence_fresh:
             return ShadowLiveStatus.LIVE_SHADOW_STALE
+        if liveness is not None:
+            if liveness.normalization not in HEALTHY_NORMALIZATION:
+                return ShadowLiveStatus.LIVE_SHADOW_NORMALIZATION_STALLED
+            if liveness.evaluation not in HEALTHY_EVALUATION:
+                return ShadowLiveStatus.LIVE_SHADOW_EVALUATION_STALLED
         return ShadowLiveStatus.LIVE_SHADOW_HEALTHY
 
     def evaluate_live(

@@ -14,6 +14,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta, timezone
 import json
 from pathlib import Path
+import pathlib
 import sqlite3
 from zoneinfo import ZoneInfo
 
@@ -28,6 +29,8 @@ from scalping_orb.events import (
 )
 from scalping_orb.repository import SCHEMA_VERSION, OrbResearchRepository
 from scalping_orb.shadow_service import (
+    OrbShadowService,
+    live_source_disqualification,
     ComparisonReason,
     OrbShadowService,
     ShadowLiveStatus,
@@ -295,10 +298,21 @@ def runner_identities(source_path):
 
 
 def _live_run(repository, run_id, *, session="2026-08-04", mode="FOLLOW",
-              source_id="sid", config_id="cid", lane_a=1):
+              source_id="sid", config_id="cid", lane_a=1,
+              started_before_open=True,
+              classification="PARTIAL_SHADOW_SESSION"):
+    """A persisted run.
+
+    ``classification`` defaults to a genuine in-session run because that is
+    what a Lane A comparison source has to be. Pass PARTIAL_SMOKE_SESSION for a
+    smoke run, or None to leave the run unfinished - an unfinished run cannot
+    prove it observed anything and must not qualify.
+    """
+
     repository.start_shadow_run(
         run_id, date.fromisoformat(session), mode=mode, started_at_utc=at(10, 0),
-        runner_started_before_open=True, source_path_identity=source_id,
+        runner_started_before_open=started_before_open,
+        source_path_identity=source_id,
         config_identity=config_id, strategy_fingerprint="sf", engine_version="ev",
     )
     if lane_a:
@@ -322,6 +336,7 @@ def _live_run(repository, run_id, *, session="2026-08-04", mode="FOLLOW",
             observed_receive_lag_seconds=1.0,
         )
         repository.persist_shadow_cycle(run_id, cycle, (record,))
+    _finish(repository, run_id, classification)
     return run_id
 
 
@@ -411,7 +426,8 @@ def test_a_live_run_without_lane_a_rows_is_not_eligible(tmp_path):
 def test_an_explicit_but_ineligible_run_id_is_refused(tmp_path):
     repository = OrbResearchRepository(tmp_path / "orb.db")
     _live_run(repository, "reconA", mode="RECONSTRUCT")
-    with pytest.raises(ShadowRunSelectionError, match="not an eligible live run"):
+    with pytest.raises(ShadowRunSelectionError,
+                       match="RUN_NOT_ELIGIBLE_AS_LIVE_SOURCE"):
         select_live_run(
             repository.find_shadow_runs(), explicit_run_id="reconA",
             session_date=DAY, source_path_identity="sid", config_identity="cid",
@@ -426,6 +442,15 @@ def test_stored_lane_a_rows_rehydrate_into_comparable_records(tmp_path):
     assert records[0].canonical_ticker == "AAA"
     assert records[0].live_status is ShadowLiveStatus.LIVE_SHADOW_HEALTHY
     assert records[0].rejection_reasons == ("LIVE_DECISION_DISABLED_FRESHNESS",)
+
+
+def _finish(repository, run_id, classification="PARTIAL_SHADOW_SESSION"):
+    if classification is None:
+        return
+    repository.finish_shadow_run(
+        run_id, finished_at_utc=at(14, 20), stop_reason="CONTINUOUS_END_REACHED",
+        session_classification=classification,
+    )
 
 
 def _prepare_live_run(tmp_path, source, run_id="liveRun"):
@@ -447,23 +472,240 @@ def _prepare_live_run(tmp_path, source, run_id="liveRun"):
     return repository, run_id
 
 
-def test_a_once_run_against_a_past_session_yields_no_lane_a_rows(tmp_path, source):
-    """Documents why a smoke run can never serve as a comparison source."""
+def _frozen_after(day, monkeypatch, days=1):
+    """Freeze the runner's clock to a point after ``day``'s continuous close.
 
-    summary = ShadowRunner(parse_args([
-        "--rubix-db-path", str(source), "--research-db-path", str(tmp_path / "orb.db"),
+    Every ORB timing decision goes through ``run_orb_shadow_session._utc_now``,
+    so freezing that one seam makes "the session is over" a fact of the test
+    rather than a fact of the calendar. The old test hard-coded 2026-08-04 and
+    called it a past session; until that date arrived it was actually a FUTURE
+    session, and on the day itself the session was live. It asserted nothing it
+    claimed to.
+    """
+
+    import scripts.run_orb_shadow_session as runner_module
+
+    frozen = datetime.combine(day, time(14, 15), tzinfo=CAIRO).astimezone(
+        timezone.utc) + timedelta(days=days)
+    monkeypatch.setattr(runner_module, "_utc_now", lambda: frozen)
+    return frozen
+
+
+# --------------------------------------------------------------------------- #
+# CONTRACT A - reconstruction writes Lane B only
+# --------------------------------------------------------------------------- #
+
+def test_reconstruct_run_writes_no_lane_a_rows(tmp_path, source, monkeypatch):
+    """Reconstruction never fabricates live history.
+
+    Lane A records what was knowable at an actual observation time. A run that
+    observed nothing may not manufacture that, however complete its Lane B is.
+    """
+
+    import scripts.run_orb_shadow_session as runner_module
+
+    _frozen_after(DAY, monkeypatch)
+
+    called = []
+    original = OrbShadowService.evaluate_live
+
+    def spy(self, *args, **kwargs):
+        called.append(1)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(OrbShadowService, "evaluate_live", spy)
+
+    summary = runner_module.ShadowRunner(parse_args([
+        "--rubix-db-path", str(source),
+        "--research-db-path", str(tmp_path / "orb.db"),
         "--output-dir", str(tmp_path / "out"), "--session-date", DAY.isoformat(),
-        "--once", "--smoke",
+        "--reconstruct",
     ])).run()
+
+    assert called == [], "the live evaluator ran during a reconstruction"
     assert summary["live_evaluations"] == 0
     repository = OrbResearchRepository(tmp_path / "orb.db")
     assert repository.table_count("orb_shadow_live_states") == 0
+    # Lane B is the point of the run and must still be written.
+    assert repository.table_count("orb_shadow_reconstruction_states") > 0
+
+
+def test_a_reconstruction_run_can_never_be_a_live_source(tmp_path):
+    repository = OrbResearchRepository(tmp_path / "orb.db")
+    _live_run(repository, "reconA", mode="RECONSTRUCT")
+    row = next(r for r in repository.find_shadow_runs() if r["run_id"] == "reconA")
+    assert live_source_disqualification(row) == \
+        "RECONSTRUCTION_RUN_WRITES_NO_LIVE_EVIDENCE"
+
+
+# --------------------------------------------------------------------------- #
+# CONTRACT B - a past ONCE/smoke run is telemetry, not an observed session
+# --------------------------------------------------------------------------- #
+
+def test_past_once_smoke_is_not_a_qualifying_live_run(tmp_path, source, monkeypatch):
+    """A bounded smoke run may persist Lane A evidence - and still not qualify.
+
+    Its Lane A rows are rejection and telemetry state, which is legitimate
+    evidence. What it cannot be is the historical account of a live session,
+    because it never watched one.
+    """
+
+    import scripts.run_orb_shadow_session as runner_module
+
+    _frozen_after(DAY, monkeypatch)
+
+    summary = runner_module.ShadowRunner(parse_args([
+        "--rubix-db-path", str(source),
+        "--research-db-path", str(tmp_path / "orb.db"),
+        "--output-dir", str(tmp_path / "out"), "--session-date", DAY.isoformat(),
+        "--once", "--smoke",
+    ])).run()
+
+    repository = OrbResearchRepository(tmp_path / "orb.db")
+    row = next(r for r in repository.find_shadow_runs()
+               if r["run_id"] == summary["run_id"])
+
+    # Lane A rows are permitted; the classification is what disqualifies it.
+    assert row["mode"] == "ONCE"
+    assert row["session_classification"] == "PARTIAL_SMOKE_SESSION"
+    assert row["session_classification"] != "FULL_SHADOW_SESSION"
+    assert live_source_disqualification(row) is not None
+
+    # It is absent from the eligible listing and refused when named explicitly.
+    with pytest.raises(ShadowRunSelectionError,
+                       match="RUN_NOT_ELIGIBLE_AS_LIVE_SOURCE"):
+        select_live_run(
+            repository.find_shadow_runs(), explicit_run_id=summary["run_id"],
+            session_date=DAY,
+            source_path_identity=runner_identities(source)[0],
+            config_identity=CONFIG.fingerprint,
+        )
     with pytest.raises(ShadowRunSelectionError):
         select_live_run(
             repository.find_shadow_runs(), session_date=DAY,
             source_path_identity=runner_identities(source)[0],
             config_identity=CONFIG.fingerprint,
         )
+
+
+# --------------------------------------------------------------------------- #
+# CONTRACT C - a genuine FOLLOW run qualifies
+# --------------------------------------------------------------------------- #
+
+def test_follow_run_with_live_coverage_can_qualify(tmp_path):
+    repository = OrbResearchRepository(tmp_path / "orb.db")
+    _live_run(repository, "followA")
+    row = next(r for r in repository.find_shadow_runs() if r["run_id"] == "followA")
+    assert row["mode"] == "FOLLOW"
+    assert int(row["runner_started_before_open"]) == 1
+    assert int(row["lane_a_rows"]) > 0
+    assert live_source_disqualification(row) is None
+
+    chosen = select_live_run(
+        repository.find_shadow_runs(), session_date=DAY,
+        source_path_identity="sid", config_identity="cid",
+    )
+    assert chosen["run_id"] == "followA"
+
+
+def test_a_follow_run_started_after_the_open_does_not_qualify(tmp_path):
+    """It cannot have watched the opening range form."""
+
+    repository = OrbResearchRepository(tmp_path / "orb.db")
+    _live_run(repository, "lateA", started_before_open=False)
+    row = next(r for r in repository.find_shadow_runs() if r["run_id"] == "lateA")
+    assert live_source_disqualification(row) == "RUNNER_STARTED_AFTER_CONTINUOUS_OPEN"
+
+
+def test_an_unfinished_run_cannot_prove_it_observed_a_session(tmp_path):
+    repository = OrbResearchRepository(tmp_path / "orb.db")
+    _live_run(repository, "openA", classification=None)
+    row = next(r for r in repository.find_shadow_runs() if r["run_id"] == "openA")
+    assert live_source_disqualification(row) == "SESSION_CLASSIFICATION_MISSING"
+
+
+# --------------------------------------------------------------------------- #
+# CONTRACT D - Lane A rows alone are not qualification
+# --------------------------------------------------------------------------- #
+
+def test_lane_a_count_alone_is_insufficient(tmp_path):
+    """The previous rule was `mode != RECONSTRUCT and lane_a_rows > 0`.
+
+    Both clauses hold for a post-session ONCE smoke run, which is exactly how
+    an unobserved run could have become the historical Lane A source.
+    """
+
+    repository = OrbResearchRepository(tmp_path / "orb.db")
+    _live_run(repository, "smokeA", mode="ONCE",
+              classification="PARTIAL_SMOKE_SESSION")
+    row = next(r for r in repository.find_shadow_runs() if r["run_id"] == "smokeA")
+
+    # The old rule would have admitted it.
+    assert row["mode"] != "RECONSTRUCT" and int(row["lane_a_rows"]) > 0
+    # The corrected rule does not.
+    assert live_source_disqualification(row) is not None
+    with pytest.raises(ShadowRunSelectionError):
+        select_live_run(
+            repository.find_shadow_runs(), session_date=DAY,
+            source_path_identity="sid", config_identity="cid",
+        )
+
+
+def test_a_non_smoke_once_run_is_refused_on_mode_alone(tmp_path):
+    """Isolates the mode clause from the smoke clause.
+
+    A ONCE run classified as a partial *shadow* session - not smoke - still
+    observed only one bounded batch. Without this case the mode check could be
+    removed and every test would still pass, because the smoke check would be
+    masking it.
+    """
+
+    repository = OrbResearchRepository(tmp_path / "orb.db")
+    _live_run(repository, "onceA", mode="ONCE",
+              classification="PARTIAL_SHADOW_SESSION")
+    row = next(r for r in repository.find_shadow_runs() if r["run_id"] == "onceA")
+    assert row["session_classification"] != "PARTIAL_SMOKE_SESSION"
+    assert int(row["lane_a_rows"]) > 0
+    assert live_source_disqualification(row) ==         "MODE_ONCE_IS_NOT_AN_IN_SESSION_LIVE_RUN"
+    with pytest.raises(ShadowRunSelectionError,
+                       match="RUN_NOT_ELIGIBLE_AS_LIVE_SOURCE"):
+        select_live_run(
+            repository.find_shadow_runs(), explicit_run_id="onceA",
+            session_date=DAY, source_path_identity="sid", config_identity="cid",
+        )
+
+
+def test_a_follow_smoke_run_is_also_refused(tmp_path):
+    repository = OrbResearchRepository(tmp_path / "orb.db")
+    _live_run(repository, "followSmoke", classification="PARTIAL_SMOKE_SESSION")
+    row = next(r for r in repository.find_shadow_runs()
+               if r["run_id"] == "followSmoke")
+    assert live_source_disqualification(row) == \
+        "PARTIAL_SMOKE_SESSION_IS_NOT_AN_OBSERVED_LIVE_SESSION"
+
+
+def test_no_orb_run_control_test_reads_the_wall_clock():
+    """Determinism, asserted structurally.
+
+    A test that says "past session" while reading the real date changes meaning
+    at midnight. Every timing decision here goes through a frozen seam instead.
+    """
+
+    import ast
+
+    source = pathlib.Path(__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    guard = "test_no_orb_run_control_test_reads_the_wall_clock"
+    skipped = {id(node) for parent in ast.walk(tree)
+               if isinstance(parent, ast.FunctionDef) and parent.name == guard
+               for node in ast.walk(parent)}
+    for node in ast.walk(tree):
+        if id(node) in skipped or not isinstance(node, ast.Call):
+            continue
+        name = ast.unparse(node.func)
+        assert not name.endswith("datetime.now"), name
+        assert not name.endswith("date.today"), name
+        assert not name.endswith("utcnow"), name
 
 
 def test_a_cross_run_comparison_stores_both_run_ids(tmp_path, source):
