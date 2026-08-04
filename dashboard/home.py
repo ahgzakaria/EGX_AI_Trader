@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from core import scan_job_manager as job_manager
+from core.daily_data_guard import evaluate_daily_data
 from core.data_provider import summarize_frames
 from core.symbols import SYMBOL_SOURCE
 from dashboard.formatting import (
@@ -60,19 +61,60 @@ TERMINAL_HEADLINES = {
 }
 
 
-def _observed_metadata(results):
-    """What the finished scan actually saw, for the final banner.
+#: Below this share of rows agreeing on one session date, a single headline date
+#: would misdescribe the table underneath it.
+DOMINANT_SESSION_SHARE = 0.98
 
-    Read straight from the typed provenance fields the scanner already recorded on each
-    row — nothing is recomputed and no provider is consulted.
+
+def observed_sessions(results):
+    """The session date each displayed row actually carries.
+
+    Read straight from the typed provenance fields the scanner already recorded
+    on each row — nothing is recomputed and no provider is consulted.
     """
     sessions = [row.get("LastCompletedSession") or row.get("CompletedSessionTimestamp")
                 for row in results or ()]
-    sessions = [str(value)[:10] for value in sessions if value]
+    return [str(value)[:10] for value in sessions if value]
+
+
+def session_coverage(results):
+    """How the displayed rows are distributed across session dates.
+
+    The banner used to headline ``max(sessions)``, which on 2026-08-04 announced
+    "Latest completed candle 2026-08-03" while 184 of 194 rows carried
+    2026-07-30 prices — the newest single row describing the whole table. The
+    verified truth was that EODHD had published 2026-08-03 for only 6 EGX
+    symbols; every row's own date and OHLCV agreed, so nothing was relabelled.
+    What was wrong was the aggregate.
+    """
+    sessions = observed_sessions(results)
+    if not sessions:
+        return {"dominant": "", "newest": "", "oldest": "", "total": 0,
+                "dominant_rows": 0, "distribution": {}, "mixed": False}
+    counts = {}
+    for value in sessions:
+        counts[value] = counts.get(value, 0) + 1
+    dominant, dominant_rows = max(counts.items(), key=lambda item: (item[1], item[0]))
+    return {
+        "dominant": dominant,
+        "newest": max(counts),
+        "oldest": min(counts),
+        "total": len(sessions),
+        "dominant_rows": dominant_rows,
+        "distribution": dict(sorted(counts.items())),
+        "mixed": (dominant_rows / len(sessions)) < DOMINANT_SESSION_SHARE,
+    }
+
+
+def _observed_metadata(results):
+    """What the finished scan actually saw, for the final banner."""
+    coverage = session_coverage(results)
     statuses = {str(row.get("LivePriceStatus") or "").upper()
                 for row in results or ()} - {""}
     return {
-        "latest_completed_candle": max(sessions) if sessions else "",
+        # The date the displayed prices actually carry, not the newest outlier.
+        "latest_completed_candle": coverage["dominant"],
+        "session_coverage": coverage,
         # Any stale overlay downgrades the reported live state; it never touches the
         # historical source.
         "live_quote_freshness": "STALE" if "STALE" in statuses else "",
@@ -681,6 +723,44 @@ def show_dashboard():
             "The frozen market scan completed, but its optional decision-support "
             f"snapshot failed: {st.session_state.decision_support_error}"
         )
+
+    # --- Fail closed on candle provenance ---------------------------------- #
+    # The rows carry their own session dates. If those disagree with each other
+    # or lag the exchange calendar, the table below would present one session's
+    # prices under another session's name, so no decision is rendered from it.
+    coverage = session_coverage(results)
+    try:
+        from core.egx_calendar import effective_holidays
+        from core.egx_session import expected_latest_completed_session
+
+        expected = expected_latest_completed_session(holidays=effective_holidays())
+        expected_session = expected.isoformat() if expected else ""
+    except Exception as error:              # never guess a date to unblock
+        logger.warning("expected session unavailable: %s", error)
+        expected_session = ""
+
+    decision = evaluate_daily_data(coverage, expected_session)
+    if decision.blocked:
+        st.error(decision.message)
+        if decision.detail:
+            st.caption(decision.detail)
+        st.caption(
+            "Observed session dates across the scanned rows: "
+            + ", ".join(f"{date} ({count})"
+                        for date, count in sorted(decision.distribution.items()))
+        )
+        with st.expander("Rows as scanned (provenance only, not a recommendation)"):
+            st.dataframe(
+                pd.DataFrame(results)[
+                    [column for column in ("Ticker", "LastCompletedSession",
+                                           "CompletedSessionClose", "Price",
+                                           "CompletedSessionProvider",
+                                           "LivePriceStatus")
+                     if column in pd.DataFrame(results).columns]
+                ],
+                use_container_width=True, hide_index=True,
+            )
+        return
 
     df = pd.DataFrame(results)
     # The final banner is rendered from what the scan actually observed. It must NOT go

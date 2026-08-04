@@ -47,6 +47,11 @@ def _rubix_label(available, total, batch_status="", freshness=""):
         return RUBIX_PARTIAL
     return RUBIX_STALE if str(freshness).upper() == "STALE" else RUBIX_FRESH
 
+#: Shown when a finished scan produced no usable session date. Deliberately
+#: not the expected session: an unknown actual date is information, and a
+#: substituted expected date is a false statement about the prices below.
+UNKNOWN_CANDLE = "Unknown — no dated candle"
+
 
 def scan_status_view(job_progress=None, expected_session=None, result_metadata=None):
     """Return the three status lines for the Market Scan banner.
@@ -69,9 +74,11 @@ def scan_status_view(job_progress=None, expected_session=None, result_metadata=N
     state = str(job_progress.state)
 
     if state in (STARTING, PREPARING_RUBIX):
+        # No row has been read yet, so no candle date is known. The expected
+        # session is a different claim and never appears under this label.
         return {
             "historical_source": EODHD,
-            "latest_completed_candle": str(expected_session or AWAITING_SCAN),
+            "latest_completed_candle": AWAITING_SCAN,
             "live_overlay": RUBIX_LOADING,
         }
 
@@ -85,15 +92,19 @@ def scan_status_view(job_progress=None, expected_session=None, result_metadata=N
 
     if state in (COMPLETED, COMPLETED_WITH_GAPS, CANCELLED, FAILED):
         candle = (result_metadata or {}).get("latest_completed_candle")
+        # Never fall back to the EXPECTED session here. This line is labelled
+        # "Latest completed candle", so printing the date the market *should*
+        # have published states something the data does not support - which is
+        # exactly how 2026-08-03 came to sit above 2026-07-30 prices.
         return {
             "historical_source": historical,
-            "latest_completed_candle": str(candle or expected_session or AWAITING_SCAN),
+            "latest_completed_candle": str(candle or UNKNOWN_CANDLE),
             "live_overlay": overlay,
         }
 
     return {
         "historical_source": historical,
-        "latest_completed_candle": str(expected_session or AWAITING_SCAN),
+        "latest_completed_candle": UNKNOWN_CANDLE,
         "live_overlay": overlay,
     }
 

@@ -405,11 +405,18 @@ def test_before_any_scan_the_banner_says_eodhd_and_awaiting_scan():
 
 
 def test_during_preparation_the_banner_shows_loading_rubix():
+    """No row has been read yet, so no candle date may be claimed.
+
+    This line is labelled "Latest completed candle". Printing the EXPECTED
+    session there states something no observation supports, which is how
+    "2026-08-03" came to sit above 2026-07-30 prices on 2026-08-04.
+    """
+
     job, _ = _job()
     job.publish(state=jm.PREPARING_RUBIX, stage="Loading Rubix quote overlays")
     view = scan_status_view(job.progress(), expected_session="2026-07-26")
     assert view["historical_source"] == "EODHD"
-    assert view["latest_completed_candle"] == "2026-07-26"
+    assert view["latest_completed_candle"] != "2026-07-26"
     assert view["live_overlay"] == "Loading Rubix"
 
 
