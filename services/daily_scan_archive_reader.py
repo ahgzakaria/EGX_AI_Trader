@@ -36,12 +36,32 @@ class SchemaStatus(str, Enum):
 
     SCHEMA_V2_VALID = "SCHEMA_V2_VALID"
     SCHEMA_V2_INVALID = "SCHEMA_V2_INVALID"
+    #: Valid v2 CSV artifacts whose export metadata was overwritten by a
+    #: later writer. The files prove themselves; the metadata is gone.
+    RECOVERABLE_V2_EXPORT = "RECOVERABLE_V2_EXPORT"
     LEGACY_V1 = "LEGACY_V1"
     LEGACY_UNKNOWN = "LEGACY_UNKNOWN"
     INVALID_DATA_PROVENANCE = "INVALID_DATA_PROVENANCE"
     INCOMPLETE_ARCHIVE = "INCOMPLETE_ARCHIVE"
     UNSUPPORTED_FUTURE_SCHEMA = "UNSUPPORTED_FUTURE_SCHEMA"
 
+
+RECOVERED_WARNING = (
+    "RECOVERED SCHEMA-V2 ARTIFACTS\n\n"
+    "The decision and coverage CSV files passed validation, but the original "
+    "schema-v2 metadata was overwritten by legacy experiment metadata. Every "
+    "figure shown below is recomputed from the CSV files themselves. Values "
+    "that existed only in the lost metadata - the export generation timestamp "
+    "and the exact strategy config identity - are reported as unavailable "
+    "rather than guessed."
+)
+
+#: Statuses whose coverage figures are trustworthy - either declared by valid
+#: metadata or recomputed from a complete coverage audit.
+COVERAGE_BEARING = frozenset({
+    SchemaStatus.SCHEMA_V2_VALID,
+    SchemaStatus.RECOVERABLE_V2_EXPORT,
+})
 
 LEGACY_WARNING = (
     "LEGACY ARCHIVE — COVERAGE SEMANTICS UNKNOWN\n\n"
@@ -89,31 +109,31 @@ class DailyScanArchive:
         Inferring a universe from however many rows survived is precisely how a
         partial scan gets reported as full coverage.
         """
-        if self.schema_status is SchemaStatus.SCHEMA_V2_VALID:
+        if self.schema_status in COVERAGE_BEARING:
             return int(self._meta("operational_universe_count", 0))
         return None
 
     @property
     def current_count(self):
-        if self.schema_status is SchemaStatus.SCHEMA_V2_VALID:
+        if self.schema_status in COVERAGE_BEARING:
             return int(self._meta("current_count", 0))
         return None
 
     @property
     def excluded_count(self):
-        if self.schema_status is SchemaStatus.SCHEMA_V2_VALID:
+        if self.schema_status in COVERAGE_BEARING:
             return int(self._meta("excluded_count", 0))
         return None
 
     @property
     def current_coverage_percent(self):
-        if self.schema_status is SchemaStatus.SCHEMA_V2_VALID:
+        if self.schema_status in COVERAGE_BEARING:
             return float(self._meta("current_coverage_percent", 0.0))
         return None
 
     @property
     def loaded_result_current_percent(self):
-        if self.schema_status is SchemaStatus.SCHEMA_V2_VALID:
+        if self.schema_status in COVERAGE_BEARING:
             return float(self._meta("loaded_result_current_percent", 0.0))
         return None
 
@@ -127,7 +147,7 @@ class DailyScanArchive:
 
     @property
     def market_wide_summary_allowed(self):
-        if self.schema_status is SchemaStatus.SCHEMA_V2_VALID:
+        if self.schema_status in COVERAGE_BEARING:
             return bool(self._meta("market_wide_summary_allowed", False))
         return None
 
@@ -147,13 +167,30 @@ class DailyScanArchive:
         if self.invalid_data_provenance:
             return False
         return self.schema_status in (SchemaStatus.SCHEMA_V2_VALID,
+                                      SchemaStatus.RECOVERABLE_V2_EXPORT,
                                       SchemaStatus.LEGACY_V1,
                                       SchemaStatus.LEGACY_UNKNOWN)
 
     @property
     def coverage_available(self) -> bool:
-        """Legacy archives cannot supply full-universe coverage. Say so."""
-        return self.schema_status is SchemaStatus.SCHEMA_V2_VALID
+        """Legacy archives cannot supply full-universe coverage. Say so.
+
+        A recovered archive can: every figure is recomputed from the coverage
+        audit itself, which carries one row per universe symbol.
+        """
+        return self.schema_status in COVERAGE_BEARING
+
+    @property
+    def metadata_recovered(self) -> bool:
+        """True when the export metadata was rebuilt from the CSV artifacts."""
+        return self.schema_status is SchemaStatus.RECOVERABLE_V2_EXPORT
+
+    @property
+    def unavailable_metadata_fields(self) -> tuple:
+        """Fields that existed only in the overwritten metadata."""
+        if not self.metadata_recovered:
+            return ()
+        return tuple(self._meta("unavailable_fields", ()) or ())
 
     def current_symbols(self) -> set:
         return {row.get("Symbol") for row in self.current_decisions}
@@ -221,12 +258,110 @@ def archive_cache_identity(run_path):
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:32]
 
 
+#: Fields that existed only in the overwritten metadata. Recomputing them is
+#: impossible, so they are named as unavailable rather than invented.
+UNRECOVERABLE_EXPORT_FIELDS = (
+    "generated_at_utc",
+    "evaluation_time_utc",
+    "strategy_config_identity",
+    "rubix_freshness_policy_identity",
+    "minimum_market_coverage_percent",
+)
+
+
+def _recover_overwritten_export(root, decisions, audit, compatibility):
+    """Rebuild the export metadata from the CSV files, or return ``None``.
+
+    Only what the files themselves prove. Every invariant that does not depend
+    on the lost metadata must hold; anything that cannot be recomputed is left
+    absent so the UI can label it unavailable.
+    """
+
+    if not decisions or not audit or compatibility is None:
+        return None
+    if list(compatibility) != list(decisions):
+        return None
+
+    symbols = [row.get("Symbol") for row in audit]
+    if len(set(symbols)) != len(symbols) or not all(symbols):
+        return None
+
+    required = {"ScanOutcome", "DailyFreshnessStatus", "ActualCandleSession",
+                "ExpectedCompletedSession"}
+    if not required.issubset(set(audit[0])):
+        return None
+
+    sessions = {row.get("ExpectedCompletedSession") for row in audit
+                if row.get("ExpectedCompletedSession")}
+    if len(sessions) != 1:
+        return None                     # one run, one expectation
+    expected_session = sessions.pop()
+
+    outcomes = {}
+    for row in audit:
+        outcomes[row["ScanOutcome"]] = outcomes.get(row["ScanOutcome"], 0) + 1
+    current_rows = outcomes.get(OUTCOME_CURRENT, 0)
+    if current_rows != len(decisions):
+        return None                     # the same invariant the writer enforces
+
+    decided = {name: sum(1 for row in decisions
+                         if str(row.get("Decision")) == name)
+               for name in ("BUY", "WATCH", "AVOID")}
+    if sum(decided.values()) != len(decisions):
+        return None
+
+    distribution = {}
+    for row in audit:
+        value = row.get("ActualCandleSession")
+        if value:
+            distribution[value] = distribution.get(value, 0) + 1
+
+    universe = len(audit)
+    recovered = {
+        "export_schema_version": DAILY_SCAN_EXPORT_SCHEMA_VERSION,
+        "run_id": Path(root).name,
+        "operational_universe_count": universe,
+        "current_count": len(decisions),
+        "daily_current_count": current_rows,
+        "current_decision_count": len(decisions),
+        "decision_calculation_error_count": outcomes.get("CALCULATION_ERROR", 0),
+        "excluded_count": universe - len(decisions),
+        "expected_completed_session": expected_session,
+        "current_coverage_percent": (round(100.0 * len(decisions) / universe, 1)
+                                     if universe else 0.0),
+        "decision_count": len(decisions),
+        "buy_count": decided["BUY"],
+        "watch_count": decided["WATCH"],
+        "avoid_count": decided["AVOID"],
+        "stale_count": outcomes.get("SKIPPED_STALE_DAILY_DATA", 0),
+        "future_date_count": outcomes.get("SKIPPED_FUTURE_DAILY_DATE", 0),
+        "observed_session_distribution": dict(sorted(distribution.items())),
+        "dominant_observed_session": (
+            max(distribution, key=lambda key: distribution[key])
+            if distribution else None),
+        "current_decisions_filename": CURRENT_DECISIONS_FILENAME,
+        "coverage_audit_filename": COVERAGE_AUDIT_FILENAME,
+        "compatibility_export_filename": COMPATIBILITY_FILENAME,
+        "outcome_counts": dict(sorted(outcomes.items())),
+        # Named, not guessed.
+        "recovered_from_artifacts": True,
+        "unavailable_fields": list(UNRECOVERABLE_EXPORT_FIELDS),
+    }
+    return recovered
+
+
 def read_archive(run_path):
     """Load and classify one archive. Never rewrites anything it reads."""
 
     root = Path(run_path)
     run_id = root.name
-    metadata = _read_json(root / "run_metadata.json") or {}
+    from services.run_metadata_service import load_run_metadata
+
+    document = load_run_metadata(root)
+    # The export section is authoritative; a pre-service archive keeps its
+    # flat shape and load_run_metadata returns it unchanged.
+    metadata = dict(document.export) or (_read_json(root / "run_metadata.json") or {})
+    run_section = document.run
     invalid = (root / INVALID_MARKER).is_file()
     identity = archive_cache_identity(root)
     warnings, missing = [], []
@@ -254,6 +389,15 @@ def read_archive(run_path):
         return build(SchemaStatus.INVALID_DATA_PROVENANCE, (INVALID_WARNING,))
 
     if version is None:
+        # A v2 archive whose export metadata a later writer erased still holds
+        # three files that can prove themselves. Calling that plain LEGACY_V1
+        # discards real, validated coverage — but so does trusting it because
+        # the filenames happen to exist. Recovery is earned by revalidating.
+        recovered = _recover_overwritten_export(root, decisions, audit,
+                                                compatibility)
+        if recovered is not None:
+            metadata = recovered
+            return build(SchemaStatus.RECOVERABLE_V2_EXPORT, (RECOVERED_WARNING,))
         # Never inferred from a filename: an archive that happens to contain a
         # decisions file says nothing about what that file means.
         status = (SchemaStatus.LEGACY_V1 if compatibility is not None

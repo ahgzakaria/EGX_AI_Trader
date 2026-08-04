@@ -191,9 +191,12 @@ def test_a_mismatched_compatibility_alias_fails_closed(tmp_path):
 
 def test_a_broken_invariant_fails_closed(tmp_path):
     directory = make_v2_archive(tmp_path / "RUN_A")
-    metadata = json.loads((directory / "run_metadata.json").read_text(encoding="utf-8"))
+    document = json.loads((directory / "run_metadata.json").read_text(encoding="utf-8"))
+    # The export lives in its own section since metadata ownership was
+    # centralised; mutating the document root would test nothing.
+    metadata = document.setdefault("daily_scan_export", document)
     metadata["current_count"] = 99
-    (directory / "run_metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    (directory / "run_metadata.json").write_text(json.dumps(document), encoding="utf-8")
     archive = read_archive(directory)
     assert archive.schema_status is SchemaStatus.SCHEMA_V2_INVALID
     assert archive.archive_warnings
@@ -201,25 +204,50 @@ def test_a_broken_invariant_fails_closed(tmp_path):
 
 def test_an_unsupported_future_schema_is_refused(tmp_path):
     directory = make_v2_archive(tmp_path / "RUN_A")
-    metadata = json.loads((directory / "run_metadata.json").read_text(encoding="utf-8"))
+    document = json.loads((directory / "run_metadata.json").read_text(encoding="utf-8"))
+    # The export lives in its own section since metadata ownership was
+    # centralised; mutating the document root would test nothing.
+    metadata = document.setdefault("daily_scan_export", document)
     metadata["export_schema_version"] = 99
-    (directory / "run_metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    (directory / "run_metadata.json").write_text(json.dumps(document), encoding="utf-8")
     archive = read_archive(directory)
     assert archive.schema_status is SchemaStatus.UNSUPPORTED_FUTURE_SCHEMA
     assert archive.coverage_available is False
 
 
 def test_the_version_is_never_inferred_from_a_filename(tmp_path):
-    """A decisions file present with no declared version is still legacy."""
+    """A missing version is never simply believed - it must be re-earned.
+
+    Recovery changed what happens next, not this rule. An archive with no
+    declared version is never SCHEMA_V2_VALID; it is either legacy or, when
+    its CSV artifacts revalidate completely, explicitly RECOVERABLE_V2_EXPORT
+    with every figure recomputed and the loss disclosed.
+    """
 
     directory = make_v2_archive(tmp_path / "RUN_A")
-    metadata = json.loads((directory / "run_metadata.json").read_text(encoding="utf-8"))
+    document = json.loads((directory / "run_metadata.json").read_text(encoding="utf-8"))
+    metadata = document.setdefault("daily_scan_export", document)
     del metadata["export_schema_version"]
-    (directory / "run_metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    (directory / "run_metadata.json").write_text(json.dumps(document), encoding="utf-8")
+
     archive = read_archive(directory)
-    assert archive.schema_status in (SchemaStatus.LEGACY_V1,
-                                     SchemaStatus.LEGACY_UNKNOWN)
-    assert archive.coverage_available is False
+
+    assert archive.schema_status is not SchemaStatus.SCHEMA_V2_VALID
+    assert archive.schema_status is SchemaStatus.RECOVERABLE_V2_EXPORT
+    assert archive.metadata_recovered
+    assert any("RECOVERED SCHEMA-V2 ARTIFACTS" in warning
+               for warning in archive.archive_warnings)
+
+
+def test_a_declared_version_is_still_required_for_plain_validity(tmp_path):
+    """Recovery is a separate, disclosed state - never a silent upgrade."""
+
+    directory = make_v2_archive(tmp_path / "RUN_B")
+    archive = read_archive(directory)
+
+    assert archive.schema_status is SchemaStatus.SCHEMA_V2_VALID
+    assert not archive.metadata_recovered
+    assert archive.unavailable_metadata_fields == ()
 
 
 # =========================================================================== #
@@ -520,9 +548,18 @@ def test_downloads_resolve_through_the_path_guard():
 
 def test_downloads_are_refused_for_a_non_valid_archive():
     source = _panel_source()
-    guard = source.split("def render_download_controls")[1]
-    assert "SchemaStatus.SCHEMA_V2_VALID" in guard.split("st.columns")[0]
-    assert "return" in guard.split("st.columns")[0]
+    guard = source.split("def render_download_controls")[1].split("st.columns")[0]
+    # COVERAGE_BEARING is SCHEMA_V2_VALID plus the recovered state, whose
+    # downloads are the very CSV files that were revalidated.
+    assert "COVERAGE_BEARING" in guard
+    assert "return" in guard
+
+
+def test_a_recovered_archive_discloses_its_state_before_downloading():
+    guard = _panel_source().split("def render_download_controls")[1]
+    assert "metadata_recovered" in guard
+    assert "RECOVERED_WARNING" in guard
+    assert "unavailable_metadata_fields" in guard
 
 
 def test_the_comparison_reads_decisions_from_the_decisions_file():

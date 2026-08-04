@@ -10,6 +10,8 @@ from __future__ import annotations
 import streamlit as st
 
 from services.daily_scan_archive_reader import (
+    COVERAGE_BEARING,
+    RECOVERED_WARNING,
     SchemaStatus,
     resolve_artifact,
 )
@@ -83,7 +85,7 @@ def render_archive_summary(archive):
 def render_download_controls(archive):
     """Clearly-named exports. The audit is never called opportunities."""
 
-    if archive.schema_status is not SchemaStatus.SCHEMA_V2_VALID:
+    if archive.schema_status not in COVERAGE_BEARING:
         st.info(
             "Schema-v2 downloads are unavailable for this archive "
             f"({archive.schema_status.value})."
@@ -94,6 +96,15 @@ def render_download_controls(archive):
 
     if not archive.decision_use_allowed:
         st.error("NOT FOR DECISION USE — downloads are labelled historical only.")
+
+    if archive.metadata_recovered:
+        # The files are the evidence; the metadata describing them was lost.
+        # Serving them silently would imply a provenance this run cannot show.
+        st.warning(RECOVERED_WARNING)
+        st.caption(
+            "Unavailable from the overwritten metadata: "
+            + ", ".join(f"`{name}`" for name in archive.unavailable_metadata_fields)
+        )
 
     st.caption(
         f"Current Decisions: {len(archive.current_decisions)}  ·  "
