@@ -457,9 +457,18 @@ def publish_archive(run_dir, *, decisions, audit, metadata, universe_symbols,
             writer(temporary, rows)
             staged.append((temporary, run_dir / filename))
 
-        temporary = _stage(run_dir, "run_metadata.json")
-        _write_json(temporary, metadata)
-        staged.append((temporary, run_dir / "run_metadata.json"))
+        # Composed, not overwritten. The export owns exactly one namespaced
+        # section; whatever generic run fields are already on disk survive,
+        # and a later experiment write goes through the same service and
+        # cannot drop this section. See services/run_metadata_service.py.
+        from services.run_metadata_service import (
+            METADATA_FILENAME, compose_run_metadata, load_run_metadata,
+        )
+
+        existing = load_run_metadata(run_dir)
+        temporary = _stage(run_dir, METADATA_FILENAME)
+        _write_json(temporary, compose_run_metadata(existing.run, metadata))
+        staged.append((temporary, run_dir / METADATA_FILENAME))
 
         for source, destination in staged:
             os.replace(source, destination)

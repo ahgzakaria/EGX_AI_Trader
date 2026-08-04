@@ -558,7 +558,8 @@ def publish_via_scanner(tmp_path, decision_map, failed=()):
         with open(tmp_path / name, newline="", encoding="utf-8") as handle:
             return list(csv.DictReader(handle))
 
-    metadata = json.loads((tmp_path / "run_metadata.json").read_text("utf-8"))
+    from services.run_metadata_service import load_run_metadata
+    metadata = load_run_metadata(tmp_path).export
     return rows("scan_current_decisions.csv"), rows("scan_coverage_audit.csv"), metadata
 
 
@@ -675,7 +676,8 @@ def test_the_scanner_publishes_a_universe_with_undated_symbols(tmp_path):
         _Experiment(tmp_path), rows, freshness, universe, [], "2026-08-04")
 
     import json
-    metadata = json.loads((tmp_path / "run_metadata.json").read_text("utf-8"))
+    from services.run_metadata_service import load_run_metadata
+    metadata = load_run_metadata(tmp_path).export
     coverage = summarize_universe_coverage(freshness, "2026-08-04",
                                            universe_total=len(universe))
 
