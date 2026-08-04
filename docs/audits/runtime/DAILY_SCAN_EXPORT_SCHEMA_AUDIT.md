@@ -5,6 +5,14 @@ needed.
 
 **Research only.** No indicator, score, threshold or decision rule changed.
 
+
+
+> **Metadata ownership.** The export metadata described here lives in the
+> `daily_scan_export` section of one composed `run_metadata.json`, written
+> only through `services/run_metadata_service.py`. See
+> [DAILY_SCAN_METADATA_OWNERSHIP_AUDIT.md](DAILY_SCAN_METADATA_OWNERSHIP_AUDIT.md)
+> for why a second writer used to erase it.
+
 ---
 
 ## 1. What is written today

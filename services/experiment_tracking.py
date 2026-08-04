@@ -81,6 +81,20 @@ def _atomic_json(path: Path, payload: dict) -> None:
     os.replace(temporary, path)
 
 
+def _write_run_metadata(run_dir: Path, payload: dict) -> None:
+    """Publish the run section without disturbing sections it does not own.
+
+    This used to be a plain ``_atomic_json`` of the experiment's own dict,
+    which silently erased the Daily Scan export section that
+    ``publish_archive`` had written minutes earlier. The write was atomic and
+    still destroyed data, because atomicity says nothing about ownership.
+    """
+    from services.run_metadata_service import write_run_metadata_atomic
+
+    write_run_metadata_atomic(run_dir, run_section=_json_value(payload),
+                              allow_missing_export=True)
+
+
 def _sha256(path: Path) -> str | None:
     if not path.is_file():
         return None
@@ -257,7 +271,7 @@ class ExperimentRun:
             "metadata": model_metadata,
             **self.metadata["versions"],
         })
-        _atomic_json(self.run_dir / "run_metadata.json", self.metadata)
+        _write_run_metadata(self.run_dir, self.metadata)
 
     def save_dataframe(self, filename: str, frame: pd.DataFrame) -> Path:
         """Persist a run-owned CSV; existing artifacts are never overwritten."""
@@ -395,7 +409,7 @@ class ExperimentRun:
         self.metadata["artifacts"] = self._artifact_names()
         self._write_readme()
         self.metadata["artifacts"] = self._artifact_names()
-        _atomic_json(self.run_dir / "run_metadata.json", self.metadata)
+        _write_run_metadata(self.run_dir, self.metadata)
         self._write_run_integrity()
         self._make_completed_read_only()
         return deepcopy(self.metadata)
@@ -415,7 +429,7 @@ class ExperimentRun:
         self.metadata["artifacts"] = sorted(
             path.name for path in self.run_dir.iterdir() if path.is_file()
         )
-        _atomic_json(self.run_dir / "run_metadata.json", self.metadata)
+        _write_run_metadata(self.run_dir, self.metadata)
 
     def cancel(self, reason="Run cancelled") -> None:
         """Close capture cleanly while preserving an interrupted staging area."""
@@ -587,7 +601,7 @@ class RunRepository:
         metadata["artifacts"] = sorted(
             path.name for path in directory.iterdir() if path.is_file()
         )
-        _atomic_json(directory / "run_metadata.json", metadata)
+        _write_run_metadata(directory, metadata)
         return metadata
 
     @staticmethod
