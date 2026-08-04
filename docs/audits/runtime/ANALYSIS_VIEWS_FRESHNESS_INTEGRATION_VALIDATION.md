@@ -151,9 +151,11 @@ file reads the wall clock.
 
 - **No live UI screenshot proof.** The pages were driven with a Streamlit
   stand-in, not a browser.
-- **The scan export schema is unchanged.** Splitting `scan_results.csv` into a
-  current-decision file and a full coverage audit is explicitly out of scope
-  here and remains outstanding.
+- **The scan export schema is now v2.** `scan_results.csv` is an explicit
+  compatibility alias of `scan_current_decisions.csv`, with a full
+  `scan_coverage_audit.csv` alongside it - see
+  `DAILY_SCAN_EXPORT_SCHEMA_VALIDATION.md`. Run History, Compare Runs and the
+  Dashboard export buttons still read the archive as before.
 - **Stock Details renders rows produced elsewhere.** It re-checks freshness
   before rendering, but it does not recompute a decision; a row that never
   existed cannot be shown at all.

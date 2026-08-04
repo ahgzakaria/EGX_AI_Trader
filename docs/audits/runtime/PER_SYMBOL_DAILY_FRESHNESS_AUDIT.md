@@ -163,4 +163,7 @@ the run valid, and it is not retroactively re-blessed.
   the same per-symbol contract through `services/analysis_freshness_service.py`
   rather than reimplementing it - see
   `ANALYSIS_VIEWS_FRESHNESS_INTEGRATION_VALIDATION.md`. The split
-  current-vs-audit CSV export is the remaining outstanding item.
+  current-vs-audit CSV export is implemented as schema v2 - see
+  `DAILY_SCAN_EXPORT_SCHEMA_VALIDATION.md`; the archive-reading surfaces
+  (Run History, Compare Runs, Dashboard export buttons) are not yet wired to
+  the new files.

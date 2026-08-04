@@ -558,7 +558,9 @@ def test_scanner_provenance_is_additive_to_frozen_golden_output(monkeypatch):
 
     class Experiment:
         run_id = "RUN_20260726_100000"
-        run_dir = "unused"
+        # No archive directory: this double asserts on ranking and provenance,
+        # not on export publication, and must not write real files anywhere.
+        run_dir = None
 
         def __init__(self, *args, **kwargs):
             pass

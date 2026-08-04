@@ -143,6 +143,69 @@ def _latest_accepted_candle_date(frame):
         return None
 
 
+def _publish_versioned_exports(experiment, results, freshness_results, symbols,
+                               failures, expected_session):
+    """Build and atomically publish the v2 archive.
+
+    Every operational-universe symbol gets exactly one audit row, including the
+    ones that never produced a result: a symbol dropped without a record is
+    indistinguishable from one that was never attempted.
+    """
+    from core.daily_data_guard import SymbolFreshness, summarize_universe_coverage
+    from services.daily_scan_export import (
+        build_export_metadata,
+        coverage_audit_row,
+        current_decision_row,
+        publish_archive,
+    )
+
+    run_id = getattr(experiment, "run_id", "")
+    by_symbol = {row.get("Ticker"): row for row in results}
+    freshness_by_symbol = {item.symbol: item for item in freshness_results}
+    failure_by_symbol = {record.get("Symbol"): record for record in failures}
+
+    decisions, audit, outcome_counts = [], [], {}
+    for ordinal, symbol in enumerate(symbols):
+        row = by_symbol.get(symbol)
+        item = freshness_by_symbol.get(symbol)
+        failure = failure_by_symbol.get(symbol)
+        if item is not None:
+            outcome = item.outcome_status
+        elif failure is not None:
+            outcome = str(failure.get("Status") or "PROVIDER_ERROR")
+        else:
+            outcome = "NOT_ATTEMPTED"
+        audit.append(coverage_audit_row(
+            symbol, run_id=run_id, ordinal=ordinal, freshness=item,
+            result_row=row, outcome=outcome,
+            error=None if failure is None else {
+                "category": "SCAN", "code": failure.get("Status"),
+                "message": failure.get("Error"),
+            }))
+        outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
+        if row is not None and item is not None and \
+                item.freshness_status is SymbolFreshness.CURRENT:
+            decisions.append(current_decision_row(row, run_id=run_id,
+                                                  freshness=item))
+
+    run_dir = getattr(experiment, "run_dir", None)
+    if not run_dir:
+        # No archive directory means no archive. Inventing one would scatter
+        # real exports wherever the caller happened to be running.
+        return
+
+    coverage = summarize_universe_coverage(freshness_results, expected_session,
+                                           universe_total=len(symbols))
+    now = datetime.now(timezone.utc).isoformat()
+    metadata = build_export_metadata(
+        run_id=run_id, run_status="COMPLETED", generated_at_utc=now,
+        evaluation_time_utc=now, coverage=coverage, decisions=decisions,
+        outcome_counts=outcome_counts)
+    # Raises ArchiveInvariantError rather than publishing a half-valid archive.
+    publish_archive(run_dir, decisions=decisions, audit=audit,
+                    metadata=metadata, universe_symbols=symbols)
+
+
 def _rubix_provenance(symbol, provider_metadata, expected_session, daily_freshness):
     """Classify the Rubix overlay and record what it was allowed to do.
 
@@ -683,7 +746,14 @@ def scan_symbols(source, data_purpose="scanner", scan_context=None, *,
         experiment.fail(error)
         raise RuntimeError(f"Forward testing session failed: {error}") from error
 
-    experiment.save_records("scan_results.csv", results)
+    # Schema v2: current decisions, full coverage audit and versioned metadata
+    # published together or not at all. scan_results.csv remains as an explicit
+    # compatibility alias of the decisions file - every file-based consumer in
+    # the audit wants decisions, and the meaning is now written down rather
+    # than implied.
+    _publish_versioned_exports(
+        experiment, results, freshness_results, symbols, failures,
+        expected_session)
     experiment.save_records("failed_symbols.csv", failures)
     coverage_frame = write_coverage_report(coverage)
     experiment.save_dataframe("swing_symbol_coverage_audit.csv", coverage_frame)
