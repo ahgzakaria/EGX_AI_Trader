@@ -89,8 +89,35 @@ Watch the per-cycle output and the research DB.
 | `live_status` | `LIVE_SHADOW_HEALTHY` | sustained `LIVE_SHADOW_STALE` |
 | polling gap | < 300 s | a gap beyond the limit disqualifies `FULL` |
 | heartbeats | one per cycle | none for minutes |
+| `normalized_events` per cycle | > 0 while rows are being read | rows read but nothing normalized — see below |
+| `symbols_evaluated` | non-zero as bars finalize | flat while bars keep completing |
+| `dedupe_entries` | at or below `dedupe_capacity` | `dedupe_capacity_exhausted` is ever `True` |
 
 At ~15 s polling over 4h35m expect roughly 1,100 cycles.
+
+### Reading rows is not observing a session
+
+On 2026-08-04 the runner read 1,027,173 rows, advanced its cursor all day, and
+reported `LIVE_SHADOW_HEALTHY` for more than two hours after it had stopped
+producing a single normalized event. Source health answers only whether data
+*arrived*.
+
+Three statuses now carry the difference:
+
+| `live_status` | Meaning |
+|---|---|
+| `LIVE_SHADOW_HEALTHY` | source fresh **and** normalization and evaluation both progressing |
+| `LIVE_SHADOW_NORMALIZATION_STALLED` | rows keep arriving and stop becoming events |
+| `LIVE_SHADOW_EVALUATION_STALLED` | events keep arriving and stop reaching evaluation |
+
+A quiet source is reported as `NORMALIZATION_IDLE_NO_SOURCE_ROWS`, not as a
+stall — no rows is a source condition, not a broken normalizer.
+
+**A stall is latched for the run.** A session that stalls at 12:11 and
+resumes at 13:30 still carries the gap and cannot classify as `FULL`. If you
+see a normalization or evaluation stall, the remainder of that session is not
+full shadow evidence no matter how healthy it looks afterwards. See
+[ORB_NORMALIZATION_CAP_INCIDENT_2026-08-04.md](ORB_NORMALIZATION_CAP_INCIDENT_2026-08-04.md).
 
 ## 5. Stop conditions
 
@@ -250,17 +277,20 @@ The session may claim this verdict only when **all** hold:
 5. polling outages stayed within `--allowed-polling-gap-seconds`;
 6. heartbeat coverage met the configured minimum;
 7. exchange-minute coverage met the configured minimum;
-8. the auction stayed separated from continuous-session state;
-9. freshness and latency distributions were recorded;
-10. complete 1-minute and 5-minute bars were produced;
-11. Lane A remained append-only, and delayed evidence did not rewrite it;
-12. Lane B reconstruction was deterministic and idempotent;
-13. a genuine cross-run Lane A / Lane B comparison was generated;
-14. shutdown was graceful;
-15. no production execution occurred.
+8. normalization was still producing events at the continuous close;
+9. evaluation was still producing symbol states at the continuous close;
+10. no critical evaluation stall was recorded at any point in the session;
+11. the auction stayed separated from continuous-session state;
+12. freshness and latency distributions were recorded;
+13. complete 1-minute and 5-minute bars were produced;
+14. Lane A remained append-only, and delayed evidence did not rewrite it;
+15. Lane B reconstruction was deterministic and idempotent;
+16. a genuine cross-run Lane A / Lane B comparison was generated;
+17. shutdown was graceful;
+18. no production execution occurred.
 
-The runner classifies 1–8 itself and will not be talked into `FULL`. Items 9–15
-are verified from the generated reports and the research database.
+The runner classifies 1–11 itself and will not be talked into `FULL`. Items
+12–18 are verified from the generated reports and the research database.
 
 **Achieving `FULL_SHADOW_SESSION_OBSERVED` still does not mean live-ready,
 calibrated, profitable or production-ready.** It means one session was observed
