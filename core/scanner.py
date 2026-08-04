@@ -143,6 +143,44 @@ def _latest_accepted_candle_date(frame):
         return None
 
 
+def _rubix_provenance(symbol, provider_metadata, expected_session, daily_freshness):
+    """Classify the Rubix overlay and record what it was allowed to do.
+
+    Runs AFTER the daily gate and the decision, and never feeds back into
+    either: the strategy reads a daily candle, so a quote may only overlay a
+    display price or - when everything qualifies - enter decision inputs on a
+    symbol whose daily candle is already CURRENT.
+    """
+    from core.daily_data_guard import SymbolFreshness
+    from core.rubix_quote_freshness import (
+        classify_rubix_quote,
+        evaluate_overlay_permission,
+        freshness_budget_seconds,
+    )
+
+    metadata = dict(provider_metadata or {})
+    assessment = classify_rubix_quote(
+        symbol,
+        evaluated_at=datetime.now(timezone.utc),
+        mapping_verified=bool(metadata.get("live_quote_available")),
+        quote_price=metadata.get("live_quote_last"),
+        market_timestamp=metadata.get("live_quote_timestamp"),
+        receive_timestamp=metadata.get("live_quote_received_timestamp"),
+        permitted_session=expected_session,
+        budget_seconds=freshness_budget_seconds(),
+    )
+    permission = evaluate_overlay_permission(
+        assessment,
+        daily_symbol_current=(
+            daily_freshness.freshness_status is SymbolFreshness.CURRENT),
+    )
+    row = assessment.as_row()
+    row.update(permission.as_row())
+    row["DailyCandleSession"] = daily_freshness.actual_latest_session
+    row["DailyFreshnessStatus"] = daily_freshness.freshness_status.value
+    return row
+
+
 def _classify_symbol_freshness(symbol, frame, expected_session, provider_metadata):
     """Classify one symbol against the expected completed EGX session."""
     from core.daily_data_guard import classify_symbol_freshness
@@ -412,6 +450,11 @@ def scan_symbols(source, data_purpose="scanner", scan_context=None, *,
                     "live_quote_received_timestamp"
                 ),
                 "LivePriceStatus": provider_metadata.get("live_quote_freshness"),
+                # Typed, phase-aware Rubix verdict. Independent of the daily
+                # candle verdict: they answer different questions, and a live
+                # tick can never make a stale daily candle current.
+                **_rubix_provenance(symbol, provider_metadata, expected_session,
+                                    freshness),
                 "LiveProvider": provider_metadata.get("live_quote_provider"),
                 "SnapshotStatus": (
                     "FROZEN + LIVE OVERLAY"

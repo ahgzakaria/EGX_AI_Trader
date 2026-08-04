@@ -117,7 +117,15 @@ def _observed_metadata(results):
         "session_coverage": coverage,
         # Any stale overlay downgrades the reported live state; it never touches the
         # historical source.
-        "live_quote_freshness": "STALE" if "STALE" in statuses else "",
+        # Any non-live typed status downgrades the banner. "FRESH" alone is
+        # never enough: the 2026-08-04 incident had 193 of 194 rows marked
+        # FRESH while every quote belonged to the previous session.
+        "live_quote_freshness": "STALE" if (
+            "STALE" in statuses
+            or any(str(row.get("RubixQuoteStatus") or "").startswith("RUBIX_")
+                   and row.get("RubixQuoteStatus") != "RUBIX_LIVE_CURRENT"
+                   for row in results or ())
+        ) else "",
     }
 
 
@@ -561,6 +569,30 @@ def _render_swing_advanced_research(
         )
 
         section_header("الجدول البحثي الكامل", "Developer metrics and attribution")
+        # Typed daily-candle and Rubix provenance, so a price is never shown
+        # without the evidence for how current it is. A generic green "Fresh"
+        # is deliberately impossible here: every label names its session.
+        freshness_columns = [
+            "DailyCandleSession", "DailyFreshnessStatus",
+            "RubixQuoteStatus", "RubixQuoteSession",
+            "RubixMarketTimestamp", "RubixReceiveTimestamp",
+            "RubixOverlayApplied", "DisplayPriceSource", "DecisionPriceSource",
+            "RubixOverlayDenialReason",
+        ]
+        available_freshness = [c for c in freshness_columns if c in df.columns]
+        if available_freshness:
+            with st.expander("Daily-candle and Rubix quote provenance"):
+                st.dataframe(
+                    df[["Ticker", *available_freshness]]
+                    if "Ticker" in df.columns else df[available_freshness],
+                    use_container_width=True, hide_index=True,
+                )
+                st.caption(
+                    "When the Rubix overlay is not applied the decision price "
+                    "is the EODHD daily close; the quote is shown as evidence "
+                    "only and is never labelled live."
+                )
+
         diagnostic_columns = [
             "Rank", "Rating", "Ticker", NAME_COLUMN, "Regime", "StrategySignal", "Stars",
             "AIProbability", "AILevel", "Confidence", "Score", "Price", "RR",

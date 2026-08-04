@@ -110,12 +110,13 @@ Trading-session distances observed among the stale rows: `2, 5, 17, 20, 3240`
 | `test_daily_candle_provenance.py` | 20 passed, 1 skipped |
 | Full suite | **2676 passed, 8 skipped, 1 failed** |
 
-The single failure is
-`test_orb_full_shadow_run_controls.py::test_a_once_run_against_a_past_session_yields_no_lane_a_rows`.
-It is **pre-existing and unrelated**: it fails identically on untouched `main`
-and with this branch's changes stashed. It is date-sensitive and broke when the
-date rolled to 2026-08-04. It is not addressed here because ORB automation is
-explicitly out of scope for this change.
+The single failure at the time was
+`test_orb_full_shadow_run_controls.py::test_a_once_run_against_a_past_session_yields_no_lane_a_rows`,
+which was pre-existing and unrelated - it failed identically on untouched
+`main`. It has since been resolved: the test never represented a valid
+invariant (its hard-coded date was a *future* session before that date), and it
+was replaced by deterministic contract tests. See the ORB run-qualification
+commit.
 
 ## 4. Regression boundaries confirmed
 
@@ -134,9 +135,9 @@ explicitly out of scope for this change.
   fresh 241-symbol run.
 - **Not every UI surface is wired yet.** See the audit's scope notes: the
   Dashboard coverage panel, exclusion table and market-wide block are
-  implemented; Stock Details, Watchlist and AI Analysis per-symbol gating, the
-  Rubix overlay status taxonomy, and the split current-vs-audit CSV export are
-  **not** part of this change. Because ineligible symbols never reach the
+  implemented; Stock Details, Watchlist and AI Analysis per-symbol gating, and the split current-vs-audit CSV export are
+  **not** part of this change. The shared Rubix quote-freshness taxonomy IS
+  now complete - see RUBIX_QUOTE_FRESHNESS_TAXONOMY_VALIDATION.md. Because ineligible symbols never reach the
   decision engine, no stale decision can be produced anywhere in the meantime —
   but a stale symbol opened directly in Stock Details will not yet show the
   dedicated "DAILY DATA STALE FOR THIS SYMBOL" panel.
