@@ -202,6 +202,32 @@ def _render_terminal_summary(job):
 
 ARCHIVE_FAILURE_HEADLINE = "SCAN COMPLETED BUT ARCHIVE PUBLICATION FAILED"
 
+COMPANY_LOOKUP_WARNING = (
+    "Company names are unavailable for this table; symbols are shown as-is."
+)
+
+
+def _with_company_names(frame, symbol_column):
+    """Enrich for display, but never let a name lookup lose the evidence.
+
+    The exclusion table is the record of which symbols were withheld and why.
+    A universe-mapping failure must degrade to bare symbols with a warning,
+    not remove rows and not take the page down.
+
+    Programming errors are deliberately NOT caught: a wrong argument name or a
+    missing attribute must keep failing loudly, because that is exactly the
+    defect this function was added for.
+    """
+
+    try:
+        return with_company_name_column(frame, symbol_column)
+    except (TypeError, AttributeError):
+        raise
+    except Exception:                       # noqa: BLE001 - data/mapping only
+        logger.warning("company-name enrichment unavailable", exc_info=True)
+        st.warning(COMPANY_LOOKUP_WARNING)
+        return frame
+
 
 def _render_failed_archive_provenance(job):
     """Show what a refused publication actually saw. Returns True if rendered.
@@ -729,7 +755,11 @@ def render_coverage_panel(coverage, results=None):
         if frame.empty:
             st.caption("No excluded symbols match this filter.")
             return
-        frame = with_company_name_column(frame, ticker_column="Ticker")
+        # The canonical parameter is ``symbol_column`` and every other caller
+        # passes it positionally. This site invented ``ticker_column=``, so a
+        # completed 241-symbol scan rendered its results and then crashed the
+        # whole page on the exclusion table.
+        frame = _with_company_names(frame, "Ticker")
         st.dataframe(frame, use_container_width=True, hide_index=True)
         st.caption(
             "These symbols were NOT analyzed as current opportunities and carry "
