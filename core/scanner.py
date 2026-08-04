@@ -153,6 +153,8 @@ def _publish_versioned_exports(experiment, results, freshness_results, symbols,
     """
     from core.daily_data_guard import SymbolFreshness, summarize_universe_coverage
     from services.daily_scan_export import (
+        OUTCOME_CALCULATION_ERROR,
+        OUTCOME_CURRENT,
         build_export_metadata,
         coverage_audit_row,
         current_decision_row,
@@ -165,12 +167,20 @@ def _publish_versioned_exports(experiment, results, freshness_results, symbols,
     failure_by_symbol = {record.get("Symbol"): record for record in failures}
 
     decisions, audit, outcome_counts = [], [], {}
+    calculation_errors = 0
     for ordinal, symbol in enumerate(symbols):
         row = by_symbol.get(symbol)
         item = freshness_by_symbol.get(symbol)
         failure = failure_by_symbol.get(symbol)
         if item is not None:
             outcome = item.outcome_status
+            if outcome == OUTCOME_CURRENT and row is None:
+                # The daily candle was current, but indicators or the decision
+                # engine raised, so no decision exists. Calling that
+                # SUCCESS_CURRENT is what made the audit claim 11 successes
+                # for 3 exported decisions.
+                outcome = OUTCOME_CALCULATION_ERROR
+                calculation_errors += 1
         elif failure is not None:
             outcome = str(failure.get("Status") or "PROVIDER_ERROR")
         else:
@@ -200,7 +210,7 @@ def _publish_versioned_exports(experiment, results, freshness_results, symbols,
     metadata = build_export_metadata(
         run_id=run_id, run_status="COMPLETED", generated_at_utc=now,
         evaluation_time_utc=now, coverage=coverage, decisions=decisions,
-        outcome_counts=outcome_counts)
+        outcome_counts=outcome_counts, calculation_errors=calculation_errors)
     # Raises ArchiveInvariantError rather than publishing a half-valid archive.
     publish_archive(run_dir, decisions=decisions, audit=audit,
                     metadata=metadata, universe_symbols=symbols)
@@ -271,16 +281,25 @@ def _classify_symbol_freshness(symbol, frame, expected_session, provider_metadat
 
 
 def _expected_completed_session():
-    """The authoritative expected completed EGX session, or "" when unknown.
+    """The authoritative completed EGX session, or "" when unknown.
+
+    This is an *exchange calendar* question, not a provider question. It was
+    previously ``expected_latest_completed_session``, which withholds today
+    until the provider is known to have published - so a scan run at 21:56
+    Cairo, seven hours after the auction closed, still expected the previous
+    session and classified every real 2026-08-04 candle as FUTURE_DATE.
+
+    A provider that has not published today's candle makes those symbols
+    STALE, which is honest. It does not move the exchange's calendar.
 
     An unavailable calendar never becomes permission to call anything current:
     ``classify_symbol_freshness`` refuses every symbol without an expectation.
     """
     try:
         from core.egx_calendar import effective_holidays
-        from core.egx_session import expected_latest_completed_session
+        from core.egx_session import authoritative_completed_session
 
-        value = expected_latest_completed_session(holidays=effective_holidays())
+        value = authoritative_completed_session(holidays=effective_holidays())
         return value.isoformat() if value else ""
     except Exception:
         logger.warning("expected completed session unavailable", exc_info=True)

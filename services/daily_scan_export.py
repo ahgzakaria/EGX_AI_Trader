@@ -45,6 +45,10 @@ COMPATIBILITY_FILENAME = "scan_results.csv"
 #: The one outcome that means "a current decision was produced".
 OUTCOME_CURRENT = "SUCCESS_CURRENT"
 
+#: A current daily candle whose decision never completed. It is current data
+#: and is NOT a success: SUCCESS_CURRENT promises an exported decision row.
+OUTCOME_CALCULATION_ERROR = "CALCULATION_ERROR"
+
 #: Every typed outcome a universe symbol may carry in the audit.
 AUDIT_OUTCOMES = (
     OUTCOME_CURRENT,
@@ -197,11 +201,21 @@ def build_export_metadata(*, run_id, run_status, generated_at_utc,
                           evaluation_time_utc, coverage, decisions,
                           outcome_counts, config_identity="",
                           rubix_policy_identity="", decision_price_policy="",
-                          market_block_reason=""):
-    """Run-level metadata. Typed values and nulls, never ambiguous blanks."""
+                          market_block_reason="", calculation_errors=0):
+    """Run-level metadata. Typed values and nulls, never ambiguous blanks.
+
+    ``calculation_errors`` counts symbols whose daily candle was CURRENT but
+    whose decision never completed. They are current *data* and are not
+    current *decisions*; conflating the two is what reported 11 successes for
+    3 exported decisions.
+    """
     universe = int(coverage.universe_total)
     loaded = int(coverage.history_loaded)
-    current = int(coverage.current)
+    daily_current = int(coverage.current)
+    errors = max(0, int(calculation_errors))
+    # `current` is the decision-bearing count, which is what every downstream
+    # consumer of current_count means and what the archive invariant checks.
+    current = daily_current - errors
     counts = {outcome: int(outcome_counts.get(outcome, 0)) for outcome in AUDIT_OUTCOMES}
     decision_counts = {name: sum(1 for row in decisions
                                  if str(row.get("Decision")) == name)
@@ -217,6 +231,11 @@ def build_export_metadata(*, run_id, run_status, generated_at_utc,
         "operational_universe_count": universe,
         "history_loaded_count": loaded,
         "current_count": current,
+        # The three counts kept explicitly separate, so no consumer has to
+        # guess whether "current" meant data or decisions.
+        "daily_current_count": daily_current,
+        "current_decision_count": len(decisions),
+        "decision_calculation_error_count": errors,
         "stale_count": int(coverage.stale),
         "missing_date_count": counts["SKIPPED_MISSING_DAILY_DATE"],
         "future_date_count": counts["SKIPPED_FUTURE_DAILY_DATE"],
@@ -230,6 +249,12 @@ def build_export_metadata(*, run_id, run_status, generated_at_utc,
         # The denominator is the OPERATIONAL UNIVERSE. Reporting 6/194 as
         # exchange coverage would overstate it by an order of magnitude.
         "current_coverage_percent": round(100.0 * current / universe, 1) if universe else 0.0,
+        # Data coverage, separate from decision coverage: a symbol can hold a
+        # current candle and still produce no decision.
+        "daily_current_coverage_percent": (
+            round(100.0 * daily_current / universe, 1) if universe else 0.0),
+        "current_decision_coverage_percent": (
+            round(100.0 * len(decisions) / universe, 1) if universe else 0.0),
         # A separately labelled secondary metric, never the headline.
         "loaded_result_current_percent": round(100.0 * current / loaded, 1) if loaded else 0.0,
         "minimum_market_coverage_percent": float(coverage.threshold_percent),
@@ -265,6 +290,34 @@ def build_export_metadata(*, run_id, run_status, generated_at_utc,
 class ArchiveValidation:
     ok: bool
     violations: tuple = field(default_factory=tuple)
+
+
+def archive_failure_provenance(metadata, audit):
+    """One compact line describing what the run actually saw.
+
+    Without this, a refused publication reaches the operator as a bare
+    invariant string and the page falls back to "no dated candle" - even
+    though the in-memory audit is full of dated rows.
+    """
+
+    metadata = dict(metadata or {})
+    rows = list(audit or [])
+    dated = [row.get("ActualCandleSession") for row in rows
+             if row.get("ActualCandleSession")]
+    distribution = {}
+    for value in dated:
+        distribution[value] = distribution.get(value, 0) + 1
+    dominant = (max(distribution, key=lambda key: distribution[key])
+                if distribution else None)
+    return (
+        f"expected completed session {metadata.get('expected_completed_session') or 'unknown'}"
+        f"; dominant observed session {dominant or 'none'}"
+        f"; universe {metadata.get('operational_universe_count', len(rows))}"
+        f", daily-current {metadata.get('daily_current_count', '?')}"
+        f", decisions {metadata.get('current_decision_count', '?')}"
+        f", calculation errors {metadata.get('decision_calculation_error_count', '?')}"
+        f", dated audit rows {len(dated)}"
+    )
 
 
 def validate_archive(*, decisions, audit, metadata, universe_symbols):
@@ -321,6 +374,21 @@ def validate_archive(*, decisions, audit, metadata, universe_symbols):
             f"{len(decisions)} decisions were exported")
     if int(metadata.get("current_count", -1)) != len(decisions):
         violations.append("metadata current_count does not match the decisions file")
+    if int(metadata.get("current_decision_count", -1)) != len(decisions):
+        violations.append(
+            "metadata current_decision_count does not match the decisions file")
+    daily_current = int(metadata.get("daily_current_count", -1))
+    errors = int(metadata.get("decision_calculation_error_count", -1))
+    if daily_current != len(decisions) + errors:
+        violations.append(
+            f"daily_current_count {daily_current} does not equal "
+            f"{len(decisions)} decisions + {errors} calculation error(s)")
+    audited_errors = sum(1 for row in audit
+                         if row["ScanOutcome"] == OUTCOME_CALCULATION_ERROR)
+    if audited_errors != errors:
+        violations.append(
+            f"audit holds {audited_errors} CALCULATION_ERROR row(s) but metadata "
+            f"reports {errors}")
     if int(metadata.get("excluded_count", -1)) + len(decisions) != len(universe):
         violations.append("current + excluded does not equal the universe")
 
@@ -366,8 +434,12 @@ def publish_archive(run_dir, *, decisions, audit, metadata, universe_symbols,
         decisions=decisions, audit=audit, metadata=metadata,
         universe_symbols=universe_symbols)
     if not validation.ok:
+        # The message carries the run's provenance, not just the violation.
+        # A failed publication is the moment the operator most needs to know
+        # which session was expected and what the scan actually observed.
         raise ArchiveInvariantError(
-            "archive not published; " + "; ".join(validation.violations))
+            "archive not published; " + "; ".join(validation.violations)
+            + " | " + archive_failure_provenance(metadata, audit))
 
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -466,8 +538,11 @@ __all__ = [
     "DAILY_SCAN_EXPORT_SCHEMA_VERSION",
     "FRESHNESS_POLICY_VERSION",
     "LEGACY_SCHEMA",
+    "OUTCOME_CALCULATION_ERROR",
+    "OUTCOME_CURRENT",
     "OUTCOME_CURRENT",
     "ArchiveInvariantError",
+    "archive_failure_provenance",
     "ArchiveValidation",
     "archive_is_decision_usable",
     "archive_schema_version",
