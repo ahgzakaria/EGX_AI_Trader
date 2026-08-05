@@ -304,6 +304,9 @@ def test_completed_always_equals_success_plus_skipped_plus_failed():
     ("INSUFFICIENT_HISTORY", "skipped"),
     ("EODHD_CACHE_MISS", "skipped"),
     ("EXCLUDED_NON_EQUITY", "skipped"),
+    ("SKIPPED_STALE_DAILY_DATA", "skipped"),
+    ("SKIPPED_MISSING_DAILY_DATE", "skipped"),
+    ("SKIPPED_FUTURE_DAILY_DATE", "skipped"),
     ("EODHD_TIMEOUT", "failed"),
     ("EODHD_AUTH_FAILED", "failed"),
     ("INTERNAL_ERROR", "failed"),
@@ -314,6 +317,26 @@ def test_a_data_gap_is_a_skip_and_a_provider_fault_is_a_failure(status, bucket):
 
 def test_an_unknown_status_is_never_silently_treated_as_a_skip():
     assert jm.outcome_bucket("SOMETHING_NEW") == "failed"
+
+
+def test_every_freshness_exclusion_the_guard_emits_is_classified_as_a_skip():
+    """The taxonomy must know every status the freshness gate can emit.
+
+    `core.daily_data_guard` gained SKIPPED_STALE_DAILY_DATA,
+    SKIPPED_MISSING_DAILY_DATE and SKIPPED_FUTURE_DAILY_DATE without adding them
+    here, so `outcome_bucket` fell through to its unknown-status default and
+    reported them as provider failures. Enumerating the guard's own map means a
+    status added there in future cannot silently become a fake failure.
+    """
+
+    from core.daily_data_guard import ELIGIBLE_STATUSES, FRESHNESS_OUTCOME
+
+    for freshness, status in FRESHNESS_OUTCOME.items():
+        if freshness in ELIGIBLE_STATUSES:
+            continue  # a current symbol goes on to be analysed, not excluded
+        assert jm.outcome_bucket(status) == "skipped", (
+            f"{freshness} -> {status} is an exclusion, not a provider failure"
+        )
 
 
 def test_progress_and_coverage_are_different_numbers():

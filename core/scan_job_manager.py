@@ -79,6 +79,17 @@ SKIPPED_STATUSES = frozenset({
     "SYMBOL_NOT_MAPPED",
     "VOLUME_POLICY_UNRESOLVED",
     "RUBIX_QUOTE_MISSING",
+    # Per-symbol daily-freshness exclusions, emitted by
+    # ``core.daily_data_guard.FRESHNESS_OUTCOME``. A symbol whose provider has
+    # not published the expected session yet is a coverage fact, not a provider
+    # fault. These were added to the guard without being registered here, so
+    # ``outcome_bucket`` fell through to its unknown-status default and reported
+    # them as failures: on 2026-08-05 a scan run before EODHD published the
+    # day's EGX candles showed "86 failed" for 86 symbols that had simply not
+    # been published yet.
+    "SKIPPED_STALE_DAILY_DATA",
+    "SKIPPED_MISSING_DAILY_DATE",
+    "SKIPPED_FUTURE_DAILY_DATE",
 })
 FAILED_STATUSES = frozenset({
     "EODHD_TIMEOUT",
