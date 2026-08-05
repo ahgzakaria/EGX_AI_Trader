@@ -1692,7 +1692,15 @@ def test_the_runner_completes_one_batch_end_to_end(tmp_path, source):
     assert summary["session_classification"] == "PARTIAL_SMOKE_SESSION"
     assert summary["session_loads_total"] >= 1
     assert summary["profitability_claim"] == "NONE"
-    assert (tmp_path / "out" / "shadow_run_summary.json").is_file()
+    # Run-scoped, lane-labelled artifact — never a shared `shadow_run_summary.json`.
+    from scripts.run_orb_shadow_session import LANE_A, lane_artifact_name
+
+    assert (
+        tmp_path
+        / "out"
+        / lane_artifact_name(summary["run_id"], LANE_A, "shadow_run_summary", "json")
+    ).is_file()
+    assert not (tmp_path / "out" / "shadow_run_summary.json").exists()
 
 
 def test_the_research_destination_cannot_be_the_source_database(tmp_path, source):

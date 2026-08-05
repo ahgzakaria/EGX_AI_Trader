@@ -42,7 +42,16 @@ from scalping_orb.shadow_service import (
 from scalping_orb.shadow_snapshot import ShadowSnapshotBuilder
 from scalping_orb.shadow_source import SOURCE_TABLE, ShadowCursor, ShadowSourceReader
 from scalping_orb.strategy_config import OrbStrategyConfig
-from scripts.run_orb_shadow_session import ShadowRunner, list_runs, parse_args
+from scripts.run_orb_shadow_session import (
+    LANE_A,
+    LANE_B,
+    ShadowRunner,
+    lane_artifact_name,
+    lane_for_mode,
+    list_runs,
+    parse_args,
+    read_run_summary,
+)
 
 
 CAIRO = ZoneInfo("Africa/Cairo")
@@ -260,8 +269,13 @@ def test_the_flag_state_is_persisted_and_reported(tmp_path, source):
     repository = OrbResearchRepository(tmp_path / "orb.db")
     row = repository.find_shadow_runs(session_date=DAY)[0]
     assert row["active_universe_only"] == 1
-    text = (tmp_path / "out" / "shadow_run_summary.json").read_text(encoding="utf-8")
-    assert '"active_universe_only": true' in text
+    # Read the run's own summary by lane and run id. There is deliberately no
+    # single `shadow_run_summary.json` any more: one shared name for two run
+    # modes is what let Lane B overwrite Lane A's summary.
+    summary_on_disk = read_run_summary(
+        tmp_path / "out", lane=LANE_A, run_id=summary["run_id"]
+    )
+    assert summary_on_disk["active_universe_only"] is True
 
 
 def test_the_flag_state_appears_in_the_banner(tmp_path, source, capsys):
