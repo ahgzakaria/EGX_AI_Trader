@@ -1162,7 +1162,15 @@ def test_auction_start_is_the_continuous_session_end():
 # =========================================================================== #
 
 
-def test_live_modes_always_fail_closed_on_freshness():
+def test_live_modes_fail_closed_unless_the_symbol_is_demonstrably_fresh():
+    """The default is still closed. Only an explicit capability opens it.
+
+    This replaces an assertion that live could *never* reach readiness. It could
+    not, because the rejection was appended without reading a quote age at all —
+    which is how 2026-08-05 rejected 6,847 live breakouts whose median receive
+    lag was 0.818 s against a 60 s budget.
+    """
+
     for mode in (EvaluationMode.SHADOW_LIVE, EvaluationMode.LIVE_DISABLED):
         result = run(evaluation_mode=mode)
         assert result.final_state is not OrbResearchState.ENTRY_READY_RESEARCH
@@ -1172,13 +1180,65 @@ def test_live_modes_always_fail_closed_on_freshness():
         )
 
 
-def test_live_decision_capability_has_no_enabled_member():
-    """Phase 2A made live decisions unreachable by construction; keep it so."""
-
-    assert all(
-        member.value.startswith("LIVE_DECISION_DISABLED")
-        for member in LiveDecisionCapability
+def test_fresh_live_evidence_can_reach_research_readiness():
+    result = run(
+        evaluation_mode=EvaluationMode.SHADOW_LIVE,
+        live_freshness_status=LiveFreshnessStatus.LIVE_FRESHNESS_PASSED,
+        live_decision_capability=(
+            LiveDecisionCapability.LIVE_DECISION_ENABLED_RESEARCH_ONLY
+        ),
     )
+    assert result.final_state is OrbResearchState.ENTRY_READY_RESEARCH
+    assert (
+        RejectionReason.LIVE_DECISION_DISABLED_FRESHNESS
+        not in result.rejection_reasons
+    )
+
+
+def test_stale_live_evidence_still_cannot_reach_readiness():
+    """Every disabled capability still refuses, exactly as before."""
+
+    for capability in LiveDecisionCapability:
+        if capability is LiveDecisionCapability.LIVE_DECISION_ENABLED_RESEARCH_ONLY:
+            continue
+        result = run(
+            evaluation_mode=EvaluationMode.SHADOW_LIVE,
+            live_freshness_status=LiveFreshnessStatus.LIVE_FRESHNESS_FAILED,
+            live_decision_capability=capability,
+        )
+        assert result.final_state is OrbResearchState.BREAKOUT_REJECTED_STALE
+        assert result.final_state is not OrbResearchState.ENTRY_READY_RESEARCH
+
+
+def test_live_disabled_mode_stays_closed_even_when_the_symbol_is_fresh():
+    """`LIVE_DISABLED` means "do not decide". Fresh data does not override it."""
+
+    result = run(
+        evaluation_mode=EvaluationMode.LIVE_DISABLED,
+        live_freshness_status=LiveFreshnessStatus.LIVE_FRESHNESS_PASSED,
+        live_decision_capability=(
+            LiveDecisionCapability.LIVE_DECISION_ENABLED_RESEARCH_ONLY
+        ),
+    )
+    assert result.final_state is not OrbResearchState.ENTRY_READY_RESEARCH
+    assert (
+        RejectionReason.LIVE_DECISION_DISABLED_FRESHNESS in result.rejection_reasons
+    )
+
+
+def test_the_only_enabled_capability_is_research_only():
+    """Exactly one enabled member, and it authorises research readiness only."""
+
+    enabled = [
+        member
+        for member in LiveDecisionCapability
+        if not member.value.startswith("LIVE_DECISION_DISABLED")
+    ]
+    assert enabled == [LiveDecisionCapability.LIVE_DECISION_ENABLED_RESEARCH_ONLY]
+    assert enabled[0].value.endswith("RESEARCH_ONLY")
+    for member in LiveDecisionCapability:
+        for forbidden in ("ORDER", "EXECUTE", "EXECUTION", "TRADE", "BUY", "SELL"):
+            assert forbidden not in member.value.upper()
 
 
 def test_historical_replay_is_the_default_mode():

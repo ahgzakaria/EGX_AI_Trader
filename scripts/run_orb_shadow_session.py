@@ -30,6 +30,7 @@ from pathlib import Path
 import signal
 import sys
 import time as time_module
+import warnings
 from zoneinfo import ZoneInfo
 
 
@@ -117,6 +118,10 @@ def _run_id(session_date: date, started: datetime, source_identity: str, mode: s
     ).hexdigest()
 
 
+def _iso(moment: datetime | None) -> str | None:
+    return moment.isoformat() if moment is not None else None
+
+
 def _write_csv(path: Path, rows: list[dict]) -> None:
     if not rows:
         return
@@ -126,6 +131,101 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
         writer.writeheader()
         for row in rows:
             writer.writerow({key: row.get(key) for key in fields})
+
+
+# --------------------------------------------------------------------------- #
+# Per-run artifact ownership
+# --------------------------------------------------------------------------- #
+
+#: Lane labels. A run writes under exactly one of them, chosen from its mode.
+LANE_A = "LANE_A"
+LANE_B = "LANE_B"
+
+#: The legacy shared filenames. Kept only so a reader can recognise a
+#: pre-migration directory and say so, never so a run can write one.
+LEGACY_ARTIFACT_NAMES = (
+    "shadow_run_summary.json",
+    "shadow_session_quality.csv",
+    "shadow_cycle_metrics.csv",
+    "shadow_live_states.csv",
+    "shadow_reconstruction_states.csv",
+    "shadow_live_vs_reconstruction.csv",
+)
+
+
+def lane_for_mode(mode: str) -> str:
+    """Which lane a run's artifacts belong to.
+
+    RECONSTRUCT produces Lane B evidence by construction — it writes no Lane A
+    rows at all. FOLLOW and ONCE both observe live and own Lane A.
+    """
+
+    return LANE_B if str(mode) == "RECONSTRUCT" else LANE_A
+
+
+def lane_artifact_name(run_id: str, lane: str, stem: str, suffix: str) -> str:
+    """`shadow_run_summary_LANE_A_<run>.json` — one owner, spelled out.
+
+    The run id is truncated to 16 hex characters, the same prefix the log, the
+    report and `--list-runs` already print, so an operator can match a file to a
+    run without opening it.
+    """
+
+    return f"{stem}_{lane}_{str(run_id)[:16]}.{suffix}"
+
+
+#: Session-level aliases. Explicit about which lane they mirror, so neither can
+#: silently stand in for the other the way `shadow_run_summary.json` did.
+SESSION_SUMMARY_ALIAS = {
+    LANE_A: "session_live_summary.json",
+    LANE_B: "session_reconstruction_summary.json",
+}
+
+
+def read_run_summary(output_dir, *, lane: str, run_id: str | None = None) -> dict:
+    """Load one lane's summary, refusing to guess when only the legacy file exists.
+
+    A directory written before this change holds a single `shadow_run_summary.json`
+    that may describe *either* lane — on 2026-08-05 it described the Lane B
+    reconstruction while appearing to describe the live session. Such a file is
+    returned with an explicit ambiguity marker and a warning rather than being
+    silently trusted.
+    """
+
+    directory = Path(output_dir)
+    if run_id:
+        exact = directory / lane_artifact_name(
+            run_id, lane, "shadow_run_summary", "json"
+        )
+        if exact.is_file():
+            return json.loads(exact.read_text(encoding="utf-8"))
+
+    alias = directory / SESSION_SUMMARY_ALIAS[lane]
+    if alias.is_file():
+        return json.loads(alias.read_text(encoding="utf-8"))
+
+    candidates = sorted(directory.glob(f"shadow_run_summary_{lane}_*.json"))
+    if len(candidates) == 1:
+        return json.loads(candidates[0].read_text(encoding="utf-8"))
+    if len(candidates) > 1:
+        raise ValueError(
+            f"{len(candidates)} {lane} summaries in {directory}; name the run id"
+        )
+
+    legacy = directory / "shadow_run_summary.json"
+    if legacy.is_file():
+        payload = json.loads(legacy.read_text(encoding="utf-8"))
+        warnings.warn(
+            f"{legacy} is a pre-migration shared artifact: it names no lane and "
+            f"may describe either run mode (it reports mode="
+            f"{payload.get('mode', 'UNKNOWN')!r}). Treating it as ambiguous.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        payload["artifact_ownership"] = "AMBIGUOUS_LEGACY_SHARED_ARTIFACT"
+        return payload
+
+    raise FileNotFoundError(f"no {lane} run summary in {directory}")
 
 
 def _assert_distinct_databases(source: Path, destination: Path) -> None:
@@ -663,11 +763,29 @@ class ShadowRunner:
 
         output = Path(self.args.output_dir)
         output.mkdir(parents=True, exist_ok=True)
-        (output / "shadow_run_summary.json").write_text(
-            json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
+
+        # Per-run filenames, not one shared name per artifact kind.
+        #
+        # Both lanes used to write `shadow_run_summary.json` into the same
+        # session directory. The orchestrator runs Lane B *after* Lane A, so the
+        # reconstruction's summary silently replaced the live session's: on
+        # 2026-08-05 the surviving file reported mode=RECONSTRUCT,
+        # runner_started_before_open=false and PARTIAL_SHADOW_SESSION for a
+        # session whose live run was FULL and had started before the open.
+        lane = lane_for_mode(self.mode)
+        artifact_paths: dict[str, str] = {}
+
+        def _artifact(stem: str, suffix: str) -> Path:
+            path = output / lane_artifact_name(self.run_id, lane, stem, suffix)
+            artifact_paths[stem] = path.name
+            return path
+
+        summary["lane"] = lane
+        summary_path = _artifact("shadow_run_summary", "json")
+        quality_path = _artifact("shadow_session_quality", "csv")
+
         _write_csv(
-            output / "shadow_cycle_metrics.csv",
+            _artifact("shadow_cycle_metrics", "csv"),
             [
                 {
                     **{
@@ -682,7 +800,7 @@ class ShadowRunner:
             ],
         )
         _write_csv(
-            output / "shadow_live_states.csv",
+            _artifact("shadow_live_states", "csv"),
             [
                 {
                     "session_date": r.session_date.isoformat(),
@@ -696,19 +814,34 @@ class ShadowRunner:
             ],
         )
         _write_csv(
-            output / "shadow_reconstruction_states.csv",
+            _artifact("shadow_reconstruction_states", "csv"),
             [
                 {
                     "session_date": r.session_date.isoformat(),
                     "canonical_ticker": r.canonical_ticker,
                     "final_state": r.final_state,
                     "rejection_reasons": ";".join(r.rejection_reasons),
+                    # Historical instants, not the moment this row was written.
+                    "reconstructed_state_time_utc": _iso(r.reconstructed_state_time_utc),
+                    "reconstructed_breakout_time_utc": _iso(
+                        r.reconstructed_breakout_time_utc
+                    ),
+                    "reconstructed_pullback_time_utc": _iso(
+                        r.reconstructed_pullback_time_utc
+                    ),
+                    "reconstructed_reclaim_time_utc": _iso(
+                        r.reconstructed_reclaim_time_utc
+                    ),
+                    "reconstructed_entry_ready_time_utc": _iso(
+                        r.reconstructed_entry_ready_time_utc
+                    ),
+                    "reconstructed_time_status": r.reconstructed_time_status,
                 }
                 for r in reconstruction
             ],
         )
         _write_csv(
-            output / "shadow_live_vs_reconstruction.csv",
+            _artifact("shadow_live_vs_reconstruction", "csv"),
             [
                 {
                     "canonical_ticker": r.canonical_ticker,
@@ -727,12 +860,16 @@ class ShadowRunner:
                     "difference_evidence": ";".join(r.difference_evidence),
                     "evaluable_live": int(r.evaluable_live),
                     "evaluable_historically": int(r.evaluable_historically),
+                    "lane_a_detection_time_utc": _iso(r.lane_a_detection_time_utc),
+                    "lane_b_detection_time_utc": _iso(r.lane_b_detection_time_utc),
+                    "detection_delta_seconds": r.detection_delta_seconds,
+                    "timing_comparison_status": r.timing_comparison_status,
                 }
                 for r in comparison
             ],
         )
         _write_csv(
-            output / "shadow_session_quality.csv",
+            quality_path,
             [
                 {
                     **{
@@ -743,9 +880,22 @@ class ShadowRunner:
                     "session_date": quality.session_date.isoformat(),
                     "classification": quality.classification.value,
                     "classification_reasons": ";".join(quality.classification_reasons),
+                    "run_id": self.run_id,
+                    "lane": lane,
+                    "mode": self.mode,
                 }
             ],
         )
+
+        # Written last, so the summary can name every file it owns.
+        summary["artifact_paths"] = dict(artifact_paths)
+        payload = json.dumps(summary, indent=2, sort_keys=True) + "\n"
+        summary_path.write_text(payload, encoding="utf-8")
+        # An alias whose name states which lane it mirrors. The old shared
+        # `shadow_run_summary.json` did not, which is what let a reader take a
+        # reconstruction summary for the live session's.
+        (output / SESSION_SUMMARY_ALIAS[lane]).write_text(payload, encoding="utf-8")
+        self.repository.record_shadow_run_artifacts(self.run_id, lane, artifact_paths)
         return summary
 
 

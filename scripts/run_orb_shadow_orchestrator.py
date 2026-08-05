@@ -52,11 +52,15 @@ from scalping_orb.shadow_orchestrator import (
     OrchestratorState,
     OrchestratorTransition,
     OrchestratorVerdict,
+    PipelineCompletionStatus,
+    ReportPublicationError,
+    ReportPublicationStatus,
     assert_legal_transition,
     lease_scope_for,
     machine_identity,
     new_instance_id,
     process_rss_bytes,
+    publish_atomically,
 )
 from scalping_orb.shadow_service import (
     ComparisonReason,
@@ -166,6 +170,12 @@ class ShadowOrchestrator:
         self.failures: list[OrchestratorFailure] = []
         self._pending_transitions: list[OrchestratorTransition] = []
         self.criteria = FullSessionCriteria()
+        # Publication is tracked beside the criteria, never inside them.
+        self.report_publication = ReportPublicationStatus.NOT_ATTEMPTED
+        self.published_artifacts: tuple[Path, ...] = ()
+        #: Only a genuine Lane A failure may downgrade the evidence verdict to
+        #: FAILED. A later reporting fault must not rewrite what was observed.
+        self.live_lane_failed = False
 
     # -- generated paths ---------------------------------------------------
 
@@ -472,6 +482,7 @@ class ShadowOrchestrator:
             runner = session_runner.ShadowRunner(session_runner.parse_args(argv))
             self.live_summary = runner.run()
         except Exception as error:  # noqa: BLE001 - must not escape unattended
+            self.live_lane_failed = True
             self.fail("LIVE_LANE_FAILED", f"{type(error).__name__}: {error}", recoverable=True)
             self.move(OrchestratorState.LIVE_SHADOW_FAILED, "Lane A raised")
             return False
@@ -602,28 +613,89 @@ class ShadowOrchestrator:
         )
         return True
 
+    # -- verdict -----------------------------------------------------------
+
+    def session_evidence_verdict(self) -> OrchestratorVerdict:
+        """What the observed session was worth. Settled before any file exists.
+
+        This is the single authority. The database, the log, the report and the
+        status JSON all render *this* value, so they cannot disagree.
+        """
+
+        return self.criteria.verdict(live_failed=self.live_lane_failed)
+
+    def pipeline_completion_status(self) -> PipelineCompletionStatus:
+        """How far the workflow got. Never an input to the evidence verdict."""
+
+        if self.report_publication is ReportPublicationStatus.FAILED:
+            return PipelineCompletionStatus.REPORT_PUBLICATION_FAILED
+        if self.state is OrchestratorState.SESSION_COMPLETE:
+            return PipelineCompletionStatus.SESSION_COMPLETE
+        if self.state in {
+            OrchestratorState.SKIPPED_NON_TRADING_DAY,
+            OrchestratorState.SKIPPED_SOURCE_UNAVAILABLE,
+            OrchestratorState.SKIPPED_DUPLICATE_INSTANCE,
+        }:
+            return PipelineCompletionStatus.SKIPPED
+        if self.state in {
+            OrchestratorState.SESSION_FAILED,
+            OrchestratorState.LIVE_SHADOW_FAILED,
+        }:
+            return PipelineCompletionStatus.SESSION_FAILED
+        return PipelineCompletionStatus.IN_PROGRESS
+
     # -- report ------------------------------------------------------------
 
     def write_report(self) -> bool:
+        """Publish the durable artifacts as one atomic generation.
+
+        The verdict rendered into the report is the session evidence verdict,
+        which is already final here. Report completion is deliberately *not* a
+        FULL criterion: a criterion that can only become true once the file
+        exists can never be true inside it, and that is exactly how the
+        2026-08-05 session — FULL by every observation measure — published a
+        permanent `PARTIAL_SHADOW_SESSION` document naming `report_completed`
+        as the unmet criterion.
+
+        On failure nothing is published, the previous generation survives, and
+        the workflow stops short of SESSION_COMPLETE while the database keeps
+        the substantive verdict it had already earned.
+        """
+
+        verdict = self.session_evidence_verdict()
         try:
-            path = self._render_report()
-        except OSError as error:
-            self.fail("REPORT_FAILED", str(error), recoverable=True)
-            self.move(OrchestratorState.SESSION_FAILED, "report generation failed")
+            payloads = self._render_report(verdict)
+            published = publish_atomically(payloads)
+        except (OSError, ReportPublicationError) as error:
+            self.report_publication = ReportPublicationStatus.FAILED
+            self.fail("REPORT_PUBLICATION_FAILED", str(error), recoverable=True)
+            self.log(
+                f"session evidence verdict stands at {verdict.value}; "
+                "no contradictory artifact was published"
+            )
+            self.move(
+                OrchestratorState.SESSION_FAILED,
+                "report publication failed; previous artifacts preserved",
+            )
             return False
-        self.criteria = replace(self.criteria, report_completed=True)
-        self.move(OrchestratorState.REPORT_COMPLETE, f"report written: {path.name}")
+        self.report_publication = ReportPublicationStatus.PUBLISHED
+        self.published_artifacts = published
+        report = self.report_dir / "FULL_SHADOW_SESSION_REPORT.md"
+        self.move(OrchestratorState.REPORT_COMPLETE, f"report published: {report.name}")
         return True
 
-    def _render_report(self) -> Path:
+    def _render_report(self, verdict: OrchestratorVerdict) -> dict[Path, str]:
         rows = self.repository.load_cross_run_comparison(
             self.live_run_id, self.reconstruction_run_id
         )
         taxonomy: dict[str, int] = {}
+        timing_counts: dict[str, int] = {}
         for row in rows:
             taxonomy[row["difference_reason"]] = (
                 taxonomy.get(row["difference_reason"], 0) + 1
             )
+            timing = row.get("timing_comparison_status") or "TIMING_STATUS_UNRECORDED"
+            timing_counts[timing] = timing_counts.get(timing, 0) + 1
         lane_a = self.repository.load_shadow_live_states(self.live_run_id)
         lane_b = self.repository.load_shadow_reconstruction_states(
             self.reconstruction_run_id
@@ -637,10 +709,8 @@ class ShadowOrchestrator:
 
         live = self.live_summary or {}
         lag = live.get("receive_lag") or {}
-        verdict = self.criteria.verdict(
-            live_failed=self.state is OrchestratorState.LIVE_SHADOW_FAILED
-        )
         failed = self.criteria.failures()
+        artifacts = self._artifact_index()
 
         stall_warning = ""
         if live.get("critical_evaluation_stall_observed"):
@@ -668,9 +738,14 @@ class ShadowOrchestrator:
 **Research Only. Production execution disabled.** Nothing in this report is a
 trade signal, a recommendation, or a performance claim.
 
-## Verdict
+## Session evidence verdict
 
 # `{verdict.value}`
+
+This is what the observed session was worth. It is computed from observation
+criteria alone and is already final before this file is written, so it is the
+same value recorded in the database and the orchestrator log. Whether this
+document reached disk is a separate, non-evidential fact reported below.
 
 | | |
 |---|---|
@@ -682,6 +757,27 @@ trade signal, a recommendation, or a performance claim.
 | Universe filter | `ACTIVE_UNIVERSE_ONLY` |
 
 {"**Unmet FULL criteria:** " + ", ".join(f"`{name}`" for name in failed) if failed else "All FULL criteria met."}
+
+## Report publication
+
+Publication status: **`{ReportPublicationStatus.PUBLISHED.value}`**
+
+The report and `orchestrator_status.json` are published as one atomic
+generation: both files are staged, flushed and only then renamed over their
+targets. Because you are reading this file, that publication succeeded — a
+failed publication leaves the previous generation in place and publishes
+nothing. Publication is **not** a FULL criterion; a criterion that can only
+become true after the report exists can never be true inside it.
+
+## Per-run artifacts
+
+Lane A and Lane B write to distinct, run-scoped paths, so a post-session
+reconstruction can no longer overwrite the live session's summary.
+
+| Lane | Run | Summary | Session quality |
+|---|---|---|---|
+| Lane A (live) | `{(self.live_run_id or 'n/a')[:16]}` | `{artifacts['lane_a_summary']}` | `{artifacts['lane_a_quality']}` |
+| Lane B (reconstruction) | `{(self.reconstruction_run_id or 'n/a')[:16]}` | `{artifacts['lane_b_summary']}` | `{artifacts['lane_b_quality']}` |
 
 ## Runner timing
 
@@ -787,28 +883,87 @@ events actually reach evaluation?
 
 ## FULL criteria
 
+Every criterion below is a fact about the observed session, settled before this
+file was written. None of them describes this file.
+
 | Criterion | Met |
 |---|---|
 """ + "\n".join(
             f"| `{name}` | {'yes' if getattr(self.criteria, name) else '**no**'} |"
             for name in self.criteria.__dataclass_fields__  # type: ignore[attr-defined]
-        ) + """
+        ) + f"""
+
+## Lane A versus Lane B detection timing
+
+Deltas are computed only where both lanes carry a real timestamp: Lane A's live
+observation instant and Lane B's historical exchange instant. A reconstruction
+row's database write time is never used as a detection time.
+
+| Timing status | Symbols |
+|---|---|
+{table(timing_counts)}
 
 No profitability, win rate, expectancy, position size or order instruction is
 reported, because none exists.
 """
         self.report_dir.mkdir(parents=True, exist_ok=True)
-        path = self.report_dir / "FULL_SHADOW_SESSION_REPORT.md"
-        path.write_text(body, encoding="utf-8")
-        (self.report_dir / "orchestrator_status.json").write_text(
-            json.dumps(self.status_payload(verdict), indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
+        # Both artifacts are rendered as PUBLISHED because publication is
+        # all-or-nothing: if either file is readable, both were renamed into
+        # place. Rendering the *current* NOT_ATTEMPTED value here would rebuild
+        # the same self-reference in miniature — a status file that can never
+        # report the publication that produced it.
+        status = self.status_payload(
+            verdict, publication=ReportPublicationStatus.PUBLISHED
         )
-        return path
+        return {
+            self.report_dir / "FULL_SHADOW_SESSION_REPORT.md": body,
+            self.report_dir / "orchestrator_status.json": (
+                json.dumps(status, indent=2, sort_keys=True) + "\n"
+            ),
+        }
 
-    def status_payload(self, verdict: OrchestratorVerdict | None = None) -> dict:
-        resolved = verdict or self.criteria.verdict(
-            live_failed=self.state is OrchestratorState.LIVE_SHADOW_FAILED
+    def _artifact_index(self) -> dict[str, str]:
+        """Where each lane's own summary lives, for the report and the status."""
+
+        def name(run_id: str | None, lane: str, stem: str, suffix: str) -> str:
+            if not run_id:
+                return "n/a"
+            return session_runner.lane_artifact_name(run_id, lane, stem, suffix)
+
+        return {
+            "lane_a_summary": name(
+                self.live_run_id, session_runner.LANE_A, "shadow_run_summary", "json"
+            ),
+            "lane_a_quality": name(
+                self.live_run_id, session_runner.LANE_A, "shadow_session_quality", "csv"
+            ),
+            "lane_b_summary": name(
+                self.reconstruction_run_id,
+                session_runner.LANE_B,
+                "shadow_run_summary",
+                "json",
+            ),
+            "lane_b_quality": name(
+                self.reconstruction_run_id,
+                session_runner.LANE_B,
+                "shadow_session_quality",
+                "csv",
+            ),
+        }
+
+    def status_payload(
+        self,
+        verdict: OrchestratorVerdict | None = None,
+        *,
+        publication: ReportPublicationStatus | None = None,
+    ) -> dict:
+        resolved = verdict or self.session_evidence_verdict()
+        published = publication or self.report_publication
+        pipeline = (
+            PipelineCompletionStatus.SESSION_COMPLETE
+            if publication is ReportPublicationStatus.PUBLISHED
+            and self.pipeline_completion_status() is PipelineCompletionStatus.IN_PROGRESS
+            else self.pipeline_completion_status()
         )
         return {
             "research_only": True,
@@ -816,7 +971,15 @@ reported, because none exists.
             "orchestrator_run_id": self.orchestrator_run_id,
             "session_date": self.session_date.isoformat(),
             "state": self.state.value,
+            # `final_verdict` is retained under its original name for existing
+            # readers and is, as it always claimed to be, the session evidence
+            # verdict. `pipeline_completion_status` carries what it never did:
+            # whether the workflow around that evidence actually finished.
             "final_verdict": resolved.value,
+            "session_evidence_verdict": resolved.value,
+            "pipeline_completion_status": pipeline.value,
+            "report_publication_status": published.value,
+            "artifacts": self._artifact_index(),
             "calendar_status": self.calendar_decision.status.value,
             "calendar_identity": self.calendar.identity,
             "live_run_id": self.live_run_id,
@@ -856,19 +1019,29 @@ reported, because none exists.
                 )
 
     def _finish(self) -> dict:
-        verdict = self.criteria.verdict(
-            live_failed=self.state
-            in (OrchestratorState.LIVE_SHADOW_FAILED, OrchestratorState.SESSION_FAILED)
-        )
+        """Record the same verdict everywhere: database, log and status payload.
+
+        The verdict is *not* recomputed from the terminal state. A workflow that
+        reached SESSION_FAILED while publishing a report did not un-observe the
+        session, so the evidence verdict stands and the pipeline status alone
+        carries the failure.
+        """
+
+        verdict = self.session_evidence_verdict()
+        pipeline = self.pipeline_completion_status()
         if self.repository is not None:
             self.repository.update_orchestrator_run(
                 self.orchestrator_run_id,
                 finished_at_utc=self._clock(),
                 final_verdict=verdict,
                 state=self.state,
+                pipeline_completion_status=pipeline,
             )
         payload = self.status_payload(verdict)
-        self.log(f"final verdict: {verdict.value}")
+        self.log(
+            f"session evidence verdict: {verdict.value} | "
+            f"pipeline: {pipeline.value} | report: {self.report_publication.value}"
+        )
         return payload
 
 
@@ -894,7 +1067,11 @@ def show_status(args) -> int:
         print()
         print(f"  orchestrator run : {run['orchestrator_run_id'][:16]}")
         print(f"  state            : {run['state']}")
-        print(f"  verdict          : {run['final_verdict'] or '(in progress)'}")
+        print(f"  evidence verdict : {run['final_verdict'] or '(in progress)'}")
+        print(
+            f"  pipeline         : "
+            f"{run.get('pipeline_completion_status') or '(not recorded)'}"
+        )
         print(f"  classification   : {run['session_classification'] or '-'}")
         print(f"  live run         : {(run['live_run_id'] or '-')[:16]}")
         print(f"  reconstruction   : {(run['reconstruction_run_id'] or '-')[:16]}")

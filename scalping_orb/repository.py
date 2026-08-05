@@ -35,7 +35,7 @@ from scalping_orb.opening_range import OpeningRangeResult, OpeningRangeStatus
 from scalping_orb.session import OrbSessionPhase
 
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 PROTECTED_DATABASE_NAMES = frozenset(
     {
         "rubix_live_market.db",
@@ -729,6 +729,54 @@ CREATE INDEX IF NOT EXISTS idx_orb_orchestrator_failures_run
 ON orb_shadow_orchestrator_failures(orchestrator_run_id, occurred_at_utc);
 """
 
+#: Reporting and timing provenance. Strictly additive: every column is nullable
+#: with a defaulted status, so rows written before this migration stay readable
+#: and are honestly reported as carrying no historical timestamp rather than
+#: being back-filled with a fabricated one.
+#:
+#: Still no order, execution, position, trade, P&L, broker or alert table.
+MIGRATION_8 = """
+ALTER TABLE orb_shadow_reconstruction_states
+    ADD COLUMN reconstructed_state_time_utc TEXT;
+ALTER TABLE orb_shadow_reconstruction_states
+    ADD COLUMN reconstructed_breakout_time_utc TEXT;
+ALTER TABLE orb_shadow_reconstruction_states
+    ADD COLUMN reconstructed_pullback_time_utc TEXT;
+ALTER TABLE orb_shadow_reconstruction_states
+    ADD COLUMN reconstructed_reclaim_time_utc TEXT;
+ALTER TABLE orb_shadow_reconstruction_states
+    ADD COLUMN reconstructed_entry_ready_time_utc TEXT;
+ALTER TABLE orb_shadow_reconstruction_states
+    ADD COLUMN reconstructed_time_status TEXT NOT NULL
+    DEFAULT 'NOT_RECORDED_PRE_MIGRATION';
+
+ALTER TABLE orb_shadow_cross_run_comparison
+    ADD COLUMN lane_a_detection_time_utc TEXT;
+ALTER TABLE orb_shadow_cross_run_comparison
+    ADD COLUMN lane_b_detection_time_utc TEXT;
+ALTER TABLE orb_shadow_cross_run_comparison
+    ADD COLUMN detection_delta_seconds REAL;
+ALTER TABLE orb_shadow_cross_run_comparison
+    ADD COLUMN timing_comparison_status TEXT NOT NULL
+    DEFAULT 'BOTH_TIMES_UNAVAILABLE';
+
+ALTER TABLE orb_shadow_live_replay_comparison
+    ADD COLUMN lane_a_detection_time_utc TEXT;
+ALTER TABLE orb_shadow_live_replay_comparison
+    ADD COLUMN lane_b_detection_time_utc TEXT;
+ALTER TABLE orb_shadow_live_replay_comparison
+    ADD COLUMN detection_delta_seconds REAL;
+ALTER TABLE orb_shadow_live_replay_comparison
+    ADD COLUMN timing_comparison_status TEXT NOT NULL
+    DEFAULT 'BOTH_TIMES_UNAVAILABLE';
+
+ALTER TABLE orb_shadow_runs ADD COLUMN artifact_lane TEXT;
+ALTER TABLE orb_shadow_runs ADD COLUMN artifact_paths_json TEXT;
+
+ALTER TABLE orb_shadow_orchestrator_runs
+    ADD COLUMN pipeline_completion_status TEXT;
+"""
+
 MIGRATIONS = {
     1: ("phase2a_initial", MIGRATION_1),
     2: ("phase2a_universe_membership", MIGRATION_2),
@@ -737,6 +785,7 @@ MIGRATIONS = {
     5: ("phase2c_shadow_integration", MIGRATION_5),
     6: ("phase2c_full_shadow_run_controls", MIGRATION_6),
     7: ("phase2c_shadow_orchestrator", MIGRATION_7),
+    8: ("phase2c_report_artifacts_and_timing", MIGRATION_8),
 }
 
 
@@ -760,6 +809,19 @@ def _enum_value(value) -> str:
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _isoformat(moment) -> str | None:
+    """Persist an instant, or persist nothing. Never substitute the clock.
+
+    A missing historical timestamp is evidence about the reconstruction's
+    limits. Filling it with `now()` would turn "we cannot date this" into a
+    confident, wrong answer that later timing analysis could not detect.
+    """
+
+    if moment is None:
+        return None
+    return moment.isoformat()
 
 
 def _json(value) -> str:
@@ -1927,9 +1989,24 @@ class OrbResearchRepository:
                         ]
                     ).encode("utf-8")
                 ).hexdigest()
+                # Named columns, not positional: this table grew historical
+                # timestamp columns, and a bare VALUES list silently shifts
+                # every field when it does.
                 cursor = connection.execute(
-                    """INSERT OR IGNORE INTO orb_shadow_reconstruction_states VALUES
-                       (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    """INSERT OR IGNORE INTO orb_shadow_reconstruction_states (
+                           reconstruction_state_id, run_id, session_date,
+                           canonical_ticker, opening_range_revision,
+                           opening_range_version_identity, final_state, terminal,
+                           rejection_reasons_json, evidence_fingerprint,
+                           candidate_identity, evaluation_mode, research_only,
+                           recorded_at_utc,
+                           reconstructed_state_time_utc,
+                           reconstructed_breakout_time_utc,
+                           reconstructed_pullback_time_utc,
+                           reconstructed_reclaim_time_utc,
+                           reconstructed_entry_ready_time_utc,
+                           reconstructed_time_status
+                       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         row_id,
                         run_id,
@@ -1944,7 +2021,15 @@ class OrbResearchRepository:
                         record.candidate_identity,
                         _enum_value(record.evaluation_mode),
                         1,
+                        # `recorded_at_utc` is the write time and is never a
+                        # detection time; the reconstructed_* columns are.
                         now,
+                        _isoformat(record.reconstructed_state_time_utc),
+                        _isoformat(record.reconstructed_breakout_time_utc),
+                        _isoformat(record.reconstructed_pullback_time_utc),
+                        _isoformat(record.reconstructed_reclaim_time_utc),
+                        _isoformat(record.reconstructed_entry_ready_time_utc),
+                        _enum_value(record.reconstructed_time_status),
                     ),
                 )
                 written += int(cursor.rowcount == 1)
@@ -1959,8 +2044,16 @@ class OrbResearchRepository:
                     f"{run_id}|{row.canonical_ticker}".encode("utf-8")
                 ).hexdigest()
                 cursor = connection.execute(
-                    """INSERT OR IGNORE INTO orb_shadow_live_replay_comparison VALUES
-                       (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    """INSERT OR IGNORE INTO orb_shadow_live_replay_comparison (
+                           comparison_id, run_id, session_date, canonical_ticker,
+                           live_state, reconstruction_state,
+                           live_opening_range_version_identity,
+                           reconstruction_opening_range_version_identity,
+                           opening_range_revised, states_match, difference_reason,
+                           evaluable_live, evaluable_historically, recorded_at_utc,
+                           lane_a_detection_time_utc, lane_b_detection_time_utc,
+                           detection_delta_seconds, timing_comparison_status
+                       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         row_id,
                         run_id,
@@ -1976,6 +2069,10 @@ class OrbResearchRepository:
                         int(row.evaluable_live),
                         int(row.evaluable_historically),
                         now,
+                        _isoformat(row.lane_a_detection_time_utc),
+                        _isoformat(row.lane_b_detection_time_utc),
+                        row.detection_delta_seconds,
+                        _enum_value(row.timing_comparison_status),
                     ),
                 )
                 written += int(cursor.rowcount == 1)
@@ -2172,6 +2269,10 @@ class OrbResearchRepository:
         allowed = {
             "state", "finished_at_utc", "live_run_id", "reconstruction_run_id",
             "session_classification", "final_verdict",
+            # What the session evidence was worth (`final_verdict`) and how far
+            # the workflow got are recorded separately, so a reporting fault
+            # cannot rewrite what was observed.
+            "pipeline_completion_status",
         }
         unknown = set(fields) - allowed
         if unknown:
@@ -2349,7 +2450,7 @@ class OrbResearchRepository:
                    r.strategy_fingerprint, r.engine_version,
                    r.runner_started_before_open, r.research_only,
                    r.production_disabled, r.active_universe_only,
-                   r.compared_live_run_id,
+                   r.compared_live_run_id, r.artifact_lane, r.artifact_paths_json,
                    (SELECT count(*) FROM orb_shadow_live_states l
                       WHERE l.run_id=r.run_id) AS lane_a_rows,
                    (SELECT count(*) FROM orb_shadow_reconstruction_states s
@@ -2383,8 +2484,19 @@ class OrbResearchRepository:
                     )
                 ).hexdigest()
                 cursor = connection.execute(
-                    """INSERT OR IGNORE INTO orb_shadow_cross_run_comparison VALUES
-                       (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    """INSERT OR IGNORE INTO orb_shadow_cross_run_comparison (
+                           comparison_id, live_run_id, reconstruction_run_id,
+                           session_date, canonical_ticker, live_state,
+                           reconstruction_state,
+                           live_opening_range_version_identity,
+                           reconstruction_opening_range_version_identity,
+                           live_status, live_rejection_reasons_json,
+                           opening_range_revised, states_match, difference_reason,
+                           difference_evidence_json, evaluable_live,
+                           evaluable_historically, research_only, recorded_at_utc,
+                           lane_a_detection_time_utc, lane_b_detection_time_utc,
+                           detection_delta_seconds, timing_comparison_status
+                       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         row_id,
                         live_run_id,
@@ -2405,6 +2517,10 @@ class OrbResearchRepository:
                         int(row.evaluable_historically),
                         1,
                         now,
+                        _isoformat(row.lane_a_detection_time_utc),
+                        _isoformat(row.lane_b_detection_time_utc),
+                        row.detection_delta_seconds,
+                        _enum_value(row.timing_comparison_status),
                     ),
                 )
                 written += int(cursor.rowcount == 1)
@@ -2421,7 +2537,9 @@ class OrbResearchRepository:
             rows = connection.execute(
                 """SELECT canonical_ticker, live_state, reconstruction_state,
                           difference_reason, difference_evidence_json,
-                          opening_range_revised, states_match
+                          opening_range_revised, states_match,
+                          lane_a_detection_time_utc, lane_b_detection_time_utc,
+                          detection_delta_seconds, timing_comparison_status
                    FROM orb_shadow_cross_run_comparison
                    WHERE live_run_id=? AND reconstruction_run_id=?
                    ORDER BY canonical_ticker""",
@@ -2461,12 +2579,36 @@ class OrbResearchRepository:
         with self.connect() as connection:
             rows = connection.execute(
                 """SELECT canonical_ticker,final_state,opening_range_version_identity,
-                          evaluation_mode
+                          evaluation_mode,
+                          reconstructed_state_time_utc,
+                          reconstructed_breakout_time_utc,
+                          reconstructed_pullback_time_utc,
+                          reconstructed_reclaim_time_utc,
+                          reconstructed_entry_ready_time_utc,
+                          reconstructed_time_status
                    FROM orb_shadow_reconstruction_states WHERE run_id=?
                    ORDER BY canonical_ticker""",
                 (run_id,),
             ).fetchall()
         return tuple(dict(row) for row in rows)
+
+    def record_shadow_run_artifacts(
+        self, run_id: str, lane: str, artifact_paths: dict
+    ) -> None:
+        """Name the files this run owns, so a reader never has to guess.
+
+        Before this existed, both lanes wrote `shadow_run_summary.json` into one
+        directory and only the last writer survived. Recording the lane and the
+        exact filenames makes the ownership a stored fact rather than a
+        convention a later run can quietly break.
+        """
+
+        with self.transaction() as connection:
+            connection.execute(
+                """UPDATE orb_shadow_runs
+                   SET artifact_lane=?, artifact_paths_json=? WHERE run_id=?""",
+                (str(lane), _json(dict(artifact_paths)), run_id),
+            )
 
     def table_count(self, table: str) -> int:
         allowed = {
