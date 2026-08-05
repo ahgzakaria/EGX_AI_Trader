@@ -14,9 +14,11 @@ cannot be stolen.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from enum import Enum
+from pathlib import Path
 import hashlib
 import os
 import socket
@@ -165,9 +167,39 @@ def assert_legal_transition(
 
 
 class OrchestratorVerdict(str, Enum):
+    """What the *session evidence* was. Says nothing about the report file."""
+
     FULL_SHADOW_SESSION_OBSERVED = "FULL_SHADOW_SESSION_OBSERVED"
     PARTIAL_SHADOW_SESSION = "PARTIAL_SHADOW_SESSION"
     FAILED_SHADOW_SESSION = "FAILED_SHADOW_SESSION"
+
+
+class ReportPublicationStatus(str, Enum):
+    """Did the durable artifacts reach disk? Deliberately not a FULL criterion.
+
+    ``report_completed`` used to sit inside :class:`FullSessionCriteria`, which
+    made it self-referential: the criterion could only become true *after* the
+    report existed, so the verdict rendered *into* the report was always
+    computed with it false. On 2026-08-05 a session that met every observation
+    criterion therefore published a permanent `PARTIAL_SHADOW_SESSION` document
+    while the database recorded `FULL_SHADOW_SESSION_OBSERVED`.
+
+    Publication is a pipeline outcome, not evidence about the market session.
+    """
+
+    NOT_ATTEMPTED = "REPORT_NOT_ATTEMPTED"
+    PUBLISHED = "REPORT_PUBLISHED"
+    FAILED = "REPORT_PUBLICATION_FAILED"
+
+
+class PipelineCompletionStatus(str, Enum):
+    """How far the unattended workflow got, independent of what it observed."""
+
+    IN_PROGRESS = "PIPELINE_IN_PROGRESS"
+    SESSION_COMPLETE = "PIPELINE_SESSION_COMPLETE"
+    REPORT_PUBLICATION_FAILED = "PIPELINE_REPORT_PUBLICATION_FAILED"
+    SESSION_FAILED = "PIPELINE_SESSION_FAILED"
+    SKIPPED = "PIPELINE_SKIPPED"
 
 
 @dataclass(frozen=True)
@@ -176,6 +208,11 @@ class FullSessionCriteria:
 
     Deliberately explicit rather than a single boolean: when a session falls
     short, the report must say which criterion failed.
+
+    Every criterion here is a fact about *the observed session* that is already
+    settled before any artifact is written. Nothing about writing, publishing or
+    rendering an artifact belongs in this dataclass — see
+    :class:`ReportPublicationStatus`.
     """
 
     started_before_session_start: bool = False
@@ -194,7 +231,6 @@ class FullSessionCriteria:
     lane_a_persisted: bool = False
     reconstruction_completed: bool = False
     cross_run_comparison_completed: bool = False
-    report_completed: bool = False
     no_production_execution: bool = True
 
     def failures(self) -> tuple[str, ...]:
@@ -216,6 +252,84 @@ class FullSessionCriteria:
         if self.all_met:
             return OrchestratorVerdict.FULL_SHADOW_SESSION_OBSERVED
         return OrchestratorVerdict.PARTIAL_SHADOW_SESSION
+
+
+# --------------------------------------------------------------------------- #
+# Atomic artifact publication
+# --------------------------------------------------------------------------- #
+
+
+class ReportPublicationError(OSError):
+    """Nothing was published. Any previous artifacts are still in place."""
+
+
+def publish_atomically(
+    payloads: Mapping[Path, str], *, encoding: str = "utf-8"
+) -> tuple[Path, ...]:
+    """Publish every artifact, or none of them.
+
+    A report and the status JSON that describes it must never disagree, and a
+    half-written report must never replace a good one. Three phases:
+
+    1. write every payload to a sibling temp file and flush it to the platform,
+       which is where a full disk or a permission fault actually surfaces;
+    2. move any existing target aside into its own backup temp;
+    3. rename each temp over its target.
+
+    A failure in phase 1 or 2 has published nothing. A failure in phase 3 —
+    which is a metadata-only rename over a file whose bytes are already
+    durable — restores every target already replaced. Either way the caller
+    sees an exception and the directory holds one consistent generation.
+
+    Siblings, not the system temp directory: a cross-volume rename is a copy,
+    and a copy is not atomic.
+    """
+
+    targets = list(payloads)
+    stamp = f"{os.getpid()}.{uuid.uuid4().hex[:8]}"
+    staged: dict[Path, Path] = {}
+    backups: dict[Path, Path] = {}
+    replaced: list[Path] = []
+
+    def _discard(paths) -> None:
+        for path in paths:
+            try:
+                path.unlink()
+            except OSError:
+                pass  # cleanup must never mask the original failure
+
+    try:
+        for target in targets:
+            temporary = target.with_name(f"{target.name}.{stamp}.tmp")
+            with temporary.open("w", encoding=encoding, newline="\n") as handle:
+                handle.write(payloads[target])
+                handle.flush()
+                os.fsync(handle.fileno())
+            staged[target] = temporary
+
+        for target in targets:
+            if target.exists():
+                backup = target.with_name(f"{target.name}.{stamp}.bak")
+                os.replace(target, backup)
+                backups[target] = backup
+
+        for target in targets:
+            os.replace(staged[target], target)
+            replaced.append(target)
+    except OSError as error:
+        for target, backup in backups.items():
+            if backup.exists():
+                try:
+                    os.replace(backup, target)
+                except OSError:
+                    pass
+        _discard(staged.values())
+        raise ReportPublicationError(
+            f"publication failed, {len(targets)} artifact(s) left unchanged: {error}"
+        ) from error
+
+    _discard(backups.values())
+    return tuple(targets)
 
 
 # --------------------------------------------------------------------------- #
@@ -365,9 +479,13 @@ __all__ = [
     "OrchestratorState",
     "OrchestratorTransition",
     "OrchestratorVerdict",
+    "PipelineCompletionStatus",
+    "ReportPublicationError",
+    "ReportPublicationStatus",
     "assert_legal_transition",
     "lease_scope_for",
     "machine_identity",
     "new_instance_id",
     "process_rss_bytes",
+    "publish_atomically",
 ]

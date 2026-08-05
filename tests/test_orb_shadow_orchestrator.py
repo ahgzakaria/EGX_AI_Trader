@@ -1344,7 +1344,9 @@ def _snapshot(repository, tables):
 
 def test_migration_seven_creates_every_orchestrator_table(tmp_path):
     repository = OrbResearchRepository(tmp_path / "orb.db")
-    assert repository.database_status()["user_version"] == 7
+    # >= 7, not == 7: later additive migrations keep raising the head version
+    # while migration 7 remains responsible for these tables existing.
+    assert repository.database_status()["user_version"] >= 7
     for table in ORCHESTRATOR_TABLES:
         assert repository.table_count(table) == 0
 
@@ -1358,7 +1360,7 @@ def test_migration_seven_upgrades_a_populated_v6_database(tmp_path):
     assert before["orb_shadow_runs"] == 1
 
     upgraded = OrbResearchRepository(path)
-    assert upgraded.database_status()["user_version"] == 7
+    assert upgraded.database_status()["user_version"] >= 7
     assert _snapshot(upgraded, V6_TABLES) == before
 
 
