@@ -193,8 +193,11 @@ def _publish_versioned_exports(experiment, results, freshness_results, symbols,
                 "message": failure.get("Error"),
             }))
         outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
+        # Value comparison, matching the audit's outcome_status dict lookup.
+        # An identity test here exported 166 decisions against 185 audited
+        # current rows when two copies of the guard module were live.
         if row is not None and item is not None and \
-                item.freshness_status is SymbolFreshness.CURRENT:
+                item.freshness_status == SymbolFreshness.CURRENT:
             decisions.append(current_decision_row(row, run_id=run_id,
                                                   freshness=item))
 
@@ -245,7 +248,7 @@ def _rubix_provenance(symbol, provider_metadata, expected_session, daily_freshne
     permission = evaluate_overlay_permission(
         assessment,
         daily_symbol_current=(
-            daily_freshness.freshness_status is SymbolFreshness.CURRENT),
+            daily_freshness.freshness_status == SymbolFreshness.CURRENT),
     )
     row = assessment.as_row()
     row.update(permission.as_row())

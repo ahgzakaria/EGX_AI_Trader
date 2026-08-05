@@ -497,9 +497,16 @@ def summarize_universe_coverage(results, expected_session, universe_total=None,
         date = item.actual_latest_session
         if date:
             distribution[date] = distribution.get(date, 0) + 1
-        if item.freshness_status is SymbolFreshness.CURRENT:
+        # Compared by VALUE, never by identity. Streamlit's reloader can leave
+        # two live copies of this module, and an enum member from one copy is
+        # never `is` a member of the other. The audit reads outcome_status - a
+        # dict lookup, which survives - so an identity test here silently
+        # undercounts and the archive invariant then refuses to publish a scan
+        # that was entirely correct. SymbolFreshness is a str enum, so `==`
+        # compares the value and is reload-safe.
+        if item.freshness_status == SymbolFreshness.CURRENT:
             current += 1
-        elif item.freshness_status is SymbolFreshness.STALE:
+        elif item.freshness_status == SymbolFreshness.STALE:
             stale += 1
         else:
             unavailable += 1
