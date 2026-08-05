@@ -1843,14 +1843,105 @@ def test_phase_2a_configuration_fingerprint_is_undisturbed():
     assert baseline.fingerprint == OrbDataConfig().fingerprint
 
 
+#: Phase 2B's engine baseline, and the Phase 2C merge that closes this phase.
+PHASE_2B_BASELINE = "6d10334"
+PHASE_2C_MERGE = "02250f5"
+
+#: Every decision surface of the engine. `_freshness_reasons` is deliberately
+#: absent: it is the live-decision gate, changed under its own authorisation,
+#: and it decides *whether live may decide*, never *what the strategy decides*.
+STRATEGY_SURFACES = (
+    "_transition",
+    "_eligibility_reasons",
+    "_assess_breakout",
+    "_structural_risk",
+    "_targets",
+    "evaluate",
+    "_assess_pullback",
+    "_pullback_failure_state",
+    "_pullback_failure_rule",
+    "_reclaim_confirmed",
+    "_build",
+)
+
+
+def _function_sources(source: str) -> dict[str, str]:
+    """Every top-level and method definition, by name, as source text."""
+
+    import ast
+
+    tree = ast.parse(source)
+    found: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            segment = ast.get_source_segment(source, node)
+            if segment is not None:
+                found[node.name] = segment
+    return found
+
+
 def test_phase_2b_engine_module_is_untouched_by_this_phase():
+    """Phase 2C did not modify the Phase 2B engine.
+
+    Pinned to Phase 2C's own range rather than to HEAD, exactly as the sibling
+    Dashboard guard already is. Against HEAD this asserted that `engine.py` may
+    never change again anywhere in the repository - a claim about the future
+    rather than about this phase - and it failed the moment a separately
+    authorised live-decision capability change landed. The assertion is
+    unchanged; only the range it judges is.
+    """
+
     import subprocess
 
     result = subprocess.run(
-        ["git", "diff", "--name-only", "6d10334", "HEAD", "--", "scalping_orb/engine.py"],
+        [
+            "git", "diff", "--name-only", PHASE_2B_BASELINE, PHASE_2C_MERGE,
+            "--", "scalping_orb/engine.py",
+        ],
         capture_output=True, text=True,
     )
-    assert result.stdout.strip() == "", "the Phase 2B engine must not change"
+    if result.returncode != 0:
+        pytest.skip("the Phase 2C merge is not present in this checkout")
+    assert result.stdout.strip() == "", "Phase 2C must not change the Phase 2B engine"
+
+
+def test_every_strategy_surface_is_identical_to_the_phase_2b_baseline():
+    """The guard that replaces a file-level freeze, and outlasts it.
+
+    Freezing the whole file forced every authorised change to defeat the test.
+    This asserts the thing actually worth protecting: each function the strategy
+    reasons with is byte-identical to Phase 2B. Only `_freshness_reasons` may
+    differ, and only because the live-decision gate was changed deliberately.
+    """
+
+    import subprocess
+    from pathlib import Path
+
+    # Bytes, decoded as UTF-8 explicitly. `text=True` would use the locale
+    # codec, which on Windows turns every em dash in the engine's prose into
+    # mojibake and makes identical functions compare unequal.
+    result = subprocess.run(
+        ["git", "show", f"{PHASE_2B_BASELINE}:scalping_orb/engine.py"],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        pytest.skip("the Phase 2B baseline is not present in this checkout")
+
+    baseline = _function_sources(result.stdout.decode("utf-8"))
+    current = _function_sources(
+        Path("scalping_orb/engine.py").read_text(encoding="utf-8")
+    )
+
+    for name in STRATEGY_SURFACES:
+        assert name in baseline, f"{name} missing from the Phase 2B baseline"
+        assert name in current, f"{name} missing from the current engine"
+        assert current[name] == baseline[name], (
+            f"{name} differs from Phase 2B; strategy rules must not change"
+        )
+
+    # And the one function that may differ, did - so this test cannot pass by
+    # silently comparing an engine that never changed at all.
+    assert current["_freshness_reasons"] != baseline["_freshness_reasons"]
 
 
 def test_no_dashboard_file_is_touched_by_this_phase():
