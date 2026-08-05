@@ -357,6 +357,74 @@ class ShadowStateRecord:
     observed_receive_lag_seconds: float | None
 
 
+class ReconstructedTimeStatus(str, Enum):
+    """Why a Lane B row does or does not carry a historical decision time."""
+
+    #: The exchange instant that produced the final state was recovered.
+    HISTORICAL_TIME_RECOVERED = "HISTORICAL_TIME_RECOVERED"
+    #: The state was reached, but no transition carried an exchange timestamp —
+    #: e.g. a symbol rejected before any completed bar existed.
+    NO_EXCHANGE_TIMESTAMPED_TRANSITION = "NO_EXCHANGE_TIMESTAMPED_TRANSITION"
+    #: The state has no historical instant at all (no evidence was evaluated).
+    STATE_HAS_NO_HISTORICAL_INSTANT = "STATE_HAS_NO_HISTORICAL_INSTANT"
+    #: Row written before the timestamps existed. Never back-filled.
+    NOT_RECORDED_PRE_MIGRATION = "NOT_RECORDED_PRE_MIGRATION"
+
+
+def reconstructed_times(evaluation) -> dict:
+    """Pull the true historical instants out of an evaluation.
+
+    Every value here comes from exchange evidence — a completed bar's boundary
+    or a state transition's exchange timestamp. None of them is a wall clock: a
+    reconstruction runs hours after the close, so its execution time, and the
+    time its row is inserted, describe the *audit*, not the market.
+
+    When an instant does not exist the field stays ``None`` and the status says
+    why. Nothing is estimated, interpolated or back-filled from a neighbour.
+    """
+
+    breakout = getattr(evaluation, "breakout", None)
+    pullback = getattr(evaluation, "pullback", None)
+    reclaim = getattr(evaluation, "reclaim", None)
+
+    breakout_at = getattr(breakout, "bar_end_utc", None) if breakout else None
+    pullback_at = getattr(pullback, "low_bar_start_utc", None) if pullback else None
+    reclaim_at = (
+        getattr(reclaim, "confirmation_bar_end_utc", None) if reclaim else None
+    )
+    entry_ready_at = (
+        reclaim_at
+        if str(getattr(evaluation.final_state, "value", evaluation.final_state))
+        == "ENTRY_READY_RESEARCH"
+        else None
+    )
+
+    # The final state is whatever the last exchange-timestamped transition
+    # produced. Transitions are ordered, so the last one with a real exchange
+    # instant is the decision moment.
+    state_at = None
+    for transition in reversed(tuple(getattr(evaluation, "transitions", ()) or ())):
+        if transition.exchange_timestamp_utc is not None:
+            state_at = transition.exchange_timestamp_utc
+            break
+
+    if state_at is not None:
+        status = ReconstructedTimeStatus.HISTORICAL_TIME_RECOVERED
+    elif getattr(evaluation, "transitions", ()):
+        status = ReconstructedTimeStatus.NO_EXCHANGE_TIMESTAMPED_TRANSITION
+    else:
+        status = ReconstructedTimeStatus.STATE_HAS_NO_HISTORICAL_INSTANT
+
+    return {
+        "reconstructed_state_time_utc": state_at,
+        "reconstructed_breakout_time_utc": breakout_at,
+        "reconstructed_pullback_time_utc": pullback_at,
+        "reconstructed_reclaim_time_utc": reclaim_at,
+        "reconstructed_entry_ready_time_utc": entry_ready_at,
+        "reconstructed_time_status": status.value,
+    }
+
+
 @dataclass(frozen=True)
 class ShadowReconstructionRecord:
     """One Lane B result."""
@@ -371,6 +439,54 @@ class ShadowReconstructionRecord:
     evidence_fingerprint: str
     candidate_identity: str
     evaluation_mode: str = EvaluationMode.HISTORICAL_REPLAY.value
+    #: Historical exchange instants. `None` means "not recoverable", never
+    #: "unknown, so use now()" — see :func:`reconstructed_times`.
+    reconstructed_state_time_utc: datetime | None = None
+    reconstructed_breakout_time_utc: datetime | None = None
+    reconstructed_pullback_time_utc: datetime | None = None
+    reconstructed_reclaim_time_utc: datetime | None = None
+    reconstructed_entry_ready_time_utc: datetime | None = None
+    reconstructed_time_status: str = (
+        ReconstructedTimeStatus.NOT_RECORDED_PRE_MIGRATION.value
+    )
+
+
+class TimingComparisonStatus(str, Enum):
+    """Whether a detection-time delta is meaningful for this symbol."""
+
+    TIMING_COMPARABLE = "TIMING_COMPARABLE"
+    LANE_A_TIME_UNAVAILABLE = "LANE_A_TIME_UNAVAILABLE"
+    LANE_B_TIME_UNAVAILABLE = "LANE_B_TIME_UNAVAILABLE"
+    BOTH_TIMES_UNAVAILABLE = "BOTH_TIMES_UNAVAILABLE"
+    #: The lanes did not reach the same state, so "how much later" has no
+    #: referent — the two timestamps describe different events.
+    STATE_NOT_COMPARABLE = "STATE_NOT_COMPARABLE"
+
+
+def timing_comparison(
+    live_at: "datetime | None",
+    reconstruction_at: "datetime | None",
+    *,
+    states_match: bool,
+) -> tuple["float | None", str]:
+    """Delta only when both instants exist *and* describe the same state.
+
+    Precedence is deliberate: a mismatched state disqualifies the comparison
+    before availability is even considered, because subtracting the instant of
+    one state from the instant of a different state produces a number that
+    looks like a latency and is not one.
+    """
+
+    if not states_match:
+        return None, TimingComparisonStatus.STATE_NOT_COMPARABLE.value
+    if live_at is None and reconstruction_at is None:
+        return None, TimingComparisonStatus.BOTH_TIMES_UNAVAILABLE.value
+    if live_at is None:
+        return None, TimingComparisonStatus.LANE_A_TIME_UNAVAILABLE.value
+    if reconstruction_at is None:
+        return None, TimingComparisonStatus.LANE_B_TIME_UNAVAILABLE.value
+    delta = (live_at - reconstruction_at).total_seconds()
+    return delta, TimingComparisonStatus.TIMING_COMPARABLE.value
 
 
 @dataclass(frozen=True)
@@ -393,6 +509,15 @@ class ShadowComparisonRow:
     #: Exactly which facts selected `difference_reason`. Without this the
     #: category is an assertion; with it, it is reproducible.
     difference_evidence: tuple[str, ...] = ()
+    #: When live actually evaluated the symbol, and the historical instant the
+    #: reconstruction attributes the same state to. Both are observation times;
+    #: neither is a row's write time.
+    lane_a_detection_time_utc: datetime | None = None
+    lane_b_detection_time_utc: datetime | None = None
+    detection_delta_seconds: float | None = None
+    timing_comparison_status: str = (
+        TimingComparisonStatus.BOTH_TIMES_UNAVAILABLE.value
+    )
 
 
 class ShadowRunSelectionError(RuntimeError):
@@ -650,6 +775,7 @@ class OrbShadowService:
                     ),
                     evidence_fingerprint=evaluation.evidence_fingerprint,
                     candidate_identity=evaluation.candidate_identity,
+                    **reconstructed_times(evaluation),
                 )
             )
         return tuple(records)
@@ -736,6 +862,12 @@ class OrbShadowService:
                 != b.opening_range_version_identity
             )
             reason, evidence = classify_difference(a, b, revised)
+            states_match = bool(a and b and live_state == recon_state)
+            lane_a_at = a.observed_at_utc if a else None
+            lane_b_at = b.reconstructed_state_time_utc if b else None
+            delta, timing_status = timing_comparison(
+                lane_a_at, lane_b_at, states_match=states_match
+            )
             rows.append(
                 ShadowComparisonRow(
                     session_date=session_date,
@@ -749,13 +881,17 @@ class OrbShadowService:
                         b.opening_range_version_identity if b else None
                     ),
                     opening_range_revised=revised,
-                    states_match=bool(a and b and live_state == recon_state),
+                    states_match=states_match,
                     difference_reason=reason.value,
                     evaluable_live=a is not None,
                     evaluable_historically=b is not None,
                     live_status=a.live_status if a else None,
                     live_rejection_reasons=tuple(a.rejection_reasons) if a else (),
                     difference_evidence=evidence,
+                    lane_a_detection_time_utc=lane_a_at,
+                    lane_b_detection_time_utc=lane_b_at,
+                    detection_delta_seconds=delta,
+                    timing_comparison_status=timing_status,
                 )
             )
         return tuple(rows)
@@ -830,10 +966,14 @@ def receive_lag_statistics(
 
 __all__ = [
     "ComparisonReason",
+    "ReconstructedTimeStatus",
     "ShadowRunSelectionError",
+    "TimingComparisonStatus",
     "classify_difference",
     "live_records_from_rows",
+    "reconstructed_times",
     "select_live_run",
+    "timing_comparison",
     "OrbShadowService",
     "SessionClassification",
     "ShadowComparisonRow",
