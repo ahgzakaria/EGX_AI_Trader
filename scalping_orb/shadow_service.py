@@ -31,7 +31,11 @@ import json
 from typing import Iterable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
-from scalping_orb.capabilities import LiveDecisionCapability
+from scalping_orb.capabilities import (
+    LIVE_DECISION_ENABLED,
+    LiveDecisionCapability,
+    assess_live_decision_capability,
+)
 from scalping_orb.config import OrbDataConfig
 from scalping_orb.engine import (
     CompletedBarSequence,
@@ -687,11 +691,21 @@ class OrbShadowService:
         status = self.live_status_for(snapshot)
         selected = list(tickers if tickers is not None else snapshot.affected_tickers)
         records: list[ShadowStateRecord] = []
+        # The watermark is a *source* health signal. It says the collector is
+        # alive; it never says this symbol's own price is current, because one
+        # symbol ticking keeps it fresh for all 224.
+        source_healthy = snapshot.watermark.live_evidence_fresh
         for ticker in sorted(set(selected)):
             opening_range = snapshot.opening_ranges.get(ticker)
             if opening_range is None:
                 continue
             final_bars = snapshot.final_five_minute_bars(ticker)
+            capability, _reason = assess_live_decision_capability(
+                self._latest_event(snapshot, ticker),
+                evaluated_at_utc=snapshot.evaluated_at_utc,
+                config=self.config.data,
+                source_healthy=source_healthy,
+            )
             evaluation = self._evaluate(
                 snapshot,
                 ticker,
@@ -700,7 +714,8 @@ class OrbShadowService:
                 one_minute=snapshot.one_minute_by_ticker.get(ticker, ()),
                 evaluation_mode=EvaluationMode.SHADOW_LIVE,
                 version_mode=OpeningRangeVersionMode.DECISION_TIME_ORIGINAL_VERSION,
-                live_fresh=snapshot.watermark.live_evidence_fresh,
+                live_fresh=source_healthy,
+                live_decision_capability=capability,
             )
             records.append(
                 ShadowStateRecord(
@@ -782,6 +797,21 @@ class OrbShadowService:
 
     # -- shared evaluation -------------------------------------------------
 
+    @staticmethod
+    def _latest_event(snapshot: ShadowSessionSnapshot, ticker: str):
+        """This symbol's most recent event, by receive time. Never another's.
+
+        The snapshot is built from every event accumulated so far, so a symbol
+        that has not printed since 10:05 still resolves to its 10:05 event —
+        which is the point. Ordering is by receive time because that is the
+        instant the evidence became available to us.
+        """
+
+        events = snapshot.events_by_ticker.get(ticker) or ()
+        if not events:
+            return None
+        return max(events, key=lambda event: event.receive_timestamp_utc)
+
     def _evaluate(
         self,
         snapshot: ShadowSessionSnapshot,
@@ -793,6 +823,9 @@ class OrbShadowService:
         evaluation_mode: EvaluationMode,
         version_mode: OpeningRangeVersionMode,
         live_fresh: bool,
+        live_decision_capability: LiveDecisionCapability = (
+            LiveDecisionCapability.LIVE_DECISION_DISABLED_COLLECTOR_FRESHNESS_UNAVAILABLE
+        ),
     ) -> ORBResearchEvaluation:
         context = ORBStrategyContext(
             canonical_ticker=ticker,
@@ -812,11 +845,10 @@ class OrbShadowService:
                 if live_fresh
                 else LiveFreshnessStatus.LIVE_FRESHNESS_FAILED
             ),
-            # Phase 2A gave this enum no enabled member, so live cannot reach
-            # readiness by construction. Phase 2C does not add one.
-            live_decision_capability=(
-                LiveDecisionCapability.LIVE_DECISION_DISABLED_COLLECTOR_FRESHNESS_UNAVAILABLE
-            ),
+            # Per-symbol, computed by the caller from this symbol's own latest
+            # event. Lane B never passes an enabled value and does not need to:
+            # HISTORICAL_REPLAY returns before the live branch is reached.
+            live_decision_capability=live_decision_capability,
             volume_capability=snapshot.volume_capability.get(
                 ticker, VolumeCapability.VOLUME_UNAVAILABLE
             ),

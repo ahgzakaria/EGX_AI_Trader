@@ -24,7 +24,7 @@ from typing import Iterable, Sequence
 from zoneinfo import ZoneInfo
 
 from scalping_orb.bars import CompletedBar
-from scalping_orb.capabilities import LiveDecisionCapability
+from scalping_orb.capabilities import LIVE_DECISION_ENABLED, LiveDecisionCapability
 from scalping_orb.events import (
     HistoricalReplayStatus,
     LiveFreshnessStatus,
@@ -442,12 +442,17 @@ class OrbResearchEngine:
     ) -> tuple[RejectionReason, ...]:
         """Live evidence fails closed; historical replay may reconstruct.
 
-        Phase 2A deliberately gave ``LiveDecisionCapability`` no enabled member —
-        every value is a ``LIVE_DECISION_DISABLED_*`` variant. So a live mode
-        cannot reach research readiness by construction, not merely by
-        configuration, and this method does not test for an "enabled" value that
-        would have to be invented first. Re-enabling live is therefore a
-        deliberate Phase 2A capability change, reviewed on its own merits.
+        The live branch consults ``context.live_decision_capability``, which the
+        caller computes **per symbol** from that symbol's own most recent event.
+        It used to append the rejection unconditionally, having established only
+        that the mode was live — no quote age was read at any point. That is why
+        2026-08-05 rejected 6,847 live breakouts across 86 symbols while
+        ``STALE_LIVE_DATA`` never appeared once: the data was fresh, and nothing
+        looked.
+
+        ``LIVE_DISABLED`` stays closed whatever the capability says. It is the
+        mode that means "do not decide", and a fresh quote is not a reason to
+        reinterpret it.
         """
 
         reasons: list[RejectionReason] = []
@@ -459,8 +464,12 @@ class OrbResearchEngine:
             ):
                 reasons.append(RejectionReason.STALE_LIVE_DATA)
             return tuple(dict.fromkeys(reasons))
-        # SHADOW_LIVE and LIVE_DISABLED are both disabled today.
-        reasons.append(RejectionReason.LIVE_DECISION_DISABLED_FRESHNESS)
+        live_permitted = (
+            context.evaluation_mode is EvaluationMode.SHADOW_LIVE
+            and context.live_decision_capability is LIVE_DECISION_ENABLED
+        )
+        if not live_permitted:
+            reasons.append(RejectionReason.LIVE_DECISION_DISABLED_FRESHNESS)
         if context.live_freshness_status is LiveFreshnessStatus.LIVE_FRESHNESS_FAILED:
             reasons.append(RejectionReason.STALE_LIVE_DATA)
         return tuple(dict.fromkeys(reasons))

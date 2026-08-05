@@ -36,6 +36,21 @@ class HistoricalBarCapability(str, Enum):
 
 
 class LiveDecisionCapability(str, Enum):
+    """Whether *this symbol* may carry a live research decision, right now.
+
+    Phase 2A gave this enum no enabled member at all, which made live research
+    readiness unreachable by construction. That was the correct default while
+    per-symbol freshness was not being evaluated, but it also meant a session
+    could observe 6,847 valid live breakouts across 86 symbols — as 2026-08-05
+    did, with a median receive lag of 0.818 s against a 60 s budget — and reject
+    every one of them for "freshness" without ever consulting a quote's age.
+
+    The enabled member is deliberately named `RESEARCH_ONLY`: it authorises the
+    engine to reach `ENTRY_READY_RESEARCH`, which is a research candidate. It
+    authorises no order, no size, no routing and no execution, and there is no
+    code path in this package that could turn it into one.
+    """
+
     LIVE_DECISION_DISABLED_PHASE2B = "LIVE_DECISION_DISABLED_PHASE2B"
     LIVE_DECISION_DISABLED_STALE_QUOTE = "LIVE_DECISION_DISABLED_STALE_QUOTE"
     LIVE_DECISION_DISABLED_MARKET_TIME_UNRELIABLE = (
@@ -43,6 +58,101 @@ class LiveDecisionCapability(str, Enum):
     )
     LIVE_DECISION_DISABLED_COLLECTOR_FRESHNESS_UNAVAILABLE = (
         "LIVE_DECISION_DISABLED_COLLECTOR_FRESHNESS_UNAVAILABLE"
+    )
+    LIVE_DECISION_DISABLED_SOURCE_UNHEALTHY = (
+        "LIVE_DECISION_DISABLED_SOURCE_UNHEALTHY"
+    )
+    LIVE_DECISION_DISABLED_NO_SYMBOL_EVIDENCE = (
+        "LIVE_DECISION_DISABLED_NO_SYMBOL_EVIDENCE"
+    )
+    LIVE_DECISION_ENABLED_RESEARCH_ONLY = "LIVE_DECISION_ENABLED_RESEARCH_ONLY"
+
+
+#: The single enabled member, named once so no caller has to spell it.
+LIVE_DECISION_ENABLED = LiveDecisionCapability.LIVE_DECISION_ENABLED_RESEARCH_ONLY
+
+
+def assess_live_decision_capability(
+    latest_event: NormalizedIntradayEvent | None,
+    *,
+    evaluated_at_utc,
+    config: OrbDataConfig | None = None,
+    source_healthy: bool,
+) -> tuple[LiveDecisionCapability, str]:
+    """Per-symbol live decision authority, evaluated at `evaluated_at_utc`.
+
+    Every clause must hold, and anything missing or unverifiable fails closed:
+
+    1. the session/source watermark is healthy — but that is a *source* health
+       signal only, and never by itself grants a symbol authority;
+    2. this symbol has its own evidence — never another symbol's;
+    3. its market timestamp is verified and reliable;
+    4. its receive lag is inside the freshness budget;
+    5. its quote is still inside the budget **as of now**.
+
+    Clause 5 is the one that does the real work. `live_freshness_status` and
+    `collector_age_seconds` are both settled when the event is *normalized*, so
+    a symbol that printed once at 10:05 with a perfect 0.4 s lag keeps
+    `LIVE_FRESHNESS_PASSED` for the rest of the day. Re-measuring the age
+    against the evaluation instant is what stops a four-hour-old print from
+    authorising a decision at 14:00 — and it is exactly the case a session-wide
+    watermark cannot see, because some *other* symbol ticking a millisecond ago
+    keeps that watermark fresh.
+    """
+
+    cfg = config or OrbDataConfig()
+    budget = float(cfg.maximum_quote_age_seconds)
+    tolerance = float(cfg.out_of_order_tolerance_seconds)
+
+    if not source_healthy:
+        return (
+            LiveDecisionCapability.LIVE_DECISION_DISABLED_SOURCE_UNHEALTHY,
+            "session watermark is not fresh; the source itself is not trusted",
+        )
+    if latest_event is None:
+        return (
+            LiveDecisionCapability.LIVE_DECISION_DISABLED_NO_SYMBOL_EVIDENCE,
+            "no normalized event for this symbol",
+        )
+    if latest_event.market_time_status is MarketTimeStatus.MARKET_TIME_UNRELIABLE:
+        return (
+            LiveDecisionCapability.LIVE_DECISION_DISABLED_MARKET_TIME_UNRELIABLE,
+            "market timestamp is not verified",
+        )
+    if latest_event.live_freshness_status is not LiveFreshnessStatus.LIVE_FRESHNESS_PASSED:
+        return (
+            LiveDecisionCapability.LIVE_DECISION_DISABLED_STALE_QUOTE,
+            "receive lag or collector age exceeded the freshness budget on arrival",
+        )
+
+    receive_lag = latest_event.receive_lag_seconds
+    if receive_lag is None or receive_lag < -tolerance or receive_lag > budget:
+        return (
+            LiveDecisionCapability.LIVE_DECISION_DISABLED_STALE_QUOTE,
+            f"receive lag {receive_lag!r}s outside the {budget}s budget",
+        )
+
+    received = latest_event.receive_timestamp_utc
+    if received is None or evaluated_at_utc is None:
+        return (
+            LiveDecisionCapability.LIVE_DECISION_DISABLED_COLLECTOR_FRESHNESS_UNAVAILABLE,
+            "no receive timestamp to age against",
+        )
+    age_now = (evaluated_at_utc - received).total_seconds()
+    if age_now < -tolerance:
+        return (
+            LiveDecisionCapability.LIVE_DECISION_DISABLED_COLLECTOR_FRESHNESS_UNAVAILABLE,
+            f"quote received {abs(age_now)}s in the future; clock is not trusted",
+        )
+    if age_now > budget:
+        return (
+            LiveDecisionCapability.LIVE_DECISION_DISABLED_STALE_QUOTE,
+            f"this symbol's last quote is {age_now:.1f}s old, over the {budget}s budget",
+        )
+
+    return (
+        LIVE_DECISION_ENABLED,
+        f"symbol quote is {age_now:.1f}s old within the {budget}s budget",
     )
 
 
