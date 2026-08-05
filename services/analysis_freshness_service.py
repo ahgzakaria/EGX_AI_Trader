@@ -205,7 +205,7 @@ def build_analysis_context(
     )
     permission = evaluate_overlay_permission(
         quote,
-        daily_symbol_current=daily.freshness_status is SymbolFreshness.CURRENT,
+        daily_symbol_current=daily.freshness_status == SymbolFreshness.CURRENT,
     )
 
     allowed = daily.eligible_for_current_analysis
