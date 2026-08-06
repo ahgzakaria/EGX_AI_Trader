@@ -868,6 +868,154 @@ def test_a_delta_is_never_derived_from_the_reconstruction_write_time(tmp_path):
     )
 
 
+def _live_row(state, when, *, ticker="AAA", or_identity="or-v1"):
+    return ShadowStateRecord(
+        session_date=DAY, canonical_ticker=ticker, opening_range_revision=0,
+        opening_range_version_identity=or_identity, final_state=state,
+        terminal=False, rejection_reasons=(), evidence_fingerprint="e",
+        candidate_identity="c", live_status=ShadowLiveStatus.LIVE_SHADOW_HEALTHY,
+        observed_at_utc=when, exchange_watermark_utc=when,
+        observed_receive_lag_seconds=1.0,
+    )
+
+
+def _replay_row(state, historical, *, ticker="AAA", or_identity="or-v1"):
+    return ShadowReconstructionRecord(
+        session_date=DAY, canonical_ticker=ticker, opening_range_revision=0,
+        opening_range_version_identity=or_identity, final_state=state,
+        terminal=False, rejection_reasons=(), evidence_fingerprint="e",
+        candidate_identity="c",
+        reconstructed_state_time_utc=historical,
+        reconstructed_time_status=(
+            ReconstructedTimeStatus.HISTORICAL_TIME_RECOVERED.value
+            if historical is not None
+            else ReconstructedTimeStatus.STATE_HAS_NO_HISTORICAL_INSTANT.value
+        ),
+    )
+
+
+def test_a_repeated_terminal_state_is_timed_from_its_first_row():
+    """The 2026-08-06 defect, pinned.
+
+    Lane A re-evaluates a symbol every cycle, so ENTRY_READY_RESEARCH was
+    re-recorded until 14:11:31 and the delta was read off that last row -
+    12,992 s for a setup live actually found 94 s after the historical bar.
+    """
+
+    from scalping_orb.shadow_service import OrbShadowService
+
+    historical = at(10, 35)
+    first, middle, last = at(10, 36, 33), at(11, 30), at(14, 11, 31)
+    live = [
+        _live_row("ENTRY_READY_RESEARCH", last),
+        _live_row("ENTRY_READY_RESEARCH", first),   # deliberately unordered
+        _live_row("ENTRY_READY_RESEARCH", middle),
+    ]
+    row = OrbShadowService().compare(
+        DAY, live, (_replay_row("ENTRY_READY_RESEARCH", historical),)
+    )[0]
+
+    assert row.lane_a_detection_time_utc == first
+    assert row.lane_a_detection_time_utc != last
+    assert row.detection_delta_seconds == pytest.approx(93.0)
+    assert row.detection_delta_seconds < 200, "a multi-hour delta is the defect"
+    assert row.timing_comparison_status == (
+        TimingComparisonStatus.TIMING_COMPARABLE.value
+    )
+
+
+def test_the_final_state_still_comes_from_the_last_row():
+    """Only the timestamp moved. The outcome is still what live ended on."""
+
+    from scalping_orb.shadow_service import OrbShadowService
+
+    live = [
+        _live_row("WAIT_BREAKOUT", at(10, 20)),
+        _live_row("ENTRY_READY_RESEARCH", at(11, 0)),
+        _live_row("ENTRY_EXPIRED", at(14, 5)),
+    ]
+    row = OrbShadowService().compare(
+        DAY, live, (_replay_row("ENTRY_EXPIRED", at(14, 0)),)
+    )[0]
+
+    assert row.live_state == "ENTRY_EXPIRED"
+    assert row.states_match is True
+
+
+def test_a_symbol_that_changes_state_is_timed_from_entering_its_final_state():
+    from scalping_orb.shadow_service import OrbShadowService
+
+    entered_final = at(12, 0)
+    live = [
+        _live_row("WAIT_BREAKOUT", at(10, 20)),
+        _live_row("WAIT_FIRST_PULLBACK", at(11, 0)),
+        _live_row("ENTRY_READY_RESEARCH", entered_final),
+        _live_row("ENTRY_READY_RESEARCH", at(13, 0)),
+        _live_row("ENTRY_READY_RESEARCH", at(14, 11)),
+    ]
+    row = OrbShadowService().compare(
+        DAY, live, (_replay_row("ENTRY_READY_RESEARCH", at(11, 58)),)
+    )[0]
+
+    assert row.live_state == "ENTRY_READY_RESEARCH"
+    assert row.lane_a_detection_time_utc == entered_final
+    assert row.detection_delta_seconds == pytest.approx(120.0)
+
+
+def test_an_earlier_visit_to_a_different_state_does_not_supply_the_time():
+    """A symbol that passed through a state and left it must not borrow it."""
+
+    from scalping_orb.shadow_service import OrbShadowService
+
+    live = [
+        _live_row("ENTRY_READY_RESEARCH", at(10, 30)),
+        _live_row("ENTRY_EXPIRED", at(14, 0)),
+    ]
+    row = OrbShadowService().compare(
+        DAY, live, (_replay_row("ENTRY_EXPIRED", at(13, 58)),)
+    )[0]
+
+    assert row.live_state == "ENTRY_EXPIRED"
+    assert row.lane_a_detection_time_utc == at(14, 0)
+    assert row.detection_delta_seconds == pytest.approx(120.0)
+
+
+def test_a_missing_lane_b_time_still_yields_the_typed_unavailable_status():
+    from scalping_orb.shadow_service import OrbShadowService
+
+    live = [
+        _live_row("ENTRY_READY_RESEARCH", at(10, 30)),
+        _live_row("ENTRY_READY_RESEARCH", at(14, 0)),
+    ]
+    row = OrbShadowService().compare(
+        DAY, live, (_replay_row("ENTRY_READY_RESEARCH", None),)
+    )[0]
+
+    assert row.lane_a_detection_time_utc == at(10, 30)
+    assert row.detection_delta_seconds is None
+    assert row.timing_comparison_status == (
+        TimingComparisonStatus.LANE_B_TIME_UNAVAILABLE.value
+    )
+
+
+def test_mismatched_states_remain_not_comparable_after_the_change():
+    from scalping_orb.shadow_service import OrbShadowService
+
+    live = [
+        _live_row("BREAKOUT_REJECTED_STALE", at(10, 30)),
+        _live_row("BREAKOUT_REJECTED_STALE", at(14, 0)),
+    ]
+    row = OrbShadowService().compare(
+        DAY, live, (_replay_row("ENTRY_READY_RESEARCH", at(10, 29)),)
+    )[0]
+
+    assert row.states_match is False
+    assert row.detection_delta_seconds is None
+    assert row.timing_comparison_status == (
+        TimingComparisonStatus.STATE_NOT_COMPARABLE.value
+    )
+
+
 def test_a_reconstruction_without_a_time_is_reported_not_estimated():
     from scalping_orb.shadow_service import OrbShadowService
 
