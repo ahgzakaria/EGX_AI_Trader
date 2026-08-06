@@ -873,11 +873,25 @@ class OrbShadowService:
         For Lane A the *last* observation of a symbol is its live outcome —
         earlier rows stay in the table as history, but the final observed state
         is what could have been known by the end.
+
+        **Detection time is a different question from final state.** Lane A
+        re-evaluates a symbol every cycle, so a terminal state is re-recorded
+        until the session ends: on 2026-08-06 the twelve matched
+        ``ENTRY_READY_RESEARCH`` symbols were all last seen at 14:11:31, which
+        made every delta 1,910-13,892 s. Those numbers measured how long the
+        state persisted, not when live found it. The detection instant is the
+        *earliest* observation at which the symbol entered the state it ended in.
         """
 
         latest_live: dict[str, ShadowStateRecord] = {}
+        #: (ticker, state) -> the first instant that symbol was seen in that
+        #: state. Populated in ascending time order, so the first write wins.
+        first_entered: dict[tuple[str, str], datetime] = {}
         for record in sorted(live, key=lambda item: item.observed_at_utc):
             latest_live[record.canonical_ticker] = record
+            first_entered.setdefault(
+                (record.canonical_ticker, record.final_state), record.observed_at_utc
+            )
         by_reconstruction = {
             record.canonical_ticker: record for record in reconstruction
         }
@@ -895,7 +909,9 @@ class OrbShadowService:
             )
             reason, evidence = classify_difference(a, b, revised)
             states_match = bool(a and b and live_state == recon_state)
-            lane_a_at = a.observed_at_utc if a else None
+            # The final state comes from the last row; its detection time comes
+            # from the first row that reported that same state.
+            lane_a_at = first_entered.get((ticker, live_state)) if a else None
             lane_b_at = b.reconstructed_state_time_utc if b else None
             delta, timing_status = timing_comparison(
                 lane_a_at, lane_b_at, states_match=states_match
