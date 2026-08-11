@@ -35,7 +35,7 @@ from scalping_orb.opening_range import OpeningRangeResult, OpeningRangeStatus
 from scalping_orb.session import OrbSessionPhase
 
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 PROTECTED_DATABASE_NAMES = frozenset(
     {
         "rubix_live_market.db",
@@ -777,6 +777,74 @@ ALTER TABLE orb_shadow_orchestrator_runs
     ADD COLUMN pipeline_completion_status TEXT;
 """
 
+MIGRATION_9 = """
+CREATE TABLE IF NOT EXISTS orb_signal_qualification (
+    live_state_id TEXT PRIMARY KEY
+        REFERENCES orb_shadow_live_states(live_state_id),
+    run_id TEXT NOT NULL REFERENCES orb_shadow_runs(run_id),
+    cycle_id TEXT NOT NULL REFERENCES orb_shadow_cycles(cycle_id),
+    session_date TEXT NOT NULL,
+    canonical_ticker TEXT NOT NULL,
+    detection_at_utc TEXT NOT NULL,
+    opening_range_version_identity TEXT NOT NULL,
+    evidence_fingerprint TEXT NOT NULL,
+    candidate_identity TEXT NOT NULL,
+    strategy_fingerprint TEXT NOT NULL,
+    engine_version TEXT NOT NULL,
+
+    trigger_price REAL,
+    proposed_stop REAL,
+    stop_basis TEXT,
+    raw_pullback_low REAL,
+    buffer_applied REAL,
+    buffer_basis TEXT,
+    stop_distance_absolute REAL,
+    stop_distance_percent REAL,
+    stop_distance_atr REAL,
+    risk_per_share REAL,
+
+    target_1 REAL,
+    target_2 REAL,
+    target_1_r_multiple REAL,
+    target_2_r_multiple REAL,
+    usable_target REAL,
+    effective_reward_risk REAL,
+    meets_minimum_reward_risk INTEGER
+        CHECK (meets_minimum_reward_risk IS NULL
+               OR meets_minimum_reward_risk IN (0,1)),
+
+    resistance_before_target_1 INTEGER
+        CHECK (resistance_before_target_1 IS NULL
+               OR resistance_before_target_1 IN (0,1)),
+    nearest_daily_resistance REAL,
+    reward_before_resistance REAL,
+    daily_resistance_status TEXT NOT NULL,
+
+    atr_value REAL,
+    atr_status TEXT NOT NULL,
+    atr_interval_minutes INTEGER,
+    atr_lookback_bars INTEGER,
+    atr_observed_bars INTEGER,
+
+    qualification_status TEXT NOT NULL,
+    qualification_schema_version INTEGER NOT NULL,
+    research_only INTEGER NOT NULL CHECK (research_only = 1),
+    generated_at_utc TEXT NOT NULL,
+
+    -- A stop at or above its own trigger is not a stop. The engine cannot
+    -- emit one (`STOP_NOT_BELOW_TRIGGER` blocks readiness), so this is a
+    -- persistence guard against a future writer, not a rule restated.
+    CHECK (proposed_stop IS NULL OR trigger_price IS NULL
+           OR proposed_stop < trigger_price),
+    -- An unavailable or warming-up ATR stores no number. A 0.0 here would
+    -- read downstream as "volatility was zero".
+    CHECK (atr_value IS NULL OR atr_status = 'INTRADAY_ATR_AVAILABLE')
+);
+
+CREATE INDEX IF NOT EXISTS idx_orb_signal_qualification_signal
+ON orb_signal_qualification(session_date, canonical_ticker, run_id);
+"""
+
 MIGRATIONS = {
     1: ("phase2a_initial", MIGRATION_1),
     2: ("phase2a_universe_membership", MIGRATION_2),
@@ -786,6 +854,7 @@ MIGRATIONS = {
     6: ("phase2c_full_shadow_run_controls", MIGRATION_6),
     7: ("phase2c_shadow_orchestrator", MIGRATION_7),
     8: ("phase2c_report_artifacts_and_timing", MIGRATION_8),
+    9: ("phase2c_signal_qualification_levels", MIGRATION_9),
 }
 
 
@@ -826,6 +895,27 @@ def _isoformat(moment) -> str | None:
 
 def _json(value) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def _optional_float(value) -> float | None:
+    """Coerce a number, or persist NULL. Never coerce absence into 0.0.
+
+    `float(None)` raises, so the tempting `float(value or 0.0)` reads as a
+    fix and is a data corruption: it makes "the engine had no ATR" and "the
+    engine measured zero" the same stored value.
+    """
+
+    return None if value is None else float(value)
+
+
+def _optional_int(value) -> int | None:
+    return None if value is None else int(value)
+
+
+def _optional_bool(value) -> int | None:
+    """Three-state on purpose: True, False, and "the engine never said"."""
+
+    return None if value is None else int(bool(value))
 
 
 def _execute_script_transactionally(
@@ -1904,6 +1994,12 @@ class OrbResearchRepository:
 
         Lane A rows are keyed on the cycle, so a later observation of the same
         symbol appends rather than overwrites. Live history stays immutable.
+
+        An emitted signal's stop and target levels ride along in the same
+        transaction and on the same key. Writing them separately would allow a
+        signal to exist without the levels it was qualified on — the exact
+        failure that left the first 34 signals unmeasurable — so the two either
+        commit together or neither exists.
         """
 
         now = _utc_now()
@@ -1968,9 +2064,94 @@ class OrbResearchRepository:
                         now,
                     ),
                 )
+                qualification = getattr(record, "qualification", None)
+                if qualification is not None:
+                    self._insert_signal_qualification(
+                        connection,
+                        live_state_id=row_id,
+                        run_id=run_id,
+                        cycle_id=cycle.cycle_id,
+                        record=record,
+                        qualification=qualification,
+                        now=now,
+                    )
             if cursor is not None:
                 self.save_shadow_cursor(run_id, cursor, connection=connection)
         return cycle.cycle_id
+
+    @staticmethod
+    def _insert_signal_qualification(
+        connection,
+        *,
+        live_state_id: str,
+        run_id: str,
+        cycle_id: str,
+        record,
+        qualification,
+        now: str,
+    ) -> None:
+        """Write one emitted signal's levels on the Lane A row's own identity.
+
+        `ON CONFLICT DO NOTHING` rather than `INSERT OR IGNORE`: both make a
+        repeated cycle idempotent, but `OR IGNORE` also swallows CHECK and
+        foreign-key violations, which would turn the schema's guarantees —
+        a stop below its trigger, no number under an unavailable ATR — into
+        silently skipped rows. Only a primary-key collision is ignored here.
+        """
+
+        connection.execute(
+            """INSERT INTO orb_signal_qualification VALUES
+               (?,?,?,?,?,?,?,?,?,?,?,
+                ?,?,?,?,?,?,?,?,?,?,
+                ?,?,?,?,?,?,?,
+                ?,?,?,?,
+                ?,?,?,?,?,
+                ?,?,?,?)
+               ON CONFLICT(live_state_id) DO NOTHING""",
+            (
+                live_state_id,
+                run_id,
+                cycle_id,
+                record.session_date.isoformat(),
+                record.canonical_ticker,
+                record.observed_at_utc.isoformat(),
+                record.opening_range_version_identity,
+                record.evidence_fingerprint,
+                record.candidate_identity,
+                qualification.strategy_fingerprint,
+                qualification.engine_version,
+                _optional_float(qualification.trigger_price),
+                _optional_float(qualification.proposed_stop),
+                qualification.stop_basis,
+                _optional_float(qualification.raw_pullback_low),
+                _optional_float(qualification.buffer_applied),
+                qualification.buffer_basis,
+                _optional_float(qualification.stop_distance_absolute),
+                _optional_float(qualification.stop_distance_percent),
+                _optional_float(qualification.stop_distance_atr),
+                _optional_float(qualification.risk_per_share),
+                _optional_float(qualification.target_1),
+                _optional_float(qualification.target_2),
+                _optional_float(qualification.target_1_r_multiple),
+                _optional_float(qualification.target_2_r_multiple),
+                _optional_float(qualification.usable_target),
+                _optional_float(qualification.effective_reward_risk),
+                _optional_bool(qualification.meets_minimum_reward_risk),
+                _optional_bool(qualification.resistance_before_target_1),
+                _optional_float(qualification.nearest_daily_resistance),
+                _optional_float(qualification.reward_before_resistance),
+                _enum_value(qualification.daily_resistance_status),
+                _optional_float(qualification.atr_value),
+                _enum_value(qualification.atr_status),
+                _optional_int(qualification.atr_interval_minutes),
+                _optional_int(qualification.atr_lookback_bars),
+                _optional_int(qualification.atr_observed_bars),
+                _enum_value(qualification.status),
+                int(qualification.schema_version),
+                1,
+                now,
+            ),
+        )
 
     def persist_shadow_reconstruction(self, run_id: str, records=()) -> int:
         """Lane B. Idempotent: an identical reconstruction inserts nothing."""
@@ -2639,6 +2820,7 @@ class OrbResearchRepository:
             "orb_shadow_orchestrator_leases",
             "orb_shadow_orchestrator_health",
             "orb_shadow_orchestrator_failures",
+            "orb_signal_qualification",
         }
         if table not in allowed:
             raise ValueError("Unsupported ORB table")

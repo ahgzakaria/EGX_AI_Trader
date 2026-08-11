@@ -56,6 +56,10 @@ from scalping_orb.liveness import (
     HEALTHY_NORMALIZATION,
     LivenessVerdict,
 )
+from scalping_orb.qualification import (
+    SignalQualification,
+    qualification_from_evaluation,
+)
 from scalping_orb.session import OrbSessionClassifier, require_aware
 from scalping_orb.shadow_snapshot import (
     BarFinality,
@@ -359,6 +363,13 @@ class ShadowStateRecord:
     observed_at_utc: datetime
     exchange_watermark_utc: datetime | None
     observed_receive_lag_seconds: float | None
+    #: The engine's stop and target levels for this observation, present only
+    #: when the state is `ENTRY_READY_RESEARCH`. Attached here rather than
+    #: persisted separately so the levels travel the existing path and commit
+    #: in the same transaction as the row they describe. Defaults to `None` so
+    #: every existing construction — including rows rebuilt from older
+    #: databases that predate the column — stays valid.
+    qualification: SignalQualification | None = None
 
 
 class ReconstructedTimeStatus(str, Enum):
@@ -739,6 +750,15 @@ class OrbShadowService:
                     ),
                     observed_receive_lag_seconds=(
                         snapshot.watermark.observed_receive_lag_seconds
+                    ),
+                    # Copied off the evaluation the engine just produced, so the
+                    # stored levels cannot differ from the ones the rules used.
+                    # The daily context is passed because the evaluation does not
+                    # carry it, and it is the only thing that separates "no D-1
+                    # data" from "D-1 data with nothing above the trigger".
+                    qualification=qualification_from_evaluation(
+                        evaluation,
+                        daily_context=snapshot.daily_context.get(ticker),
                     ),
                 )
             )
