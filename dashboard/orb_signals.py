@@ -44,6 +44,20 @@ def _rank(value):
     return str(value) if isinstance(value, int) else DASH
 
 
+def _spread(value):
+    return f"{value:.3f}%" if isinstance(value, (int, float)) else DASH
+
+
+def _percent_of(value):
+    return f"{value * 100:.0f}%" if isinstance(value, (int, float)) else DASH
+
+
+def _eligibility(value):
+    """Same-session tradability. UNKNOWN is shown as a question, not a yes."""
+
+    return {"ELIGIBLE": "yes", "NOT_ELIGIBLE": "NO"}.get(value, "?")
+
+
 def _signal_frame(report) -> pd.DataFrame:
     """One row per signal, in the column order a human reads left to right."""
 
@@ -63,6 +77,10 @@ def _signal_frame(report) -> pd.DataFrame:
             "T2": _price(signal.target_2),
             "Risk/Share": _price(signal.risk_per_share),
             "Eff R/R": _ratio(signal.effective_reward_risk),
+            "Spread %": _spread(signal.median_spread_percent),
+            "Net R/R": _ratio(signal.net_reward_risk),
+            "Spread/Risk": _percent_of(signal.spread_share_of_risk),
+            "T+0": _eligibility(signal.intraday_eligibility),
             "ATR": _price(signal.atr_value),
             "Qualification": signal.qualification_status,
             "Episodes": signal.episode_count,
@@ -141,6 +159,44 @@ def show_orb_signals() -> None:
 
     st.subheader("Signals")
     st.dataframe(_signal_frame(report), width="stretch", hide_index=True)
+    st.caption(
+        "**Spread %** is the median quoted bid/ask spread observed on Rubix "
+        "across the session — what the book looked like, not a guaranteed fill. "
+        "**Net R/R** is the engine's own reward/risk after crossing that spread "
+        "once on the round trip; the engine's `Eff R/R` is left untouched beside "
+        "it. **Spread/Risk** is the spread as a share of the engine's risk unit — "
+        "as it approaches 100% the cost of entering rivals the loss being risked. "
+        "**T+0** is same-session tradability: `?` means unknown, which is not the "
+        "same as yes. None of these four filter or rank anything."
+    )
+
+    priced = [s for s in report.signals if s.median_spread_percent is not None]
+    if priced:
+        expensive = sorted(
+            priced, key=lambda s: s.median_spread_percent, reverse=True
+        )[:3]
+        st.caption(
+            "Widest spreads this session: "
+            + " · ".join(
+                f"`{s.canonical_ticker}` {s.median_spread_percent:.2f}%"
+                for s in expensive
+            )
+        )
+
+    unknown_eligibility = [
+        s for s in report.signals if s.intraday_eligibility == "UNKNOWN"
+    ]
+    if unknown_eligibility:
+        st.warning(
+            f"**Same-session eligibility is unknown for "
+            f"{len(unknown_eligibility)} of {report.signal_count} signals.** "
+            "`data/universe/egx_intraday_eligibility.csv` ships empty on "
+            "purpose — the exchange decides which securities may be sold in the "
+            "session they were bought, and guessing that list would be worse "
+            "than admitting it is unknown. A signal on a security you cannot "
+            "close the same day is not a scalping signal. Fill the file in from "
+            "the exchange's own published list."
+        )
 
     st.subheader("Sector concentration")
     st.caption(

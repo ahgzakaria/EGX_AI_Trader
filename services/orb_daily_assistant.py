@@ -12,11 +12,13 @@ Hard properties:
   multiples, reward/risk and ATR are read from ``orb_signal_qualification`` —
   the values the engine itself produced — or reported as absent. Deriving them
   from bars afterwards would invent numbers the engine never used.
-* **Never writes to Rubix** and never opens it at all: signal evidence lives in
-  the session database, so this module has no reason to touch the live feed.
-* **Sector is context.** Enrichment happens after the signal is read and
-  changes nothing about it. An unmapped ticker renders UNKNOWN and is still
-  listed.
+* **Never writes to Rubix.** It does read it, `mode=ro`, for one purpose only:
+  the observed quote spread, so the reader can see what a setup costs to enter
+  and leave. That is a measurement of the book, not a fill.
+* **Sector, spread and eligibility are context.** All three are attached after
+  the signal is read and change nothing about it. Missing values render UNKNOWN
+  and the signal is still listed — dropping a real signal over absent display
+  metadata is the worse failure.
 * **No execution vocabulary.** There is no fill, no position, no order. Prices
   here are engine-proposed levels, not fills.
 
@@ -37,8 +39,14 @@ import re
 import sqlite3
 from zoneinfo import ZoneInfo
 
-from core.sector_context import SectorContext, sector_context
+from core.sector_context import (
+    SectorContext,
+    intraday_eligibility,
+    sector_context,
+)
+from scalping_orb.config import OrbDataConfig
 from scalping_orb.repository import PROTECTED_DATABASE_NAMES
+from scalping_orb.session import OrbSessionClassifier
 
 #: Lane A — the live-follow run. Matches ``signal_outcomes.LIVE_LANE_MODE``;
 #: reconstruction runs (``RECONSTRUCT``) are a separate lane and are not the
@@ -64,8 +72,34 @@ NOT_PERSISTED = "QUALIFICATION_NOT_PERSISTED"
 MISSING_FOR_SIGNAL = "QUALIFICATION_MISSING_FOR_SIGNAL"
 
 
+#: Quote spread was measured from Rubix for this session.
+SPREAD_OBSERVED = "OBSERVED"
+#: The symbol carried no usable two-sided quote in the session window.
+SPREAD_NO_QUOTES = "NO_TWO_SIDED_QUOTES"
+#: Rubix was not readable. Absence of a number, not a claim of zero cost.
+SPREAD_SOURCE_UNAVAILABLE = "SOURCE_UNAVAILABLE"
+
+
 class AssistantSourceUnavailable(RuntimeError):
     """The session evidence could not be read. Not raised for zero signals."""
+
+
+@dataclass(frozen=True)
+class SpreadObservation:
+    """Median quote spread for one symbol over one session.
+
+    This is an OBSERVED quote spread, not a guaranteed cost: it says what the
+    book looked like, not what a fill would have been. It is context for the
+    reader and never an input to the engine.
+    """
+
+    median_spread_percent: float | None
+    sample_count: int
+    status: str
+
+    @property
+    def available(self) -> bool:
+        return self.median_spread_percent is not None
 
 
 @dataclass(frozen=True)
@@ -100,9 +134,46 @@ class SignalRow:
     opening_range_version_identity: str = ""
     evidence_fingerprint: str = ""
 
+    # -- cost and tradability context (display only, never a gate) ----------
+    median_spread_percent: float | None = None
+    spread_sample_count: int = 0
+    spread_status: str = SPREAD_SOURCE_UNAVAILABLE
+    intraday_eligibility: str = "UNKNOWN"
+
     @property
     def has_levels(self) -> bool:
         return self.trigger_price is not None and self.proposed_stop is not None
+
+    @property
+    def net_reward_risk(self) -> float | None:
+        """Engine reward/risk after the round-trip spread. ``None`` if unknown."""
+
+        return net_reward_risk(
+            self.trigger_price,
+            self.proposed_stop,
+            self.usable_target if self.usable_target is not None else self.target_1,
+            self.median_spread_percent,
+        )
+
+    @property
+    def spread_cost_per_share(self) -> float | None:
+        if self.trigger_price is None or self.median_spread_percent is None:
+            return None
+        return self.trigger_price * (self.median_spread_percent / 100.0)
+
+    @property
+    def spread_share_of_risk(self) -> float | None:
+        """Round-trip spread as a fraction of the engine's own risk unit.
+
+        The number that decides whether a setup is worth taking at all: a
+        spread approaching the stop distance means the cost of entering rivals
+        the loss being risked.
+        """
+
+        cost = self.spread_cost_per_share
+        if cost is None or not self.risk_per_share:
+            return None
+        return cost / self.risk_per_share
 
     @property
     def first_detected_cairo(self) -> datetime | None:
@@ -192,6 +263,114 @@ def _connect_read_only(path: Path) -> sqlite3.Connection:
     connection.execute("PRAGMA query_only=ON")
     connection.execute("PRAGMA busy_timeout=30000")
     return connection
+
+
+def measure_session_spreads(session_date, tickers, rubix_db_path=None):
+    """Median quote spread per ticker over the session's continuous window.
+
+    Read-only against Rubix, using the `(ticker, market_timestamp)` index so
+    each symbol is an indexed range scan rather than a table scan. Any failure
+    — missing database, unreadable file, no two-sided quotes — yields a status
+    instead of an exception: a missing spread must never remove a signal from
+    the reader's view.
+    """
+
+    tickers = tuple(dict.fromkeys(tickers))
+    if not tickers:
+        return {}
+
+    if rubix_db_path is None:
+        try:
+            from providers.rubix_bridge_factory import rubix_db_path as configured
+
+            rubix_db_path = configured()
+        except Exception:
+            rubix_db_path = None
+
+    unavailable = {
+        ticker: SpreadObservation(None, 0, SPREAD_SOURCE_UNAVAILABLE)
+        for ticker in tickers
+    }
+    if not rubix_db_path or not Path(rubix_db_path).is_file():
+        return unavailable
+
+    window = OrbSessionClassifier(OrbDataConfig()).window(session_date)
+    low = window.continuous_start_utc.isoformat()
+    high = window.continuous_end_utc.isoformat()
+
+    try:
+        connection = sqlite3.connect(
+            f"file:{Path(rubix_db_path).resolve().as_posix()}?mode=ro",
+            uri=True, timeout=30,
+        )
+    except sqlite3.Error:
+        return unavailable
+
+    try:
+        connection.execute("PRAGMA query_only=ON")
+        connection.execute("PRAGMA busy_timeout=30000")
+        result = {}
+        for ticker in tickers:
+            try:
+                rows = connection.execute(
+                    """
+                    SELECT bid, ask FROM quotes
+                    WHERE ticker = ? AND market_timestamp >= ?
+                      AND market_timestamp <= ?
+                      AND bid > 0 AND ask > 0 AND ask >= bid
+                    """,
+                    (ticker, low, high),
+                ).fetchall()
+            except sqlite3.Error:
+                result[ticker] = SpreadObservation(None, 0, SPREAD_SOURCE_UNAVAILABLE)
+                continue
+            spreads = [
+                (ask - bid) / ((ask + bid) / 2.0) * 100.0
+                for bid, ask in rows
+                if (ask + bid) > 0
+            ]
+            if not spreads:
+                result[ticker] = SpreadObservation(None, 0, SPREAD_NO_QUOTES)
+                continue
+            spreads.sort()
+            middle = len(spreads) // 2
+            median = (
+                spreads[middle]
+                if len(spreads) % 2
+                else (spreads[middle - 1] + spreads[middle]) / 2.0
+            )
+            result[ticker] = SpreadObservation(median, len(spreads), SPREAD_OBSERVED)
+        return result
+    finally:
+        connection.close()
+
+
+def net_reward_risk(trigger, stop, target, spread_percent):
+    """Reward/risk after crossing the spread once, or ``None``.
+
+    Buying at the ask and leaving at the bid costs the full quoted spread over
+    the round trip — once, not twice. Modelled as widening the loss and
+    shrinking the gain by that same amount:
+
+        net = (target - trigger - spread) / (trigger - stop + spread)
+
+    Returns ``None`` when any input is missing, and when the spread has already
+    eaten the whole move — a non-positive net reward is reported as such by the
+    caller rather than as a negative ratio that reads like a small loss.
+    """
+
+    if None in (trigger, stop, target, spread_percent):
+        return None
+    risk = trigger - stop
+    reward = target - trigger
+    if risk <= 0 or reward <= 0:
+        return None
+    cost = trigger * (spread_percent / 100.0)
+    net_gain = reward - cost
+    net_loss = risk + cost
+    if net_loss <= 0:
+        return None
+    return net_gain / net_loss
 
 
 def _table_exists(connection: sqlite3.Connection, name: str) -> bool:
@@ -331,7 +510,9 @@ def _qualification_index(connection, run_id, available):
     return index
 
 
-def load_daily_report(database_path, sector_map_path=None) -> DailyAssistantReport:
+def load_daily_report(
+    database_path, sector_map_path=None, rubix_db_path=None
+) -> DailyAssistantReport:
     """Build the assistant view for one ORB session database."""
 
     path = Path(database_path)
@@ -359,10 +540,18 @@ def load_daily_report(database_path, sector_map_path=None) -> DailyAssistantRepo
             (run["run_id"], ENTRY_READY_STATE),
         ).fetchall()
 
+        session_day = session_date_of(path)
+        spreads = measure_session_spreads(
+            session_day, [row["canonical_ticker"] for row in rows], rubix_db_path
+        )
+        no_spread = SpreadObservation(None, 0, SPREAD_SOURCE_UNAVAILABLE)
+
         signals = []
         for row in rows:
             ticker = row["canonical_ticker"]
             context: SectorContext = sector_context(ticker, sector_map_path)
+            spread = spreads.get(ticker, no_spread)
+            eligibility = intraday_eligibility(ticker)
             qualification_row = qualification.get(ticker)
             if qualification_row is None:
                 status = MISSING_FOR_SIGNAL if qualification_available else NOT_PERSISTED
@@ -379,6 +568,10 @@ def load_daily_report(database_path, sector_map_path=None) -> DailyAssistantRepo
                     qualification_status=status,
                     opening_range_version_identity=str(row["or_identity"] or ""),
                     evidence_fingerprint=str(row["evidence_fingerprint"] or ""),
+                    median_spread_percent=spread.median_spread_percent,
+                    spread_sample_count=spread.sample_count,
+                    spread_status=spread.status,
+                    intraday_eligibility=eligibility,
                 ))
                 continue
 
@@ -408,6 +601,10 @@ def load_daily_report(database_path, sector_map_path=None) -> DailyAssistantRepo
                 daily_resistance_status=qualification_row["daily_resistance_status"],
                 opening_range_version_identity=str(row["or_identity"] or ""),
                 evidence_fingerprint=str(row["evidence_fingerprint"] or ""),
+                median_spread_percent=spread.median_spread_percent,
+                spread_sample_count=spread.sample_count,
+                spread_status=spread.status,
+                intraday_eligibility=eligibility,
             ))
 
         return DailyAssistantReport(

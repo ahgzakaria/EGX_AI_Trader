@@ -187,6 +187,81 @@ def _fallback_company_name(ticker: str) -> str:
         return ""
 
 
+#: Same-session (T+0) trading eligibility, maintained BY HAND from the
+#: exchange's own published list. It ships empty on purpose: EGX decides which
+#: securities may be sold in the session they were bought, that list changes,
+#: and guessing it would be worse than admitting ignorance — a wrong "eligible"
+#: reads as permission to take a trade that cannot be closed the same day.
+#: Every ticker therefore resolves to UNKNOWN until a real list is supplied.
+INTRADAY_ELIGIBILITY_SOURCE = "data/universe/egx_intraday_eligibility.csv"
+
+INTRADAY_ELIGIBLE = "ELIGIBLE"
+INTRADAY_NOT_ELIGIBLE = "NOT_ELIGIBLE"
+INTRADAY_UNKNOWN = "UNKNOWN"
+
+_TRUE_TOKENS = {"1", "true", "yes", "y", "eligible"}
+_FALSE_TOKENS = {"0", "false", "no", "n", "not_eligible", "ineligible"}
+
+
+def _load_intraday(path=None) -> dict[str, str]:
+    resolved = _resolve(path or INTRADAY_ELIGIBILITY_SOURCE)
+    key = f"intraday::{resolved}"
+    with _LOCK:
+        cached = _CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    index: dict[str, str] = {}
+    try:
+        text = resolved.read_text(encoding="utf-8-sig")
+    except OSError:
+        text = ""
+
+    if text:
+        for row in csv.DictReader(text.splitlines()):
+            ticker = canonical(row.get("canonical_ticker"))
+            if not ticker:
+                continue
+            token = str(row.get("intraday_eligible") or "").strip().lower()
+            if token in _TRUE_TOKENS:
+                index[ticker] = INTRADAY_ELIGIBLE
+            elif token in _FALSE_TOKENS:
+                index[ticker] = INTRADAY_NOT_ELIGIBLE
+            # Anything else stays absent, which reads as UNKNOWN.
+
+    with _LOCK:
+        _CACHE[key] = index
+    return index
+
+
+def intraday_eligibility(symbol, path=None) -> str:
+    """``ELIGIBLE`` / ``NOT_ELIGIBLE`` / ``UNKNOWN``. Never raises, never guesses.
+
+    UNKNOWN is the honest default and is not a synonym for eligible. It is
+    display context only: it filters nothing and gates nothing.
+    """
+
+    ticker = canonical(symbol)
+    if not ticker:
+        return INTRADAY_UNKNOWN
+    return _load_intraday(path).get(ticker, INTRADAY_UNKNOWN)
+
+
+def intraday_eligibility_provenance(path=None) -> dict:
+    """How much of the eligibility list is actually populated."""
+
+    resolved = _resolve(path or INTRADAY_ELIGIBILITY_SOURCE)
+    index = _load_intraday(path)
+    return {
+        "path": str(resolved),
+        "available": bool(index),
+        "eligible_count": sum(1 for v in index.values() if v == INTRADAY_ELIGIBLE),
+        "not_eligible_count": sum(
+            1 for v in index.values() if v == INTRADAY_NOT_ELIGIBLE
+        ),
+    }
+
+
 def sector_map_provenance(path=None) -> dict:
     """Where the loaded map came from, for a status caption."""
 

@@ -421,6 +421,126 @@ def test_no_execution_or_fill_vocabulary_is_introduced():
         assert term not in page, f"orb_signals page contains {term!r}"
 
 
+# --- spread cost is modelled honestly ---------------------------------
+
+def test_round_trip_spread_is_charged_once_not_twice():
+    """Buying at the ask and leaving at the bid crosses the spread ONCE.
+
+    Charging it twice would overstate the cost of every setup by a factor of
+    two and make tight names look untradeable.
+    """
+
+    trigger, stop, target = 37.5, 36.9, 38.7      # gross reward/risk = 2.0
+    spread_percent = 1.0
+    cost = trigger * 0.01
+
+    expected = (target - trigger - cost) / (trigger - stop + cost)
+    assert assistant.net_reward_risk(
+        trigger, stop, target, spread_percent
+    ) == pytest.approx(expected)
+
+
+def test_zero_spread_leaves_reward_risk_unchanged():
+    assert assistant.net_reward_risk(37.5, 36.9, 38.7, 0.0) == pytest.approx(2.0)
+
+
+def test_wider_spread_lowers_net_reward_risk_monotonically():
+    values = [
+        assistant.net_reward_risk(37.5, 36.9, 38.7, s)
+        for s in (0.0, 0.1, 0.5, 0.8)
+    ]
+    assert values == sorted(values, reverse=True)
+    assert all(v is not None for v in values)
+
+
+@pytest.mark.parametrize("args", [
+    (None, 36.9, 38.7, 0.1),          # no trigger
+    (37.5, None, 38.7, 0.1),          # no stop
+    (37.5, 36.9, None, 0.1),          # no target
+    (37.5, 36.9, 38.7, None),         # spread unknown
+    (37.5, 37.5, 38.7, 0.1),          # non-positive risk
+    (37.5, 36.9, 37.5, 0.1),          # non-positive reward
+])
+def test_net_reward_risk_is_none_when_it_cannot_be_known(args):
+    """An unknown cost must read as unknown, never as a free trade."""
+
+    assert assistant.net_reward_risk(*args) is None
+
+
+def test_missing_spread_does_not_silently_become_the_gross_ratio(tmp_path, sector_map):
+    database = tmp_path / "orb_full_shadow_2026-08-12.db"
+    _build_session(database, with_qualification=True)
+    report = load_daily_report(
+        database, sector_map_path=sector_map, rubix_db_path=tmp_path / "absent.db"
+    )
+    signal = next(s for s in report.signals if s.canonical_ticker == "MFPC")
+
+    assert signal.spread_status == assistant.SPREAD_SOURCE_UNAVAILABLE
+    assert signal.median_spread_percent is None
+    assert signal.net_reward_risk is None
+    # the engine's own number survives untouched beside the missing one
+    assert signal.effective_reward_risk == pytest.approx(2.0)
+
+
+def test_unreadable_rubix_never_drops_a_signal(tmp_path, sector_map):
+    database = tmp_path / "orb_full_shadow_2026-08-12.db"
+    _build_session(database, with_qualification=False)
+    report = load_daily_report(
+        database, sector_map_path=sector_map, rubix_db_path=tmp_path / "nope.db"
+    )
+    assert [s.canonical_ticker for s in report.signals] == ["MFPC", "JUFO"]
+
+
+def test_spread_does_not_alter_persisted_qualification(tmp_path, sector_map):
+    """Spread is context. It must not perturb a single engine level."""
+
+    database = tmp_path / "orb_full_shadow_2026-08-12.db"
+    _build_session(database, with_qualification=True)
+
+    without = load_daily_report(
+        database, sector_map_path=sector_map, rubix_db_path=tmp_path / "absent.db"
+    )
+    signal = next(s for s in without.signals if s.canonical_ticker == "MFPC")
+    assert (signal.trigger_price, signal.proposed_stop, signal.target_1,
+            signal.target_2, signal.effective_reward_risk) == (
+        pytest.approx(37.5), pytest.approx(36.9), pytest.approx(38.7),
+        pytest.approx(39.3), pytest.approx(2.0),
+    )
+
+
+# --- same-session eligibility is never guessed ------------------------
+
+def test_intraday_eligibility_defaults_to_unknown_not_eligible(tmp_path):
+    """An empty list must not read as permission to trade."""
+
+    empty = tmp_path / "egx_intraday_eligibility.csv"
+    empty.write_text("canonical_ticker,intraday_eligible\n", encoding="utf-8")
+    assert sector_module.intraday_eligibility("MFPC", empty) == "UNKNOWN"
+    assert sector_module.intraday_eligibility("ANYTHING", empty) == "UNKNOWN"
+
+
+def test_intraday_eligibility_reads_an_explicit_list(tmp_path):
+    listed = tmp_path / "egx_intraday_eligibility.csv"
+    listed.write_text(
+        "canonical_ticker,intraday_eligible\n"
+        "MFPC,yes\nAREH,no\nJUFO,maybe\n",
+        encoding="utf-8",
+    )
+    assert sector_module.intraday_eligibility("MFPC", listed) == "ELIGIBLE"
+    assert sector_module.intraday_eligibility("AREH", listed) == "NOT_ELIGIBLE"
+    # An unrecognised token is not a yes.
+    assert sector_module.intraday_eligibility("JUFO", listed) == "UNKNOWN"
+
+
+def test_shipped_eligibility_file_asserts_nothing(tmp_path):
+    """The file in the repository must not claim any ticker is tradable."""
+
+    provenance = sector_module.intraday_eligibility_provenance()
+    assert provenance["eligible_count"] == 0, (
+        "the shipped list must stay empty until a real exchange list is loaded"
+    )
+
+
 # --- session-directory resolution is deterministic --------------------
 
 def test_session_directory_precedence_is_explicit_then_env_then_default(
