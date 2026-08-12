@@ -14,11 +14,7 @@ from dashboard.backtest_state import (
 )
 from dashboard.ai_stock_analysis import show_ai_stock_analysis
 from dashboard.home import show_dashboard, show_stock_details_page
-from dashboard.scalping import (
-    show_active_scalping_trades,
-    show_scalping_dashboard,
-    show_scalping_history,
-)
+from dashboard.orb_signals import show_orb_signals
 from dashboard.settings import show_settings
 from dashboard.system_health import show_system_health
 from dashboard.ui import apply_global_style, sidebar_brand
@@ -44,10 +40,19 @@ navigation = st.navigation({
         st.Page(show_watchlist, title="Watchlist", icon="⭐"),
         st.Page(show_stock_details_page, title="Stock Details", icon="🔎"),
     ],
+    # The legacy scalping pages (Scalping Dashboard / Active Trades / History,
+    # backed by `scalping/`, `scalping_expected_range/` and
+    # `scalping_uptrend_pullback/`) are retired from navigation. Their code and
+    # research databases are intentionally left in place: this is a reversible
+    # first step, and removing ~19k lines that two `core`/`services` modules
+    # still import is a separate, deliberate change.
     "SCALPING": [
-        st.Page(show_scalping_dashboard, title="Scalping Dashboard", icon="⚡"),
-        st.Page(show_active_scalping_trades, title="Active Trades", icon="📍"),
-        st.Page(show_scalping_history, title="History", icon="🗂️"),
+        st.Page(
+            show_orb_signals,
+            title="ORB Signals",
+            icon="🎯",
+            url_path="orb-signals",
+        ),
     ],
     "RESEARCH & SYSTEM": [
         # Compatibility name used by integration tests: AI Stock Analysis.

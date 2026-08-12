@@ -86,11 +86,24 @@ def test_schema_normalization_preserves_exact_ohlcv_values():
     assert result.iloc[-1]["Close"] == source.iloc[-1]["close"]
 
 
-def test_default_routes_use_rubix_live_and_yahoo_backtest():
+def test_default_routes_use_rubix_live_and_eodhd_history():
+    """Rubix owns every live route; EODHD owns history. Yahoo owns nothing.
+
+    Rubix cannot take the historical route as well: it holds only a few weeks
+    of intraday data, far short of what daily indicators and backtests read.
+    """
+
     assert routing.provider_name_for("scanner") == "rubix"
     assert routing.provider_name_for("dashboard") == "rubix"
     assert routing.provider_name_for("forward_testing") == "rubix"
-    assert routing.provider_name_for("backtest") == "yahoo"
+    assert routing.provider_name_for("backtest") == "eodhd"
+
+
+def test_yahoo_is_not_routed_anywhere():
+    """The operational rule, pinned: no route may resolve to Yahoo."""
+
+    for route in ("scanner", "dashboard", "forward_testing", "backtest"):
+        assert routing.provider_name_for(route) != "yahoo", route
 
 
 def test_schema_validation_rejects_missing_volume():

@@ -86,11 +86,13 @@ def test_eodhd_rejects_missing_key_intraday_and_invalid_candles():
         bad.load_history("COMI.CA", "10y", "1d")
 
 
-def test_eodhd_is_registered_but_default_routing_is_unchanged(monkeypatch):
+def test_eodhd_owns_history_while_rubix_keeps_every_live_route(monkeypatch):
     routing.reset_provider_instances()
     providers = routing._provider_instances()
     assert "eodhd" in providers
-    assert routing.provider_name_for("backtest") == "yahoo"
+    assert routing.provider_name_for("backtest") == "eodhd"
+    # EODHD publishes a completed session a day late, so it must never take a
+    # live route — those stay on Rubix.
     assert routing.provider_name_for("scanner") != "eodhd"
     assert routing.provider_name_for("dashboard") != "eodhd"
     assert routing.provider_name_for("forward_testing") != "eodhd"

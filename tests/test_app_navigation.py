@@ -42,17 +42,27 @@ def test_every_navigation_icon_is_accepted_by_streamlit():
 
 
 def test_primary_navigation_is_the_simplified_trader_workflow():
+    """ORB Signals is the only scalping route.
+
+    The legacy scalping pages were retired from navigation; their code still
+    exists but is no longer a way in.
+    """
+
     assert _page_titles() == [
         "Daily Dashboard",
         "Watchlist",
         "Stock Details",
-        "Scalping Dashboard",
-        "Active Trades",
-        "History",
+        "ORB Signals",
         "AI Analysis",
         "System Health",
         "Settings",
     ]
+
+
+def test_retired_scalping_pages_are_not_navigable():
+    titles = _page_titles()
+    for retired in ("Scalping Dashboard", "Active Trades", "History"):
+        assert retired not in titles
 
 
 def test_overlapping_scalping_pages_are_not_primary_routes():

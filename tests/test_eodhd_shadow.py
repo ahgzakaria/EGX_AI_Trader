@@ -118,7 +118,15 @@ def test_yahoo_only_mode_active_yahoo(monkeypatch):
     assert provider_mode.active_historical_provider() == "yahoo"
 
 
-def test_configured_mode_is_shadow():
-    # the shipped config must be EODHD_SHADOW with Yahoo still active
-    assert provider_mode.current_mode() == provider_mode.EODHD_SHADOW
-    assert provider_mode.active_historical_provider() == "yahoo"
+def test_configured_mode_is_eodhd_and_yahoo_is_not_operational():
+    """The shadow period is over: EODHD is the live historical provider.
+
+    The guard that matters is the second assertion. Shadow mode was a staging
+    state; "Yahoo never feeds a decision" is the permanent rule, so that is
+    what this test pins.
+    """
+
+    assert provider_mode.current_mode() == provider_mode.EODHD_ONLY
+    assert provider_mode.active_historical_provider() == "eodhd"
+    assert provider_mode.active_historical_provider() != "yahoo"
+    assert not provider_mode.is_shadow()
