@@ -129,7 +129,7 @@ def test_historical_backtest_provider_stays_yahoo_in_every_tier():
             assert e["historical_backtest_provider"] == "yahoo"
 
 
-def test_historical_provider_is_eodhd_never_yahoo():
+def test_frozen_provider_and_mode_unchanged():
     from providers.provider_mode import active_historical_provider, current_mode
-    assert current_mode() == "EODHD_ONLY"
-    assert active_historical_provider() == "eodhd"
+    assert current_mode() == "EODHD_SHADOW"
+    assert active_historical_provider() == "yahoo"

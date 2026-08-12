@@ -2,8 +2,8 @@
     "scanner_provider": "rubix",
     "dashboard_provider": "rubix",
     "forward_testing_provider": "rubix",
-    "backtest_provider": "eodhd",
-    "fallback_provider": "eodhd",
+    "backtest_provider": "yahoo",
+    "fallback_provider": "yahoo",
     "market_data": {
         "cache_path": "data/market_data_cache.sqlite",
         "cache_source_provider": "rubix",
@@ -211,8 +211,8 @@
         }
     },
     "provider_mode": {
-        "mode": "EODHD_ONLY",
-        "active_historical": "eodhd",
-        "note": "LIVE. Rubix is the operational intraday source (scanner/dashboard/forward testing all read it). EODHD supplies daily history, backtests and the fallback tier. Yahoo no longer participates in any operational path. Rubix cannot replace EODHD for history: it holds roughly 22 trading days, far short of what daily indicators and backtests need."
+        "mode": "EODHD_SHADOW",
+        "active_historical": "yahoo",
+        "note": "SHADOW ONLY. Yahoo remains the historical data used by every strategy decision; Rubix remains the live intraday provider. EODHD is fetched separately for comparison and does NOT participate in provider selection. Do not switch until the shadow validation report is reviewed. Switching this flag alone does NOT move history to EODHD: data/eodhd/historical_symbol_routing.json is active=false with all 265 symbols approved=false, so research_router answers 'EODHD unsupported' and every symbol is skipped."
     }
 }
