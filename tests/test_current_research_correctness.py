@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 import json
+from datetime import date
 from pathlib import Path
 
 import core.local_rubix_history as lrh
@@ -308,6 +309,17 @@ def test_kzpc_regression_short_window_event_flagged():
     frame = pd.DataFrame([{"Date": pd.to_datetime(r["date"]).date(), "Open": r["open"],
                            "High": r["high"], "Low": r["low"], "Close": r["close"],
                            "Volume": r.get("volume", 0)} for r in rows])
+    # The lookback window is the last 30 bars OF THE SUPPLIED FRAME, so feeding
+    # the full history makes the answer depend on today's date: the 2026-06-25
+    # split silently ages out of the window and the assertion below flips. Cut
+    # the frame at a fixed date so the regression under test — an unresolved
+    # split INSIDE the window must flag the volume — is what actually gets
+    # exercised, on any day this runs.
+    frame = frame[frame["Date"] <= date(2026, 7, 20)].reset_index(drop=True)
+    sessions_after_split = (frame["Date"] > date(2026, 6, 25)).sum()
+    assert sessions_after_split < vol.DEFAULT_VOLUME_LOOKBACK_SESSIONS, (
+        "the fixed cutoff must keep the split inside the lookback window"
+    )
     adjusted = adjust(frame, splits).frame
     served, meta = vol.resolve_operational_volume("KZPC", adjusted["Date"],
                                                   adjusted["Raw Volume"], splits)

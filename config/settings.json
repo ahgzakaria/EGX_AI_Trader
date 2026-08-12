@@ -7,7 +7,7 @@
     "market_data": {
         "cache_path": "data/market_data_cache.sqlite",
         "cache_source_provider": "rubix",
-        "rubix_db_path": "D:\\EGX_AI_Trader\\data\\rubix_live_market.db",
+        "rubix_db_path": "F:\\EGX_AI_Trader\\data\\rubix_live_market.db",
         "rubix_quote_stale_seconds": 60,
         "rubix_bar_stale_seconds": 120,
         "rubix_subscription_batch_size": 100,
