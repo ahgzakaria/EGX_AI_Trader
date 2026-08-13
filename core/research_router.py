@@ -437,7 +437,7 @@ def eodhd_history(symbol, *, min_bars=250, force_refresh=False, client=None,
 
 
 def local_plus_rubix_history(symbol, *, period="10y", interval="1d", min_bars=250,
-                             bridge_cache=None):
+                             bridge_cache=None, not_after=None):
     """Frozen Yahoo seed + REAL Rubix Daily Bridge append, with an honest readiness gate.
 
     Returns a canonical frame whose ``attrs['market_data']`` carries full seed/bridge
@@ -450,7 +450,8 @@ def local_plus_rubix_history(symbol, *, period="10y", interval="1d", min_bars=25
 
     base = _base(symbol)
     frame, prov = build_local_rubix_history(base, period=period, interval=interval,
-                                            bridge_cache=bridge_cache)
+                                            bridge_cache=bridge_cache,
+                                            not_after=not_after)
     if frame is None:
         raise ResearchDataUnavailable(base, DATA_UNAVAILABLE,
                                       "no validated local seed and EODHD unsupported")
@@ -574,7 +575,7 @@ def get_current_research_history(symbol, *, period="10y", interval="1d", min_bar
                          "bridge_skipped": "UNRESOLVED_CORPORATE_ACTION_IN_WINDOW",
                          "bridge_skipped_action_date": str(action)[:10]}
         else:
-            frame, bridge_md = append_bridge_bars(frame, base)
+            frame, bridge_md = append_bridge_bars(frame, base, not_after=expected)
         if bridge_md["bridge_sessions_appended"]:
             # The tail is raw and the body is split-adjusted. That is safe only
             # while no corporate action falls inside the appended window, which
@@ -590,7 +591,8 @@ def get_current_research_history(symbol, *, period="10y", interval="1d", min_bar
     else:
         # EODHD-unsupported / manual: frozen Yahoo seed + REAL Rubix Daily Bridge.
         frame, state, local_md = local_plus_rubix_history(
-            base, period=period, interval=interval, min_bars=min_bars)
+            base, period=period, interval=interval, min_bars=min_bars,
+            not_after=expected)
         provider, series = "local_plus_rubix", "PROJECT_LOCAL_SEED_PLUS_RUBIX"
         effective = pd.Timestamp(frame.index[-1]).date()
         fresh = {"status": local_md.get("freshness_status"), "lag": local_md.get("session_lag")}

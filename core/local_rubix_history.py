@@ -110,7 +110,7 @@ def default_bridge_cache():
         return None
 
 
-def append_bridge_bars(frame, symbol, *, cache=None):
+def append_bridge_bars(frame, symbol, *, cache=None, not_after=None):
     """Append REAL Rubix bridge sessions after ``frame``'s last date.
 
     Shared by both history paths: the frozen-seed path for EODHD-unsupported
@@ -128,6 +128,14 @@ def append_bridge_bars(frame, symbol, *, cache=None):
     * **FINAL only.** ``FINAL`` / ``FINAL_CONTINUOUS`` bars, nothing partial.
     * **no cache, no change.** ``frame`` is returned untouched, so an absent or
       broken cache can never degrade an otherwise good history.
+    * **never past ``not_after``.** The tail fills the gap up to the session the
+      daily guard expects; it must not run ahead of it. Rubix finalizes a
+      session as soon as the auction closes, while the guard only advances its
+      expected session after a settlement grace, so for those two hours Rubix
+      legitimately holds a session the guard still considers unpublished.
+      Appending it made the guard reject 186 of 241 symbols with
+      SKIPPED_FUTURE_DAILY_DATE — symbols that had been fine before the tail
+      existed. Filling a gap is the job; getting ahead is a regression.
 
     Returns ``(frame, provenance)``. ``frame`` is a copy whenever anything was
     appended, and the original object otherwise.
@@ -154,6 +162,11 @@ def append_bridge_bars(frame, symbol, *, cache=None):
 
     last = pd.Timestamp(frame.index[-1])
     rows = _bridge_rows_after(base, last.date().isoformat(), cache)
+    if not_after is not None:
+        ceiling = pd.Timestamp(not_after)
+        withheld = [r for r in rows if r["session_date"] > ceiling]
+        rows = [r for r in rows if r["session_date"] <= ceiling]
+        provenance["bridge_sessions_withheld_ahead"] = len(withheld)
     provenance["bridge_available_sessions"] = len(rows)
     if not rows:
         return frame, provenance
@@ -202,7 +215,7 @@ def _bar_conflicts(existing, incoming):
 
 
 def build_local_rubix_history(symbol, *, period="10y", interval="1d",
-                              bridge_cache=None):
+                              bridge_cache=None, not_after=None):
     """Return (frame, provenance) for an EODHD-unsupported symbol.
 
     ``frame`` is the canonical OHLCV contract (DatetimeIndex named 'Date'); it is
@@ -238,7 +251,8 @@ def build_local_rubix_history(symbol, *, period="10y", interval="1d",
                 seed_latest_session=seed_latest.date().isoformat(),
                 seed_rows=int(len(frame)))
 
-    frame, bridge = append_bridge_bars(frame, base, cache=bridge_cache)
+    frame, bridge = append_bridge_bars(
+        frame, base, cache=bridge_cache, not_after=not_after)
     appended = bridge["bridge_sessions_appended"]
     prov.update(
         bridge_available_sessions=bridge["bridge_available_sessions"],

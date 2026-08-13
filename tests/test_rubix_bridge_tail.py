@@ -184,6 +184,52 @@ def test_no_provider_last_session_never_blocks():
     assert bridge_tail_blocked("2026-08-13", None) is False
 
 
+def test_the_tail_never_runs_ahead_of_the_expected_session():
+    """Filling a gap is the job; getting ahead of the guard is a regression.
+
+    Rubix finalizes a session the moment the auction closes, while the daily
+    guard only advances its expected session after a settlement grace. For
+    those two hours Rubix legitimately holds a session the guard still treats
+    as unpublished — and appending it made the guard reject 186 of 241 symbols
+    with SKIPPED_FUTURE_DAILY_DATE, symbols that were fine before the tail
+    existed.
+    """
+
+    frame = _frame(["2026-08-11"], [37.5])
+    cache = StubCache([_bar("2026-08-12", close=38.2),
+                       _bar("2026-08-13", close=38.9)])
+
+    result, provenance = append_bridge_bars(
+        frame, "MFPC", cache=cache, not_after="2026-08-12"
+    )
+
+    assert provenance["bridge_sessions_appended"] == 1
+    assert provenance["bridge_sessions_withheld_ahead"] == 1
+    assert result.index[-1].date().isoformat() == "2026-08-12"
+
+
+def test_no_ceiling_appends_everything_available():
+    frame = _frame(["2026-08-11"], [37.5])
+    cache = StubCache([_bar("2026-08-12", close=38.2),
+                       _bar("2026-08-13", close=38.9)])
+
+    _result, provenance = append_bridge_bars(frame, "MFPC", cache=cache)
+    assert provenance["bridge_sessions_appended"] == 2
+
+
+def test_a_ceiling_that_excludes_everything_leaves_the_frame_alone():
+    frame = _frame(["2026-08-11"], [37.5])
+    cache = StubCache([_bar("2026-08-12", close=38.2)])
+
+    result, provenance = append_bridge_bars(
+        frame, "MFPC", cache=cache, not_after="2026-08-11"
+    )
+
+    assert result is frame
+    assert provenance["bridge_sessions_appended"] == 0
+    assert provenance["bridge_sessions_withheld_ahead"] == 1
+
+
 def test_provenance_names_the_appended_sessions():
     """A report must be able to say which bar came from which source."""
 
