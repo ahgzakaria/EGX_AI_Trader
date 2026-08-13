@@ -130,12 +130,12 @@ class RubixDailyAggregator:
         """
 
         mapped = to_rubix_symbol(symbol)
-        minutes = self._load_symbol_minutes(mapped)
+        minutes = self._load_symbol_minutes(mapped, after=after)
         results: list[DailyCandleResult] = []
         if minutes.empty:
             return results
 
-        quote_cumulative = self._load_symbol_quote_volume(mapped)
+        quote_cumulative = self._load_symbol_quote_volume(mapped, after=after)
         for trading_date, session_rows in minutes.groupby(minutes.index.map(lambda t: t.date())):
             if after is not None and trading_date <= after:
                 continue
@@ -289,15 +289,35 @@ class RubixDailyAggregator:
 
     # -- read-only DB access ----------------------------------------------
 
-    def _load_symbol_minutes(self, mapped):
+    def _load_symbol_minutes(self, mapped, *, after=None):
+        """Minute bars for one symbol, optionally only after a Cairo date.
+
+        Two things keep this off a full table scan of a multi-gigabyte table:
+
+        * the ticker is compared bare, not through ``UPPER()``. Wrapping the
+          column in a function makes SQLite ignore the ``(ticker, minute)``
+          index and read every row — which cost ~45-60s per symbol, roughly
+          four hours for the universe. Rubix stores tickers upper-cased (all
+          265 in both tables), so the comparison is equivalent.
+        * ``after`` is pushed into SQL rather than filtered in Python, so an
+          incremental append reads only the sessions it is going to keep.
+
+        The bound is deliberately loose — ``minute`` is stored as text and the
+        caller re-derives the Cairo date anyway — so a timezone edge can never
+        drop a session that belongs in the result.
+        """
+
         if not self.available():
             return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+        sql = ("SELECT minute, open, high, low, close, volume FROM candles_1m "
+               "WHERE ticker=?")
+        params = [mapped.upper()]
+        if after is not None:
+            sql += " AND minute >= ?"
+            params.append(after.isoformat())
+        sql += " ORDER BY minute"
         with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT minute, open, high, low, close, volume FROM candles_1m "
-                "WHERE UPPER(ticker)=? ORDER BY minute",
-                (mapped.upper(),),
-            ).fetchall()
+            rows = connection.execute(sql, params).fetchall()
         if not rows:
             return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
         frame = pd.DataFrame(
@@ -308,17 +328,24 @@ class RubixDailyAggregator:
         frame = frame[~frame.index.isna()]
         return frame.sort_index()
 
-    def _load_symbol_quote_volume(self, mapped):
-        """Return {Cairo date -> MAX cumulative quote volume} for the symbol."""
+    def _load_symbol_quote_volume(self, mapped, *, after=None):
+        """Return {Cairo date -> MAX cumulative quote volume} for the symbol.
+
+        Same index and date-bound reasoning as :meth:`_load_symbol_minutes`;
+        ``quotes`` is the larger of the two tables, so the scan mattered more
+        here.
+        """
 
         if not self.available():
             return {}
+        sql = ("SELECT market_timestamp, volume FROM quotes "
+               "WHERE ticker=? AND volume IS NOT NULL")
+        params = [mapped.upper()]
+        if after is not None:
+            sql += " AND market_timestamp >= ?"
+            params.append(after.isoformat())
         with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT market_timestamp, volume FROM quotes "
-                "WHERE UPPER(ticker)=? AND volume IS NOT NULL",
-                (mapped.upper(),),
-            ).fetchall()
+            rows = connection.execute(sql, params).fetchall()
         result: dict[date, float] = {}
         for stamp, volume in rows:
             ts = _to_cairo_timestamp(stamp)
