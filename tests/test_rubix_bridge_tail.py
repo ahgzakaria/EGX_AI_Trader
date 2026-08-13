@@ -153,6 +153,37 @@ def test_empty_frame_is_returned_unchanged():
     assert provenance["bridge_sessions_appended"] == 0
 
 
+@pytest.mark.parametrize("action_date,blocked", [
+    ("2006-04-11", False),   # long resolved into everything EODHD publishes
+    ("2017-11-09", False),
+    ("2025-06-01", False),   # still before the provider's last bar
+    ("2026-08-12", True),    # on the boundary: the appended window starts here
+    ("2026-08-13", True),    # inside the appended window
+    (None, False),           # no unresolved action at all
+])
+def test_only_an_action_inside_the_append_window_withholds_the_tail(
+    action_date, blocked
+):
+    """An old adjustment cannot reach a bar appended for the current session.
+
+    The first version of this guard skipped the tail whenever a symbol had any
+    unresolved action on record. That withheld it from 8 of 209 EODHD symbols
+    over actions dated 2006-2025 — an adjustment already propagated backwards
+    through the published series, against a bridge bar quoted on the current
+    basis. The two agree; only an action inside the window can split them.
+    """
+
+    from core.research_router import bridge_tail_blocked
+
+    assert bridge_tail_blocked(action_date, "2026-08-12") is blocked
+
+
+def test_no_provider_last_session_never_blocks():
+    from core.research_router import bridge_tail_blocked
+
+    assert bridge_tail_blocked("2026-08-13", None) is False
+
+
 def test_provenance_names_the_appended_sessions():
     """A report must be able to say which bar came from which source."""
 

@@ -80,6 +80,25 @@ def symbol_tier(symbol):
     return (entry or {}).get("tier", "TIER_D_UNSUPPORTED_OR_MANUAL")
 
 
+def bridge_tail_blocked(action_date, provider_last_session):
+    """True when an unresolved corporate action falls inside the appended window.
+
+    The window starts at ``provider_last_session`` — the last bar the owning
+    provider published — and runs to the newest bridge session. An action
+    earlier than that is already propagated backwards through the published
+    series, and the bridge bar is quoted on the current basis, so the two
+    agree and the tail is safe.
+
+    Blocking on any unresolved action regardless of date withheld the tail
+    from 8 of 209 EODHD symbols over actions dated 2006 to 2025, none of which
+    could reach a bar appended for the current session.
+    """
+
+    if not action_date or not provider_last_session:
+        return False
+    return str(action_date)[:10] >= str(provider_last_session)[:10]
+
+
 def unresolved_action_date(symbol):
     """Latest corporate action whose split/bonus convention is NOT cleanly resolved."""
     try:
@@ -541,11 +560,19 @@ def get_current_research_history(symbol, *, period="10y", interval="1d", min_bar
         from core.local_rubix_history import append_bridge_bars
 
         # An unresolved corporate action means the adjusted body and the raw
-        # tail may not share a price basis. Publish nothing rather than splice
-        # two conventions together and call it one series.
-        if unresolved_action_date(base):
+        # tail may not share a price basis — but only if it falls INSIDE the
+        # appended window. EODHD's adjustment already propagates an older
+        # action backwards through the series it publishes, and today's Rubix
+        # bar is quoted on today's basis, so the two agree. Blocking on any
+        # unresolved action ever, regardless of date, withheld the tail from 8
+        # of 209 symbols over actions dated 2006 to 2025 — none of which can
+        # reach a bar appended for the current session.
+        action = unresolved_action_date(base)
+        eodhd_last = pd.Timestamp(frame.index[-1]).date().isoformat()
+        if bridge_tail_blocked(action, eodhd_last):
             bridge_md = {"bridge_sessions_appended": 0,
-                         "bridge_skipped": "UNRESOLVED_CORPORATE_ACTION"}
+                         "bridge_skipped": "UNRESOLVED_CORPORATE_ACTION_IN_WINDOW",
+                         "bridge_skipped_action_date": str(action)[:10]}
         else:
             frame, bridge_md = append_bridge_bars(frame, base)
         if bridge_md["bridge_sessions_appended"]:
