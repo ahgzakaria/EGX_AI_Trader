@@ -10,7 +10,7 @@ Two defects met in one run:
   existed, so the archive invariant correctly refused to publish.
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -60,14 +60,42 @@ def at(hour, minute=0, day=4):
     (at(23, 59), date(2026, 8, 4)),   # late evening
 ])
 def test_the_completed_session_follows_the_cairo_exchange_clock(moment, expected):
-    assert authoritative_completed_session(moment, holidays=()) == expected
+    """Pins the DEFAULT boundary, so a deployed grace cannot rewrite the clock.
+
+    The grace is a deployment setting: it was lowered to 60 minutes once Rubix
+    began supplying the completed candle itself. Reading it here made these
+    cases assert whatever happened to be configured rather than the rule.
+    """
+
+    assert authoritative_completed_session(
+        moment, holidays=(), grace_minutes=SETTLEMENT_GRACE_MINUTES
+    ) == expected
 
 
-def test_the_grace_boundary_is_exactly_the_configured_minutes():
+def test_the_default_grace_boundary_is_exactly_the_default_minutes():
     assert SETTLEMENT_GRACE_MINUTES == 120
     # 14:25 auction end + 120 minutes = 16:25.
-    assert authoritative_completed_session(at(16, 24), holidays=()) == date(2026, 8, 3)
-    assert authoritative_completed_session(at(16, 25), holidays=()) == date(2026, 8, 4)
+    for moment, expected in ((at(16, 24), date(2026, 8, 3)),
+                             (at(16, 25), date(2026, 8, 4))):
+        assert authoritative_completed_session(
+            moment, holidays=(), grace_minutes=SETTLEMENT_GRACE_MINUTES
+        ) == expected
+
+
+def test_the_deployed_grace_is_what_the_guard_actually_uses():
+    """The configured value, not the default, decides the live boundary."""
+
+    from core.egx_session import settlement_grace_minutes
+
+    deployed = settlement_grace_minutes()
+    boundary_before = authoritative_completed_session(
+        at(14, 25) + timedelta(minutes=deployed - 1), holidays=(),
+        grace_minutes=deployed)
+    boundary_after = authoritative_completed_session(
+        at(14, 25) + timedelta(minutes=deployed), holidays=(),
+        grace_minutes=deployed)
+    assert boundary_before == date(2026, 8, 3)
+    assert boundary_after == date(2026, 8, 4)
 
 
 def test_a_shorter_configured_grace_moves_the_boundary():

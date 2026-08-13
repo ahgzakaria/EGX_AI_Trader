@@ -214,5 +214,6 @@
         "mode": "EODHD_SHADOW",
         "active_historical": "yahoo",
         "note": "SHADOW ONLY. Yahoo remains the historical data used by every strategy decision; Rubix remains the live intraday provider. EODHD is fetched separately for comparison and does NOT participate in provider selection. Do not switch until the shadow validation report is reviewed. Switching this flag alone does NOT move history to EODHD: data/eodhd/historical_symbol_routing.json is active=false with all 265 symbols approved=false, so research_router answers 'EODHD unsupported' and every symbol is skipped."
-    }
+    },
+    "egx_settlement_grace_minutes": 60
 }
