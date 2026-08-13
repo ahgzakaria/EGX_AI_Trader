@@ -509,6 +509,7 @@ def get_current_research_history(symbol, *, period="10y", interval="1d", min_bar
 
     expected = _expected_completed_session()
     volume_meta = {}
+    bridge_md = None
 
     if tier in ("TIER_A_FORWARD_SAFE", "TIER_B_FORWARD_EODHD_NO_FALLBACK",
                 "TIER_C_HISTORICAL_REVIEW"):
@@ -523,13 +524,40 @@ def get_current_research_history(symbol, *, period="10y", interval="1d", min_bar
                          if scan_context is not None else None))
         volume_meta = dict(frame.attrs.get("volume_meta", {}))
         provider, series = "eodhd", "SPLIT_ADJUSTED"
-        effective = pd.Timestamp(frame.index[-1]).date()
-        fresh = _freshness(effective, expected)
         if not volume_meta.get("volume_safe_for_lookback", True):
             raise ResearchDataUnavailable(
                 base, VOLUME_POLICY_UNRESOLVED,
                 f"unresolved/event-specific corporate action in volume lookback "
                 f"({volume_meta.get('latest_action_in_lookback')})")
+
+        # EODHD publishes a completed session a day late, and sometimes two.
+        # Until it does, this history stops before the last completed session
+        # and the daily guard refuses the symbol as stale — so the scan skips
+        # names whose data is merely unpublished, not missing. Rubix already
+        # holds those sessions; append them.
+        #
+        # Append-only, after EODHD's last date. EODHD keeps every session it
+        # owns, so nothing already published can be restated by the bridge.
+        from core.local_rubix_history import append_bridge_bars
+
+        # An unresolved corporate action means the adjusted body and the raw
+        # tail may not share a price basis. Publish nothing rather than splice
+        # two conventions together and call it one series.
+        if unresolved_action_date(base):
+            bridge_md = {"bridge_sessions_appended": 0,
+                         "bridge_skipped": "UNRESOLVED_CORPORATE_ACTION"}
+        else:
+            frame, bridge_md = append_bridge_bars(frame, base)
+        if bridge_md["bridge_sessions_appended"]:
+            # The tail is raw and the body is split-adjusted. That is safe only
+            # while no corporate action falls inside the appended window, which
+            # `unresolved_action_date` is what guards; the series is renamed
+            # either way so nothing downstream reads it as uniformly adjusted.
+            series = "SPLIT_ADJUSTED_PLUS_RUBIX_RAW_TAIL"
+            provider = "eodhd_plus_rubix"
+
+        effective = pd.Timestamp(frame.index[-1]).date()
+        fresh = _freshness(effective, expected)
         state = EODHD_OPERATIONAL_CLEAN_WINDOW
         seed_present, price_policy = False, "SPLIT_ADJUSTED_ALL_EVENTS"
     else:
@@ -564,6 +592,11 @@ def get_current_research_history(symbol, *, period="10y", interval="1d", min_bar
         "history_sufficient": len(frame) >= min_bars,
         "data_quality_status": state,
     })
+    # Which sessions came from Rubix rather than the tier's own provider, so a
+    # report can always say where the newest bar came from.
+    if bridge_md is not None:
+        md.update({f"rubix_{k}" if not k.startswith("bridge") else k: v
+                   for k, v in bridge_md.items()})
     frame.attrs["market_data"] = md
     return frame
 

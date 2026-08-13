@@ -92,6 +92,104 @@ def _bridge_rows_after(base, after_date, cache):
     return out
 
 
+def default_bridge_cache():
+    """The configured normalized daily cache, or ``None`` when unavailable.
+
+    Never raises: a missing cache must degrade to "no Rubix tail", not to a
+    symbol that cannot be analysed at all.
+    """
+
+    try:
+        from core.daily_bridge.normalized_cache import NormalizedDailyCache
+        from scalping_expected_range.config import ExpectedRangeConfig
+
+        return NormalizedDailyCache(
+            ExpectedRangeConfig.load().normalized_daily_cache_path
+        )
+    except Exception:
+        return None
+
+
+def append_bridge_bars(frame, symbol, *, cache=None):
+    """Append REAL Rubix bridge sessions after ``frame``'s last date.
+
+    Shared by both history paths: the frozen-seed path for EODHD-unsupported
+    symbols, and the EODHD path, which needs the same tail because EODHD
+    publishes a completed session a day — sometimes two — late, and a history
+    that stops before the last completed session is refused as stale by the
+    daily guard.
+
+    Guarantees, all of which the callers depend on:
+
+    * **append only.** A date already in ``frame`` is never overwritten. If the
+      bridge disagrees with an existing bar it is counted as a conflict and
+      surfaced; the existing bar wins. The provider that owns a session keeps
+      it.
+    * **FINAL only.** ``FINAL`` / ``FINAL_CONTINUOUS`` bars, nothing partial.
+    * **no cache, no change.** ``frame`` is returned untouched, so an absent or
+      broken cache can never degrade an otherwise good history.
+
+    Returns ``(frame, provenance)``. ``frame`` is a copy whenever anything was
+    appended, and the original object otherwise.
+    """
+
+    base = _base(symbol)
+    provenance = {
+        "bridge_provider": RUBIX_DAILY_BRIDGE,
+        "bridge_available_sessions": 0,
+        "bridge_sessions_appended": 0,
+        "bridge_first_session": None,
+        "bridge_latest_session": None,
+        "bridge_dates": (),
+        "conflict_count": 0,
+        "duplicate_count": 0,
+    }
+    if frame is None or len(frame) == 0:
+        return frame, provenance
+
+    if cache is None:
+        cache = default_bridge_cache()
+    if cache is None:
+        return frame, provenance
+
+    last = pd.Timestamp(frame.index[-1])
+    rows = _bridge_rows_after(base, last.date().isoformat(), cache)
+    provenance["bridge_available_sessions"] = len(rows)
+    if not rows:
+        return frame, provenance
+
+    appended, duplicate, conflict = 0, 0, 0
+    dates = []
+    updated = frame.copy()
+    for row in rows:
+        day = row["session_date"]
+        if day in updated.index:
+            existing = {c: updated.at[day, c] for c in CONTRACT_COLUMNS
+                        if c in updated.columns}
+            if _bar_conflicts(existing, row):
+                conflict += 1
+            else:
+                duplicate += 1
+            continue
+        updated.loc[day] = {c: row[c] for c in CONTRACT_COLUMNS}
+        dates.append(day)
+        appended += 1
+
+    provenance.update(bridge_sessions_appended=appended,
+                      duplicate_count=duplicate, conflict_count=conflict)
+    if not appended:
+        return frame, provenance
+
+    updated = updated.sort_index()
+    updated = updated[~updated.index.duplicated(keep="last")]
+    provenance.update(
+        bridge_first_session=min(dates).date().isoformat(),
+        bridge_latest_session=max(dates).date().isoformat(),
+        bridge_dates=tuple(d.date().isoformat() for d in sorted(dates)),
+    )
+    return updated, provenance
+
+
 def _bar_conflicts(existing, incoming):
     """True when a bridge bar materially disagrees with an existing seed bar."""
     for col in ("Open", "High", "Low", "Close"):
@@ -140,37 +238,14 @@ def build_local_rubix_history(symbol, *, period="10y", interval="1d",
                 seed_latest_session=seed_latest.date().isoformat(),
                 seed_rows=int(len(frame)))
 
-    if bridge_cache is None:
-        try:
-            from core.daily_bridge.normalized_cache import NormalizedDailyCache
-            from scalping_expected_range.config import ExpectedRangeConfig
-            bridge_cache = NormalizedDailyCache(
-                ExpectedRangeConfig.load().normalized_daily_cache_path)
-        except Exception:
-            bridge_cache = None
-
-    appended = duplicate = conflict = 0
-    bridge_dates = []
-    if bridge_cache is not None:
-        rows = _bridge_rows_after(base, seed_latest.date().isoformat(), bridge_cache)
-        prov["bridge_available_sessions"] = len(rows)
-        for row in rows:
-            d = row["session_date"]
-            if d in frame.index:
-                existing = {c: frame.at[d, c] for c in CONTRACT_COLUMNS}
-                if _bar_conflicts(existing, row):
-                    conflict += 1              # never silently overwrite
-                else:
-                    duplicate += 1             # already present, identical enough
-                continue
-            frame.loc[d] = {c: row[c] for c in CONTRACT_COLUMNS}
-            bridge_dates.append(d)
-            appended += 1
-
-    if appended:
-        frame = frame.sort_index()
-        prov.update(bridge_first_session=min(bridge_dates).date().isoformat(),
-                    bridge_latest_session=max(bridge_dates).date().isoformat())
+    frame, bridge = append_bridge_bars(frame, base, cache=bridge_cache)
+    appended = bridge["bridge_sessions_appended"]
+    prov.update(
+        bridge_available_sessions=bridge["bridge_available_sessions"],
+        bridge_first_session=bridge["bridge_first_session"],
+        bridge_latest_session=bridge["bridge_latest_session"],
+    )
+    duplicate, conflict = bridge["duplicate_count"], bridge["conflict_count"]
 
     frame = frame[~frame.index.duplicated(keep="last")]
     for col in CONTRACT_COLUMNS:
