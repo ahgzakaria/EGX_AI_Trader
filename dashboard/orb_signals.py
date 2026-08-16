@@ -12,6 +12,8 @@ context (sector, company, market cap).
 
 from __future__ import annotations
 
+from datetime import date, datetime
+
 import pandas as pd
 import streamlit as st
 
@@ -98,6 +100,13 @@ def _sector_frame(report) -> pd.DataFrame:
     ])
 
 
+#: How often the live panel re-reads the session database. A running session
+#: writes continuously, and a page that only refreshes when the reader happens
+#: to click something shows a stale signal list at exactly the moment it
+#: matters most.
+REFRESH_SECONDS = 30
+
+
 def show_orb_signals() -> None:
     """Streamlit page: today's (or a chosen session's) ORB signals."""
 
@@ -121,11 +130,36 @@ def show_orb_signals() -> None:
     chosen = st.selectbox("Session", labels, index=0)
     path = dict((str(d), p) for d, p in sessions)[chosen]
 
+    # Only a session that is still being written needs polling; a finished one
+    # cannot change, so re-reading it would be pure noise.
+    is_today = chosen == date.today().isoformat()
+    auto = st.toggle(
+        f"Auto-refresh every {REFRESH_SECONDS}s",
+        value=is_today,
+        help="Re-reads the session database on a timer while a session is live.",
+    )
+
+    @st.fragment(run_every=REFRESH_SECONDS if auto else None)
+    def _live_panel() -> None:
+        _render_session(path, chosen, auto)
+
+    _live_panel()
+
+
+def _render_session(path, chosen: str, auto: bool) -> None:
+    """Everything that must be re-read when the session database changes."""
+
     try:
         report = load_daily_report(path)
     except AssistantSourceUnavailable as error:
         st.error(f"Could not read this session: {error}")
         return
+
+    if auto:
+        st.caption(
+            f"Updated {datetime.now().strftime('%H:%M:%S')} · refreshing every "
+            f"{REFRESH_SECONDS}s"
+        )
 
     if report.signal_count == 0:
         st.info(f"The engine produced no ENTRY_READY_RESEARCH signals on {chosen}.")
