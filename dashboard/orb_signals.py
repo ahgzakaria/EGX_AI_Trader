@@ -79,7 +79,9 @@ def _signal_frame(report) -> pd.DataFrame:
             "T2": _price(signal.target_2),
             "Risk/Share": _price(signal.risk_per_share),
             "Eff R/R": _ratio(signal.effective_reward_risk),
+            "T1 move %": _spread(signal.target_1_percent),
             "Spread %": _spread(signal.median_spread_percent),
+            "Cost/T1": _percent_of(signal.spread_share_of_target),
             "Net R/R": _ratio(signal.net_reward_risk),
             "Spread/Risk": _percent_of(signal.spread_share_of_risk),
             "T+0": _eligibility(signal.intraday_eligibility),
@@ -98,6 +100,51 @@ def _sector_frame(report) -> pd.DataFrame:
         }
         for tally in report.sector_summary
     ])
+
+
+#: Above this share of the first target, the round-trip spread is the dominant
+#: term in the trade and the engine's own reward/risk stops describing it.
+COST_HEAVY_SHARE = 0.50
+
+
+def _cost_summary(report) -> None:
+    """State plainly how much of each target the spread already consumes.
+
+    The engine sets both targets as pure R multiples of the risk unit, whose
+    only floor is the minimum pullback depth (0.1%), and nothing in the
+    strategy compares either against the cost of trading. So a shallow pullback
+    yields a shallow target that can be smaller than the spread — and the
+    engine's reward/risk still reads 2.0, because it is 2.0 by construction.
+    This says nothing about whether to take a trade; it reports what the trade
+    costs before anyone decides.
+    """
+
+    priced = [s for s in report.signals if s.spread_share_of_target is not None]
+    if not priced:
+        return
+
+    heavy = [s for s in priced if s.spread_share_of_target >= COST_HEAVY_SHARE]
+    thin = [s for s in priced
+            if s.target_1_percent is not None and s.target_1_percent < 1.0]
+
+    if heavy:
+        worst = max(heavy, key=lambda s: s.spread_share_of_target)
+        st.warning(
+            f"**The spread takes at least half the first target on "
+            f"{len(heavy)} of {len(priced)} signals.** Worst: "
+            f"`{worst.canonical_ticker}` — a {worst.target_1_percent:.2f}% move "
+            f"to T1 against a {worst.median_spread_percent:.3f}% spread, "
+            f"**{worst.spread_share_of_target * 100:.0f}% of the target gone "
+            f"before commission**. The engine reports R/R 2.0 for these because "
+            f"both targets are fixed multiples of the risk unit — that ratio "
+            f"holds however small the move is."
+        )
+    if len(thin) == len(priced) and priced:
+        st.caption(
+            f"Every one of the {len(priced)} priced signals has a first target "
+            f"under 1%. That is the strategy's design, not an anomaly: the risk "
+            f"unit is the pullback depth and the targets are 1R and 2R of it."
+        )
 
 
 #: How often the live panel re-reads the session database. A running session
@@ -191,9 +238,14 @@ def _render_session(path, chosen: str, auto: bool) -> None:
             f"`{MISSING_FOR_SIGNAL}`."
         )
 
+    _cost_summary(report)
+
     st.subheader("Signals")
     st.dataframe(_signal_frame(report), width="stretch", hide_index=True)
     st.caption(
+        "**T1 move %** is how far the first target is from the trigger. "
+        "**Cost/T1** is the round-trip spread as a share of that move — at 70% "
+        "the spread eats most of the target before commission. "
         "**Spread %** is the median quoted bid/ask spread observed on Rubix "
         "across the session — what the book looked like, not a guaranteed fill. "
         "**Net R/R** is the engine's own reward/risk after crossing that spread "

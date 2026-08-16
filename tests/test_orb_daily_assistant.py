@@ -541,6 +541,56 @@ def test_shipped_eligibility_file_asserts_nothing(tmp_path):
     )
 
 
+# --- cost against the target, not just against the risk ---------------
+
+def _priced(trigger, target_1, spread_percent):
+    return assistant.SignalRow(
+        canonical_ticker="X", company_name="", sector_id="s", sector_name="S",
+        sector_rank=None, market_cap_egp=None, signal_state="ENTRY_READY_RESEARCH",
+        first_detected_utc=None, episode_count=1,
+        qualification_status="QUALIFICATION_PERSISTED",
+        trigger_price=trigger, target_1=target_1,
+        median_spread_percent=spread_percent,
+    )
+
+
+def test_spread_share_of_target_reports_what_the_cost_eats():
+    """CCAP, 2026-08-16: a 0.27% target against a 0.188% spread.
+
+    The engine reported reward/risk 2.0 for it, because both targets are fixed
+    multiples of the risk unit and that ratio holds however small the move is.
+    70% of the target was gone before commission, and nothing in the strategy
+    compares the two.
+    """
+
+    signal = _priced(5.340, 5.354, 0.188)
+
+    assert signal.target_1_percent == pytest.approx(0.2622, abs=0.01)
+    assert signal.spread_share_of_target == pytest.approx(0.70, abs=0.02)
+
+
+def test_a_wide_target_against_a_tight_spread_reads_cheap():
+    signal = _priced(768.88, 775.278, 0.129)      # ORAS, same session
+    assert signal.spread_share_of_target == pytest.approx(0.15, abs=0.02)
+
+
+@pytest.mark.parametrize("trigger,target,spread", [
+    (None, 5.354, 0.188),      # no persisted levels
+    (5.340, None, 0.188),
+    (5.340, 5.354, None),      # spread unmeasurable
+    (5.340, 5.340, 0.188),     # non-positive move
+])
+def test_cost_share_is_none_when_it_cannot_be_known(trigger, target, spread):
+    assert _priced(trigger, target, spread).spread_share_of_target is None
+
+
+def test_cost_share_never_alters_the_engine_levels():
+    signal = _priced(5.340, 5.354, 0.188)
+    _ = signal.spread_share_of_target, signal.target_1_percent
+    assert signal.trigger_price == pytest.approx(5.340)
+    assert signal.target_1 == pytest.approx(5.354)
+
+
 # --- session-directory resolution is deterministic --------------------
 
 def test_session_directory_precedence_is_explicit_then_env_then_default(

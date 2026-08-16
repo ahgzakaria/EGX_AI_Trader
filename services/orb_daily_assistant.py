@@ -162,6 +162,37 @@ class SignalRow:
         return self.trigger_price * (self.median_spread_percent / 100.0)
 
     @property
+    def spread_share_of_target(self) -> float | None:
+        """Round-trip spread as a fraction of the move to the first target.
+
+        The engine sets both targets as pure R multiples of the risk unit, and
+        the risk unit's only floor is the minimum pullback depth (0.1%). So a
+        shallow pullback produces a proportionally shallow target, and nothing
+        in the strategy compares either against the cost of trading. On
+        2026-08-16 every signal's first target was under 1%, and CCAP's was
+        0.27% against a 0.188% spread — 70% of the whole move consumed before
+        commission.
+
+        This is the number that says so. It ranks nothing and hides nothing.
+        """
+
+        cost = self.spread_cost_per_share
+        if cost is None or self.trigger_price is None or self.target_1 is None:
+            return None
+        move = self.target_1 - self.trigger_price
+        if move <= 0:
+            return None
+        return cost / move
+
+    @property
+    def target_1_percent(self) -> float | None:
+        """Move to the first target, as a percent of the trigger."""
+
+        if self.trigger_price is None or self.target_1 is None or not self.trigger_price:
+            return None
+        return (self.target_1 - self.trigger_price) / self.trigger_price * 100.0
+
+    @property
     def spread_share_of_risk(self) -> float | None:
         """Round-trip spread as a fraction of the engine's own risk unit.
 
