@@ -488,10 +488,38 @@ SWING_PRIMARY_COLUMNS = (
     "القرار",
     "حالة السوق",
     "السعر",
+    # A reward/risk ratio without the levels it was derived from is not
+    # actionable: the reader can see 2.0 and still not know where to enter,
+    # where the idea is wrong, or where to take profit. The scan already
+    # computes all four; the table simply was not showing them.
+    "نطاق الشراء",
+    "وقف الخسارة",
+    "الهدف 1",
+    "الهدف 2",
     "العائد إلى المخاطرة",
     "الثقة",
     "الحالة التشغيلية",
 )
+
+
+def _entry_band(low, high):
+    """``12.40 – 12.75``, or an em dash when the scan produced no band.
+
+    Never falls back to a single price: an entry the strategy expressed as a
+    range must not be shown as a point.
+    """
+
+    try:
+        low_value, high_value = float(low), float(high)
+    except (TypeError, ValueError):
+        return "—"
+    if low_value != low_value or high_value != high_value:      # NaN
+        return "—"
+    if low_value <= 0 or high_value <= 0:
+        return "—"
+    if abs(high_value - low_value) < 1e-9:
+        return f"{low_value:,.2f}"
+    return f"{low_value:,.2f} – {high_value:,.2f}"
 
 
 def _swing_primary_frame(frame):
@@ -507,6 +535,9 @@ def _swing_primary_frame(frame):
         "Signal": "القرار",
         "Regime": "حالة السوق",
         "Price": "السعر",
+        "StopLoss": "وقف الخسارة",
+        "Target1": "الهدف 1",
+        "Target2": "الهدف 2",
         "RR": "العائد إلى المخاطرة",
         "Confidence": "الثقة",
         "OperationalStatus": "الحالة التشغيلية",
@@ -515,6 +546,13 @@ def _swing_primary_frame(frame):
     view = source[available].rename(columns=mapping)
     if "السهم" in view.columns:
         view[NAME_COLUMN] = [company_name(value) for value in view["السهم"]]
+    # The scan expresses the entry as a band rather than one price; collapsing
+    # it to a single number would invent a precision the strategy never had.
+    if {"BuyLow", "BuyHigh"} <= set(source.columns):
+        view["نطاق الشراء"] = [
+            _entry_band(low, high)
+            for low, high in zip(source["BuyLow"], source["BuyHigh"])
+        ]
     return view.reindex(columns=SWING_PRIMARY_COLUMNS)
 
 

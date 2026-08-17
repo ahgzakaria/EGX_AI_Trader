@@ -40,8 +40,10 @@ def test_swing_primary_table_is_compact_and_does_not_change_results():
 
     pd.testing.assert_frame_equal(original, before)
     assert tuple(display.columns) == SWING_PRIMARY_COLUMNS
+    # The count is derived, not hard-coded: it duplicated the assertion above
+    # and had to be edited whenever the table deliberately changed.
+    assert len(display.columns) == len(SWING_PRIMARY_COLUMNS)
     # Ticker + full company name, kept as SEPARATE columns for filter/export.
-    assert len(display.columns) == 8
     assert display.columns[1] == "اسم السهم"
     assert display.loc[0, "السهم"] == "COMI.CA"
     assert display.loc[0, "اسم السهم"] == "Commercial International Bank-Egypt (CIB)"
@@ -93,3 +95,35 @@ def test_system_health_owns_developer_diagnostics_language():
         "العمليات",
     ):
         assert label in source
+
+
+def test_the_table_shows_the_levels_the_ratio_came_from():
+    """A reward/risk figure alone is not actionable.
+
+    The scan already computes the entry band, stop and both targets; the table
+    showed only the ratio, so a reader could see 2.5 and still not know where
+    to enter, where the idea is wrong, or where to take profit.
+    """
+
+    frame = _scan_frame()
+    frame["BuyLow"], frame["BuyHigh"] = 98.0, 101.0
+    frame["StopLoss"], frame["Target1"], frame["Target2"] = 94.0, 108.0, 115.0
+
+    display = _swing_primary_frame(frame)
+
+    assert display.loc[0, "نطاق الشراء"] == "98.00 – 101.00"
+    assert display.loc[0, "وقف الخسارة"] == 94.0
+    assert display.loc[0, "الهدف 1"] == 108.0
+    assert display.loc[0, "الهدف 2"] == 115.0
+    assert display.loc[0, "العائد إلى المخاطرة"] == 2.5
+
+
+def test_a_missing_entry_band_is_a_dash_not_a_single_price():
+    """An entry the strategy expressed as a range must not become a point."""
+
+    frame = _scan_frame()
+    frame["BuyLow"], frame["BuyHigh"] = None, None
+    assert _swing_primary_frame(frame).loc[0, "نطاق الشراء"] == "—"
+
+    frame["BuyLow"], frame["BuyHigh"] = 12.4, 12.4
+    assert _swing_primary_frame(frame).loc[0, "نطاق الشراء"] == "12.40"
