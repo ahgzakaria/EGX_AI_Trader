@@ -32,7 +32,7 @@ qualification migration present carry real levels.
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 import re
@@ -44,6 +44,7 @@ from core.sector_context import (
     intraday_eligibility,
     sector_context,
 )
+from services.trading_costs import TradingCosts, load_trading_costs
 from scalping_orb.config import OrbDataConfig
 from scalping_orb.repository import PROTECTED_DATABASE_NAMES
 from scalping_orb.session import OrbSessionClassifier
@@ -139,6 +140,10 @@ class SignalRow:
     spread_sample_count: int = 0
     spread_status: str = SPREAD_SOURCE_UNAVAILABLE
     intraday_eligibility: str = "UNKNOWN"
+    #: Rates this row's cost figures were computed with. Defaults to zero so a
+    #: row built without them reports the raw move rather than a cost silently
+    #: assumed; the loader fills it from settings.
+    costs: TradingCosts = field(default_factory=TradingCosts)
 
     @property
     def has_levels(self) -> bool:
@@ -146,14 +151,54 @@ class SignalRow:
 
     @property
     def net_reward_risk(self) -> float | None:
-        """Engine reward/risk after the round-trip spread. ``None`` if unknown."""
+        """Engine reward/risk after every cost of the round trip.
 
-        return net_reward_risk(
+        This charged only the quoted spread until 2026-08-18, while
+        ``config/settings.json`` carried commission and slippage rates that no
+        part of the scalping view read. At the configured 0.3% per side, the
+        commission alone is 0.6% of price over the round trip -- larger than
+        the entire move to target on most of the signals the engine produces.
+        A "net" figure that omitted it was not net.
+        """
+
+        return self.costs.net_reward_risk(
             self.trigger_price,
             self.proposed_stop,
             self.usable_target if self.usable_target is not None else self.target_1,
             self.median_spread_percent,
         )
+
+    @property
+    def total_cost_percent(self) -> float | None:
+        """Everything charged on turnover: spread, commission, slippage.
+
+        ``None`` when the spread was never observed — the cost is then unknown
+        rather than merely smaller.
+        """
+
+        return self.costs.total_percent(self.median_spread_percent)
+
+    @property
+    def net_target_1_percent(self) -> float | None:
+        """What is left of the move to the first target once costs are paid.
+
+        Negative means the trade loses money at its own target, with the entry,
+        the exit and the target all going exactly as the engine intended.
+        """
+
+        return self.costs.net_target_percent(
+            self.target_1_percent, self.median_spread_percent
+        )
+
+    @property
+    def cost_share_of_target(self) -> float | None:
+        """Total cost as a fraction of the move to the first target."""
+
+        move = self.target_1_percent
+        total = self.total_cost_percent
+        if move is None or total is None or move <= 0:
+            return None
+        return total / move
 
     @property
     def spread_cost_per_share(self) -> float | None:
@@ -576,6 +621,7 @@ def load_daily_report(
             session_day, [row["canonical_ticker"] for row in rows], rubix_db_path
         )
         no_spread = SpreadObservation(None, 0, SPREAD_SOURCE_UNAVAILABLE)
+        costs = load_trading_costs()
 
         signals = []
         for row in rows:
@@ -603,6 +649,7 @@ def load_daily_report(
                     spread_sample_count=spread.sample_count,
                     spread_status=spread.status,
                     intraday_eligibility=eligibility,
+                    costs=costs,
                 ))
                 continue
 
@@ -636,6 +683,7 @@ def load_daily_report(
                 spread_sample_count=spread.sample_count,
                 spread_status=spread.status,
                 intraday_eligibility=eligibility,
+                costs=costs,
             ))
 
         return DailyAssistantReport(

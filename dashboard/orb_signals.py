@@ -25,6 +25,7 @@ from services.automation_status import (
     RUNNING,
     read_status,
 )
+from services.trading_costs import CONFIG_SECTION
 from services.orb_daily_assistant import (
     AssistantSourceUnavailable,
     MISSING_FOR_SIGNAL,
@@ -61,6 +62,17 @@ def _percent_of(value):
     return f"{value * 100:.0f}%" if isinstance(value, (int, float)) else DASH
 
 
+#: A reward/risk of ``None`` from the cost model does not mean "unknown" -- it
+#: means the costs consume the entire move, so no ratio exists. Rendering that
+#: as the same dash used for missing data would lose the distinction exactly
+#: where it matters most.
+NO_NET_REWARD = "loses"
+
+
+def _net_ratio(value):
+    return f"{value:.2f}" if isinstance(value, (int, float)) else NO_NET_REWARD
+
+
 def _eligibility(value):
     """Same-session tradability. UNKNOWN is shown as a question, not a yes."""
 
@@ -88,8 +100,9 @@ def _signal_frame(report) -> pd.DataFrame:
             "Eff R/R": _ratio(signal.effective_reward_risk),
             "T1 move %": _spread(signal.target_1_percent),
             "Spread %": _spread(signal.median_spread_percent),
-            "Cost/T1": _percent_of(signal.spread_share_of_target),
-            "Net R/R": _ratio(signal.net_reward_risk),
+            "Cost %": _spread(signal.total_cost_percent),
+            "Net @T1 %": _spread(signal.net_target_1_percent),
+            "Net R/R @T2": _net_ratio(signal.net_reward_risk),
             "Spread/Risk": _percent_of(signal.spread_share_of_risk),
             "T+0": _eligibility(signal.intraday_eligibility),
             "ATR": _price(signal.atr_value),
@@ -115,38 +128,72 @@ COST_HEAVY_SHARE = 0.50
 
 
 def _cost_summary(report) -> None:
-    """State plainly how much of each target the spread already consumes.
+    """Say how many signals cannot pay for themselves, before anyone decides.
 
     The engine sets both targets as pure R multiples of the risk unit, whose
     only floor is the minimum pullback depth (0.1%), and nothing in the
     strategy compares either against the cost of trading. So a shallow pullback
-    yields a shallow target that can be smaller than the spread — and the
-    engine's reward/risk still reads 2.0, because it is 2.0 by construction.
-    This says nothing about whether to take a trade; it reports what the trade
-    costs before anyone decides.
+    yields a shallow target, and the engine's reward/risk still reads 2.0
+    because it is 2.0 by construction — that ratio holds however small the move
+    is, and however much the round trip costs.
+
+    This ranks nothing and removes nothing. It states what the trade costs.
     """
 
-    priced = [s for s in report.signals if s.spread_share_of_target is not None]
+    priced = [s for s in report.signals if s.net_target_1_percent is not None]
     if not priced:
         return
 
-    heavy = [s for s in priced if s.spread_share_of_target >= COST_HEAVY_SHARE]
+    costs = priced[0].costs
+
+    if not costs.rates_loaded:
+        st.error(
+            f"**Costs could not be read from settings, so every figure below "
+            f"understates what a trade costs.** {costs.load_error or ''} "
+            f"Set `commission` and `slippage` under `{CONFIG_SECTION}` in "
+            f"`config/settings.json`.",
+            icon="⚠️",
+        )
+        return
+
+    losing = [s for s in priced if s.net_target_1_percent <= 0]
+
+    st.caption(
+        f"Costs charged: **{costs.round_trip_percent:.2f}%** round trip "
+        f"({costs.commission_per_side * 100:.2f}% commission and "
+        f"{costs.slippage_per_side * 100:.3f}% slippage, each side) plus the "
+        f"measured spread. "
+        + (
+            f"Capital gains tax of {costs.capital_gains_tax_percent:.1f}% is "
+            f"applied to what survives."
+            if costs.tax_configured
+            else "**Tax is not included** — no rate is configured."
+        )
+    )
+
+    if losing:
+        worst = min(losing, key=lambda s: s.net_target_1_percent)
+        st.warning(
+            f"**{len(losing)} of {len(priced)} signals lose money at their own "
+            f"first target.** Not on a bad fill, not on a stop — with the "
+            f"entry, the exit and the target all going exactly as the engine "
+            f"intended. Worst: `{worst.canonical_ticker}`, a "
+            f"{worst.target_1_percent:.2f}% move against "
+            f"{worst.total_cost_percent:.2f}% of cost, leaving "
+            f"**{worst.net_target_1_percent:+.2f}%**. Every one of them still "
+            f"reports the engine's reward/risk of "
+            f"{worst.effective_reward_risk:.1f} beside it.",
+            icon="🛑",
+        )
+    else:
+        st.success(
+            f"All {len(priced)} signals clear their costs at the first target.",
+            icon="✅",
+        )
+
     thin = [s for s in priced
             if s.target_1_percent is not None and s.target_1_percent < 1.0]
-
-    if heavy:
-        worst = max(heavy, key=lambda s: s.spread_share_of_target)
-        st.warning(
-            f"**The spread takes at least half the first target on "
-            f"{len(heavy)} of {len(priced)} signals.** Worst: "
-            f"`{worst.canonical_ticker}` — a {worst.target_1_percent:.2f}% move "
-            f"to T1 against a {worst.median_spread_percent:.3f}% spread, "
-            f"**{worst.spread_share_of_target * 100:.0f}% of the target gone "
-            f"before commission**. The engine reports R/R 2.0 for these because "
-            f"both targets are fixed multiples of the risk unit — that ratio "
-            f"holds however small the move is."
-        )
-    if len(thin) == len(priced) and priced:
+    if len(thin) == len(priced):
         st.caption(
             f"Every one of the {len(priced)} priced signals has a first target "
             f"under 1%. That is the strategy's design, not an anomaly: the risk "
@@ -301,16 +348,20 @@ def _render_session(path, chosen: str, auto: bool) -> None:
     st.dataframe(_signal_frame(report), width="stretch", hide_index=True)
     st.caption(
         "**T1 move %** is how far the first target is from the trigger. "
-        "**Cost/T1** is the round-trip spread as a share of that move — at 70% "
-        "the spread eats most of the target before commission. "
         "**Spread %** is the median quoted bid/ask spread observed on Rubix "
         "across the session — what the book looked like, not a guaranteed fill. "
-        "**Net R/R** is the engine's own reward/risk after crossing that spread "
-        "once on the round trip; the engine's `Eff R/R` is left untouched beside "
-        "it. **Spread/Risk** is the spread as a share of the engine's risk unit — "
-        "as it approaches 100% the cost of entering rivals the loss being risked. "
-        "**T+0** is same-session tradability: `?` means unknown, which is not the "
-        "same as yes. None of these four filter or rank anything."
+        "**Cost %** is the whole round trip: that spread once, plus commission "
+        "and slippage on both sides. **Net @T1 %** is what is left of the move "
+        "after it — negative means the trade loses money at its own first "
+        "target. **Net R/R @T2** is the engine's reward/risk after the same "
+        "costs, measured to the target the engine would actually run to, which "
+        "is T2; `loses` there means the costs consume the entire move, and is "
+        "not the same as the `—` used for a missing number. The engine's own "
+        "`Eff R/R` is left untouched beside it and reads 2.0 throughout, "
+        "because both targets are fixed multiples of the risk unit. "
+        "**Spread/Risk** is the spread as a share of the engine's risk unit. "
+        "**T+0** is same-session tradability: `?` means unknown, which is not "
+        "the same as yes. None of these filter or rank anything."
     )
 
     priced = [s for s in report.signals if s.median_spread_percent is not None]

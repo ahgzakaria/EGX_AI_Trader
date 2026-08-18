@@ -140,6 +140,7 @@
         "quote_max_age_seconds": 60,
         "commission": 0.003,
         "slippage": 0.0005,
+        "capital_gains_tax_percent": null,
         "initial_capital": 100000.0,
         "risk_per_trade_percent": 0.5,
         "max_open_positions": 3,
