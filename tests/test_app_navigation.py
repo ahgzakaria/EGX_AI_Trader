@@ -41,22 +41,71 @@ def test_every_navigation_icon_is_accepted_by_streamlit():
         validate_icon_or_emoji(icon)
 
 
-def test_primary_navigation_is_the_simplified_trader_workflow():
-    """ORB Signals is the only scalping route.
+def _section_titles():
+    """Section heading -> page titles, read from the ``st.navigation`` dict."""
 
-    The legacy scalping pages were retired from navigation; their code still
-    exists but is no longer a way in.
+    source = Path("app.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr != "navigation" or not node.args:
+            continue
+        mapping = node.args[0]
+        if not isinstance(mapping, ast.Dict):
+            continue
+        sections = {}
+        for key, value in zip(mapping.keys, mapping.values):
+            titles = []
+            for page in getattr(value, "elts", []):
+                for keyword in getattr(page, "keywords", []):
+                    if keyword.arg == "title" and isinstance(keyword.value, ast.Constant):
+                        titles.append(keyword.value.value)
+            sections[key.value] = titles
+        return sections
+    return {}
+
+
+def test_navigation_is_three_workspaces_plus_tools():
+    """One section per way of trading, and system tools kept apart from them.
+
+    The three are different timeframes with different economics -- a swing
+    hold pays the round trip once over weeks, a scalp pays it against an
+    average intraday drift ten times smaller than the cost itself. Filing them
+    together invites reading a number from one as if it came from the other.
     """
 
-    assert _page_titles() == [
-        "Daily Dashboard",
-        "Watchlist",
-        "Stock Details",
-        "ORB Signals",
-        "AI Analysis",
-        "System Health",
-        "Settings",
-    ]
+    sections = _section_titles()
+    headings = list(sections)
+
+    assert len(headings) == 4, headings
+    assert "SWING" in headings[0]
+    assert "SCALPING" in headings[1]
+    assert "AI ANALYSIS" in headings[2]
+    assert "SYSTEM" in headings[3]
+
+    # AI Analysis is its own workspace, not filed with the diagnostics.
+    assert sections[headings[2]] == ["AI Analysis"]
+    # System holds tools only; nothing that produces a trading signal.
+    assert sections[headings[3]] == ["System Health", "Settings"]
+
+
+def test_orb_signals_is_the_only_scalping_route():
+    """The legacy scalping pages were retired; their code still exists but is
+    no longer a way in."""
+
+    sections = _section_titles()
+    scalping = next(v for k, v in sections.items() if "SCALPING" in k)
+    assert scalping == ["ORB Signals"]
+
+
+def test_every_page_is_reachable_exactly_once():
+    titles = _page_titles()
+    assert len(titles) == len(set(titles)), f"a page is listed twice: {titles}"
+    assert set(titles) == {
+        "Daily Dashboard", "Watchlist", "Stock Details",
+        "ORB Signals", "AI Analysis", "System Health", "Settings",
+    }
 
 
 def test_retired_scalping_pages_are_not_navigable():

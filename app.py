@@ -1,4 +1,23 @@
-"""Streamlit entry point with three simple, task-oriented workspaces."""
+"""Streamlit entry point: three workspaces, one per way of trading.
+
+The three are not cosmetic groupings. They hold different timeframes with
+different economics, and the split exists so a number from one is never read
+as if it came from the other:
+
+* **SWING** works on daily bars over days to weeks. The round-trip cost of
+  0.46% plus spread is a minor term there -- on a twenty-day hold it is 46% of
+  the average move, and the strategy has 559,483 stock-days of history to be
+  validated against.
+* **SCALPING** works inside one session, where that same cost is roughly ten
+  times the average intraday drift of +0.078%. Everything on that surface has
+  to earn its way past a cost that dominates it.
+* **AI ANALYSIS** is per-symbol narrative research and belongs to neither; it
+  was previously buried under a "Research & System" heading with the
+  diagnostics, which said nothing about what it is for.
+
+System Health and Settings are tools rather than a fourth way of trading, and
+the legacy research pages stay reachable only from System Health.
+"""
 
 import streamlit as st
 
@@ -32,21 +51,21 @@ sidebar_brand()
 initialize_backtest_state(st.session_state)
 recover_interrupted_backtest(st.session_state, RunRepository)
 
-# Primary navigation contains only the tasks a trader needs day to day. Older
-# research and diagnostic views remain available through System Health.
 navigation = st.navigation({
-    "SWING / DAILY": [
+    # Days to weeks, on daily bars. The timeframe where the cost of trading
+    # stops being the dominant term.
+    "سوينج · SWING": [
         st.Page(show_dashboard, title="Daily Dashboard", icon="📊", default=True),
         st.Page(show_watchlist, title="Watchlist", icon="⭐"),
         st.Page(show_stock_details_page, title="Stock Details", icon="🔎"),
     ],
-    # The legacy scalping pages (Scalping Dashboard / Active Trades / History,
-    # backed by `scalping/`, `scalping_expected_range/` and
-    # `scalping_uptrend_pullback/`) are retired from navigation. Their code and
-    # research databases are intentionally left in place: this is a reversible
-    # first step, and removing ~19k lines that two `core`/`services` modules
-    # still import is a separate, deliberate change.
-    "SCALPING": [
+    # Inside one session. The legacy scalping pages (Scalping Dashboard /
+    # Active Trades / History, backed by `scalping/`,
+    # `scalping_expected_range/` and `scalping_uptrend_pullback/`) are retired
+    # from navigation. Their code and research databases are intentionally
+    # left in place: that removal is a separate, deliberate change, and
+    # ~19k lines are still imported by two `core`/`services` modules.
+    "سكالبنج · SCALPING": [
         st.Page(
             show_orb_signals,
             title="ORB Signals",
@@ -54,9 +73,15 @@ navigation = st.navigation({
             url_path="orb-signals",
         ),
     ],
-    "RESEARCH & SYSTEM": [
-        # Compatibility name used by integration tests: AI Stock Analysis.
+    # Per-symbol narrative research, on its own rather than filed with the
+    # diagnostics. Compatibility name used by integration tests:
+    # AI Stock Analysis.
+    "تحليل · AI ANALYSIS": [
         st.Page(show_ai_stock_analysis, title="AI Analysis", icon="🤖"),
+    ],
+    # Tools, not a fourth way of trading. The legacy research and diagnostic
+    # views remain reachable only from System Health.
+    "النظام · SYSTEM": [
         st.Page(
             show_system_health,
             title="System Health",
