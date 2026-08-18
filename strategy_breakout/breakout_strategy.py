@@ -70,7 +70,12 @@ class BreakoutConfig:
     max_holding_days: int = 20
     entry_delay_bars: int = 1
     price_precision: int = 3
-    commission: float = 0.003
+    #: Per side, from the broker contract note of 2026-08-18 on a 102,560.00
+    #: EGP notional: brokerage and custody 0.1000%, stamp duty 0.0500%, EGX
+    #: 0.0100%, MCDR 0.0100%, FRA 0.0069%, risk insurance 0.0050%. The 0.003
+    #: that stood here was a placeholder and overstated a round trip by more
+    #: than a full percentage point of the move.
+    commission: float = 0.001819
     slippage: float = 0.0005
 
 

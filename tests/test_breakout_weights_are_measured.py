@@ -21,7 +21,7 @@ from strategy_breakout.breakout_scoring import (
     WEIGHTS,
     WEIGHTS_PROVENANCE,
 )
-from strategy_breakout.breakout_strategy import BreakoutConfig
+from strategy_breakout.breakout_strategy import BreakoutConfig, load_breakout_config
 
 
 def test_volume_confirmation_outweighs_the_breakout_itself():
@@ -65,9 +65,51 @@ def test_the_volume_threshold_sits_above_the_band_that_loses():
     volume returned -0.11%, worse than not trading at all (+2.91%). The
     1.5-2.5x band returned +2.26%, no better than sitting out. Only above
     2.5x (+5.73%, 59% win) is there an edge, so that is where the gate goes.
+
+    Asserted against the *loaded* config, not the dataclass default. An
+    earlier version of this test checked the default and passed while the
+    live scanner still ran at 1.5, because `load_breakout_config` passes
+    every key in `strategy_breakout/settings.json` to the constructor and the
+    file wins. A gate that is only correct in the class body is not a gate.
     """
 
-    assert BreakoutConfig().minimum_volume_ratio >= 2.5
+    assert load_breakout_config().minimum_volume_ratio >= 2.5
+
+
+def test_every_default_the_settings_file_overrides_agrees_with_it():
+    """The two places a value can live must not disagree.
+
+    Where they do, the file silently wins and the class body becomes a
+    comment that reads like configuration.
+    """
+
+    import json
+    from pathlib import Path
+
+    stored = json.loads(
+        Path("strategy_breakout/settings.json").read_text(encoding="utf-8-sig")
+    )
+    defaults = BreakoutConfig()
+    disagreements = {
+        key: (getattr(defaults, key), value)
+        for key, value in stored.items()
+        if hasattr(defaults, key) and getattr(defaults, key) != value
+    }
+    assert not disagreements, (
+        f"settings.json overrides these class defaults with different values, "
+        f"so editing the class body has no effect: {disagreements}"
+    )
+
+
+def test_the_backtest_charges_the_real_broker_fee():
+    """0.003 per side was a placeholder that survived into the live config.
+
+    The broker contract note gives 0.1819% per side; charging 0.3% overstates
+    a round trip by more than a full percentage point of the move, which on a
+    strategy whose measured edge is a few percent is most of the answer.
+    """
+
+    assert load_breakout_config().commission == pytest.approx(0.001819)
 
 
 def test_the_weights_say_where_they_came_from():

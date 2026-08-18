@@ -9,11 +9,11 @@
   "indicators/technical.py": "74686311656b40fba819359618c40db98412c3ac2622b7d2f95fa51aee16b01c",
   "backtesting/engine.py": "e748f8a426fcac96a7a806a9f3212ae7afc7b5f089fe341324a607bb986aee92",
   "portfolio/portfolio_simulator.py": "6d25a6904e615a9e1765a756f42821c7ba5992edcb5920c942db3badf42e5212",
-  "strategy_breakout/breakout_strategy.py": "b51f5643cc45abaa6cb0279a9435c1f2ea793fd3db3b3aa9f72588203dc56ee1",
+  "strategy_breakout/breakout_strategy.py": "08013c4b3a6fb06881d0edf43f279cddd96320e99715157d7dbadc60893e087f",
   "strategy_breakout/breakout_entry.py": "c14f33ad39e1057ca12f099f892f56e94b4d86c7e86cdb74de9688e83f453ab3",
   "strategy_breakout/breakout_exit.py": "84e530a9cc0465d42f6918861007e18f44f86876a0c46bacc551da380e336eec",
   "strategy_breakout/breakout_targets.py": "4fff77d7f4618f89a600404c024669f515634bbc42cc201af77b19235e6fce12",
   "strategy_breakout/breakout_scoring.py": "8196283512f370294d64c93276b3f20a059d907bdf4eb8c2da237c276c66804e",
   "strategy_breakout/breakout_backtest.py": "763c759f88a8debe8f9bfa28d179ce42294be4b725358bb5d074c8e263197b8c",
-  "strategy_breakout/settings.json": "f19c48565715d3d9109fedf62d748d2b0ce0c9aa3c520a644580ac3c5e45bf56"
+  "strategy_breakout/settings.json": "177c12e17ed6031197860b765d5863164ca4912f5d18e6db5b5daea3d79619ef"
 }
