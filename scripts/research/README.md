@@ -64,8 +64,32 @@ confirmations have already fired and select for much of what the volume filter
 was picking up. An edge measured on an unfiltered population does not transfer
 to a filtered one.
 
+**A joint logistic fit did not beat them either.** `joint_weight_fit.py`
+estimates all seven coefficients together, which is the right answer to why
+per-feature lift failed: the features overlap, and a joint fit credits each one
+holding the others fixed. Pooled across five windows it looked decisive — 6.089%
+net per trade at a 56.1% win rate against 4.151% and 53.7%, on half the trades.
+
+Then read the windows separately. Four of the five sit inside the era the model
+was fitted on. In the only genuinely out-of-sample window it scored **+3.89%
+against +3.90%** — a tie — while beating the hand weights by three to five
+points in every training-era window. That is the shape of overfitting, and the
+pooled average is exactly how it hides.
+
 The one change from that day that stands is not a tune at all: the commission
 rate, a 0.003 placeholder against a contract note showing 0.1819% per side.
+
+## What three failures suggest
+
+Per-feature lift, a threshold move, and a joint fit all failed to beat weights
+that were assigned by judgement. At that point the weighting is probably not
+the binding constraint: seven binary features computed from daily OHLCV carry a
+certain amount of information, and the hand weights already extract close to
+all of it. Getting further likely needs different inputs — order-book depth,
+sector or index-relative strength, fundamentals, a longer effective history —
+rather than a better arrangement of these seven.
+
+That is worth knowing before spending another week on weights.
 
 ## Reading them honestly
 
