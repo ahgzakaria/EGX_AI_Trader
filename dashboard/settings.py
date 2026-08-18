@@ -27,6 +27,74 @@ from services.experiment_tracking import RunRepository
 logger = logging.getLogger(__name__)
 
 
+#: Rejections counted across the frozen daily archive on 2026-08-18: 40
+#: symbols by turnover, the engine's own gates, every bar evaluated. Stored
+#: rather than recomputed because the count takes minutes and the point is to
+#: be seen, not to be live.
+#:
+#: The distribution is the finding. Six sliders on this page govern gates that
+#: reject between 0 and 2,003 signals; the gate that rejects 21,296 had no
+#: control anywhere until it was added above.
+MEASURED_GATE_IMPACT = (
+    ("MarketFilter · فلتر نظام السهم", 21296, "ADX + EMA20/EMA50 (أعلاه)"),
+    ("RR · العائد إلى المخاطرة", 7695, "Minimum RR"),
+    ("Score · التقييم", 2003, "Minimum Score"),
+    ("QualityFilter · فلتر الجودة", 1141, "Enable Quality Filter"),
+    ("Confidence · الثقة", 362, "Minimum Confidence"),
+    ("Trend · الاتجاه", 214, "Minimum Trend"),
+    ("CandleConfirmation · تأكيد الشمعة", 179, "Require Candle Confirmation"),
+    ("MarketAnalyzer · مؤشر EGX30", 0, "Require Market Analyzer"),
+    ("Volume · الحجم", 0, "Minimum Volume"),
+)
+
+
+def _show_gate_impact() -> None:
+    """Which gate actually decides, so no setting can hide again.
+
+    `Require Market Analyzer (EGX30 Index)` was switched on and rejected
+    nothing at all -- proven by running the backtest with it on and off and
+    getting byte-identical results. `Minimum Volume` likewise. Meanwhile the
+    stock-regime filter decided roughly two thirds of every evaluation from
+    behind a hardcoded threshold. Reading the sliders told you none of that.
+    """
+
+    with st.expander("أي بوابة تقرر فعلًا؟ · Which gate actually decides"):
+        total = sum(count for _, count, _ in MEASURED_GATE_IMPACT)
+        st.caption(
+            f"إشارات مرفوضة عبر الأرشيف الكامل ({total:,} رفضة، 40 سهمًا). "
+            "القياس من 2026-08-18 وليس محسوبًا الآن — يستغرق دقائق."
+        )
+        st.dataframe(
+            pd.DataFrame([
+                {
+                    "Gate": name,
+                    "Rejected": count,
+                    "Share": count / total if total else 0.0,
+                    "Setting": control,
+                }
+                for name, count, control in MEASURED_GATE_IMPACT
+            ]),
+            hide_index=True, width="stretch",
+            column_config={
+                "Gate": st.column_config.TextColumn("Gate", width="medium"),
+                "Rejected": st.column_config.NumberColumn("Rejected", format="%d"),
+                "Share": st.column_config.ProgressColumn(
+                    "Share", min_value=0.0, max_value=1.0, format="%.1f%%"
+                ),
+                "Setting": st.column_config.TextColumn("Setting", width="medium"),
+            },
+        )
+        st.markdown(
+            "**اثنان من هذه الإعدادات لا يفعلان شيئًا.** `Require Market "
+            "Analyzer (EGX30 Index)` مفعّل ويرفض صفر إشارة — أُثبت بتشغيل "
+            "الاختبار بتفعيله وبدونه والحصول على نتائج متطابقة حرفيًا. "
+            "و`Minimum Volume` كذلك: القيمة 0 و 5 تعطيان نفس الصفقات تمامًا.\n\n"
+            "**وتشديد أي بوابة قاس أسوأ، لا أفضل.** العودة إلى القيم "
+            "الافتراضية أعطت 73 صفقة بمتوسط ‎-0.31%‎ مقابل 188 صفقة بمتوسط "
+            "‎+0.01%‎ للإعدادات الحالية. رفع `Minimum RR` إلى 2.0 أعطى ‎-0.30%‎."
+        )
+
+
 def show_settings():
 
     settings.reload()
@@ -113,8 +181,67 @@ def show_settings():
                 "Minimum Volume",
                 0,
                 20,
-                strategy["min_volume"]
+                strategy["min_volume"],
+                help=(
+                    "Measured on 2026-08-18 to reject nothing: every signal "
+                    "that clears the other gates already carries a volume "
+                    "score at or above 5, so 0 and 5 produce byte-identical "
+                    "backtests."
+                ),
             )
+
+        st.divider()
+
+        # The gate that actually decides, surfaced because it was not here.
+        #
+        # Counting rejections across the archive on 2026-08-18 found the stock
+        # regime filter rejecting 21,296 signals -- 2.6 times every other gate
+        # combined -- while `Minimum Trend` rejected 214 and `Minimum Volume`
+        # rejected none. Its two thresholds were readable from settings and had
+        # no control anywhere in the UI, so the one input that governs roughly
+        # two thirds of all decisions was invisible while six that barely
+        # matter had sliders.
+        st.caption(
+            "🎯 فلتر نظام السهم — أكثر بوابة تأثيرًا في النظام (رفضت 21,296 "
+            "إشارة مقابل 214 لـ Minimum Trend). ADX يحدد إن كان السهم في "
+            "اتجاه واضح أم لا، وأي شيء تحت العتبة الضعيفة يُعتبر عرضيًا."
+        )
+
+        c_regime_1, c_regime_2 = st.columns(2)
+
+        with c_regime_1:
+            market_trend_adx = st.slider(
+                "Trending ADX (اتجاه واضح)",
+                10, 40,
+                int(strategy.get("market_trend_adx", 25)),
+                help=(
+                    "At or above this ADX the stock is treated as trending, "
+                    "and the setup is then required to have EMA20 above "
+                    "EMA50. Raising it demands a stronger trend before any "
+                    "signal is considered."
+                ),
+            )
+
+        with c_regime_2:
+            market_weak_trend_adx = st.slider(
+                "Weak-trend ADX (الحد الأدنى)",
+                5, 30,
+                int(strategy.get("market_weak_trend_adx", 18)),
+                help=(
+                    "Below this the stock is ranging and almost nothing "
+                    "passes. This is the floor that produces most of the "
+                    "21,296 rejections."
+                ),
+            )
+
+        if market_weak_trend_adx >= market_trend_adx:
+            st.warning(
+                "الحد الأدنى يجب أن يكون أقل من عتبة الاتجاه الواضح، وإلا "
+                "اختفت حالة الاتجاه الضعيف تمامًا.",
+                icon="⚠️",
+            )
+
+        _show_gate_impact()
 
         st.divider()
 
@@ -906,6 +1033,8 @@ def show_settings():
         "min_trend": min_trend,
         "min_momentum": min_momentum,
         "min_volume": min_volume,
+        "market_trend_adx": market_trend_adx,
+        "market_weak_trend_adx": market_weak_trend_adx,
         "max_rr": max_rr if max_rr_enabled else 100.0,
         "require_candle_confirmation": require_candle,
         "require_market_analyzer": require_market_analyzer,

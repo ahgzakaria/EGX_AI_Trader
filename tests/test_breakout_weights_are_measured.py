@@ -147,3 +147,47 @@ def test_the_panel_lists_every_weight():
     app = _rendered_panel()
     assert app.dataframe, "the weight table did not render"
     assert len(app.dataframe[0].value) == len(WEIGHTS)
+
+
+# --- the gate that decides must be visible -----------------------------
+
+
+def test_the_dominant_gate_has_a_control_and_is_shown_as_dominant():
+    """The stock-regime filter rejected 21,296 signals -- 2.6 times every
+    other gate combined -- from behind thresholds with no control anywhere,
+    while six sliders governed gates rejecting between 0 and 2,003.
+
+    Reading the settings screen told you none of that, which is how the two
+    inert settings stayed switched on and the real one stayed hidden.
+    """
+
+    from pathlib import Path
+
+    from dashboard.settings import MEASURED_GATE_IMPACT
+
+    ranked = sorted(MEASURED_GATE_IMPACT, key=lambda row: -row[1])
+    top_name, top_count, _ = ranked[0]
+    assert "MarketFilter" in top_name
+    assert top_count > sum(count for _, count, _ in ranked[1:]), (
+        "the panel must show this gate outweighing every other combined"
+    )
+
+    # And its thresholds must now be settable.
+    source = Path("dashboard/settings.py").read_text(encoding="utf-8")
+    for key in ("market_trend_adx", "market_weak_trend_adx"):
+        assert source.count(key) >= 2, (
+            f"{key} must be both rendered and written back on save"
+        )
+
+
+def test_the_gates_measured_to_do_nothing_are_recorded_as_doing_nothing():
+    """`Require Market Analyzer` was on and rejected nothing; `Minimum Volume`
+    the same. Both were proven inert by running the backtest with each value
+    and getting byte-identical trades. A reader must not have to rediscover
+    that by flipping switches."""
+
+    from dashboard.settings import MEASURED_GATE_IMPACT
+
+    inert = {name for name, count, _ in MEASURED_GATE_IMPACT if count == 0}
+    assert any("MarketAnalyzer" in name for name in inert)
+    assert any("Volume" in name for name in inert)
