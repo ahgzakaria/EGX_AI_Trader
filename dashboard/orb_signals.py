@@ -189,6 +189,29 @@ def _sector_frame(report) -> pd.DataFrame:
     ])
 
 
+def _tax_note(costs) -> str:
+    """Say where tax stands, distinguishing "none" from "nobody said".
+
+    Zero and unset are different claims. A rate of zero is an answer -- there
+    is no capital gains tax on this market, and the transaction tax that does
+    apply is the stamp duty already charged as a fee line. An unset rate is the
+    absence of an answer, and reporting it as zero would put a number nobody
+    chose behind every net figure on the page.
+    """
+
+    if not costs.tax_configured:
+        return "**Tax is not included** — no rate is configured."
+    if not costs.capital_gains_tax_percent:
+        return (
+            "No capital gains tax applies; the stamp duty that does is already "
+            "a line in the fee schedule and is not charged twice."
+        )
+    return (
+        f"Capital gains tax of {costs.capital_gains_tax_percent:.1f}% is "
+        f"applied to what survives."
+    )
+
+
 def _cost_summary(report) -> None:
     """Say how many signals cannot pay for themselves, before anyone decides.
 
@@ -225,12 +248,7 @@ def _cost_summary(report) -> None:
         f"({costs.commission_per_side * 100:.4f}% fees and "
         f"{costs.slippage_per_side * 100:.3f}% slippage, each side) plus the "
         f"measured spread. "
-        + (
-            f"Capital gains tax of {costs.capital_gains_tax_percent:.1f}% is "
-            f"applied to what survives."
-            if costs.tax_configured
-            else "**Tax is not included** — no rate is configured."
-        )
+        + _tax_note(costs)
     )
 
     if costs.fee_lines:

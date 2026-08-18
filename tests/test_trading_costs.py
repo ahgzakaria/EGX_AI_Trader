@@ -126,3 +126,54 @@ def test_garbage_rates_do_not_raise_and_do_not_become_negative():
 
     assert not loaded.rates_loaded
     assert loaded.slippage_per_side >= 0.0
+
+
+def test_zero_tax_and_unset_tax_are_different_claims():
+    # Zero is an answer: no capital gains tax applies on this market, and the
+    # stamp duty that does is already a fee line. Unset is the absence of an
+    # answer. Collapsing them would put a number nobody chose behind every net
+    # figure on the page.
+    zero = load_trading_costs({"commission": 0.001819, "capital_gains_tax_percent": 0})
+    unset = load_trading_costs({"commission": 0.001819})
+
+    assert zero.tax_configured and zero.capital_gains_tax_percent == 0
+    assert not unset.tax_configured and unset.capital_gains_tax_percent is None
+
+    # And with no tax, the two compute identically -- the distinction is in
+    # what the page says, not in the arithmetic.
+    assert zero.net_target_percent(2.0, 0.3) == pytest.approx(
+        unset.net_target_percent(2.0, 0.3)
+    )
+
+
+def test_fee_schedule_is_summed_and_kept_line_by_line():
+    loaded = load_trading_costs({
+        "commission": 0.003,          # must lose to the schedule
+        "fee_schedule": {
+            "_source": "contract note",
+            "brokerage_and_custody_percent": 0.1000,
+            "trading_stamp_duty_percent": 0.0500,
+            "egx_services_percent": 0.0100,
+            "mcdr_services_percent": 0.0100,
+            "fra_services_percent": 0.0069,
+            "risk_insurance_percent": 0.0050,
+            "order_fee_egp": 4.00,
+        },
+    })
+
+    assert loaded.commission_per_side == pytest.approx(0.001819)
+    assert len(loaded.fee_lines) == 6, "the _source and flat fee are not rate lines"
+    assert loaded.order_fee_egp == 4.00
+
+
+def test_the_flat_order_fee_is_not_folded_into_a_percentage():
+    loaded = load_trading_costs({
+        "commission": 0.001819,
+        "fee_schedule": {"order_fee_egp": 4.00, "brokerage_percent": 0.1},
+    })
+
+    # Its weight is entirely a function of position size, so it cannot be a
+    # rate; a smaller position pays proportionally more.
+    assert loaded.order_fee_percent(20_000) > loaded.order_fee_percent(100_000)
+    assert loaded.order_fee_percent(None) is None
+    assert loaded.round_trip_percent == pytest.approx(0.2), "flat fee is excluded"
