@@ -19,14 +19,42 @@
 # The readiness gate still decides: this makes the refusal rarer, it does not
 # make a bad clock acceptable.
 #
+# The second half of the problem is that a resync alone does not fix this
+# machine. On 2026-08-18 the resync reported success, the clock was disciplined
+# by pool.ntp.org, and four independent servers still agreed the machine was
+# 0.61s behind. The stock configuration explains it exactly:
+#
+#   UpdateInterval        360000   phase correction applied ~once an hour
+#   MinPollInterval       10       1024s
+#   MaxPollInterval       15       32768s  (9 hours)
+#   MaxAllowedPhaseOffset 1        under 1s is slewed, not stepped
+#
+# An offset of 0.61s is under the step threshold, so Windows slews it -- at a
+# correction rate of once per hour. It never catches up. Those defaults target
+# the 1-2 second accuracy that is fine for file timestamps and Kerberos, and
+# useless for measuring feed lag in tenths of a second.
+#
+# So this also applies Microsoft's documented high-accuracy tuning. The
+# previous values are saved to data/runtime/w32time_previous_config.json and
+# `-Revert` puts them back.
+#
+# MaxAllowedPhaseOffset is deliberately left alone. Keeping sub-second
+# corrections as a smooth slew rather than a step matters here: a session
+# measures received_at against exchange timestamps continuously, and a clock
+# that jumps backwards mid-session would corrupt that measurement in a way a
+# gradual correction does not.
+#
 # Run once, from an ELEVATED PowerShell:
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\enable_orb_clock_selfheal.ps1
+#   powershell -ExecutionPolicy Bypass -File scripts\enable_orb_clock_selfheal.ps1 -Revert
 #
-# Idempotent — running it again re-verifies and changes nothing.
+# Idempotent -- running it again re-verifies and changes only what has drifted
+# back to a default.
 
 param(
-    [string]$TaskName = 'EGX ORB Full Shadow Automation'
+    [string]$TaskName = 'EGX ORB Full Shadow Automation',
+    [switch]$Revert
 )
 
 $ErrorActionPreference = 'Stop'
@@ -58,14 +86,91 @@ if ($task.Principal.RunLevel -eq 'Highest') {
     Write-Host "  run level        Limited -> Highest" -ForegroundColor Green
 }
 
-# --- 2. correct the clock now ------------------------------------------
+# --- 2. tune w32time for sub-second accuracy ---------------------------
+$configKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\W32Time\Config'
+$clientKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\W32Time\TimeProviders\NtpClient'
+
+# Microsoft's high-accuracy values. Each one is here because a stock default
+# below it is what let 0.61s of error survive a successful resync.
+$wanted = @(
+    @{ Key = $configKey; Name = 'UpdateInterval';       Value = 100
+       Why = 'apply phase correction ~every second instead of ~every hour' },
+    @{ Key = $configKey; Name = 'FrequencyCorrectRate'; Value = 2
+       Why = 'converge on the local oscillator drift faster (was 4)' },
+    @{ Key = $configKey; Name = 'PhaseCorrectRate';     Value = 1
+       Why = 'correct phase error at full rate' },
+    @{ Key = $configKey; Name = 'MinPollInterval';      Value = 6
+       Why = 'poll no less often than 64s (was 1024s)' },
+    @{ Key = $configKey; Name = 'MaxPollInterval';      Value = 8
+       Why = 'poll at least every 256s (was 32768s, over nine hours)' },
+    # 256s rather than Microsoft's 64s: this is one machine against public
+    # pool servers, and four minutes of drift at the measured 0.14s/hour is
+    # about 10ms. Polite and far tighter than anything this needs.
+    @{ Key = $clientKey; Name = 'SpecialPollInterval';  Value = 256
+       Why = 'poll the configured peers every 256s (was 3600s)' }
+)
+
+$backupDir  = Join-Path (Split-Path -Parent $PSScriptRoot) 'data\runtime'
+$backupPath = Join-Path $backupDir 'w32time_previous_config.json'
+New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+
+if ($Revert) {
+    if (-not (Test-Path $backupPath)) {
+        Write-Host "REFUSED  no saved configuration at $backupPath." -ForegroundColor Red
+        exit 1
+    }
+    $saved = Get-Content $backupPath -Raw | ConvertFrom-Json
+    foreach ($entry in $saved.entries) {
+        if ($null -eq $entry.previous) {
+            Remove-ItemProperty -Path $entry.key -Name $entry.name -ErrorAction SilentlyContinue
+            Write-Host "  restored         $($entry.name) -> (removed)"
+        } else {
+            Set-ItemProperty -Path $entry.key -Name $entry.name -Value ([int]$entry.previous) -Type DWord
+            Write-Host "  restored         $($entry.name) -> $($entry.previous)"
+        }
+    }
+    Restart-Service w32time
+    Write-Host "reverted. w32time restarted." -ForegroundColor Green
+    exit 0
+}
+
+$changed = @()
+$record  = @()
+foreach ($item in $wanted) {
+    $current = (Get-ItemProperty -Path $item.Key -Name $item.Name -ErrorAction SilentlyContinue).$($item.Name)
+    $record += [ordered]@{ key = $item.Key; name = $item.Name; previous = $current }
+    if ($current -eq $item.Value) {
+        Write-Host ("  {0,-22} already {1}" -f $item.Name, $item.Value)
+        continue
+    }
+    Set-ItemProperty -Path $item.Key -Name $item.Name -Value $item.Value -Type DWord
+    Write-Host ("  {0,-22} {1} -> {2}   ({3})" -f $item.Name, $current, $item.Value, $item.Why) -ForegroundColor Green
+    $changed += $item.Name
+}
+
+# Only write the backup the first time, or a second run would record the
+# already-tuned values as the thing to revert to.
+if (-not (Test-Path $backupPath)) {
+    @{ saved_at = (Get-Date).ToString('o'); entries = $record } |
+        ConvertTo-Json -Depth 5 |
+        ForEach-Object { [System.IO.File]::WriteAllText($backupPath, $_, (New-Object System.Text.UTF8Encoding $false)) }
+    Write-Host "  previous values  saved to $backupPath"
+}
+
+if ($changed.Count) {
+    Restart-Service w32time
+    Write-Host "  w32time          restarted to pick up $($changed.Count) change(s)"
+    Start-Sleep -Seconds 3
+}
+
+# --- 3. correct the clock now ------------------------------------------
 # The task will do this itself from tomorrow; doing it here means the machine
 # is correct before the next session rather than after it.
 & w32tm.exe /resync /force 2>&1 | ForEach-Object { Write-Host "  resync           $_" }
 
-Start-Sleep -Seconds 2
+Start-Sleep -Seconds 5
 
-# --- 3. show what the clock actually says -------------------------------
+# --- 4. show what the clock actually says -------------------------------
 Write-Host ""
 Write-Host "verification" -ForegroundColor Cyan
 $status = & w32tm.exe /query /status 2>&1
@@ -83,12 +188,34 @@ if ($source -match 'Local CMOS Clock') {
     Write-Host "OK  clock is disciplined by $($source.Trim())" -ForegroundColor Green
 }
 
-# --- 4. offset against a known-good server ------------------------------
+# --- 5. offset against several independent servers ----------------------
+# One server can be wrong or the path to it asymmetric; agreement across four
+# is what makes an offset a fact rather than a reading.
 Write-Host ""
-Write-Host "offset against time.google.com (positive = this machine is behind)" -ForegroundColor Cyan
-& w32tm.exe /stripchart /computer:time.google.com /samples:3 /dataonly 2>&1 |
-    Select-Object -Last 3 | ForEach-Object { Write-Host "  $_" }
+Write-Host "offset (positive = this machine is behind real time)" -ForegroundColor Cyan
+$offsets = @()
+foreach ($server in 'time.google.com', 'pool.ntp.org', 'time.windows.com', 'time.cloudflare.com') {
+    $line = & w32tm.exe /stripchart /computer:$server /samples:2 /dataonly 2>&1 | Select-Object -Last 1
+    Write-Host ("  {0,-22} {1}" -f $server, ($line -replace '\s+', ' '))
+    if ("$line" -match '([+-]\d+\.\d+)s') { $offsets += [double]$Matches[1] }
+}
 
-$reverted = (Get-ScheduledTask -TaskName $TaskName).Principal.RunLevel
+if ($offsets.Count) {
+    $worst = ($offsets | ForEach-Object { [Math]::Abs($_) } | Measure-Object -Maximum).Maximum
+    Write-Host ""
+    if ($worst -lt 0.10) {
+        Write-Host ("OK  worst offset {0:N3}s. The clock will not manufacture negative lag." -f $worst) -ForegroundColor Green
+    } elseif ($worst -lt 0.30) {
+        Write-Host ("OK  worst offset {0:N3}s and still converging -- the slew is gradual by" -f $worst) -ForegroundColor Green
+        Write-Host "    design. Re-run this in a few minutes to watch it settle."
+    } else {
+        Write-Host ("WARN  worst offset is still {0:N3}s." -f $worst) -ForegroundColor Yellow
+        Write-Host "      Correction is a slew, not a jump, so give it several minutes and"
+        Write-Host "      re-run. If it does not fall, the readiness gate will refuse the"
+        Write-Host "      session rather than let it run on a clock that invents skew."
+    }
+}
+
 Write-Host ""
-Write-Host "'$TaskName' now runs at level: $reverted"
+Write-Host "'$TaskName' runs at level: $((Get-ScheduledTask -TaskName $TaskName).Principal.RunLevel)"
+Write-Host "check any time with:  venv\Scripts\python.exe scripts\check_orb_session_readiness.py"

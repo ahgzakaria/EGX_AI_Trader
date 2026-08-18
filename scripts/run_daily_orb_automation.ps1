@@ -65,7 +65,7 @@ function Write-Status {
     param([string]$Outcome, [string]$Reason, [hashtable]$Extra = @{})
 
     # Written on every exit path. The dashboard reads this file to answer "did
-    # the automation run today?" — a question that previously had no answer
+    # the automation run today?" -- a question that previously had no answer
     # short of digging through Task Scheduler's last-result codes.
     $payload = [ordered]@{
         session_date = $SessionDate
@@ -80,7 +80,7 @@ function Write-Status {
     foreach ($k in $Extra.Keys) { $payload[$k] = $Extra[$k] }
 
     # Written through a temporary file so a power cut mid-write cannot leave a
-    # half-written status that a reader would trust — this machine lost mains
+    # half-written status that a reader would trust -- this machine lost mains
     # power mid-session on 2026-08-18.
     #
     # UTF8Encoding($false) rather than `-Encoding utf8`: Windows PowerShell 5.1
@@ -127,7 +127,7 @@ Say "trading day  OK"
 # A reboot leaves the clock undisciplined until w32time completes its first
 # sync, and the machine has come back from a power cut mid-session before
 # (2026-08-18, out 13:35 to 14:15). Resync needs elevation, so this is an
-# attempt, not a guarantee — the readiness gate below is what actually
+# attempt, not a guarantee -- the readiness gate below is what actually
 # decides. Never fatal on its own: a clock that is already correct does not
 # need the resync to have succeeded.
 $resync = & w32tm.exe /resync /force 2>&1 | Out-String
