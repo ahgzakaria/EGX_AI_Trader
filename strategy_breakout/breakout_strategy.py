@@ -33,7 +33,20 @@ class BreakoutConfig:
     retest_tolerance_percent: float = 1.0
     consolidation_window: int = 10
     max_consolidation_width_percent: float = 8.0
-    minimum_volume_ratio: float = 1.5
+    #: Raised from 1.5 on 2026-08-18. Splitting breakouts into disjoint volume
+    #: bands over 166,173 stock-days showed the old threshold straddled the
+    #: line where the edge actually is. Twenty-day forward return, net of the
+    #: 0.80% round trip, validation era after 2024-01-01:
+    #:
+    #:   no breakout at all        +2.91%   (53.0% win)
+    #:   breakout, 1.0-1.5x vol    -0.11%   (46.0% win)  <- worse than nothing
+    #:   breakout, 1.5-2.5x vol    +2.26%   (49.4% win)  <- no better than none
+    #:   breakout, >= 2.5x vol     +5.73%   (59.0% win)
+    #:
+    #: The old 1.5 threshold admitted the middle band, which does not beat
+    #: sitting out. Consistent across 5, 10 and 20-day holds and across both
+    #: eras; n = 837 validation days above 2.5x.
+    minimum_volume_ratio: float = 2.5
     atr_expansion_multiple: float = 1.2
     ema20_continuation_tolerance_percent: float = 2.0
     minimum_score: int = 65
