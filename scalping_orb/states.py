@@ -280,6 +280,11 @@ class RejectionReason(str, Enum):
     UNVERIFIED_RUBIX_MAPPING = "UNVERIFIED_RUBIX_MAPPING"
     DAILY_RESISTANCE_TOO_CLOSE = "DAILY_RESISTANCE_TOO_CLOSE"
     POOR_INITIAL_REWARD_RISK = "POOR_INITIAL_REWARD_RISK"
+    #: The move to the first target does not clear the round trip by the
+    #: required multiple. Distinct from POOR_INITIAL_REWARD_RISK: that ratio
+    #: can read 2.0 on a target smaller than the cost of reaching it, because
+    #: it compares reward against risk and never against cost.
+    TARGET_BELOW_COST_FLOOR = "TARGET_BELOW_COST_FLOOR"
     INSUFFICIENT_PRICE_UPDATES = "INSUFFICIENT_PRICE_UPDATES"
     INVALID_PRICE_BAR = "INVALID_PRICE_BAR"
     BREAKOUT_BEFORE_EARLIEST_TIME = "BREAKOUT_BEFORE_EARLIEST_TIME"

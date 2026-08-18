@@ -1847,15 +1847,13 @@ def test_phase_2a_configuration_fingerprint_is_undisturbed():
 PHASE_2B_BASELINE = "6d10334"
 PHASE_2C_MERGE = "02250f5"
 
-#: Every decision surface of the engine. `_freshness_reasons` is deliberately
-#: absent: it is the live-decision gate, changed under its own authorisation,
-#: and it decides *whether live may decide*, never *what the strategy decides*.
+#: Every decision surface of the engine that must still be byte-identical to
+#: Phase 2B.
 STRATEGY_SURFACES = (
     "_transition",
     "_eligibility_reasons",
     "_assess_breakout",
     "_structural_risk",
-    "_targets",
     "evaluate",
     "_assess_pullback",
     "_pullback_failure_state",
@@ -1863,6 +1861,45 @@ STRATEGY_SURFACES = (
     "_reclaim_confirmed",
     "_build",
 )
+
+#: Surfaces changed under explicit authorisation, each with the reason. They
+#: are still checked -- they must actually differ from the baseline, so this
+#: file can never pass by comparing an engine that quietly reverted.
+#:
+#: `_freshness_reasons` is the live-decision gate: it decides *whether live may
+#: decide*, never *what the strategy decides*.
+#:
+#: `_targets` was changed on 2026-08-18, after measurement showed the engine
+#: could not clear its own costs. Targets were pure R multiples of a risk unit
+#: floored at a 0.1% pullback, so a shallow pullback produced a target of that
+#: order on stocks whose median daily range is 2.9% across 112,411 stock-days.
+#: Of the thirteen signals on 2026-08-18, eight lost money at their own first
+#: target with entry, exit and target all going exactly as intended. It now
+#: floors the target at a multiple of intraday ATR -- the instrument's own
+#: volatility, not a number chosen to make the result look better -- and
+#: declines a setup whose target cannot clear the round trip.
+AUTHORISED_CHANGED_SURFACES = {
+    "_freshness_reasons": "live-decision gate, changed under its own authorisation",
+    "_targets": "targets could not clear the cost of reaching them (2026-08-18)",
+}
+
+#: `evaluate` stays frozen. Changing `_targets` to take the intraday ATR moved
+#: one argument at its call site inside `evaluate`, and exempting the engine's
+#: largest decision function wholesale to absorb that would trade a real guard
+#: for a convenience. Instead the exact edit is recorded here and applied to
+#: the baseline before comparing, so `evaluate` must still match Phase 2B in
+#: every other respect -- and if this edit ever stops matching the baseline,
+#: the test says to re-derive it rather than widen it.
+EXPECTED_MECHANICAL_EDITS = {
+    "evaluate": [
+        (
+            "targets = self._targets(context, trigger, risk)",
+            "targets = self._targets(\n"
+            "                    context, trigger, risk, breakout.intraday_atr\n"
+            "                )",
+        ),
+    ],
+}
 
 
 def _function_sources(source: str) -> dict[str, str]:
@@ -1935,13 +1972,29 @@ def test_every_strategy_surface_is_identical_to_the_phase_2b_baseline():
     for name in STRATEGY_SURFACES:
         assert name in baseline, f"{name} missing from the Phase 2B baseline"
         assert name in current, f"{name} missing from the current engine"
-        assert current[name] == baseline[name], (
-            f"{name} differs from Phase 2B; strategy rules must not change"
+        expected = baseline[name]
+        if name in EXPECTED_MECHANICAL_EDITS:
+            for was, now in EXPECTED_MECHANICAL_EDITS[name]:
+                assert was in expected, (
+                    f"the recorded edit to {name} no longer matches the "
+                    f"baseline; re-derive it rather than widening it"
+                )
+                expected = expected.replace(was, now)
+        assert current[name] == expected, (
+            f"{name} differs from Phase 2B beyond its recorded edits; "
+            f"strategy rules must not change"
         )
 
-    # And the one function that may differ, did - so this test cannot pass by
-    # silently comparing an engine that never changed at all.
-    assert current["_freshness_reasons"] != baseline["_freshness_reasons"]
+    # And every function that may differ, did - so this test cannot pass by
+    # silently comparing an engine that never changed at all, and an
+    # authorisation cannot be left behind after the change it covered is
+    # reverted.
+    for name, reason in AUTHORISED_CHANGED_SURFACES.items():
+        assert name in baseline and name in current, name
+        assert current[name] != baseline[name], (
+            f"{name} is listed as authorised to change ({reason}) but is "
+            f"identical to the baseline; remove the authorisation"
+        )
 
 
 def test_no_dashboard_file_is_touched_by_this_phase():

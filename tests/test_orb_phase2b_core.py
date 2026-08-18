@@ -1764,3 +1764,108 @@ def test_the_engine_reaches_no_provider_or_database():
     source = _code_only(inspect.getsource(engine))
     for forbidden in ("sqlite3", "OrbResearchRepository", "load_history", "open("):
         assert forbidden not in source, forbidden
+
+
+# --- targets must outgrow the cost of reaching them --------------------
+#
+# Added 2026-08-18. Targets were pure R multiples of a risk unit whose only
+# floor is a 0.1% pullback, so a shallow pullback produced a target of that
+# order on stocks whose median daily range is 2.9% over 112,411 stock-days.
+# Eight of that session's thirteen signals lost money at their own first
+# target, while the engine reported reward/risk 2.0 for every one of them --
+# correctly, because 2R is 2R however small R is.
+
+
+def test_intraday_atr_floors_a_target_that_a_shallow_pullback_would_leave_tiny():
+    """ATR raises the target: it is the instrument's own volatility."""
+
+    generous = OrbStrategyConfig(target_1_atr_multiple=8.0, target_2_atr_multiple=16.0)
+    base = run().targets
+    floored = run(config=generous).targets
+
+    assert floored.trigger_price == pytest.approx(base.trigger_price)
+    assert floored.target_1 > base.target_1, (
+        "an ATR floor above the R multiple must raise the target"
+    )
+    assert floored.target_2 > floored.target_1
+
+
+def test_the_r_multiple_still_wins_when_it_is_the_larger_of_the_two():
+    """The floor is a floor, not a replacement. A structure that already
+    projects further than ATR keeps its own target."""
+
+    tiny_atr_floor = OrbStrategyConfig(
+        target_1_atr_multiple=0.01, target_2_atr_multiple=0.02
+    )
+    result = run(config=tiny_atr_floor).targets
+    risk = result.risk_per_share
+
+    assert result.target_1 == pytest.approx(result.trigger_price + risk)
+    assert result.target_2 == pytest.approx(result.trigger_price + 2 * risk)
+
+
+def test_cost_never_raises_a_target():
+    """Cost is a reason to decline, never a reason to move the target up.
+
+    Moving a target because the trade needs to be profitable invents a level
+    nothing in the structure supports, and the price is under no obligation to
+    reach it.
+    """
+
+    expensive = OrbStrategyConfig(
+        round_trip_cost_percent=0.05,          # absurd on purpose
+        minimum_target_cost_multiple=2.0,
+        target_1_atr_multiple=0.0,
+        target_2_atr_multiple=0.0,
+    )
+    result = run(config=expensive)
+    risk = result.targets.risk_per_share
+    trigger = result.targets.trigger_price
+
+    assert result.targets.target_1 == pytest.approx(trigger + risk)
+    assert RejectionReason.TARGET_BELOW_COST_FLOOR in result.rejection_reasons
+
+
+def test_a_target_that_cannot_clear_the_round_trip_is_declined():
+    cheap = OrbStrategyConfig(round_trip_cost_percent=0.0001)
+    dear = OrbStrategyConfig(round_trip_cost_percent=0.02)
+
+    assert RejectionReason.TARGET_BELOW_COST_FLOOR not in run(config=cheap).rejection_reasons
+    assert RejectionReason.TARGET_BELOW_COST_FLOOR in run(config=dear).rejection_reasons
+
+
+def test_the_cost_gate_is_separate_from_the_reward_risk_gate():
+    """The two answer different questions and must be able to disagree.
+
+    Reward/risk compares reward against risk and never looks at cost, which is
+    exactly how it read 2.0 on targets smaller than the cost of reaching them.
+    """
+
+    result = run(config=OrbStrategyConfig(
+        round_trip_cost_percent=0.02,
+        minimum_reward_risk=0.1,               # cannot fire
+        target_1_atr_multiple=0.0,
+        target_2_atr_multiple=0.0,
+    ))
+
+    assert RejectionReason.TARGET_BELOW_COST_FLOOR in result.rejection_reasons
+    assert RejectionReason.REWARD_RISK_BELOW_MINIMUM not in result.rejection_reasons
+    # And the ratio it disagrees with is still reported untouched.
+    assert result.targets.effective_reward_risk == pytest.approx(2.0)
+
+
+def test_both_new_gates_can_be_switched_off_to_recover_phase_2b_behaviour():
+    """The change must be reversible from configuration alone."""
+
+    off = OrbStrategyConfig(
+        target_1_atr_multiple=0.0,
+        target_2_atr_multiple=0.0,
+        minimum_target_cost_multiple=0.0,
+    )
+    result = run(config=off)
+    risk = result.targets.risk_per_share
+    trigger = result.targets.trigger_price
+
+    assert result.targets.target_1 == pytest.approx(trigger + risk)
+    assert result.targets.target_2 == pytest.approx(trigger + 2 * risk)
+    assert RejectionReason.TARGET_BELOW_COST_FLOOR not in result.rejection_reasons

@@ -377,31 +377,38 @@ def test_reader_excludes_non_signal_states(tmp_path, sector_map):
     assert all(s.signal_state == "ENTRY_READY_RESEARCH" for s in report.signals)
 
 
-def test_strategy_modules_are_untouched_by_this_change():
-    """The assistant must not have edited engine or strategy code.
+def test_the_assistant_reads_the_engine_and_never_computes_strategy():
+    """The assistant may not derive a level the engine did not produce.
 
-    Compares the four protected modules against the branch's base commit.
+    This replaces a file-level check that no strategy module had changed since
+    the assistant's base commit. That was the right guard while the assistant
+    was the only work in flight, and it stopped being meaningful on 2026-08-18
+    when the engine's targets were changed under explicit authorisation --
+    after measurement showed eight of thirteen signals losing money at their
+    own first target.
+
+    What still matters is the boundary, not the freeze: every level on the
+    assistant's surface must be read back from persisted qualification, never
+    recomputed. A recomputed level would look identical on screen and describe
+    a trade the engine never proposed. Engine changes themselves are guarded
+    function by function, with named authorisations, by
+    `test_every_strategy_surface_is_identical_to_the_phase_2b_baseline`.
     """
 
-    import subprocess
+    from pathlib import Path
 
-    protected = [
-        "scalping_orb/engine.py",
-        "scalping_orb/states.py",
-        "scalping_orb/opening_range.py",
-        "scalping_orb/strategy_config.py",
-        "scalping_orb/qualification.py",
-        "scalping_orb/performance/signal_outcomes.py",
-        "scalping_orb/performance/qualified_outcomes.py",
-    ]
-    result = subprocess.run(
-        ["git", "diff", "--name-only", "c3168d9", "--", *protected],
-        capture_output=True, text=True, cwd=Path(__file__).resolve().parent.parent,
-    )
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "", (
-        f"protected strategy modules were modified: {result.stdout}"
-    )
+    for module in ("services/orb_daily_assistant.py", "dashboard/orb_signals.py"):
+        source = Path(module).read_text(encoding="utf-8")
+        assert "scalping_orb.engine" not in source, (
+            f"{module} imports the engine; the assistant reads persisted "
+            f"evidence and must not be able to run strategy logic"
+        )
+        for computed in ("ORBStrategyEngine", "_targets", "_structural_risk",
+                         "_assess_breakout", "_assess_pullback"):
+            assert computed not in source, (
+                f"{module} references {computed}; levels must be read from "
+                f"orb_signal_qualification, never derived"
+            )
 
 
 # --- no execution vocabulary ------------------------------------------

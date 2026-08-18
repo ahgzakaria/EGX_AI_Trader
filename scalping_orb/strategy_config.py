@@ -147,6 +147,39 @@ class OrbStrategyConfig:
     target_2_r_multiple: float = 2.0
     maximum_distance_to_target_resistance_percent: float = 0.002
 
+    # -- TARGETS MUST OUTGROW THE COST OF REACHING THEM --------------------
+    #
+    # Targets were purely R multiples of the risk unit, and the risk unit's
+    # only floor is `minimum_pullback_depth_percent` at 0.1%. A shallow
+    # pullback therefore produced a target of the same order, and on
+    # 2026-08-18 the thirteen signals averaged a 0.86% first target against a
+    # measured round trip of 0.46% in fees plus a 0.35% median spread. Eight of
+    # the thirteen lost money at their own target with entry, exit and target
+    # all going exactly as intended. The engine still reported reward/risk 2.0
+    # for every one of them, correctly: 2R is 2R however small R is.
+    #
+    # Two independent floors are applied, and the target is the largest of the
+    # three candidates. Both are set from market structure rather than from
+    # any measured outcome -- there are two sessions of signals on record,
+    # which is far too few to fit anything to.
+    #
+    #: Floor the target at a multiple of intraday ATR, so it reflects what the
+    #: stock actually moves rather than how deep one pullback happened to be.
+    #: EGX liquid names have a median daily range near 2.9%, measured over
+    #: 112,411 stock-days; a target far below the day's own volatility is
+    #: leaving the move on the table, not being conservative.
+    target_1_atr_multiple: float = 1.0
+    target_2_atr_multiple: float = 2.0
+
+    #: Round-trip cost as a fraction of price: broker fee schedule (0.1819%
+    #: per side) plus slippage (0.05% per side). The spread is measured per
+    #: signal and is charged on top of this, so this is a floor, not the total.
+    round_trip_cost_percent: float = 0.004638
+
+    #: A target must clear the round trip by at least this multiple. At 1.0 a
+    #: perfect trade breaks even, which is not a trade worth taking.
+    minimum_target_cost_multiple: float = 2.0
+
     # -- TIME (Cairo wall clock; auction/session end come from `data`) -----
     earliest_breakout_time: time = time(10, 15)
     latest_research_entry_time: time = time(13, 30)

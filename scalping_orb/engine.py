@@ -656,13 +656,34 @@ class OrbResearchEngine:
         context: ORBStrategyContext,
         trigger: float,
         risk: StructuralRiskProposal,
+        atr: IntradayAtr,
     ) -> TargetProjection | None:
         cfg = self.config
         if not risk.valid or not risk.stop_distance_absolute:
             return None
         risk_per_share = float(risk.stop_distance_absolute)
-        target_1 = trigger + cfg.target_1_r_multiple * risk_per_share
-        target_2 = trigger + cfg.target_2_r_multiple * risk_per_share
+
+        # Two different things, kept on two different sides.
+        #
+        # ATR raises the target: it is the stock's own realised volatility, so
+        # projecting to it is reading the instrument, not wishing. An R
+        # multiple of a 0.1% pullback is a 0.1% target on a name whose median
+        # daily range is 2.9%, which leaves the move on the table.
+        #
+        # Cost does NOT raise the target. Moving a target up because we need
+        # the trade to be profitable invents a level nothing in the structure
+        # supports, and the price is under no obligation to reach it. Cost is
+        # a reason to decline the setup, and it is applied as one below.
+        atr_value = float(atr.value) if atr.available and atr.value else 0.0
+
+        target_1 = max(
+            trigger + cfg.target_1_r_multiple * risk_per_share,
+            trigger + cfg.target_1_atr_multiple * atr_value,
+        )
+        target_2 = max(
+            trigger + cfg.target_2_r_multiple * risk_per_share,
+            trigger + cfg.target_2_atr_multiple * atr_value,
+        )
         resistance = context.daily.nearest_resistance_above(trigger)
         reward_before_resistance = (
             resistance - trigger if resistance is not None else None
@@ -687,6 +708,13 @@ class OrbResearchEngine:
             reasons.append(RejectionReason.DAILY_RESISTANCE_TOO_CLOSE)
         if effective < cfg.minimum_reward_risk:
             reasons.append(RejectionReason.REWARD_RISK_BELOW_MINIMUM)
+        # Declining a setup the cost eats is a separate judgement from the
+        # reward/risk gate above, which compares reward against risk and never
+        # looks at cost at all -- which is how it reported 2.0 on thirteen
+        # signals of which eight lost money at their own target.
+        cost_floor = trigger * cfg.round_trip_cost_percent * cfg.minimum_target_cost_multiple
+        if cfg.minimum_target_cost_multiple > 0 and (target_1 - trigger) < cost_floor:
+            reasons.append(RejectionReason.TARGET_BELOW_COST_FLOOR)
         return TargetProjection(
             trigger_price=trigger,
             risk_per_share=risk_per_share,
@@ -1085,7 +1113,9 @@ class OrbResearchEngine:
                 risk = self._structural_risk(
                     trigger, pullback.low, breakout.intraday_atr
                 )
-                targets = self._targets(context, trigger, risk)
+                targets = self._targets(
+                    context, trigger, risk, breakout.intraday_atr
+                )
                 blocking = list(risk.rejection_reasons)
                 if targets is None:
                     blocking.append(RejectionReason.RISK_NOT_CALCULABLE)
