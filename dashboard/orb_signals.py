@@ -18,6 +18,13 @@ import pandas as pd
 import streamlit as st
 
 from core.sector_context import UNKNOWN_SECTOR_ID, sector_map_provenance
+from services.automation_status import (
+    COMPLETED,
+    NEVER_RAN,
+    REFUSED,
+    RUNNING,
+    read_status,
+)
 from services.orb_daily_assistant import (
     AssistantSourceUnavailable,
     MISSING_FOR_SIGNAL,
@@ -147,6 +154,51 @@ def _cost_summary(report) -> None:
         )
 
 
+def _automation_banner(session_date: str) -> None:
+    """Say what the scheduler did for this date, especially when it did nothing.
+
+    An empty signals page has two very different causes — the engine found
+    nothing, or nothing ever ran — and they were previously indistinguishable
+    from this screen. That ambiguity is how two scheduled tasks stayed broken
+    for weeks while sessions were started by hand.
+    """
+
+    status = read_status(session_date)
+
+    if status.outcome == COMPLETED:
+        st.success(f"Scheduled automation completed for {session_date}.", icon="🗓️")
+        return
+
+    if status.outcome == NEVER_RAN:
+        # Only worth raising for a day that has a session to miss; a future or
+        # non-trading date legitimately has no run.
+        if session_date <= date.today().isoformat():
+            st.warning(
+                f"**The scheduled automation left no record for {session_date}.** "
+                f"Either the task did not run, or it failed before reaching the "
+                f"script. Any session shown below was started by hand. Check "
+                f"`EGX ORB Full Shadow Automation` in Task Scheduler.",
+                icon="🗓️",
+            )
+        return
+
+    if status.outcome == RUNNING:
+        st.info(
+            f"Scheduled automation is running (started {status.started_at or '—'}). "
+            f"If this persists past 14:15 the run died without an exit path.",
+            icon="🗓️",
+        )
+        return
+
+    icon = "🛑" if status.outcome == REFUSED else "⚠️"
+    body = f"**Scheduled automation reported `{status.outcome}` for {session_date}.**"
+    if status.reason:
+        body += f"\n\n{status.reason}"
+    if status.steps:
+        body += "\n\n" + " · ".join(f"`{k}` {v}" for k, v in status.steps.items())
+    st.error(body, icon=icon)
+
+
 #: How often the live panel re-reads the session database. A running session
 #: writes continuously, and a page that only refreshes when the reader happens
 #: to click something shows a stale signal list at exactly the moment it
@@ -167,6 +219,9 @@ def show_orb_signals() -> None:
 
     if not sessions:
         st.warning("No ORB session databases found.")
+        # No database at all is exactly the case where "did the scheduler run?"
+        # is the first question, so answer it before the search-path note.
+        _automation_banner(date.today().isoformat())
         st.markdown(
             f"Searched `{directory}`. Point the assistant at a session "
             f"directory by setting the `{SESSION_DIR_ENV}` environment variable."
@@ -195,6 +250,8 @@ def show_orb_signals() -> None:
 
 def _render_session(path, chosen: str, auto: bool) -> None:
     """Everything that must be re-read when the session database changes."""
+
+    _automation_banner(chosen)
 
     try:
         report = load_daily_report(path)

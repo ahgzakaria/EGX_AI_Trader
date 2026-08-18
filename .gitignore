@@ -64,6 +64,11 @@ config/rubix_launcher_settings.local.json.lock
 config/rubix_launcher_settings.local.json.tmp*
 data/runtime/
 
+# Per-session record of what the scheduled automation did. Machine-local
+# evidence about one host's runs; committing it would mean a checkout carries
+# another machine's history of refusals.
+data/automation_status/
+
 # Logs, backups, generated binaries and runtime capture
 logs/
 backups/
