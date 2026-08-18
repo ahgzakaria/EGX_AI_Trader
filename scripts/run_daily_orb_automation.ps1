@@ -210,10 +210,46 @@ $code = $LASTEXITCODE
 if ($code -eq 0) {
     $steps['orchestrator'] = 'OK'
     Say "orchestrator finished cleanly"
-    Write-Status -Outcome 'COMPLETED' -Reason 'orchestrator finished cleanly' -Extra @{ exit_code = $code }
 } else {
     $steps['orchestrator'] = "EXIT_$code"
     Say "orchestrator exited $code"
-    Write-Status -Outcome 'FAILED' -Reason "orchestrator exited $code" -Extra @{ exit_code = $code }
+}
+
+# --- 5. bank the day's microstructure ----------------------------------
+# Runs whether or not the orchestrator succeeded: it summarises the session
+# that just happened from the Rubix feed, and that feed does not care whether
+# the ORB engine had a good day.
+#
+# It has to happen here rather than as its own scheduled task. A separate task
+# is a separate thing to fail silently, and silent failure is what left two
+# tasks broken for weeks. This one shares the log, the status file and the
+# dashboard banner that already exist.
+#
+# Rubix produces about 50 GB of quotes a year and nothing keeps them. What
+# this writes is a few hundred kilobytes a year and is the only form in which
+# the session's spreads and quote intensity survive. Takes 25-30 minutes.
+Say "banking microstructure for $SessionDate"
+& $python -u (Join-Path $root 'scripts\bank_daily_microstructure.py') `
+    --session $SessionDate --rubix-db-path $RubixDbPath *>&1 |
+    Tee-Object -FilePath $log -Append
+$bankCode = $LASTEXITCODE
+
+if ($bankCode -eq 0) {
+    $steps['microstructure'] = 'OK'
+    Say "microstructure banked"
+} else {
+    $steps['microstructure'] = "EXIT_$bankCode"
+    Say "microstructure banking exited $bankCode"
+}
+
+if ($code -eq 0 -and $bankCode -eq 0) {
+    Write-Status -Outcome 'COMPLETED' -Reason 'session and microstructure both finished cleanly' `
+        -Extra @{ exit_code = $code; microstructure_exit_code = $bankCode }
+} elseif ($code -eq 0) {
+    Write-Status -Outcome 'FAILED' -Reason "orchestrator finished but microstructure banking exited $bankCode" `
+        -Extra @{ exit_code = $code; microstructure_exit_code = $bankCode }
+} else {
+    Write-Status -Outcome 'FAILED' -Reason "orchestrator exited $code" `
+        -Extra @{ exit_code = $code; microstructure_exit_code = $bankCode }
 }
 exit $code

@@ -46,6 +46,10 @@ sys.path.insert(0, str(PROJECT_ROOT))
 RUBIX_DB = PROJECT_ROOT / "data" / "rubix_live_market.db"
 BANK_DB = PROJECT_ROOT / "data" / "daily_microstructure.db"
 
+#: Symbols per commit. Small enough that an interruption costs a minute of
+#: work, large enough that the commits are not the cost.
+BATCH_SIZE = 25
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS daily_microstructure (
     canonical_symbol      TEXT    NOT NULL,
@@ -219,24 +223,44 @@ def bank(sessions: list[date], *, rubix_path: Path, bank_path: Path,
             print(f"{session}  no symbols to measure")
             continue
 
-        rows = [m for m in (measure(rubix, t, session) for t in tickers) if m]
-        if not rows:
+        # Committed in batches rather than once at the end. A full session
+        # takes 25-30 minutes, and this machine lost mains power mid-session
+        # on 2026-08-18; a single commit would mean an interruption at minute
+        # 28 saved nothing. Batches also make a resumed run cheap.
+        rows, banked, spreads = [], 0, []
+
+        def flush(rows):
+            if not rows:
+                return 0
+            columns = list(rows[0])
+            store.executemany(
+                f"INSERT OR REPLACE INTO daily_microstructure ({','.join(columns)}) "
+                f"VALUES ({','.join('?' * len(columns))})",
+                [[row[c] for c in columns] for row in rows],
+            )
+            store.commit()
+            return len(rows)
+
+        for index, ticker in enumerate(tickers, 1):
+            measured = measure(rubix, ticker, session)
+            if not measured:
+                continue
+            rows.append(measured)
+            if measured["median_spread_percent"]:
+                spreads.append(measured["median_spread_percent"])
+            if len(rows) >= BATCH_SIZE:
+                banked += flush(rows)
+                rows = []
+                print(f"{session}  {banked:>4}/{len(tickers)} banked", flush=True)
+
+        banked += flush(rows)
+        written += banked
+        if not banked:
             print(f"{session}  nothing measurable")
             continue
 
-        columns = list(rows[0])
-        store.executemany(
-            f"INSERT OR REPLACE INTO daily_microstructure ({','.join(columns)}) "
-            f"VALUES ({','.join('?' * len(columns))})",
-            [[row[c] for c in columns] for row in rows],
-        )
-        store.commit()
-        written += len(rows)
-
-        spreads = [r["median_spread_percent"] for r in rows if r["median_spread_percent"]]
-        print(f"{session}  {len(rows):>4} symbols   "
-              f"median spread {statistics.median(spreads):.3f}%" if spreads
-              else f"{session}  {len(rows):>4} symbols")
+        detail = f"median spread {statistics.median(spreads):.3f}%" if spreads else ""
+        print(f"{session}  {banked:>4} symbols   {detail}", flush=True)
 
     total = store.execute("SELECT COUNT(*) FROM daily_microstructure").fetchone()[0]
     sessions_held = store.execute(
