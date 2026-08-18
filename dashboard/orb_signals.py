@@ -38,41 +38,6 @@ from services.orb_daily_assistant import (
 DASH = "—"
 
 
-def _price(value):
-    return f"{value:,.3f}" if isinstance(value, (int, float)) else DASH
-
-
-def _ratio(value):
-    return f"{value:.2f}" if isinstance(value, (int, float)) else DASH
-
-
-def _cap(value):
-    return f"{value:,.2f}" if isinstance(value, (int, float)) else DASH
-
-
-def _rank(value):
-    return str(value) if isinstance(value, int) else DASH
-
-
-def _spread(value):
-    return f"{value:.3f}%" if isinstance(value, (int, float)) else DASH
-
-
-def _percent_of(value):
-    return f"{value * 100:.0f}%" if isinstance(value, (int, float)) else DASH
-
-
-#: A reward/risk of ``None`` from the cost model does not mean "unknown" -- it
-#: means the costs consume the entire move, so no ratio exists. Rendering that
-#: as the same dash used for missing data would lose the distinction exactly
-#: where it matters most.
-NO_NET_REWARD = "loses"
-
-
-def _net_ratio(value):
-    return f"{value:.2f}" if isinstance(value, (int, float)) else NO_NET_REWARD
-
-
 def _eligibility(value):
     """Same-session tradability. UNKNOWN is shown as a question, not a yes."""
 
@@ -80,36 +45,138 @@ def _eligibility(value):
 
 
 def _signal_frame(report) -> pd.DataFrame:
-    """One row per signal, in the column order a human reads left to right."""
+    """One row per signal, with numbers kept as numbers.
+
+    Every column used to be a pre-formatted string, which left the whole table
+    ragged: prices and percentages aligned left like prose, and no column
+    sorted in any useful order. Keeping the real types and formatting them at
+    render time through ``column_config`` fixes the alignment, the sorting and
+    the decimal places at once.
+
+    ``None`` stays ``None`` rather than becoming a dash here, so a missing
+    number renders as an empty cell instead of contaminating a numeric column
+    with text.
+    """
 
     rows = []
     for signal in report.signals:
         rows.append({
             "Time": signal.detection_time_label,
             "Ticker": signal.canonical_ticker,
-            "Company": signal.company_name or DASH,
-            "Sector": signal.sector_name,
-            "Rank": _rank(signal.sector_rank),
-            "Mkt Cap (bn EGP)": _cap(signal.market_cap_billions),
-            "State": signal.signal_state.replace("_", " ").title(),
-            "Trigger": _price(signal.trigger_price),
-            "Stop": _price(signal.proposed_stop),
-            "T1": _price(signal.target_1),
-            "T2": _price(signal.target_2),
-            "Risk/Share": _price(signal.risk_per_share),
-            "Eff R/R": _ratio(signal.effective_reward_risk),
-            "T1 move %": _spread(signal.target_1_percent),
-            "Spread %": _spread(signal.median_spread_percent),
-            "Cost %": _spread(signal.total_cost_percent),
-            "Net @T1 %": _spread(signal.net_target_1_percent),
-            "Net R/R @T2": _net_ratio(signal.net_reward_risk),
-            "Spread/Risk": _percent_of(signal.spread_share_of_risk),
+            "Company": signal.company_name or "",
+            # -- what the trade is worth after what it costs ---------------
+            "T1 move %": signal.target_1_percent,
+            "Cost %": signal.total_cost_percent,
+            "Net @T1 %": signal.net_target_1_percent,
+            "Net R/R": signal.net_reward_risk,
+            "Eff R/R": signal.effective_reward_risk,
+            # -- the engine's own levels -----------------------------------
+            "Trigger": signal.trigger_price,
+            "Stop": signal.proposed_stop,
+            "T1": signal.target_1,
+            "T2": signal.target_2,
+            "Risk/Share": signal.risk_per_share,
+            # -- market and context ----------------------------------------
+            "Spread %": signal.median_spread_percent,
+            "Spread/Risk": signal.spread_share_of_risk,
             "T+0": _eligibility(signal.intraday_eligibility),
-            "ATR": _price(signal.atr_value),
-            "Qualification": signal.qualification_status,
+            "Sector": signal.sector_name,
+            "Mkt Cap (bn)": signal.market_cap_billions,
+            "ATR": signal.atr_value,
             "Episodes": signal.episode_count,
+            "Qualification": signal.qualification_status,
         })
     return pd.DataFrame(rows)
+
+
+def _percent_column(label: str, help_text: str, decimals: int = 2):
+    return st.column_config.NumberColumn(
+        label, help=help_text, format=f"%.{decimals}f%%", width="small"
+    )
+
+
+def _signal_column_config() -> dict:
+    """Formatting, widths and per-column help for the signals table."""
+
+    return {
+        "Time": st.column_config.TextColumn("Time", width="small"),
+        "Ticker": st.column_config.TextColumn("Ticker", width="small", pinned=True),
+        "Company": st.column_config.TextColumn("Company", width="medium"),
+        "T1 move %": _percent_column(
+            "T1 move %", "How far the first target is from the trigger."
+        ),
+        "Cost %": _percent_column(
+            "Cost %",
+            "The whole round trip: the measured spread once, plus commission "
+            "and slippage on both sides. Empty when the spread was never "
+            "observed, which makes the cost unknown rather than smaller.",
+        ),
+        "Net @T1 %": _percent_column(
+            "Net @T1 %",
+            "What is left of the move after costs. Negative means the trade "
+            "loses money at its own first target.",
+        ),
+        "Net R/R": st.column_config.NumberColumn(
+            "Net R/R",
+            help="Reward/risk after the same costs, to the target the engine "
+                 "would run to (T2). Empty means no positive net reward "
+                 "exists -- the costs consume the whole move.",
+            format="%.2f", width="small",
+        ),
+        "Eff R/R": st.column_config.NumberColumn(
+            "Eff R/R",
+            help="The engine's own ratio, untouched. Reads 2.00 throughout "
+                 "because both targets are fixed multiples of the risk unit, "
+                 "however small the move and however large the cost.",
+            format="%.2f", width="small",
+        ),
+        "Trigger": st.column_config.NumberColumn("Trigger", format="%.3f", width="small"),
+        "Stop": st.column_config.NumberColumn("Stop", format="%.3f", width="small"),
+        "T1": st.column_config.NumberColumn("T1", format="%.3f", width="small"),
+        "T2": st.column_config.NumberColumn("T2", format="%.3f", width="small"),
+        "Risk/Share": st.column_config.NumberColumn(
+            "Risk/Share", format="%.3f", width="small"
+        ),
+        "Spread %": _percent_column(
+            "Spread %",
+            "Median quoted bid/ask spread observed on Rubix across the "
+            "session -- what the book looked like, not a guaranteed fill.",
+            decimals=3,
+        ),
+        "Spread/Risk": st.column_config.NumberColumn(
+            "Spread/Risk",
+            help="Spread as a share of the engine's risk unit.",
+            format="percent", width="small",
+        ),
+        "T+0": st.column_config.TextColumn(
+            "T+0",
+            help="Same-session tradability. '?' means unknown, which is not "
+                 "the same as yes.",
+            width="small",
+        ),
+        "Sector": st.column_config.TextColumn("Sector", width="medium"),
+        "Mkt Cap (bn)": st.column_config.NumberColumn(
+            "Mkt Cap (bn)", format="%.2f", width="small"
+        ),
+        "ATR": st.column_config.NumberColumn("ATR", format="%.3f", width="small"),
+        "Episodes": st.column_config.NumberColumn("Episodes", format="%d", width="small"),
+        "Qualification": st.column_config.TextColumn("Qualification", width="medium"),
+    }
+
+
+def _style_signals(frame: pd.DataFrame):
+    """Colour the one column a reader must not skim past.
+
+    Only ``Net @T1 %`` is coloured. Colouring more would turn a table of
+    evidence into a recommendation, which this page does not make.
+    """
+
+    def net_colour(value):
+        if not isinstance(value, (int, float)) or pd.isna(value):
+            return ""
+        return "color: #d13212" if value <= 0 else "color: #1a7f37"
+
+    return frame.style.map(net_colour, subset=["Net @T1 %"])
 
 
 def _sector_frame(report) -> pd.DataFrame:
@@ -120,11 +187,6 @@ def _sector_frame(report) -> pd.DataFrame:
         }
         for tally in report.sector_summary
     ])
-
-
-#: Above this share of the first target, the round-trip spread is the dominant
-#: term in the trade and the engine's own reward/risk stops describing it.
-COST_HEAVY_SHARE = 0.50
 
 
 def _cost_summary(report) -> None:
@@ -159,8 +221,8 @@ def _cost_summary(report) -> None:
     losing = [s for s in priced if s.net_target_1_percent <= 0]
 
     st.caption(
-        f"Costs charged: **{costs.round_trip_percent:.2f}%** round trip "
-        f"({costs.commission_per_side * 100:.2f}% commission and "
+        f"Costs charged: **{costs.round_trip_percent:.3f}%** round trip "
+        f"({costs.commission_per_side * 100:.4f}% fees and "
         f"{costs.slippage_per_side * 100:.3f}% slippage, each side) plus the "
         f"measured spread. "
         + (
@@ -170,6 +232,40 @@ def _cost_summary(report) -> None:
             else "**Tax is not included** — no rate is configured."
         )
     )
+
+    if costs.fee_lines:
+        with st.expander("Fee schedule"):
+            st.caption(
+                "Transcribed from a broker contract note so every line can be "
+                "checked against it. Edit `scalping.fee_schedule` in "
+                "`config/settings.json` if your rates differ."
+            )
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {"Fee": name.replace("_", " ").title(), "Per side %": percent}
+                        for name, percent in costs.fee_lines
+                    ]
+                    + [{"Fee": "Total per side", "Per side %":
+                        costs.commission_per_side * 100}]
+                ),
+                hide_index=True, width="stretch",
+                column_config={
+                    "Fee": st.column_config.TextColumn("Fee", width="medium"),
+                    "Per side %": st.column_config.NumberColumn(
+                        "Per side %", format="%.4f%%", width="small"
+                    ),
+                },
+            )
+            if costs.order_fee_egp:
+                st.caption(
+                    f"A flat **{costs.order_fee_egp:.2f} EGP** order fee applies "
+                    f"per side on top. It is not in the percentages above "
+                    f"because its weight depends entirely on position size: on "
+                    f"a 20,000 EGP position it is "
+                    f"{costs.order_fee_percent(20000):.3f}% round trip; on "
+                    f"100,000 EGP, {costs.order_fee_percent(100000):.3f}%."
+                )
 
     if losing:
         worst = min(losing, key=lambda s: s.net_target_1_percent)
@@ -345,23 +441,19 @@ def _render_session(path, chosen: str, auto: bool) -> None:
     _cost_summary(report)
 
     st.subheader("Signals")
-    st.dataframe(_signal_frame(report), width="stretch", hide_index=True)
+    frame = _signal_frame(report)
+    st.dataframe(
+        _style_signals(frame),
+        width="stretch",
+        hide_index=True,
+        column_config=_signal_column_config(),
+    )
     st.caption(
-        "**T1 move %** is how far the first target is from the trigger. "
-        "**Spread %** is the median quoted bid/ask spread observed on Rubix "
-        "across the session — what the book looked like, not a guaranteed fill. "
-        "**Cost %** is the whole round trip: that spread once, plus commission "
-        "and slippage on both sides. **Net @T1 %** is what is left of the move "
-        "after it — negative means the trade loses money at its own first "
-        "target. **Net R/R @T2** is the engine's reward/risk after the same "
-        "costs, measured to the target the engine would actually run to, which "
-        "is T2; `loses` there means the costs consume the entire move, and is "
-        "not the same as the `—` used for a missing number. The engine's own "
-        "`Eff R/R` is left untouched beside it and reads 2.0 throughout, "
-        "because both targets are fixed multiples of the risk unit. "
-        "**Spread/Risk** is the spread as a share of the engine's risk unit. "
-        "**T+0** is same-session tradability: `?` means unknown, which is not "
-        "the same as yes. None of these filter or rank anything."
+        "Hover any column header for what it means. An empty **Net R/R** with "
+        "a **Cost %** present means the costs consume the whole move, so no "
+        "positive net reward exists — different from an empty **Cost %**, "
+        "which means the spread was never observed and the cost is unknown. "
+        "None of these columns filter, rank or recommend anything."
     )
 
     priced = [s for s in report.signals if s.median_spread_percent is not None]

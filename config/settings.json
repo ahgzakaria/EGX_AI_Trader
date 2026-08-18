@@ -138,7 +138,7 @@
         "entry_cutoff": "14:10",
         "forced_exit_time": "14:25",
         "quote_max_age_seconds": 60,
-        "commission": 0.003,
+        "commission": 0.001819,
         "slippage": 0.0005,
         "capital_gains_tax_percent": null,
         "initial_capital": 100000.0,
@@ -167,7 +167,17 @@
                 "max_price": null,
                 "tick_size": 0.01
             }
-        ]
+        ],
+        "fee_schedule": {
+            "_source": "broker contract note, 2026-08-18, notional 102,560.00 EGP",
+            "brokerage_and_custody_percent": 0.1,
+            "trading_stamp_duty_percent": 0.05,
+            "egx_services_percent": 0.01,
+            "mcdr_services_percent": 0.01,
+            "fra_services_percent": 0.0069,
+            "risk_insurance_percent": 0.005,
+            "order_fee_egp": 4.0
+        }
     },
     "ai": {
         "enabled": true,

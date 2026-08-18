@@ -61,6 +61,20 @@ class TradingCosts:
     capital_gains_tax_percent: Optional[float] = None
     rates_loaded: bool = False
     load_error: Optional[str] = None
+    #: Per-line fee percentages the commission was summed from, so a reader can
+    #: check the total against a broker contract note line by line rather than
+    #: trusting one aggregate number.
+    fee_lines: tuple = ()
+    #: Charged per order regardless of size, so its weight depends entirely on
+    #: position size and it cannot be folded into a percentage.
+    order_fee_egp: float = 0.0
+
+    def order_fee_percent(self, position_egp: Optional[float]) -> Optional[float]:
+        """The flat order fee as a percentage of a given position, both sides."""
+
+        if not position_egp or not self.order_fee_egp:
+            return None
+        return self.order_fee_egp * 2.0 / float(position_egp) * 100.0
 
     @property
     def round_trip_percent(self) -> float:
@@ -169,7 +183,32 @@ def load_trading_costs(section: Optional[dict] = None) -> TradingCosts:
         except (TypeError, ValueError):
             return 0.0, False
 
+    # A fee schedule, when present, is the authority: it is transcribed from a
+    # broker contract note and each line can be checked against it. The scalar
+    # `commission` is kept as the fallback for callers that never had one.
+    schedule = section.get("fee_schedule")
+    fee_lines: tuple = ()
+    order_fee = 0.0
     commission, has_commission = rate("commission")
+
+    if isinstance(schedule, dict):
+        lines = []
+        for key, value in schedule.items():
+            if key.startswith("_") or not key.endswith("_percent"):
+                continue
+            try:
+                lines.append((key[: -len("_percent")], max(0.0, float(value))))
+            except (TypeError, ValueError):
+                continue
+        if lines:
+            fee_lines = tuple(lines)
+            commission = sum(percent for _, percent in lines) / 100.0
+            has_commission = True
+        try:
+            order_fee = max(0.0, float(schedule.get("order_fee_egp") or 0.0))
+        except (TypeError, ValueError):
+            order_fee = 0.0
+
     slippage, _ = rate("slippage")
 
     tax = section.get("capital_gains_tax_percent")
@@ -186,4 +225,6 @@ def load_trading_costs(section: Optional[dict] = None) -> TradingCosts:
         capital_gains_tax_percent=tax,
         rates_loaded=has_commission,
         load_error=None if has_commission else "no 'commission' rate in settings",
+        fee_lines=fee_lines,
+        order_fee_egp=order_fee,
     )
