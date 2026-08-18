@@ -40,6 +40,10 @@
 param(
     [string]$SessionDate = (Get-Date -Format 'yyyy-MM-dd'),
     [string]$RubixDbPath,
+    # How long the readiness gate may keep retrying. The continuous session
+    # opens at 10:00; three minutes before it, a feed that is still not live
+    # is not going to be live in time to see the opening range form.
+    [string]$ReadyByTime = '09:57',
     [switch]$SkipReadiness
 )
 
@@ -145,15 +149,48 @@ if ($SkipReadiness) {
     $steps['readiness'] = 'SKIPPED'
     Say "readiness  SKIPPED by request"
 } else {
-    $readiness = & $python -u (Join-Path $root 'scripts\check_orb_session_readiness.py') `
-        --rubix-db-path $RubixDbPath --require-fresh-feed 2>&1 | Out-String
+    # Retry rather than judge once. Both things this gate measures need time
+    # that a single attempt does not give them:
+    #
+    #   * The collector task starts at the same minute as this one. Asking it
+    #     for a fresh quote the instant it launches would fail on a feed that
+    #     is merely still connecting. Separating the two triggers by a guessed
+    #     number of minutes would only move the race, not remove it.
+    #   * A machine powered on minutes earlier is still disciplining its clock.
+    #     Sub-second error is corrected by slewing, which took about six
+    #     minutes to close 0.61s on this hardware. Judging at second zero would
+    #     refuse a machine that is seconds away from being fit.
+    #
+    # So poll until both are true, or until it is too late for the answer to
+    # matter. The deadline is what keeps this a gate and not a wait: past it,
+    # one final attempt decides and the session either starts or is refused.
+    $deadline = [datetime]::ParseExact("$SessionDate $ReadyByTime", 'yyyy-MM-dd HH:mm', $null)
+    $attempt  = 0
+    Say "readiness  polling until $($deadline.ToString('HH:mm')) or first pass"
+
+    while ($true) {
+        $attempt++
+        $readiness = & $python -u (Join-Path $root 'scripts\check_orb_session_readiness.py') `
+            --rubix-db-path $RubixDbPath --require-fresh-feed 2>&1 | Out-String
+        $passed = ($LASTEXITCODE -eq 0)
+        if ($passed -or (Get-Date) -ge $deadline) { break }
+
+        $why = (($readiness -split "`n" | Where-Object { $_ -match 'FAIL|feed age|median lag' }) -join ' | ') -replace '\s+', ' '
+        Say "           attempt $attempt not ready: $why"
+        Start-Sleep -Seconds 20
+    }
+
     Add-Content -Path $log -Value $readiness -Encoding utf8
     Write-Host $readiness
-    if ($LASTEXITCODE -ne 0) {
+
+    if (-not $passed) {
         $summary = ($readiness -split "`n" | Where-Object { $_ -match 'median lag|feed age|FAIL|negative' }) -join ' | '
-        Refuse 'readiness' "readiness gate failed: $($summary -replace '\s+',' '). Starting now would produce a session of OPENING_RANGE_NOT_READY."
+        Refuse 'readiness' ("readiness gate failed after $attempt attempts: " +
+            "$($summary -replace '\s+',' '). Starting now would produce a session of " +
+            "OPENING_RANGE_NOT_READY.")
     }
-    $steps['readiness'] = 'OK'
+    $steps['readiness'] = if ($attempt -eq 1) { 'OK' } else { "OK_AFTER_$attempt" }
+    Say "readiness  OK on attempt $attempt"
 }
 
 # --- 4. run the day ----------------------------------------------------

@@ -54,6 +54,14 @@
 
 param(
     [string]$TaskName = 'EGX ORB Full Shadow Automation',
+    # Both morning tasks fire at the same minute. The readiness gate inside
+    # run_daily_orb_automation.ps1 polls until the feed is live rather than
+    # judging once, so the collector starting alongside it is not a race.
+    # Earlier is worse, not better: this machine is powered on by hand shortly
+    # before the session, and a trigger the machine sleeps through becomes a
+    # missed task that Windows may delay by up to ten minutes -- which can
+    # land after the 10:00 open.
+    [string]$StartTime = '09:45',
     [switch]$Revert
 )
 
@@ -84,6 +92,18 @@ if ($task.Principal.RunLevel -eq 'Highest') {
         -LogonType $task.Principal.LogonType -RunLevel Highest
     Set-ScheduledTask -TaskName $TaskName -Principal $elevated | Out-Null
     Write-Host "  run level        Limited -> Highest" -ForegroundColor Green
+}
+
+# Raising the task to Highest also means only an elevated shell can change its
+# schedule from here on, so the trigger time is set in the same step.
+$currentStart = $task.Triggers[0].StartBoundary.Substring(11, 5)
+if ($currentStart -eq $StartTime) {
+    Write-Host "  trigger          already $StartTime"
+} else {
+    $trigger = New-ScheduledTaskTrigger -Weekly -At $StartTime `
+        -DaysOfWeek Sunday, Monday, Tuesday, Wednesday, Thursday
+    Set-ScheduledTask -TaskName $TaskName -Trigger $trigger | Out-Null
+    Write-Host "  trigger          $currentStart -> $StartTime (Sun-Thu)" -ForegroundColor Green
 }
 
 # --- 2. tune w32time for sub-second accuracy ---------------------------
