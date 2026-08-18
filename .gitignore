@@ -92,3 +92,7 @@ reports/
 # short-lived authentication material selected by the user for one launch.
 # They must never be committed, and neither must the local preference file.
 data/local/
+
+# Daily microstructure rollup. Machine-local evidence that accumulates from
+# this host's own Rubix feed; a checkout should not carry another machine's.
+data/daily_microstructure.db
