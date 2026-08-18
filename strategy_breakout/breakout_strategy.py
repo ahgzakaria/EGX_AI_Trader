@@ -33,20 +33,37 @@ class BreakoutConfig:
     retest_tolerance_percent: float = 1.0
     consolidation_window: int = 10
     max_consolidation_width_percent: float = 8.0
-    #: Raised from 1.5 on 2026-08-18. Splitting breakouts into disjoint volume
-    #: bands over 166,173 stock-days showed the old threshold straddled the
-    #: line where the edge actually is. Twenty-day forward return, net of the
-    #: 0.80% round trip, validation era after 2024-01-01:
+    #: Raised to 2.5 on 2026-08-18 and reverted the same day. Recorded because
+    #: the reason it failed is not obvious and someone will try it again.
+    #:
+    #: Measured on *raw* breakouts over 166,173 stock-days, the case looked
+    #: overwhelming. Twenty-day forward return, net of the 0.80% round trip,
+    #: validated after 2024-01-01:
     #:
     #:   no breakout at all        +2.91%   (53.0% win)
-    #:   breakout, 1.0-1.5x vol    -0.11%   (46.0% win)  <- worse than nothing
-    #:   breakout, 1.5-2.5x vol    +2.26%   (49.4% win)  <- no better than none
+    #:   breakout, 1.0-1.5x vol    -0.11%   (46.0% win)
+    #:   breakout, 1.5-2.5x vol    +2.26%   (49.4% win)
     #:   breakout, >= 2.5x vol     +5.73%   (59.0% win)
     #:
-    #: The old 1.5 threshold admitted the middle band, which does not beat
-    #: sitting out. Consistent across 5, 10 and 20-day holds and across both
-    #: eras; n = 837 validation days above 2.5x.
-    minimum_volume_ratio: float = 2.5
+    #: Run through this strategy rather than over raw breakouts, it does not
+    #: survive. Varying only this gate across five 260-bar windows:
+    #:
+    #:   gate   trades   avg net    win%
+    #:    1.5    1,573    4.151%   53.7%
+    #:    2.0    1,315    3.699%   53.1%
+    #:    2.5    1,096    3.770%   53.3%
+    #:    3.0      922    3.971%   53.7%
+    #:
+    #: 1.5 is best on net and median and ties on win rate, and it wins four of
+    #: the five windows. The differences are small and non-monotonic, which is
+    #: the shape of noise.
+    #:
+    #: The two measurements do not contradict each other. A raw breakout is
+    #: not a signal from this strategy: several other confirmations have
+    #: already fired by the time volume is consulted, and they select for much
+    #: of what the volume filter was picking up. An edge measured on an
+    #: unfiltered population does not transfer to a filtered one.
+    minimum_volume_ratio: float = 1.5
     atr_expansion_multiple: float = 1.2
     ema20_continuation_tolerance_percent: float = 2.0
     minimum_score: int = 65

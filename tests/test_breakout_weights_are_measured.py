@@ -1,90 +1,54 @@
-"""The breakout weights must stay measured, not drift back to intuition.
+"""What is measured here, what is not, and why the difference is recorded.
 
-They were hand-assigned: 20 points for a resistance breakout, 15 for volume,
-15 for consolidation. Measuring them over 166,173 stock-days -- trained before
-2024-01-01, validated after, net of a 0.80% round trip -- found the allocation
-close to backwards. Volume was the strongest feature and carried 15;
-consolidation carried 15 and reversed sign out of sample.
+On 2026-08-18 the breakout weights were re-derived from 166,173 stock-days and
+then reverted, because the re-weighting backtested worse across three separate
+windows. Both facts matter and only one of them is obvious from the code, so
+these tests pin the honest labelling as much as the values.
 
-These tests do not re-run the study. They assert the properties the study
-established, so a later edit that quietly restores a plausible-looking number
-fails and has to justify itself with a new measurement. Re-derive with
-`scripts/research/breakout_features.py` and `breakout_volume_bands.py`.
+The part that survived validation -- the volume entry gate at 2.5x -- is
+asserted against the *loaded* configuration, because an earlier version of
+this file asserted the dataclass default and passed while the live scanner
+still ran at 1.5.
+
+Re-derive anything here with `scripts/research/breakout_features.py` and
+`scripts/research/breakout_volume_bands.py`.
 """
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from strategy_breakout.breakout_scoring import (
-    UNMEASURED_FEATURES,
+    MEASURED_CHANGES,
     WEIGHTS,
+    WEIGHTS_ARE_MEASURED,
     WEIGHTS_PROVENANCE,
 )
 from strategy_breakout.breakout_strategy import BreakoutConfig, load_breakout_config
 
 
-def test_volume_confirmation_outweighs_the_breakout_itself():
-    """The measured lift of a high-volume breakout was roughly 2.5x that of a
-    breakout alone, in validation and at every horizon."""
-
-    assert WEIGHTS["high_volume_breakout"] > WEIGHTS["previous_resistance_breakout"] * 2
+# --- the gate that survived validation ---------------------------------
 
 
-def test_features_that_failed_out_of_sample_carry_no_weight():
-    """`consolidation_breakout` reversed sign in validation, on 362 days.
-    `higher_high_breakout` lifted +1.21% in training and -0.10% after.
-    Between them they carried 25 of the original 100 points."""
+def test_the_volume_gate_stayed_where_it_was():
+    """Raising it to 2.5x looked overwhelming on raw breakouts and failed here.
 
-    assert WEIGHTS["consolidation_breakout"] == 0
-    assert WEIGHTS["higher_high_breakout"] == 0
-
-
-def test_unmeasured_features_stay_small():
-    """Two features are absent from the archived daily data and could not be
-    measured. A weight nobody has evidence for must not be able to carry a
-    signal on its own."""
-
-    for feature in UNMEASURED_FEATURES:
-        assert feature in WEIGHTS, feature
-        assert WEIGHTS[feature] <= 5, (
-            f"{feature} is unmeasured; it may not carry a large weight"
-        )
-
-    unmeasured_total = sum(WEIGHTS[f] for f in UNMEASURED_FEATURES)
-    assert unmeasured_total < sum(WEIGHTS.values()) * 0.15
-
-
-def test_the_measured_weights_dominate_the_score():
-    measured = {k: v for k, v in WEIGHTS.items() if k not in UNMEASURED_FEATURES}
-    assert sum(measured.values()) >= 90
-
-
-def test_the_volume_threshold_sits_above_the_band_that_loses():
-    """Twenty-day validation return, net of cost: a breakout on 1.0-1.5x
-    volume returned -0.11%, worse than not trading at all (+2.91%). The
-    1.5-2.5x band returned +2.26%, no better than sitting out. Only above
-    2.5x (+5.73%, 59% win) is there an edge, so that is where the gate goes.
-
-    Asserted against the *loaded* config, not the dataclass default. An
-    earlier version of this test checked the default and passed while the
-    live scanner still ran at 1.5, because `load_breakout_config` passes
-    every key in `strategy_breakout/settings.json` to the constructor and the
-    file wins. A gate that is only correct in the class body is not a gate.
+    Varying only this gate across five 260-bar windows, 1.5 returned 4.151%
+    net per trade against 3.770% at 2.5, with a higher median and four of the
+    five windows. An edge measured on an unfiltered population does not
+    transfer to one this strategy has already filtered several other ways.
     """
 
-    assert load_breakout_config().minimum_volume_ratio >= 2.5
+    assert load_breakout_config().minimum_volume_ratio == pytest.approx(1.5)
+    assert "minimum_volume_ratio" not in MEASURED_CHANGES
 
 
 def test_every_default_the_settings_file_overrides_agrees_with_it():
-    """The two places a value can live must not disagree.
-
-    Where they do, the file silently wins and the class body becomes a
-    comment that reads like configuration.
-    """
-
-    import json
-    from pathlib import Path
+    """Where the file and the class body disagree, the file silently wins and
+    the class body becomes a comment that reads like configuration."""
 
     stored = json.loads(
         Path("strategy_breakout/settings.json").read_text(encoding="utf-8-sig")
@@ -102,77 +66,84 @@ def test_every_default_the_settings_file_overrides_agrees_with_it():
 
 
 def test_the_backtest_charges_the_real_broker_fee():
-    """0.003 per side was a placeholder that survived into the live config.
-
-    The broker contract note gives 0.1819% per side; charging 0.3% overstates
-    a round trip by more than a full percentage point of the move, which on a
-    strategy whose measured edge is a few percent is most of the answer.
-    """
+    """0.003 per side was a placeholder. The contract note says 0.1819%."""
 
     assert load_breakout_config().commission == pytest.approx(0.001819)
 
 
-def test_the_weights_say_where_they_came_from():
-    """A weight without provenance is indistinguishable from a guess."""
+# --- the weights, and their honest label -------------------------------
 
-    for token in ("frozen_eodhd_seed", "2024-01-01", "166,173"):
+
+def test_the_weights_do_not_claim_to_be_measured():
+    """They are not, and a score that overstates its own basis is worse than
+    one that admits it has none."""
+
+    assert WEIGHTS_ARE_MEASURED is False
+    assert "not measured" in WEIGHTS_PROVENANCE
+
+
+def test_the_provenance_records_the_attempt_and_its_result():
+    """The failed re-weighting is the more useful half of that work: it says
+    per-feature lift is not a basis for these weights. Losing that note would
+    invite the next reader to repeat it."""
+
+    for token in ("2.871", "3.498", "breakout_features.py"):
         assert token in WEIGHTS_PROVENANCE, token
+
+
+def test_the_reverted_weights_are_the_ones_that_backtested_better():
+    """Concentrating weight on the two strongest features let a setup qualify
+    on those alone, roughly tripling the signal count and diluting it. The
+    spread-out weights require several independent confirmations, and that
+    count is itself the selectivity."""
+
+    assert WEIGHTS["previous_resistance_breakout"] == 20
+    assert WEIGHTS["consolidation_breakout"] == 15
+    assert WEIGHTS["higher_high_breakout"] == 10
+    # No single feature may carry a setup past the score gate on its own.
+    assert max(WEIGHTS.values()) < load_breakout_config().minimum_score
 
 
 @pytest.mark.parametrize("feature,weight", sorted(WEIGHTS.items()))
 def test_no_weight_is_negative_or_absurd(feature, weight):
-    assert 0 <= weight <= 100, feature
+    assert 0 < weight <= 100, feature
 
 
 # --- the dashboard must show the basis, not just the number ------------
 
 
-def test_the_scoring_basis_panel_renders_and_names_its_source():
-    """A score whose basis is invisible is indistinguishable from a guess.
-
-    The panel is what lets a reader tell a weight that was earned from one
-    that was picked, so it has to actually render -- not merely import.
-    """
-
+def _rendered_panel():
     from streamlit.testing.v1 import AppTest
 
     app = AppTest.from_string(
-        "from dashboard.home import show_scoring_basis\n"
-        "show_scoring_basis()\n"
+        "from dashboard.home import show_scoring_basis\nshow_scoring_basis()\n"
     )
     app.run(timeout=30)
-
     assert not app.exception, app.exception
+    return app
 
+
+def test_the_panel_admits_the_weights_are_not_measured():
+    """A reader who sees a weight table naturally assumes it was derived. The
+    panel has to say plainly that it was not."""
+
+    app = _rendered_panel()
+    # The admission lives in a warning, the detail in markdown. Collect every
+    # text-bearing element so the test does not pass merely because the
+    # sentence moved between them.
+    blocks = list(app.markdown) + list(app.caption) + list(app.warning) + list(app.info)
     text = " ".join(
-        block.value for block in list(app.markdown) + list(app.caption)
+        block.value for block in blocks
         if isinstance(getattr(block, "value", None), str)
     )
-    # Where the weights came from.
-    assert "frozen_eodhd_seed" in text
-    assert "2024-01-01" in text
-    # The finding that moved the entry gate.
+
+    assert "not measured" in text
+    # And it must still carry the one change that was.
     assert "2.5" in text
-    # And the honest limits.
     assert "not a probability" in text
-    assert "does not subtract the cost" in text
 
 
-def test_the_panel_lists_every_weight_including_the_retired_ones():
-    """Retired features stay visible at zero. Deleting them would hide the
-    measurement that retired them, and the next reader would re-add them."""
-
-    from streamlit.testing.v1 import AppTest
-
-    app = AppTest.from_string(
-        "from dashboard.home import show_scoring_basis\n"
-        "show_scoring_basis()\n"
-    )
-    app.run(timeout=30)
-    assert not app.exception, app.exception
-
-    rendered = app.dataframe
-    assert len(rendered) >= 1, "the weight table did not render"
-    frame = rendered[0].value
-    assert len(frame) == len(WEIGHTS)
-    assert (frame["Weight"] == 0).any(), "no retired feature is shown"
+def test_the_panel_lists_every_weight():
+    app = _rendered_panel()
+    assert app.dataframe, "the weight table did not render"
+    assert len(app.dataframe[0].value) == len(WEIGHTS)

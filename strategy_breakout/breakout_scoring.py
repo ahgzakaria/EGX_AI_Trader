@@ -32,26 +32,62 @@ from typing import Any
 #: daily data and could not be measured; they keep a nominal weight and are
 #: marked as such.
 WEIGHTS = {
-    "high_volume_breakout": 55,
-    "previous_resistance_breakout": 23,
-    "atr_expansion": 19,
-    "ema20_continuation": 2,
-    "higher_high_breakout": 0,
-    "consolidation_breakout": 0,
-    "opening_range_breakout": 5,
-    "retest_confirmed": 5,
+    "previous_resistance_breakout": 20,
+    "opening_range_breakout": 15,
+    "high_volume_breakout": 15,
+    "ema20_continuation": 10,
+    "consolidation_breakout": 15,
+    "atr_expansion": 15,
+    "higher_high_breakout": 10,
+    "retest_confirmed": 10,
 }
 
-#: Which weights rest on measurement and which do not, so a reader never has
-#: to guess. Unmeasured weights are small by intent.
-UNMEASURED_FEATURES = ("opening_range_breakout", "retest_confirmed")
+#: These weights are not measured. Replacing them with measured ones was tried
+#: on 2026-08-18 and made results worse, which is worth more than the attempt.
+#:
+#: Feature-by-feature lift over 166,173 stock-days (train < 2024-01-01,
+#: validated after, net of a 0.80% round trip) said the allocation was close to
+#: backwards: volume confirmation lifted +1.21% out of sample against +0.49%
+#: for the breakout itself, while `consolidation_breakout` reversed sign and
+#: `higher_high_breakout` collapsed. Re-weighting in proportion to that lift
+#: gave 55 points to volume, 23 to the breakout, and zero to the two failures.
+#:
+#: Backtested over three separate 260-bar windows, the re-weighting lost:
+#:
+#:     configuration                 trades   avg net    win%
+#:     hand weights, 2.5x gate          240    3.498%   55.0%
+#:     measured weights, 2.5x gate      613    2.871%   51.5%
+#:
+#: Both measurements are right and they are not in conflict. Per-feature lift
+#: asks what one feature predicts alone. The score asks how many independent
+#: confirmations a setup carries, and requiring four weak ones is itself a
+#: selectivity mechanism that per-feature lift cannot see. Concentrating the
+#: weight on the two strongest features let a setup qualify on those two
+#: alone, roughly tripling the signal count and diluting it.
+#:
+#: So a feature earning no lift on its own is not evidence its weight is
+#: wrong. Deriving these weights properly needs a joint fit against forward
+#: return, not eight separate measurements. Until someone does that, these
+#: stay, labelled honestly.
+WEIGHTS_ARE_MEASURED = False
 
-#: Provenance for the measured weights, carried with the score itself.
 WEIGHTS_PROVENANCE = (
-    "measured 2026-08-18 over data/frozen_eodhd_seed: 60 symbols by median "
-    "turnover, 166,173 stock-days, train < 2024-01-01, validated after, "
-    "net of a 0.80% round trip"
+    "hand-assigned, not measured. A measured re-weighting was tried on "
+    "2026-08-18 over data/frozen_eodhd_seed (166,173 stock-days, train < "
+    "2024-01-01) and backtested worse across three windows: 2.871% net per "
+    "trade at a 51.5% win rate against 3.498% and 55.0% for these. "
+    "Re-derive with scripts/research/breakout_features.py."
 )
+
+#: Nothing in the scoring or the entry gates survived validation. The volume
+#: gate was raised to 2.5x on the same measurements and reverted too: run
+#: through the strategy rather than over raw breakouts, 1.5 beat it on net,
+#: median and four of five windows. See `BreakoutConfig.minimum_volume_ratio`.
+#:
+#: The only change from that day that stands is a factual correction, not a
+#: tune: the commission rate, which was a 0.003 placeholder against a contract
+#: note showing 0.1819% per side.
+MEASURED_CHANGES = ("commission",)
 
 
 def breakout_score(df, i: int, entry: dict, config: Any) -> dict:
@@ -63,18 +99,19 @@ def breakout_score(df, i: int, entry: dict, config: Any) -> dict:
             score += weight
             reasons.append(name.replace("_", " ").title())
 
-    # EMA alignment carried 10 points and closing above EMA20 carried 5. Both
-    # were measurably worthless out of sample -- alignment lifted +1.13% in
-    # training and +0.10% in validation, and closing above EMA20 was negative
-    # in validation at every horizon. They stay as recorded reasons, because
-    # the reader still wants to see the trend context, and contribute nothing
-    # to the score.
+    # These two lifted +0.10% and -0.12% out of sample, so they were briefly
+    # zeroed on 2026-08-18. They are restored for the same reason the weights
+    # above are: their contribution is a confirmation count, not a standalone
+    # prediction, and removing it made the score less selective and the
+    # results worse. See the note on WEIGHTS.
     last = df.iloc[i]
     aligned = bool(last["EMA20"] > last["EMA50"] > last["EMA200"])
     above_ema20 = bool(last["Close"] > last["EMA20"])
     if aligned:
+        score += 10
         reasons.append("Bullish EMA Alignment")
     elif above_ema20:
+        score += 5
         reasons.append("Close Above EMA20")
     score = min(int(score), 100)
     confidence = min(

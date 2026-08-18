@@ -10,7 +10,7 @@
   "retest_tolerance_percent": 1.0,
   "consolidation_window": 10,
   "max_consolidation_width_percent": 8.0,
-  "minimum_volume_ratio": 2.5,
+  "minimum_volume_ratio": 1.5,
   "atr_expansion_multiple": 1.2,
   "ema20_continuation_tolerance_percent": 2.0,
   "minimum_score": 65,

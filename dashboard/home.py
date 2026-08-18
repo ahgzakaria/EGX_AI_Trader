@@ -1129,62 +1129,69 @@ def show_scoring_basis():
 
     import pandas as pd
 
-    from strategy_breakout.breakout_scoring import (
-        UNMEASURED_FEATURES,
-        WEIGHTS,
-        WEIGHTS_PROVENANCE,
-    )
-    from strategy_breakout.breakout_strategy import BreakoutConfig
+    from strategy_breakout.breakout_scoring import WEIGHTS, WEIGHTS_ARE_MEASURED
+    from strategy_breakout.breakout_strategy import load_breakout_config
+
+    config = load_breakout_config()
 
     with st.expander("كيف يُحسب هذا التقييم · How this score is built"):
-        st.caption(WEIGHTS_PROVENANCE)
+        if not WEIGHTS_ARE_MEASURED:
+            st.warning(
+                "**These weights are not measured.** They were assigned by "
+                "judgement. A data-derived replacement was tried and reverted "
+                "— see below.",
+                icon="⚠️",
+            )
 
-        rows = [
-            {
-                "Feature": name.replace("_", " ").title(),
-                "Weight": weight,
-                "Basis": "not measured" if name in UNMEASURED_FEATURES else (
-                    "retired: failed validation" if weight == 0 else "measured lift"
-                ),
-            }
-            for name, weight in sorted(WEIGHTS.items(), key=lambda kv: -kv[1])
-        ]
         st.dataframe(
-            pd.DataFrame(rows), hide_index=True, width="stretch",
+            pd.DataFrame([
+                {"Feature": name.replace("_", " ").title(), "Weight": weight}
+                for name, weight in sorted(WEIGHTS.items(), key=lambda kv: -kv[1])
+            ]),
+            hide_index=True, width="stretch",
             column_config={
                 "Feature": st.column_config.TextColumn("Feature", width="medium"),
                 "Weight": st.column_config.ProgressColumn(
-                    "Weight", min_value=0, max_value=60, format="%d"
+                    "Weight", min_value=0, max_value=25, format="%d"
                 ),
-                "Basis": st.column_config.TextColumn("Basis", width="medium"),
             },
         )
 
         st.markdown(
             f"""
-**Volume is the signal, not the breakout.** Splitting breakouts into disjoint
-volume bands over 166,173 stock-days, twenty-day forward return net of the
-0.80% round trip, validated after 2024-01-01:
+**Two attempts to derive this from data were made on 2026-08-18, and both
+failed.** They are recorded here because a failed attempt is the more useful
+half: without it, the next reader repeats it.
+
+**The weights.** Re-derived in proportion to each feature's out-of-sample lift
+over 166,173 stock-days, they gave 55 points to volume confirmation and zero to
+two features that failed validation outright. Backtested, that lost: 2.871% net
+per trade at a 51.5% win rate against 3.498% and 55.0% for the weights above.
+Per-feature lift asks what one feature predicts alone; the score asks how many
+independent confirmations a setup carries, and requiring several weak ones is
+itself the selectivity. Concentrating the weight on the two strongest let a
+setup qualify on those alone and roughly tripled the signal count.
+
+**The volume gate.** On raw breakouts the case looked overwhelming — twenty-day
+return net of cost, validated after 2024-01-01:
 
 | | return | win rate |
 | --- | --- | --- |
 | no breakout at all | +2.91% | 53.0% |
 | breakout, 1.0–1.5× volume | −0.11% | 46.0% |
-| breakout, 1.5–2.5× volume | +2.26% | 49.4% |
 | **breakout, ≥ 2.5× volume** | **+5.73%** | **59.0%** |
 
-A breakout on ordinary volume does worse than not trading. The entry gate sits
-at **{BreakoutConfig().minimum_volume_ratio:g}×** for that reason.
+Run through this strategy rather than over raw breakouts, it does not survive.
+Varying only the gate across five windows, 1.5× returned 4.151% net per trade
+against 3.770% at 2.5×, with a higher median and four of the five windows. The
+gate stays at **{config.minimum_volume_ratio:g}×**. An edge measured on an
+unfiltered population does not transfer to one already filtered several other
+ways.
 
-**Two features were retired.** `Consolidation Breakout` carried 15 points and
-reversed sign out of sample; `Higher High Breakout` carried 10 and collapsed.
-EMA alignment carried 10 and is now shown as context without scoring. They are
-listed above at zero rather than deleted, so the measurement that retired them
-stays visible.
-
-**What this score is not.** It is not a probability, and the reward/risk it
-feeds does not subtract the cost of trading. Re-derive any number here with
-`scripts/research/breakout_features.py` and `breakout_volume_bands.py`.
+**What this score is not.** It is not a probability, its weights are not
+measured, and the reward/risk it feeds does not subtract the cost of trading.
+Re-derive anything here with `scripts/research/breakout_features.py` and
+`breakout_volume_bands.py`.
 """
         )
 
@@ -1212,11 +1219,11 @@ def _market_column_config():
         "BreakoutScore": st.column_config.ProgressColumn(
             "Breakout score", min_value=0, max_value=100, format="%d",
             help=(
-                "Sum of the features present, each weighted by how much it "
-                "actually lifted forward return out of sample. Volume "
-                "confirmation carries 55 of the 100 points; a breakout on "
-                "ordinary volume carries 23. Two features that failed "
-                "validation carry nothing. See 'How this score is built'."
+                "Sum of the confirmations present, each with a weight "
+                "assigned by judgement rather than measured — a data-derived "
+                "replacement was tried and backtested worse. What the score "
+                "really counts is how many independent confirmations agree. "
+                "See 'How this score is built'."
             ),
         ),
         "BreakoutConfidence": st.column_config.ProgressColumn(
