@@ -654,6 +654,7 @@ def _render_swing_advanced_research(
             hide_index=True,
             column_config=_market_column_config(),
         )
+        show_scoring_basis()
 
         market_regime = str(
             df.get("MarketRegime", pd.Series(["UNKNOWN"])).iloc[0]
@@ -1116,6 +1117,78 @@ def show_stock_details_page():
         show_stock_details(stock)
 
 
+def show_scoring_basis():
+    """What the breakout score is made of, and where each number came from.
+
+    The weights used to be hand-assigned -- 20 points for a resistance
+    breakout, 15 for volume, 15 for consolidation -- which reads as
+    quantitative while being nobody's measurement. A reader had no way to tell
+    a number that was earned from one that was picked, so the honest fix is
+    not a better-looking score but a visible basis for the one being shown.
+    """
+
+    import pandas as pd
+
+    from strategy_breakout.breakout_scoring import (
+        UNMEASURED_FEATURES,
+        WEIGHTS,
+        WEIGHTS_PROVENANCE,
+    )
+    from strategy_breakout.breakout_strategy import BreakoutConfig
+
+    with st.expander("كيف يُحسب هذا التقييم · How this score is built"):
+        st.caption(WEIGHTS_PROVENANCE)
+
+        rows = [
+            {
+                "Feature": name.replace("_", " ").title(),
+                "Weight": weight,
+                "Basis": "not measured" if name in UNMEASURED_FEATURES else (
+                    "retired: failed validation" if weight == 0 else "measured lift"
+                ),
+            }
+            for name, weight in sorted(WEIGHTS.items(), key=lambda kv: -kv[1])
+        ]
+        st.dataframe(
+            pd.DataFrame(rows), hide_index=True, width="stretch",
+            column_config={
+                "Feature": st.column_config.TextColumn("Feature", width="medium"),
+                "Weight": st.column_config.ProgressColumn(
+                    "Weight", min_value=0, max_value=60, format="%d"
+                ),
+                "Basis": st.column_config.TextColumn("Basis", width="medium"),
+            },
+        )
+
+        st.markdown(
+            f"""
+**Volume is the signal, not the breakout.** Splitting breakouts into disjoint
+volume bands over 166,173 stock-days, twenty-day forward return net of the
+0.80% round trip, validated after 2024-01-01:
+
+| | return | win rate |
+| --- | --- | --- |
+| no breakout at all | +2.91% | 53.0% |
+| breakout, 1.0–1.5× volume | −0.11% | 46.0% |
+| breakout, 1.5–2.5× volume | +2.26% | 49.4% |
+| **breakout, ≥ 2.5× volume** | **+5.73%** | **59.0%** |
+
+A breakout on ordinary volume does worse than not trading. The entry gate sits
+at **{BreakoutConfig().minimum_volume_ratio:g}×** for that reason.
+
+**Two features were retired.** `Consolidation Breakout` carried 15 points and
+reversed sign out of sample; `Higher High Breakout` carried 10 and collapsed.
+EMA alignment carried 10 and is now shown as context without scoring. They are
+listed above at zero rather than deleted, so the measurement that retired them
+stays visible.
+
+**What this score is not.** It is not a probability, and the reward/risk it
+feeds does not subtract the cost of trading. Re-derive any number here with
+`scripts/research/breakout_features.py` and `breakout_volume_bands.py`.
+"""
+        )
+
+
 def _market_column_config():
     return {
         "Rank": st.column_config.NumberColumn("#", width="small"),
@@ -1137,13 +1210,28 @@ def _market_column_config():
         "BreakoutDecision": st.column_config.TextColumn("Breakout", width="small"),
         "BreakoutRR": st.column_config.NumberColumn("Breakout R/R", format="%.2f"),
         "BreakoutScore": st.column_config.ProgressColumn(
-            "Breakout score", min_value=0, max_value=100, format="%d"
+            "Breakout score", min_value=0, max_value=100, format="%d",
+            help=(
+                "Sum of the features present, each weighted by how much it "
+                "actually lifted forward return out of sample. Volume "
+                "confirmation carries 55 of the 100 points; a breakout on "
+                "ordinary volume carries 23. Two features that failed "
+                "validation carry nothing. See 'How this score is built'."
+            ),
         ),
         "BreakoutConfidence": st.column_config.ProgressColumn(
-            "Breakout confidence", min_value=0, max_value=100, format="%d%%"
+            "Breakout confidence", min_value=0, max_value=100, format="%d%%",
+            help=(
+                "A transform of the score and the volume ratio. It is not a "
+                "probability and was never measured as one."
+            ),
         ),
         "BreakoutEdgeScore": st.column_config.NumberColumn(
-            "Edge score", format="%.2f"
+            "Edge score", format="%.2f",
+            help=(
+                "Combines score, confidence and reward/risk. The reward/risk "
+                "term does not account for the cost of trading."
+            ),
         ),
         "HigherQualityStrategy": st.column_config.TextColumn(
             "Higher quality", width="medium"

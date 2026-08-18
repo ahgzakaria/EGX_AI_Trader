@@ -80,3 +80,57 @@ def test_the_weights_say_where_they_came_from():
 @pytest.mark.parametrize("feature,weight", sorted(WEIGHTS.items()))
 def test_no_weight_is_negative_or_absurd(feature, weight):
     assert 0 <= weight <= 100, feature
+
+
+# --- the dashboard must show the basis, not just the number ------------
+
+
+def test_the_scoring_basis_panel_renders_and_names_its_source():
+    """A score whose basis is invisible is indistinguishable from a guess.
+
+    The panel is what lets a reader tell a weight that was earned from one
+    that was picked, so it has to actually render -- not merely import.
+    """
+
+    from streamlit.testing.v1 import AppTest
+
+    app = AppTest.from_string(
+        "from dashboard.home import show_scoring_basis\n"
+        "show_scoring_basis()\n"
+    )
+    app.run(timeout=30)
+
+    assert not app.exception, app.exception
+
+    text = " ".join(
+        block.value for block in list(app.markdown) + list(app.caption)
+        if isinstance(getattr(block, "value", None), str)
+    )
+    # Where the weights came from.
+    assert "frozen_eodhd_seed" in text
+    assert "2024-01-01" in text
+    # The finding that moved the entry gate.
+    assert "2.5" in text
+    # And the honest limits.
+    assert "not a probability" in text
+    assert "does not subtract the cost" in text
+
+
+def test_the_panel_lists_every_weight_including_the_retired_ones():
+    """Retired features stay visible at zero. Deleting them would hide the
+    measurement that retired them, and the next reader would re-add them."""
+
+    from streamlit.testing.v1 import AppTest
+
+    app = AppTest.from_string(
+        "from dashboard.home import show_scoring_basis\n"
+        "show_scoring_basis()\n"
+    )
+    app.run(timeout=30)
+    assert not app.exception, app.exception
+
+    rendered = app.dataframe
+    assert len(rendered) >= 1, "the weight table did not render"
+    frame = rendered[0].value
+    assert len(frame) == len(WEIGHTS)
+    assert (frame["Weight"] == 0).any(), "no retired feature is shown"
