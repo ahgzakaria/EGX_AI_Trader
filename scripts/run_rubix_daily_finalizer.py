@@ -45,6 +45,53 @@ def _write_csv(path, fields, rows):
             w.writerow({k: r.get(k, "") for k in fields})
 
 
+def _sessions_behind(db_path, session_date, holidays):
+    """How many trading days the normalized cache is missing, or ``None``.
+
+    Reported whenever this exits without writing, because exiting without
+    writing is the failure that hides. From 2026-08-13 the scheduled task ran
+    at 14:35 every day, found the session not yet authoritative -- the auction
+    ends 14:25 and the settlement grace is 60 minutes, so nothing is
+    authoritative until 15:25 -- did nothing, and exited zero. Six trading days
+    of daily bars went missing and the only visible symptom was the daily scan
+    quietly running on EODHD alone with yesterday's candle as its last bar.
+
+    A count here turns that into something a log or a human can see at a
+    glance. Never raises: this is a diagnostic on an exit path, and it must not
+    become the reason the exit path fails.
+    """
+
+    try:
+        import datetime as _dt
+        import sqlite3
+
+        from core.egx_session import is_regular_trading_day
+
+        cache = Path("data") / "normalized_daily_cache.db"
+        if not cache.is_file():
+            return None
+        connection = sqlite3.connect(f"file:{cache}?mode=ro", uri=True)
+        try:
+            row = connection.execute(
+                "SELECT MAX(session_date) FROM daily_bars WHERE active = 1"
+            ).fetchone()
+        finally:
+            connection.close()
+        if not row or not row[0]:
+            return None
+
+        latest = _dt.date.fromisoformat(str(row[0])[:10])
+        missing = 0
+        day = latest + _dt.timedelta(days=1)
+        while day < session_date:
+            if is_regular_trading_day(day, holidays):
+                missing += 1
+            day += _dt.timedelta(days=1)
+        return missing
+    except Exception:                                            # noqa: BLE001
+        return None
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--date")
@@ -75,6 +122,7 @@ def main(argv=None):
         print(json.dumps(out, indent=2)); return out
     if not completed and not args.force_rebuild:
         out["status"] = "SESSION_NOT_COMPLETED"
+        out["cache_sessions_behind"] = _sessions_behind(db_path, d, holidays)
         print(json.dumps(out, indent=2)); return out
 
     builder = RubixDailyBuilder(db_path)
