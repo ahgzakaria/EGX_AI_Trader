@@ -1,21 +1,17 @@
 @echo off
-REM Double-click this to bring up the day's runtime.
+REM Double-click this to open the Rubix Production Launcher.
 REM
-REM It opens the same Rubix Assisted Start the 09:45 scheduled task opens, so
-REM there is one start path and not two. The Rubix login is still yours to do:
-REM the window watches for the frame and starts the collector by itself the
-REM moment a fresh one lands.
+REM It is a thin shortcut to scripts\start_rubix_production.bat, which already
+REM validates the environment and opens the launcher window you use: the one
+REM with Browse for the auth file, Start Rubix & App, Stop, and Open Dashboard.
+REM That launcher starts the same collector supervisor and the dashboard, so
+REM there is nothing here to duplicate.
 REM
-REM The window stays open at the end so the result is readable.
+REM An earlier version of this file opened the Assisted Start window instead --
+REM the one the 09:45 scheduled task uses, which watches a fixed path and has no
+REM Browse. That is the automated morning path, not the one you drive by hand.
 
 cd /d "%~dp0"
 
-where pwsh >nul 2>&1
-if %errorlevel%==0 (
-    pwsh -NoProfile -ExecutionPolicy Bypass -File "scripts\start_everything.ps1"
-) else (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_everything.ps1"
-)
-
-REM The window is held open by the PowerShell script itself, which keeps
-REM working whichever way this file was launched.
+call "scripts\start_rubix_production.bat" %*
+exit /b %ERRORLEVEL%

@@ -10,10 +10,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPTS = {
-    "start": Path("scripts/start_everything.ps1"),
-    "stop": Path("scripts/stop_everything.ps1"),
-}
+SCRIPTS = {"stop": Path("scripts/stop_everything.ps1")}
 WRAPPERS = [Path("START.cmd"), Path("STOP.cmd")]
 
 
@@ -63,63 +60,27 @@ def test_the_button_scripts_are_pure_ascii(path):
     assert not offenders, f"non-ASCII in {path}: {offenders[:3]}"
 
 
-def test_start_uses_the_scheduled_task_s_own_launcher():
-    """One start path, not two.
+def test_start_delegates_to_the_launcher_the_project_already_has():
+    """START.cmd must not be a second way to bring the collector up.
 
-    A second way to start the collector would drift from the 09:45 task's, and
-    the drift surfaces as a duplicate collector or a morning where nothing runs.
+    The first version opened Assisted Start -- the window the 09:45 task uses,
+    which watches a fixed path and has no Browse. That is the automated morning
+    path. The launcher a person drives by hand is the Rubix Production
+    Launcher, and scripts/start_rubix_production.bat already validates the
+    environment and opens it.
     """
-    start = SCRIPTS["start"].read_text(encoding="utf-8")
-    assert "run_rubix_assisted_start.py" in start
-    assert "--auto-start" in start
-    assert "rubix_collector_supervisor" not in start, (
-        "the collector must be started by Assisted Start, never directly"
-    )
+    start = Path("START.cmd").read_text(encoding="utf-8")
+    assert "start_rubix_production.bat" in start
+    for reinvented in ("run_rubix_assisted_start", "rubix_collector_supervisor",
+                       "streamlit"):
+        assert reinvented not in start, (
+            f"START.cmd must delegate, not drive {reinvented} itself"
+        )
 
 
-def test_start_refuses_to_open_a_second_of_anything():
-    """Two assisted-start windows both fire when the frame lands.
-
-    The lock stops the second collector, but it stops it by failing -- logging
-    supervisor_duplicate_blocked at 09:10, the one moment nothing should look
-    wrong.
-    """
-    start = SCRIPTS["start"].read_text(encoding="utf-8")
-    assert "Get-AssistedStartProcess" in start
-    assert "Not opening another" in start
-    assert "already up" in start
-
-
-def test_an_unknown_collector_state_is_not_treated_as_stopped():
-    """Starting on an unreadable answer is how two supervisors end up sharing
-    one database."""
-    start = SCRIPTS["start"].read_text(encoding="utf-8")
-    assert 'Write-Host "`nCollector state could not be read, so it was NOT started."' in start
-
-
-def test_stop_asks_before_it_kills():
-    stop = SCRIPTS["stop"].read_text(encoding="utf-8")
-    assert "stop_requested.flag" in stop
-    assert "GraceSeconds" in stop
-    # It must judge cleanliness by the log, not by the process disappearing.
-    assert "supervisor_shutdown" in stop
-
-
-def test_the_status_probe_reuses_the_project_s_own_checks():
-    """A launcher with its own idea of "running" will eventually disagree with
-    the collector's."""
-    probe = Path("scripts/runtime_status.py").read_text(encoding="utf-8")
-    assert "from scripts.launcher_process_utils import supervisor_status" in probe
-    assert "scan_frame_file" in probe
-    assert "scan.ready" in probe, "re-deriving the verdict is a second copy of the rule"
-
-
-def test_the_probe_answers_even_when_it_cannot_tell():
-    """None means "could not tell" and must never be read as "no"."""
-    from scripts.runtime_status import auth_frame_state, collector_state
-
-    missing = Path("does-not-exist-anywhere.json")
-    assert collector_state(missing)["running"] is False
-    frame = auth_frame_state(Path("also-missing.txt"))
-    assert frame["usable"] in (False, None)
-    assert frame["reason"]
+def test_the_launcher_batch_it_delegates_to_still_exists():
+    """A wrapper pointing at a file that moved is a button that does nothing."""
+    batch = Path("scripts/start_rubix_production.bat")
+    assert batch.is_file()
+    text = batch.read_text(encoding="utf-8")
+    assert "launch_rubix_production.py" in text
