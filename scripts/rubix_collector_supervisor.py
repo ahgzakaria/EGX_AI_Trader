@@ -135,6 +135,12 @@ class CollectorSupervisor:
         self.child = None
         self.restarts = 0
         self.started_at = time.monotonic()
+        # Wall clock, kept separately: started_at is monotonic and measures
+        # uptime, so comparing it against a file's mtime compares two different
+        # clocks and the staleness test silently always -- or never -- fires.
+        self.started_wall = time.time()
+        self.stop_file = Path(getattr(args, "stop_file", None)
+                              or PROJECT_ROOT / "data" / "runtime" / "stop_requested.flag")
         self.last_maintenance = 0.0
         plan = build_rubix_subscription_plan(args.symbols, args.batch_size)
         if plan.invalid:
@@ -208,6 +214,33 @@ class CollectorSupervisor:
             self.child.wait(timeout=5)
         self.log.emit("collector_stopped", return_code=self.child.returncode)
 
+    def stop_requested_on_disk(self):
+        """True when something asked for a clean stop by creating the flag.
+
+        Checked once per heartbeat alongside the signal flag, so a stop takes
+        effect within a couple of seconds and leaves through the same ``finally``
+        every other exit uses -- child stopped, database checkpointed, health
+        file marked, lock released.
+
+        A flag written *before* this run started is ignored and deleted. The
+        alternative is a stale flag from yesterday's shutdown stopping tomorrow
+        morning's collector a second after it starts, which would be a far
+        worse failure than the one this exists to fix.
+        """
+        try:
+            if not self.stop_file.exists():
+                return False
+            if self.stop_file.stat().st_mtime < self.started_wall:
+                self.log.emit("stop_flag_stale_ignored", path=str(self.stop_file))
+                self.stop_file.unlink(missing_ok=True)
+                return False
+            self.log.emit("stop_requested_by_flag", path=str(self.stop_file))
+            return True
+        except OSError as error:
+            # An unreadable flag must never take the collector down mid-session.
+            self.log.emit("stop_flag_unreadable", error=str(error))
+            return False
+
     def run(self):
         # Atomic OS-level lock held for the whole lifetime: two supervisors can
         # never both hold it (no start-up race), and the OS drops it on exit or
@@ -225,7 +258,7 @@ class CollectorSupervisor:
         backoff = float(self.args.restart_backoff_seconds)
         try:
             self.start_child()
-            while not STOP_REQUESTED:
+            while not STOP_REQUESTED and not self.stop_requested_on_disk():
                 health = self.health()
                 atomic_json(self.health_file, health)
                 if self.child.poll() is not None:
@@ -271,6 +304,13 @@ def build_parser():
     parser.add_argument("--log-file", default=str(PROJECT_ROOT / "logs" / "rubix_supervisor.log"))
     parser.add_argument("--log-max-bytes", type=int, default=5_000_000)
     parser.add_argument("--log-backups", type=int, default=5)
+    # A file another process can create to ask for a clean stop. Windows does
+    # not deliver SIGTERM, and closing the console window kills the process
+    # outright: in 3516 log lines this supervisor had never once reached its
+    # own shutdown path, so every stop skipped the final checkpoint and left
+    # the health file claiming the collector was still up.
+    parser.add_argument("--stop-file",
+                        default=str(PROJECT_ROOT / "data" / "runtime" / "stop_requested.flag"))
     return parser
 
 
