@@ -242,3 +242,65 @@ def scan(histories: dict, *, session_date=None,
     return SwingScan(session_date=day, candidates=tuple(candidates),
                      symbols_considered=len(histories),
                      symbols_skipped=skipped, config=config)
+
+
+# --- the boundary where this stops being pure ---------------------------
+#
+# Everything above takes a dictionary and returns a result, so it is testable
+# without a network, a database or a clock. Everything below reaches for real
+# data and is therefore the part that can fail in ways a test will not see.
+
+
+def load_universe_histories(symbols: Optional[Iterable[str]] = None,
+                            *, limit: Optional[int] = None,
+                            on_error=None) -> dict:
+    """Daily history for each symbol, through the router the system trades on.
+
+    That router carries EODHD history plus the Rubix daily tail, so the latest
+    bar is the session that just closed rather than the one the vendor has
+    published. A symbol that cannot be read is reported through ``on_error``
+    and left out; one unreadable name must not empty the scan.
+    """
+
+    from core.research_router import get_current_research_history
+
+    if symbols is None:
+        from core.universe import active_symbols
+
+        symbols = sorted(active_symbols())
+    symbols = list(symbols)
+    if limit:
+        symbols = symbols[:limit]
+
+    histories = {}
+    for symbol in symbols:
+        try:
+            result = get_current_research_history(symbol)
+            frame = result[0] if isinstance(result, tuple) else result
+        except Exception as error:                               # noqa: BLE001
+            if on_error is not None:
+                on_error(symbol, f"{type(error).__name__}: {str(error)[:120]}")
+            continue
+        if frame is not None and len(frame):
+            histories[symbol] = frame
+    return histories
+
+
+def most_traded(histories: dict, count: int = 60) -> dict:
+    """The most-traded names, which is the universe the edge was measured on.
+
+    The measurement used the sixty highest by median daily turnover. Running
+    the same rules over the whole exchange would be a different strategy on a
+    different population, and nothing here says it works there.
+    """
+
+    turnovers = {}
+    for symbol, frame in histories.items():
+        columns = {c.lower(): c for c in frame.columns}
+        try:
+            value = (frame[columns["close"]] * frame[columns["volume"]]).tail(250)
+            turnovers[symbol] = float(value.median())
+        except (KeyError, ValueError, TypeError):
+            continue
+    ranked = sorted(turnovers, key=turnovers.get, reverse=True)[:count]
+    return {symbol: histories[symbol] for symbol in ranked}

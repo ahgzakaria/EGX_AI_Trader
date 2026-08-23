@@ -169,3 +169,66 @@ def test_the_engine_emits_no_execution_vocabulary():
     for banned in ("place_order", "submit_order", "fill_price", "filled_price",
                    "execution_price", "position_size", "order_id"):
         assert banned not in source, banned
+
+
+# --- the page must show the basis, not just the names ------------------
+
+
+def _rendered_page():
+    from streamlit.testing.v1 import AppTest
+
+    app = AppTest.from_string(
+        "from dashboard.swing_signals import _show_basis\n"
+        "from services.swing_breakout import SwingConfig\n"
+        "_show_basis(SwingConfig())\n"
+    )
+    app.run(timeout=30)
+    assert not app.exception, app.exception
+    return app
+
+
+def _page_text(app):
+    blocks = list(app.markdown) + list(app.caption) + list(app.warning) + list(app.info)
+    return " ".join(
+        b.value for b in blocks if isinstance(getattr(b, "value", None), str)
+    )
+
+
+def test_the_page_states_the_lift_and_the_benchmark_it_is_against():
+    """An absolute return in a bull market says nothing. The page has to name
+    what the strategy is being compared to."""
+
+    text = _page_text(_rendered_page())
+
+    assert "5.22" in text
+    assert "owning every name" in text
+
+
+def test_the_page_states_what_the_strategy_is_not():
+    """Four of fourteen years lost money and the median trade returns 0.88%.
+    A screen that shows only the average is showing the good half."""
+
+    text = _page_text(_rendered_page())
+
+    assert "0.88" in text
+    assert "lost money" in text
+    assert "not an order" in text
+
+
+def test_the_page_records_the_factor_that_could_not_be_tested():
+    """Value is the strongest factor the frontier literature reports, and it
+    is absent because fundamentals are not in the subscription. Absent for a
+    reason is not the same as dismissed, and the next reader needs to know
+    which."""
+
+    text = _page_text(_rendered_page())
+
+    assert "403" in text
+    assert "not dismissed" in text
+
+
+def test_the_page_shows_that_the_momentum_filter_was_not_fitted():
+    text = _page_text(_rendered_page())
+
+    assert "monotonically" in text
+    assert "1.49" in text

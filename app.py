@@ -35,6 +35,7 @@ from dashboard.ai_stock_analysis import show_ai_stock_analysis
 from dashboard.home import show_dashboard, show_stock_details_page
 from dashboard.orb_signals import show_orb_signals
 from dashboard.settings import show_settings
+from dashboard.swing_signals import show_swing_signals
 from dashboard.system_health import show_system_health
 from dashboard.ui import apply_global_style, sidebar_brand
 from dashboard.watchlist import show_watchlist
@@ -56,6 +57,12 @@ navigation = st.navigation({
     # stops being the dominant term.
     "سوينج · SWING": [
         st.Page(show_dashboard, title="Daily Dashboard", icon="📊", default=True),
+        st.Page(
+            show_swing_signals,
+            title="Swing Breakout",
+            icon="📈",
+            url_path="swing-breakout",
+        ),
         st.Page(show_watchlist, title="Watchlist", icon="⭐"),
         st.Page(show_stock_details_page, title="Stock Details", icon="🔎"),
     ],

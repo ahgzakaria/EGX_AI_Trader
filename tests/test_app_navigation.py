@@ -103,7 +103,7 @@ def test_every_page_is_reachable_exactly_once():
     titles = _page_titles()
     assert len(titles) == len(set(titles)), f"a page is listed twice: {titles}"
     assert set(titles) == {
-        "Daily Dashboard", "Watchlist", "Stock Details",
+        "Daily Dashboard", "Swing Breakout", "Watchlist", "Stock Details",
         "ORB Signals", "AI Analysis", "System Health", "Settings",
     }
 
