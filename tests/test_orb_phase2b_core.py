@@ -669,7 +669,7 @@ def test_the_breakout_zone_is_frozen_and_never_widened():
 
 
 def test_ema_context_is_recorded_but_never_replaces_or_high():
-    result = run()
+    result = run(config=OrbStrategyConfig(**NO_STOP_FLOOR))
     assert result.pullback.ema9_five_minute is not None
     # The structural decision point stays OR High.
     assert result.reclaim.opening_range_high == OR_HIGH
@@ -830,8 +830,17 @@ def test_no_intra_bar_repainting_is_exposed_as_confirmation():
 # =========================================================================== #
 
 
+
+#: The stop now has two possible bases: the structural one, just below the
+#: pullback low, and a volatility floor that overrides it when the structural
+#: stop would sit inside the symbol's ordinary adverse move. Tests that are
+#: about the structural derivation switch the floor off so they keep testing
+#: the thing they are named for; the floor has its own tests below.
+NO_STOP_FLOOR = dict(minimum_stop_atr_multiple=0.0, minimum_stop_percent=0.0,
+                     maximum_stop_distance_percent=0.030)
+
 def test_structural_stop_sits_below_the_pullback_low():
-    result = run()
+    result = run(config=OrbStrategyConfig(**NO_STOP_FLOOR))
     assert result.risk.proposed_stop < result.pullback.low
     assert result.risk.raw_pullback_low == pytest.approx(result.pullback.low)
     assert result.risk.stop_basis == "BELOW_FIRST_PULLBACK_LOW"
@@ -864,7 +873,8 @@ def test_stop_at_or_above_trigger_is_rejected():
     from scalping_orb.indicators import IntradayAtr
 
     engine = OrbResearchEngine(
-        OrbStrategyConfig(stop_atr_buffer=0.0, stop_percent_buffer=0.0)
+        OrbStrategyConfig(stop_atr_buffer=0.0, stop_percent_buffer=0.0,
+                          **NO_STOP_FLOOR)
     )
     unavailable = IntradayAtr(IntradayAtrStatus.UNAVAILABLE, None, 5, 14, 0)
     risk = engine._structural_risk(10.00, 10.50, unavailable)
@@ -1817,6 +1827,7 @@ def test_cost_never_raises_a_target():
         minimum_target_cost_multiple=2.0,
         target_1_atr_multiple=0.0,
         target_2_atr_multiple=0.0,
+        **NO_STOP_FLOOR,
     )
     result = run(config=expensive)
     risk = result.targets.risk_per_share
@@ -1827,8 +1838,8 @@ def test_cost_never_raises_a_target():
 
 
 def test_a_target_that_cannot_clear_the_round_trip_is_declined():
-    cheap = OrbStrategyConfig(round_trip_cost_percent=0.0001)
-    dear = OrbStrategyConfig(round_trip_cost_percent=0.02)
+    cheap = OrbStrategyConfig(round_trip_cost_percent=0.0001, **NO_STOP_FLOOR)
+    dear = OrbStrategyConfig(round_trip_cost_percent=0.02, **NO_STOP_FLOOR)
 
     assert RejectionReason.TARGET_BELOW_COST_FLOOR not in run(config=cheap).rejection_reasons
     assert RejectionReason.TARGET_BELOW_COST_FLOOR in run(config=dear).rejection_reasons
@@ -1846,6 +1857,7 @@ def test_the_cost_gate_is_separate_from_the_reward_risk_gate():
         minimum_reward_risk=0.1,               # cannot fire
         target_1_atr_multiple=0.0,
         target_2_atr_multiple=0.0,
+        **NO_STOP_FLOOR,
     ))
 
     assert RejectionReason.TARGET_BELOW_COST_FLOOR in result.rejection_reasons
@@ -1861,6 +1873,7 @@ def test_both_new_gates_can_be_switched_off_to_recover_phase_2b_behaviour():
         target_1_atr_multiple=0.0,
         target_2_atr_multiple=0.0,
         minimum_target_cost_multiple=0.0,
+        **NO_STOP_FLOOR,
     )
     result = run(config=off)
     risk = result.targets.risk_per_share
@@ -1869,3 +1882,70 @@ def test_both_new_gates_can_be_switched_off_to_recover_phase_2b_behaviour():
     assert result.targets.target_1 == pytest.approx(trigger + risk)
     assert result.targets.target_2 == pytest.approx(trigger + 2 * risk)
     assert RejectionReason.TARGET_BELOW_COST_FLOOR not in result.rejection_reasons
+
+
+# --- the stop must sit outside the ordinary adverse move ---------------
+#
+# Added 2026-08-23. The structural stop went just below the pullback low,
+# which put it between -0.5% and -1.1% of the trigger while the average worst
+# excursion after a signal is -3.19%. It was hit on 31 of 35 recorded signals.
+#
+# The entry it was protecting has an edge: signalled symbols drift +1.38% to
+# the close against +0.47% for every other symbol the engine was watching at
+# the same instant, and fall about a point less on the way. Holding those same
+# entries and widening only this distance moved the result from -0.52% at an
+# 11% win rate to +0.40% at 43%.
+
+
+def test_the_floor_widens_a_stop_that_would_sit_inside_the_noise():
+    tight = run(config=OrbStrategyConfig(**NO_STOP_FLOOR)).risk
+    floored = run().risk
+
+    assert floored.proposed_stop < tight.proposed_stop
+    assert floored.stop_basis != "BELOW_FIRST_PULLBACK_LOW"
+
+
+def test_the_floor_never_moves_a_stop_that_is_already_wide_enough():
+    """It is a floor, not a setting. A structural stop already beyond the
+    floor keeps its own level and its own basis."""
+
+    result = run(config=OrbStrategyConfig(
+        minimum_stop_atr_multiple=0.0, minimum_stop_percent=0.0001,
+    ))
+
+    assert result.risk.stop_basis == "BELOW_FIRST_PULLBACK_LOW"
+
+
+def test_the_floor_can_never_exceed_the_risk_the_setup_is_allowed_to_take():
+    """Six intraday ATRs approximates a daily ATR on a typical name, whose
+    median is 0.60% of price. On a violent one it is 1.8%, and six of those is
+    a 10.8% stop -- which would breach the maximum and reject exactly the
+    setup the floor was meant to give room to. That is what the first version
+    of this did."""
+
+    config = OrbStrategyConfig(minimum_stop_atr_multiple=50.0,
+                               maximum_stop_distance_percent=0.06)
+    result = run(config=config)
+
+    assert result.final_state is OrbResearchState.ENTRY_READY_RESEARCH
+    distance = result.targets.risk_per_share / result.targets.trigger_price
+    assert distance <= config.maximum_stop_distance_percent + 1e-9
+
+
+def test_the_buffer_basis_still_records_which_buffer_ran():
+    """`buffer_basis` describes how the buffer below the pullback low was
+    derived. The floor changes where the stop lands, not how that buffer was
+    computed, and an earlier version overwrote it and lost the distinction."""
+
+    assert run().risk.buffer_basis in (
+        "INTRADAY_ATR_BUFFER", "PERCENT_BUFFER_ATR_UNAVAILABLE"
+    )
+
+
+def test_the_whole_floor_is_reversible_from_configuration():
+    structural = run(config=OrbStrategyConfig(**NO_STOP_FLOOR)).risk
+
+    assert structural.stop_basis == "BELOW_FIRST_PULLBACK_LOW"
+    assert structural.proposed_stop == pytest.approx(
+        structural.raw_pullback_low - structural.buffer_applied
+    )

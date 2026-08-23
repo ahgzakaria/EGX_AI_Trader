@@ -1853,7 +1853,6 @@ STRATEGY_SURFACES = (
     "_transition",
     "_eligibility_reasons",
     "_assess_breakout",
-    "_structural_risk",
     "evaluate",
     "_assess_pullback",
     "_pullback_failure_state",
@@ -1878,9 +1877,20 @@ STRATEGY_SURFACES = (
 #: floors the target at a multiple of intraday ATR -- the instrument's own
 #: volatility, not a number chosen to make the result look better -- and
 #: declines a setup whose target cannot clear the round trip.
+#: `_structural_risk` was changed on 2026-08-23. The stop went just below the
+#: pullback low, which put it between -0.5% and -1.1% of the trigger while the
+#: average worst excursion after a signal is -3.19%; it was hit on 31 of 35
+#: recorded signals. The entry it guards has a measurable edge -- signalled
+#: symbols drift +1.38% to the close against +0.47% for every other symbol the
+#: engine was watching at the same instant -- and the stop was preventing that
+#: edge from ever being realised. Holding the same entries and widening only
+#: this distance moved the result from -0.52% at an 11% win rate to +0.40% at
+#: 43%. It now takes a volatility floor, expressed in the symbol's own ATR and
+#: capped at the maximum risk the setup may take.
 AUTHORISED_CHANGED_SURFACES = {
     "_freshness_reasons": "live-decision gate, changed under its own authorisation",
     "_targets": "targets could not clear the cost of reaching them (2026-08-18)",
+    "_structural_risk": "the stop sat inside the ordinary adverse move (2026-08-23)",
 }
 
 #: `evaluate` stays frozen. Changing `_targets` to take the intraday ATR moved

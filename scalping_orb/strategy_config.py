@@ -141,7 +141,36 @@ class OrbStrategyConfig:
     stop_atr_buffer: float = 0.25
     #: Percentage buffer used only when intraday ATR is unavailable.
     stop_percent_buffer: float = 0.002
-    maximum_stop_distance_percent: float = 0.030
+
+    # -- THE STOP MUST SIT OUTSIDE THE ORDINARY ADVERSE MOVE ---------------
+    #
+    # The structural stop goes just below the pullback low, which put it
+    # between -0.5% and -1.1% of the trigger. The average worst excursion
+    # after a signal is -3.19%, so that stop was hit on 31 of 35 recorded
+    # signals -- inside the noise, where it decides nothing.
+    #
+    # The entry has an edge to protect: signalled symbols drift +1.38% to the
+    # close against +0.47% for every other symbol the engine was watching at
+    # the same instant, and fall about a point less on the way. Holding those
+    # same entries and only widening the stop moved the result from -0.52% at
+    # an 11% win rate to +0.40% at 43%.
+    #
+    #: Floor in ATR units. Roughly six five-minute ATRs approximate one daily
+    #: ATR (volatility scales with the square root of time, and a session
+    #: holds about 54 such bars), and the daily ATR on these names has a
+    #: median of 3.62% -- just beyond the -3.19% typical adverse move. Stated
+    #: in the symbol's own volatility so a calm name is not handed a violent
+    #: name's stop.
+    minimum_stop_atr_multiple: float = 6.0
+
+    #: Absolute floor for when intraday ATR is unavailable, and a backstop for
+    #: names whose ATR is implausibly small.
+    minimum_stop_percent: float = 0.025
+
+    #: Raised from 0.030 with the floor above. At 3% a stop placed at one
+    #: daily ATR would immediately breach the maximum and the setup would be
+    #: rejected, so leaving it would have made the floor self-defeating.
+    maximum_stop_distance_percent: float = 0.060
     minimum_reward_risk: float = 1.5
     target_1_r_multiple: float = 1.0
     target_2_r_multiple: float = 2.0
