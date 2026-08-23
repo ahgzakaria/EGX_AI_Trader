@@ -44,6 +44,10 @@ STREAMLIT_LOG = PROJECT_ROOT / "logs" / "streamlit.log"
 LAUNCHER_PID_FILE = PROJECT_ROOT / "data" / "rubix_launcher.pid.json"
 SUPERVISOR_PID_FILE = PROJECT_ROOT / "data" / "rubix_supervisor.pid.json"
 SUPERVISOR_LOCK_FILE = PROJECT_ROOT / "data" / "rubix_supervisor.lock"
+#: Written to ask the supervisor to stop itself. Must stay identical to the
+#: supervisor's own --stop-file default and to the path STOP.cmd writes, or one
+#: of the three ways of stopping silently goes back to killing.
+COLLECTOR_STOP_FLAG = PROJECT_ROOT / "data" / "runtime" / "stop_requested.flag"
 STREAMLIT_PID_FILE = PROJECT_ROOT / "data" / "egx_streamlit.pid.json"
 
 from services.rubix_auth_assistant import (  # noqa: E402 - project root above
@@ -445,10 +449,56 @@ class ProductionSupervisor:
         )
         return False, result
 
+    def request_collector_stop(self, timeout=25):
+        """Ask the supervisor to stop itself. True when it did.
+
+        ``stop_process`` sends ``taskkill /T`` without ``/F``, which delivers
+        WM_CLOSE to the target's windows -- and the supervisor runs under
+        pythonw with no window at all, so nothing receives it. Five seconds
+        later the forced kill lands. That is why 3516 supervisor log lines
+        contained no shutdown line: every stop through this launcher, for as
+        long as it has existed, has been a hard kill that skipped the final WAL
+        checkpoint on a multi-gigabyte database.
+
+        The flag is the same one STOP.cmd writes, so both ways of stopping
+        leave through the supervisor's own ``finally``: child stopped, database
+        checkpointed, health file marked, lock released.
+        """
+        if self.collector is None or self.collector.poll() is not None:
+            return False
+        try:
+            COLLECTOR_STOP_FLAG.parent.mkdir(parents=True, exist_ok=True)
+            COLLECTOR_STOP_FLAG.write_text(
+                f"stop requested {datetime.now(timezone.utc).isoformat()}",
+                encoding="utf-8",
+            )
+            log_event("stop", "Asked the collector to stop cleanly.")
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                if self.collector.poll() is not None:
+                    log_event("stop", "Collector stopped cleanly.")
+                    return True
+                time.sleep(0.5)
+            log_event("stop_timeout", "Collector ignored the stop flag; forcing it.")
+            return False
+        except OSError as error:
+            # Never let a filesystem problem block the stop; fall through to
+            # the kill, which is what happened before this existed anyway.
+            log_event("stop_flag_failed", str(error))
+            return False
+        finally:
+            # A request, not a setting. Left behind, it would stop the next
+            # morning's collector a second after it starts.
+            try:
+                COLLECTOR_STOP_FLAG.unlink(missing_ok=True)
+            except OSError:
+                pass
+
     def stop(self):
         if self._owns_streamlit:
             stop_process(self.streamlit)
-        stop_process(self.collector)
+        if not self.request_collector_stop():
+            stop_process(self.collector)
         self.streamlit = self.collector = None
         if self._owns_streamlit:
             release_pid_file(STREAMLIT_PID_FILE, read_pid_record(STREAMLIT_PID_FILE).get("pid"))
