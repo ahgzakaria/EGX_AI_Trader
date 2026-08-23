@@ -147,7 +147,6 @@ def show_swing_signals() -> None:
             f"strategy fires about fifty times a year across sixty names, so "
             f"most sessions produce nothing and that is the design working, "
             f"not a fault.",
-            icon="○",
         )
     else:
         st.dataframe(
