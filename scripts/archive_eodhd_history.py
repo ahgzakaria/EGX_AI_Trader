@@ -1,10 +1,16 @@
 """Archive the full EODHD daily history to disk before the subscription ends.
 
-The EODHD plan is cancelled and valid until 2026-08-23. After that date this
-history cannot be fetched again at any price we are paying, and 209 of the 241
-active symbols route their current-research history through EODHD. Everything
-else in the migration — comparing Yahoo, choosing a replacement, rewiring the
-router — can be done offline afterwards. This cannot.
+Written on 2026-08-18 against a plan that was cancelled and valid only until
+2026-08-23. It was renewed for another month on 2026-08-23, so the deadline
+moved rather than disappeared, and the reason for archiving did not change at
+all: 209 of the 241 active symbols route their current-research history
+through EODHD, and once the plan lapses that history cannot be fetched again
+at any price we are paying. Everything else in a migration — comparing Yahoo,
+choosing a replacement, rewiring the router — can be done offline afterwards.
+This cannot.
+
+Re-run it before whatever the current expiry is. The archive is resumable and
+a re-run costs only what has changed since the last one.
 
 So this script does one thing and does it durably:
 
@@ -181,7 +187,8 @@ def main(argv=None) -> int:
         "created_at": started.isoformat(),
         "finished_at": datetime.now(timezone.utc).isoformat(),
         "source": "EODHD eod/{symbol}.EGX (full history)",
-        "reason": "EODHD subscription cancelled, valid until 2026-08-23",
+        "reason": ("EODHD history is unfetchable once the plan lapses; "
+                   "archived while it is live. Renewed 2026-08-23 for a month."),
         "symbols_requested": len(symbols),
         "symbols_archived": len(archived),
         "symbols_failed": len(failures),
