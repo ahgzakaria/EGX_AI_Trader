@@ -17,5 +17,5 @@ if %errorlevel%==0 (
     powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\stop_everything.ps1"
 )
 
-echo.
-pause
+REM The window is held open by the PowerShell script itself, which keeps
+REM working whichever way this file was launched.

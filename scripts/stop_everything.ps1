@@ -23,6 +23,23 @@ param(
     [switch]$WhatIfOnly
 )
 
+function Complete-Run([int]$code) {
+    # Hold the window open where there is a real console to hold, then leave.
+    #
+    # Every exit goes through here. A previous version pasted the hold before
+    # each top-level "exit", which silently skipped the ones indented inside an
+    # if block -- including the success path, the one that runs on a normal day.
+    # IsInputRedirected is false only when a person is actually there, so an
+    # automated run returns instead of waiting for a keypress nobody will make.
+    try {
+        if (-not [Console]::IsInputRedirected) {
+            Write-Host "Press Enter to close this window..." -ForegroundColor DarkGray
+            [void][Console]::ReadLine()
+        }
+    } catch { }
+    exit $code
+}
+
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $stopFlag = Join-Path $root 'data\runtime\stop_requested.flag'
@@ -46,7 +63,7 @@ function Get-Role([string]$commandLine) {
 $running = @(Get-ProjectPython)
 if ($running.Count -eq 0) {
     Write-Host "Nothing is running. Everything is already stopped." -ForegroundColor Green
-    exit 0
+    Complete-Run 0
 }
 
 Write-Host "Running now:" -ForegroundColor Cyan
@@ -57,7 +74,7 @@ foreach ($p in $running) {
 
 if ($WhatIfOnly) {
     Write-Host "`n-WhatIfOnly: nothing was stopped." -ForegroundColor Yellow
-    exit 0
+    Complete-Run 0
 }
 
 # --- 1. Ask the supervisor to stop itself ---------------------------------
@@ -117,10 +134,11 @@ $ports = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
 Write-Host ""
 if ($left.Count -eq 0 -and $ports.Count -eq 0) {
     Write-Host "All stopped. No project process is running and no dashboard port is open." -ForegroundColor Green
-    exit 0
+    Complete-Run 0
 }
 
 Write-Host "Something is still up:" -ForegroundColor Red
 $left | ForEach-Object { Write-Host ("  PID {0} {1}" -f $_.ProcessId, (Get-Role $_.CommandLine)) }
 $ports | ForEach-Object { Write-Host ("  port {0} held by PID {1}" -f $_.LocalPort, $_.OwningProcess) }
-exit 1
+
+Complete-Run 1
