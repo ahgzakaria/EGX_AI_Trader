@@ -225,7 +225,7 @@ def _provider_domains_panel():
 
 
 def show_replay_run():
-    st.title("↻ Replay Run")
+    page_header("Replay Run", "Re-runs a recorded session against the current engine. Reads only; writes nothing back.", icon="↻")
     runs = [
         run for run in RunRepository.list_runs()
         if run.get("status") == "COMPLETED" and run.get("replay_ready")

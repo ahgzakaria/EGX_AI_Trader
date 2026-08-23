@@ -1,0 +1,21 @@
+# Presentation only — dark trading-terminal base theme for native widgets.
+# Does not affect any strategy, calculation, provider, or flag.
+#
+# The typefaces are set here rather than in injected CSS because Streamlit
+# writes font-family onto its own headings, paragraphs and navigation links.
+# A stylesheet that only sets the font on .stApp is overridden on every element
+# that actually holds text, which left the whole app on Source Sans while the
+# rule appeared to be working. The faces themselves are loaded by the @import
+# in dashboard/ui.py; both stacks name real fallbacks, so a morning when the
+# font host is unreachable costs nothing but the typeface.
+[theme]
+base = "dark"
+primaryColor = "#3b82f6"
+backgroundColor = "#0b1220"
+secondaryBackgroundColor = "#131c30"
+textColor = "#e6edf7"
+font = "\"IBM Plex Sans\", system-ui, -apple-system, \"Segoe UI\", sans-serif"
+codeFont = "\"IBM Plex Mono\", ui-monospace, \"Cascadia Mono\", Consolas, monospace"
+
+[server]
+runOnSave = false

@@ -18,7 +18,7 @@ import pandas as pd
 import streamlit as st
 
 from core.sector_context import UNKNOWN_SECTOR_ID, sector_map_provenance
-from dashboard.ui import signal_card
+from dashboard.ui import page_header, signal_card
 from services.automation_status import (
     COMPLETED,
     NEVER_RAN,
@@ -371,12 +371,7 @@ REFRESH_SECONDS = 30
 def show_orb_signals() -> None:
     """Streamlit page: today's (or a chosen session's) ORB signals."""
 
-    st.title("⚡ ORB Scalping Signals")
-    st.caption(
-        "Read-only research view of what the ORB engine detected. "
-        "This is an assistant: it never places an order and never reports a fill."
-    )
-
+    page_header("ORB Scalping Signals", "Read-only view of what the engine recorded. It places no order, manages no position, and reports no fill.", icon="⚡")
     directory, sessions = discover_sessions()
 
     if not sessions:

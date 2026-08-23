@@ -22,6 +22,8 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
+from dashboard.ui import page_header
+
 from services.swing_breakout import (
     ENGINE_VERSION,
     MEASUREMENT_PROVENANCE,
@@ -92,13 +94,7 @@ def _column_config() -> dict:
 def show_swing_signals() -> None:
     """Streamlit page: today's swing breakout candidates."""
 
-    st.title("📈 Swing Breakout")
-    st.caption(
-        "Read-only research view. Three conditions, each from a measurement "
-        "rather than a judgement. It never places an order and never reports "
-        "a fill."
-    )
-
+    page_header("Swing Breakout", "Three conditions, each from a measurement rather than a judgement. It never places an order and never reports a fill.", icon="📈")
     config = SwingConfig()
     if not st.button("افحص السوق · Scan the market", type="primary"):
         st.info(

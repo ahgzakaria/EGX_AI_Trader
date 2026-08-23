@@ -12,7 +12,11 @@ venv/
 .vscode/
 
 # Streamlit
-.streamlit/
+.streamlit/*
+# The theme is the app's appearance, not a local preference, and it has
+# never been in the repo -- a fresh checkout renders on Streamlit's own
+# defaults. Secrets stay ignored by the line above.
+!.streamlit/config.toml
 
 # Runtime market-data cache (recreated automatically)
 data/market_data_cache.sqlite*

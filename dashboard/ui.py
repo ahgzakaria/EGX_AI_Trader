@@ -7,10 +7,14 @@ numeric value — it styles and lays out what the pages already compute.
 from __future__ import annotations
 
 import html
+import logging
+from datetime import date
 
 import streamlit as st
 
 from dashboard.formatting import status_label, status_tone
+
+logger = logging.getLogger(__name__)
 
 # Semantic tone -> (background, border, text) for dark badges.
 _TONE = {
@@ -57,67 +61,128 @@ def apply_global_style():
             border-radius: 8px; min-height:42px; font-size:.96rem;
         }
         [data-testid="stSidebarNav"] a:hover { background: rgba(255,255,255,.06); }
+        /* The current page is marked by a rail on the leading edge, not a
+           filled block: the same left-edge language the alerts and the signal
+           cards use, so one position always means "state". */
         [data-testid="stSidebarNav"] a[aria-current="page"] {
-            background: rgba(59,130,246,.18); font-weight: 700;
+            background: rgba(59,130,246,.14); font-weight: 600;
+            box-shadow: inset 2px 0 0 var(--blue);
         }
+        [data-testid="stSidebarNav"] span { font-size:.96rem; }
+
+        /* --- the health panel above the navigation ------------------------ */
+        .egx-health { border:1px solid var(--border); border-radius:10px;
+            padding:.6rem .7rem; margin:.1rem 0 .8rem; background:var(--surface); }
+        .egx-health .t { display:flex; align-items:center; gap:.45rem;
+            font-size:.8rem; font-weight:600; }
+        .egx-health .t i { width:7px; height:7px; border-radius:50%; display:block; flex-shrink:0; }
+        .egx-health .d { font-family:var(--font-mono); font-size:.72rem;
+            color:var(--muted) !important; margin-top:.35rem; line-height:1.6; }
+        .egx-health.ok { border-color:rgba(52,211,153,.28); background:rgba(52,211,153,.06); }
+        .egx-health.ok .t i { background:var(--green); }
+        .egx-health.warn { border-color:rgba(251,191,36,.32); background:rgba(251,191,36,.07); }
+        .egx-health.warn .t i { background:var(--amber); }
+        .egx-health.bad { border-color:rgba(248,113,113,.32); background:rgba(248,113,113,.07); }
+        .egx-health.bad .t i { background:var(--red); }
         h1,h2,h3,h4 { color: var(--text); letter-spacing: -.01em; }
         h1 { font-size: 1.75rem !important; }
         p, label, .stMarkdown { color: var(--text); font-size:1rem; line-height:1.65; }
         .stCaption, [data-testid="stCaptionContainer"] { color: var(--muted) !important; }
 
-        /* metrics -> compact dark cards */
+        /* Metrics. The label is set small and quiet and the value large and
+           monospaced, because a row of these is read by scanning the values --
+           and values that do not share a digit width cannot be scanned. */
         [data-testid="stMetric"] {
             background: var(--surface); border: 1px solid var(--border);
-            border-radius: 12px; padding: .7rem .85rem; min-height: 0;
+            border-radius: 10px; padding: .65rem .8rem; min-height: 0;
         }
-        [data-testid="stMetricLabel"] { color: var(--muted); font-weight: 600; font-size: .78rem; }
-        [data-testid="stMetricValue"] { color: var(--text); font-weight: 750; font-size: 1.5rem; }
-        [data-testid="stMetricDelta"] { font-size: .78rem; }
+        [data-testid="stMetricLabel"] { color: var(--muted); font-weight: 600;
+            font-size: .74rem; letter-spacing:.035em; text-transform:uppercase; }
+        [data-testid="stMetricValue"] { color: var(--text); font-weight: 600;
+            font-size: 1.45rem; letter-spacing:-.01em; }
+        [data-testid="stMetricDelta"] { font-size: .74rem; }
 
+        /* One accent, flat. The blue-to-cyan gradient this replaces competed
+           with the semantic greens and reds it sat beside, which are the only
+           colours on these pages that carry a fact. */
         .stButton > button, .stDownloadButton > button {
-            border-radius: 9px; min-height: 46px; font-weight: 700;
+            border-radius: 8px; min-height: 46px; font-weight: 600;
             font-size:1rem; padding:.55rem 1rem;
             background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
         }
-        .stButton > button[kind="primary"] {
-            background: linear-gradient(90deg,#2563eb,#0891b2); border: 0; color: white;
+        .stButton > button:hover, .stDownloadButton > button:hover {
+            border-color: #33507a; background: #1b2742;
         }
+        .stButton > button[kind="primary"] {
+            background: #2563eb; border: 1px solid #2563eb; color: #fff;
+        }
+        .stButton > button[kind="primary"]:hover { background: #1d4ed8; border-color:#1d4ed8; }
+        :is(.stButton, .stDownloadButton) > button:focus-visible {
+            outline: 2px solid var(--blue); outline-offset: 2px;
+        }
+
+        /* 15px cells and 46px controls are a readability floor set deliberately
+           in cf3898f, not a default. The header is the one thing set smaller:
+           it is a label you learn once, while the cells are read every day. */
         [data-testid="stDataFrame"] {
-            border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+            border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
             font-size:15px;
         }
         [data-testid="stDataFrame"] [role="columnheader"] {
-            font-size:15px; font-weight:800;
+            font-size:13px; font-weight:600; letter-spacing:.03em;
+            text-transform:uppercase; color:var(--muted);
         }
-        [data-testid="stDataFrame"] [role="gridcell"] {
-            font-size:15px; min-height:40px;
-        }
+        [data-testid="stDataFrame"] [role="gridcell"] { font-size:15px; min-height:40px; }
+
+        /* Tabs as an underlined rail. The pills-in-a-box they replace read as
+           a second, competing navigation next to the sidebar's. */
         [data-baseweb="tab-list"] {
-            gap: .25rem; background: var(--surface); border: 1px solid var(--border);
-            border-radius: 10px; padding: .25rem;
+            gap: .1rem; background: transparent; border: 0;
+            border-bottom: 1px solid var(--border); border-radius: 0; padding: 0;
         }
         [data-baseweb="tab"] {
-            border-radius: 8px; padding: .6rem 1rem; color: var(--muted);
-            font-size:.96rem; font-weight:700;
+            border-radius: 0; padding: .55rem .9rem; color: var(--muted);
+            font-size:.96rem; font-weight:600; border-bottom:2px solid transparent;
+            margin-bottom:-1px;
         }
-        [data-baseweb="tab"][aria-selected="true"] { background: rgba(59,130,246,.18); color: var(--text); }
-        [data-testid="stExpander"] { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
-        div[data-testid="stAlert"] { border-radius: 10px; }
+        [data-baseweb="tab"]:hover { color: var(--text); }
+        [data-baseweb="tab"][aria-selected="true"] {
+            background: transparent; color: var(--text); border-bottom-color: var(--blue);
+        }
+        [data-baseweb="tab-highlight"] { background: transparent; }
+
+        [data-testid="stExpander"] { background: var(--surface); border: 1px solid var(--border);
+            border-radius: 10px; }
+        [data-testid="stExpander"] summary { font-size:.9rem; font-weight:600; }
+
+        /* Alerts carry their state on the left edge, the same place the signal
+           cards carry theirs, so severity reads in one consistent position. */
+        div[data-testid="stAlert"] { border-radius: 8px; border-left-width: 3px;
+            border-left-style: solid; font-size:.92rem; }
+        div[data-testid="stAlert"]:has([data-testid="stAlertContentSuccess"]) { border-left-color: var(--green); }
+        div[data-testid="stAlert"]:has([data-testid="stAlertContentWarning"]) { border-left-color: var(--amber); }
+        div[data-testid="stAlert"]:has([data-testid="stAlertContentError"]) { border-left-color: var(--red); }
+        div[data-testid="stAlert"]:has([data-testid="stAlertContentInfo"]) { border-left-color: var(--blue); }
         [data-testid="stTextInput"] input, [data-testid="stNumberInput"] input,
         [data-baseweb="select"] > div {
             background: var(--surface-2); color: var(--text); border-color: var(--border);
         }
 
         /* --- custom components --- */
-        .egx-hero { display:flex; align-items:center; justify-content:space-between;
-            background: linear-gradient(120deg,#0e1729,#152241); border:1px solid var(--border);
-            border-radius: 13px; padding: .9rem 1.35rem; margin-bottom: .7rem; }
-        .egx-hero h1 { margin:0 !important; font-size:1.6rem !important; letter-spacing:-.02em; }
-        .egx-hero p { margin:.25rem 0 0; color: var(--muted); font-size:.84rem; }
-        /* badge sits vertically centred, clear of the top-right border/toolbar */
-        .egx-hero .egx-badge { background: rgba(59,130,246,.14); border:1px solid rgba(59,130,246,.35);
-            color:#93c5fd; padding:.22rem .6rem; border-radius:999px; font-size:.64rem; font-weight:700;
-            letter-spacing:.03em; white-space:nowrap; margin:.15rem .35rem 0 0; align-self:center; }
+        /* A masthead, not a box. The gradient panel it replaces spent the
+           page's strongest visual weight on a title the reader already knows,
+           and left nothing for the numbers underneath. */
+        .egx-hero { display:flex; align-items:flex-end; justify-content:space-between;
+            gap:1rem; border-bottom:1px solid var(--border);
+            padding: 0 .15rem .7rem; margin-bottom: 1rem; }
+        .egx-hero h1 { margin:0 !important; font-size:1.5rem !important; font-weight:600;
+            letter-spacing:-.025em; }
+        .egx-hero p { margin:.3rem 0 0; color: var(--muted); font-size:.86rem;
+            max-width:78ch; line-height:1.55; }
+        .egx-hero .egx-badge { background:transparent; border:1px solid var(--border);
+            color:var(--muted); padding:.2rem .55rem; border-radius:5px;
+            font-family:var(--font-mono); font-size:.66rem; font-weight:500;
+            letter-spacing:.04em; white-space:nowrap; flex-shrink:0; }
 
         .egx-statusbar { display:flex; flex-wrap:wrap; gap:.4rem; align-items:center;
             background: var(--surface); border:1px solid var(--border); border-radius:11px;
@@ -171,8 +236,8 @@ def apply_global_style():
         .egx-sig.neg { border-left-color: var(--red); }
         .egx-sig.unk { border-left-color: var(--gray); }
         .egx-sig .tick { font-size:1.22rem; font-weight:650; letter-spacing:-.01em; line-height:1.15; }
-        .egx-sig .sub { font-size:.72rem; color:var(--muted); margin-top:.12rem; line-height:1.35; }
-        .egx-sig .when { font-family:var(--font-mono); font-size:.72rem;
+        .egx-sig .sub { font-size:.78rem; color:var(--muted); margin-top:.12rem; line-height:1.35; }
+        .egx-sig .when { font-family:var(--font-mono); font-size:.78rem;
             color:var(--muted); margin-top:.35rem; }
 
         .egx-rail { position:relative; height:30px; }
@@ -189,17 +254,19 @@ def apply_global_style():
         .egx-rail .dot { position:absolute; top:4px; width:11px; height:11px; border-radius:50%;
             background:var(--text); border:3px solid var(--surface); transform:translateX(-50%); }
         .egx-legend { display:flex; justify-content:space-between; font-family:var(--font-mono);
-            font-size:.7rem; color:var(--muted); margin-top:.1rem; }
+            font-size:.8rem; color:var(--muted); margin-top:.1rem; }
         .egx-legend .mid { color:var(--text); }
 
         .egx-sig .nums { display:grid; grid-template-columns:repeat(3,minmax(0,1fr));
             gap:.6rem; text-align:right; font-family:var(--font-mono);
             font-variant-numeric:tabular-nums; }
-        .egx-sig .nums .k { font-size:.56rem; letter-spacing:.055em; text-transform:uppercase;
-            color:var(--muted); font-weight:650; font-family:var(--font-sans); }
-        .egx-sig .nums .v { font-size:.98rem; margin-top:.14rem; }
+        /* Same size as a metric's label: these are the same kind of thing, and
+           the smallest text on a page should not be a one-off. */
+        .egx-sig .nums .k { font-size:.74rem; letter-spacing:.05em; text-transform:uppercase;
+            color:var(--muted); font-weight:600; font-family:var(--font-sans); }
+        .egx-sig .nums .v { font-size:1.02rem; margin-top:.14rem; }
         .egx-sig .nums .v.big { font-weight:650; }
-        .egx-note { font-size:.76rem; color:var(--muted); grid-column:1 / -1;
+        .egx-note { font-size:.82rem; color:var(--muted); grid-column:1 / -1;
             border-top:1px solid var(--border); padding-top:.5rem; margin-top:.1rem; }
 
         @media (max-width: 1100px) {
@@ -240,6 +307,46 @@ def empty_state(title, message, icon="○"):
         f'<div class="egx-empty"><div style="font-size:1.5rem">{html.escape(icon)}</div>'
         f'<strong>{html.escape(title)}</strong><span>{html.escape(message)}</span></div>',
         unsafe_allow_html=True)
+
+
+def sidebar_health(session_date=None) -> None:
+    """One line at the top of every page: did this morning's run happen?
+
+    It sits above the navigation because the failures this project has actually
+    suffered were silences — a collector that died at 08:00 and stayed dead for
+    sixteen hours, a finalizer that ran before the session was authoritative
+    and wrote nothing, a clock that drifted past the point where "live" meant
+    anything. None announced itself. All of them were three clicks inside
+    System Health, on a page nobody opens on a good day.
+
+    Every failure here is caught: a panel that raises would take down whichever
+    page it is decorating, and a monitor that can break the thing it monitors
+    is worse than no monitor.
+    """
+    try:
+        from services.automation_status import NEVER_RAN, read_status
+
+        day = session_date or date.today().isoformat()
+        status = read_status(day)
+
+        if status.healthy:
+            tone, headline = "ok", "This morning's run completed"
+        elif status.outcome == NEVER_RAN:
+            tone, headline = "bad", "No run recorded today"
+        elif status.outcome == "RUNNING":
+            tone, headline = "warn", "Run still in flight"
+        else:
+            tone, headline = "bad", f"Run {status.outcome.lower()}"
+
+        detail = html.escape((status.reason or "")[:120]) or html.escape(str(day))
+        st.sidebar.markdown(
+            f'<div class="egx-health {tone}"><div class="t"><i></i>'
+            f'<span>{html.escape(headline)}</span></div>'
+            f'<div class="d">{detail}</div></div>',
+            unsafe_allow_html=True,
+        )
+    except Exception:  # noqa: BLE001 - a broken monitor must not break the page
+        logger.exception("sidebar health panel could not be rendered")
 
 
 #: The rail is inset so a marker at either extreme is not clipped by the card.

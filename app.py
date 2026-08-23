@@ -37,7 +37,7 @@ from dashboard.orb_signals import show_orb_signals
 from dashboard.settings import show_settings
 from dashboard.swing_signals import show_swing_signals
 from dashboard.system_health import show_system_health
-from dashboard.ui import apply_global_style, sidebar_brand
+from dashboard.ui import apply_global_style, sidebar_brand, sidebar_health
 from dashboard.watchlist import show_watchlist
 from services.experiment_tracking import RunRepository
 
@@ -46,6 +46,10 @@ st.set_page_config(page_title="EGX AI Trader", page_icon="📈", layout="wide")
 
 apply_global_style()
 sidebar_brand()
+# Above the navigation, on every page: the failures this project has actually
+# suffered were silences, and none of them were visible from the page you
+# happened to be on when they started.
+sidebar_health()
 
 # A browser disconnect can abort a long backtest before its normal cleanup.
 # Recover only that tracked run on the next rerun.
