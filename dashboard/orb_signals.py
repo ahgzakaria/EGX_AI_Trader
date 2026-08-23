@@ -18,6 +18,7 @@ import pandas as pd
 import streamlit as st
 
 from core.sector_context import UNKNOWN_SECTOR_ID, sector_map_provenance
+from dashboard.ui import signal_card
 from services.automation_status import (
     COMPLETED,
     NEVER_RAN,
@@ -409,6 +410,95 @@ def show_orb_signals() -> None:
     _live_panel()
 
 
+def _signal_note(signal, eligibility_is_universal: bool = False) -> str:
+    """The one qualifying sentence *this* signal needs, or nothing.
+
+    A caveat that is true of every signal on the page is not a property of any
+    one of them. The eligibility file ships empty on purpose, so UNKNOWN is
+    currently the state of the whole list; repeating it on each card would put
+    the same sentence five times under five different tickers and teach the eye
+    to skip the line that will one day say something specific.
+    """
+    if signal.intraday_eligibility == "UNKNOWN" and not eligibility_is_universal:
+        return ("Same-session eligibility is unknown for this security — which "
+                "is not the same as yes.")
+    if signal.intraday_eligibility == "NOT_ELIGIBLE":
+        return ("Cannot be closed in the session it was opened, so it is not a "
+                "scalping signal.")
+    if signal.total_cost_percent is None:
+        return ("The spread was never observed, so the cost here is unknown "
+                "rather than zero.")
+    return ""
+
+
+def _sorted_signals(report):
+    """Signals ordered by what is left after costs, best first.
+
+    Ordering is not filtering: every signal stays on the page. Unknown net sits
+    last because an unmeasured result cannot be ranked against a measured one.
+    """
+    return sorted(
+        report.signals,
+        key=lambda s: (s.net_target_1_percent is not None,
+                       s.net_target_1_percent or 0.0),
+        reverse=True,
+    )
+
+
+def _draw_card(signal, eligibility_is_universal: bool = False) -> None:
+    signal_card(
+        ticker=signal.canonical_ticker,
+        subtitle=signal.sector_name or "",
+        when=signal.detection_time_label,
+        entry=signal.trigger_price,
+        stop=signal.proposed_stop,
+        target=signal.target_1,
+        move_percent=signal.target_1_percent,
+        cost_percent=signal.total_cost_percent,
+        net_percent=signal.net_target_1_percent,
+        note=_signal_note(signal, eligibility_is_universal),
+    )
+
+
+def _render_signal_cards(report) -> None:
+    """Each signal drawn to scale, with the ones that lose money folded away.
+
+    Folding is presentation, never suppression: the count is stated, the panel
+    opens in one click, and the full table below always lists every signal.
+    """
+    ordered = _sorted_signals(report)
+    clears_cost = [s for s in ordered
+                   if s.net_target_1_percent is not None
+                   and s.net_target_1_percent > 0]
+    rest = [s for s in ordered if s not in clears_cost]
+
+    # The page already carries one warning when eligibility is unknown across
+    # the board; the cards then say nothing about it rather than repeating it.
+    universal = all(s.intraday_eligibility == "UNKNOWN" for s in ordered)
+
+    for signal in clears_cost:
+        _draw_card(signal, universal)
+
+    if not clears_cost:
+        st.warning(
+            f"**No signal on {report.session_date} clears its own cost at the "
+            f"first target.** All {report.signal_count} are below, with entry, "
+            f"exit and target all going exactly as the engine intended."
+        )
+
+    if rest:
+        losing = sum(1 for s in rest if s.net_target_1_percent is not None)
+        unknown = len(rest) - losing
+        label = []
+        if losing:
+            label.append(f"{losing} below cost")
+        if unknown:
+            label.append(f"{unknown} with an unknown cost")
+        with st.expander(" · ".join(label), expanded=not clears_cost):
+            for signal in rest:
+                _draw_card(signal, universal)
+
+
 def _render_session(path, chosen: str, auto: bool) -> None:
     """Everything that must be re-read when the session database changes."""
 
@@ -459,20 +549,24 @@ def _render_session(path, chosen: str, auto: bool) -> None:
     _cost_summary(report)
 
     st.subheader("Signals")
+    _render_signal_cards(report)
+
     frame = _signal_frame(report)
-    st.dataframe(
-        _style_signals(frame),
-        width="stretch",
-        hide_index=True,
-        column_config=_signal_column_config(),
-    )
-    st.caption(
-        "Hover any column header for what it means. An empty **Net R/R** with "
-        "a **Cost %** present means the costs consume the whole move, so no "
-        "positive net reward exists — different from an empty **Cost %**, "
-        "which means the spread was never observed and the cost is unknown. "
-        "None of these columns filter, rank or recommend anything."
-    )
+    with st.expander(f"Every column, all {report.signal_count} signals"):
+        st.dataframe(
+            _style_signals(frame),
+            width="stretch",
+            hide_index=True,
+            column_config=_signal_column_config(),
+        )
+        st.caption(
+            "Hover any column header for what it means. An empty **Net R/R** "
+            "with a **Cost %** present means the costs consume the whole move, "
+            "so no positive net reward exists — different from an empty "
+            "**Cost %**, which means the spread was never observed and the "
+            "cost is unknown. None of these columns filter, rank or "
+            "recommend anything."
+        )
 
     priced = [s for s in report.signals if s.median_spread_percent is not None]
     if priced:

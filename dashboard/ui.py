@@ -27,7 +27,12 @@ def apply_global_style():
     st.markdown(
         """
         <style>
+        /* Loaded over the network; every rule below names a full fallback
+           stack, so the app is legible on the mornings the link fails. */
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
         :root {
+            --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+            --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
             --bg: #0b1220;
             --bg-2: #0e1729;
             --surface: #131c30;
@@ -38,7 +43,11 @@ def apply_global_style():
             --green: #34d399; --amber: #fbbf24; --red: #f87171;
             --blue: #60a5fa; --gray: #94a3b8;
         }
-        .stApp { background: var(--bg); color: var(--text); font-size:16px; }
+        .stApp { background: var(--bg); color: var(--text); font-size:16px;
+            font-family: var(--font-sans); }
+        /* Digits that sit in a column must line up in that column. */
+        [data-testid="stMetricValue"], [data-testid="stDataFrame"],
+        code, kbd, pre { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
         /* clear the fixed Streamlit toolbar so the page title is never clipped */
         .block-container { max-width: 1640px; padding-top: 3.4rem; padding-bottom: 2.4rem; }
         header[data-testid="stHeader"] { background: transparent; }
@@ -148,6 +157,55 @@ def apply_global_style():
         .egx-system-link { display:inline-block; padding:.55rem .85rem; border-radius:9px;
             background:var(--surface-2); border:1px solid var(--border); color:#93c5fd !important;
             font-weight:750; text-decoration:none; margin:.35rem 0 .65rem; }
+        /* --- signal card: the trade drawn to scale ------------------------
+           Stop, entry and target sit at their true relative distances, and the
+           cost band is drawn from the entry outward at its real width. A
+           target that falls inside that band is a trade that loses money at
+           its own target -- the one fact this layout exists to make visible
+           before any number is read. */
+        .egx-sig { display:grid; grid-template-columns: 148px 1fr 232px; gap:1.3rem;
+            align-items:center; background: var(--surface); border:1px solid var(--border);
+            border-left:3px solid var(--gray); border-radius:12px;
+            padding:.85rem 1.05rem; margin-bottom:.5rem; }
+        .egx-sig.pos { border-left-color: var(--green); }
+        .egx-sig.neg { border-left-color: var(--red); }
+        .egx-sig.unk { border-left-color: var(--gray); }
+        .egx-sig .tick { font-size:1.22rem; font-weight:650; letter-spacing:-.01em; line-height:1.15; }
+        .egx-sig .sub { font-size:.72rem; color:var(--muted); margin-top:.12rem; line-height:1.35; }
+        .egx-sig .when { font-family:var(--font-mono); font-size:.72rem;
+            color:var(--muted); margin-top:.35rem; }
+
+        .egx-rail { position:relative; height:30px; }
+        .egx-rail .track { position:absolute; top:13px; left:0; right:0; height:3px;
+            border-radius:2px; background:linear-gradient(90deg,
+                var(--red) 0%, var(--border) 30%, var(--border) 64%, var(--green) 100%); }
+        /* The slice of the move that is only cost. Hatched, not solid: it is a
+           charge against the move, not a level the price visits. */
+        .egx-rail .cost { position:absolute; top:9px; height:11px; border-radius:2px;
+            background:repeating-linear-gradient(135deg, rgba(248,113,113,.30) 0 4px,
+                rgba(248,113,113,.09) 4px 8px);
+            border-left:1px solid rgba(248,113,113,.5); border-right:1px solid rgba(248,113,113,.5); }
+        .egx-rail .mark { position:absolute; top:7px; width:2px; height:15px; transform:translateX(-50%); }
+        .egx-rail .dot { position:absolute; top:4px; width:11px; height:11px; border-radius:50%;
+            background:var(--text); border:3px solid var(--surface); transform:translateX(-50%); }
+        .egx-legend { display:flex; justify-content:space-between; font-family:var(--font-mono);
+            font-size:.7rem; color:var(--muted); margin-top:.1rem; }
+        .egx-legend .mid { color:var(--text); }
+
+        .egx-sig .nums { display:grid; grid-template-columns:repeat(3,minmax(0,1fr));
+            gap:.6rem; text-align:right; font-family:var(--font-mono);
+            font-variant-numeric:tabular-nums; }
+        .egx-sig .nums .k { font-size:.56rem; letter-spacing:.055em; text-transform:uppercase;
+            color:var(--muted); font-weight:650; font-family:var(--font-sans); }
+        .egx-sig .nums .v { font-size:.98rem; margin-top:.14rem; }
+        .egx-sig .nums .v.big { font-weight:650; }
+        .egx-note { font-size:.76rem; color:var(--muted); grid-column:1 / -1;
+            border-top:1px solid var(--border); padding-top:.5rem; margin-top:.1rem; }
+
+        @media (max-width: 1100px) {
+            .egx-sig { grid-template-columns:1fr; gap:.7rem; }
+            .egx-sig .nums { text-align:left; }
+        }
         @media (max-width: 900px) {
             .block-container { padding-left:1rem; padding-right:1rem; }
             .egx-hero { align-items:flex-start; gap:.65rem; }
@@ -182,6 +240,148 @@ def empty_state(title, message, icon="○"):
         f'<div class="egx-empty"><div style="font-size:1.5rem">{html.escape(icon)}</div>'
         f'<strong>{html.escape(title)}</strong><span>{html.escape(message)}</span></div>',
         unsafe_allow_html=True)
+
+
+#: The rail is inset so a marker at either extreme is not clipped by the card.
+_RAIL_LOW, _RAIL_HIGH = 4.0, 96.0
+
+
+def _rail_position(price, low, high):
+    """Where ``price`` sits on the rail, as a percentage.
+
+    Linear in price, so the drawing is to scale: a stop twice as far from the
+    entry as the target draws twice as far away. Nothing here is normalised,
+    ranked or eased -- the moment the geometry stops being proportional, the
+    picture stops being evidence.
+    """
+    span = high - low
+    if span <= 0:
+        return (_RAIL_LOW + _RAIL_HIGH) / 2
+    fraction = (price - low) / span
+    return _RAIL_LOW + max(0.0, min(1.0, fraction)) * (_RAIL_HIGH - _RAIL_LOW)
+
+
+def signal_card(*, ticker, entry, stop, target, subtitle="", when="",
+                move_percent=None, cost_percent=None, net_percent=None,
+                note=""):
+    """One signal drawn as stop / entry / target on a single rail.
+
+    ``cost_percent`` of ``None`` means the spread was never observed, so the
+    cost is *unknown*. It is drawn as no band and labelled as unknown rather
+    than as zero: an unmeasured cost is not a smaller one, and a card that
+    silently treats it as zero is the same failure that once made thirteen
+    signals look profitable.
+
+    Presentation only. It proposes nothing, places nothing, and reports no
+    fill -- these are the levels the engine recorded, drawn at their real
+    distances.
+    """
+    values = [v for v in (entry, stop, target) if v is not None]
+    if entry is None or len(values) < 2:
+        # Without at least two real levels there is no scale, and a rail drawn
+        # without one would be decoration pretending to be measurement.
+        _signal_card_bare(ticker, subtitle, when, move_percent,
+                          cost_percent, net_percent, note)
+        return
+
+    low, high = min(values), max(values)
+    parts = ['<div class="egx-rail"><span class="track"></span>']
+
+    if cost_percent is not None:
+        # The band starts at the entry and runs the width of the round trip.
+        cost_edge = entry * (1.0 + abs(cost_percent) / 100.0)
+        left = _rail_position(entry, low, high)
+        right = _rail_position(cost_edge, low, high)
+        if right > left:
+            parts.append(
+                f'<span class="cost" style="left:{left:.1f}%;'
+                f'width:{right - left:.1f}%"></span>'
+            )
+
+    if stop is not None:
+        parts.append(
+            f'<span class="mark" style="left:{_rail_position(stop, low, high):.1f}%;'
+            f'background:var(--red)"></span>'
+        )
+    if target is not None:
+        parts.append(
+            f'<span class="mark" style="left:{_rail_position(target, low, high):.1f}%;'
+            f'background:var(--green)"></span>'
+        )
+    parts.append(
+        f'<span class="dot" style="left:{_rail_position(entry, low, high):.1f}%"></span></div>'
+    )
+
+    legend = (
+        f'<div class="egx-legend"><span>stop {_price(stop)}</span>'
+        f'<span class="mid">entry {_price(entry)}</span>'
+        f'<span>target {_price(target)}</span></div>'
+    )
+
+    st.markdown(
+        f'<div class="egx-sig {_net_tone(net_percent)}">'
+        f'{_signal_identity(ticker, subtitle, when)}'
+        f'<div>{"".join(parts)}{legend}</div>'
+        f'{_signal_numbers(move_percent, cost_percent, net_percent)}'
+        f'{_signal_note(note)}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _signal_card_bare(ticker, subtitle, when, move, cost, net, note):
+    """The same card without a rail, for a signal whose levels were not kept."""
+    st.markdown(
+        f'<div class="egx-sig {_net_tone(net)}">'
+        f'{_signal_identity(ticker, subtitle, when)}'
+        f'<div class="egx-legend"><span>levels were not recorded for this '
+        f'signal</span></div>'
+        f'{_signal_numbers(move, cost, net)}{_signal_note(note)}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _signal_identity(ticker, subtitle, when):
+    sub = f'<div class="sub">{html.escape(str(subtitle))}</div>' if subtitle else ""
+    at = f'<div class="when">{html.escape(str(when))}</div>' if when else ""
+    return f'<div><div class="tick">{html.escape(str(ticker))}</div>{sub}{at}</div>'
+
+
+def _signal_numbers(move, cost, net):
+    return (
+        '<div class="nums">'
+        f'<div><div class="k">Move</div><div class="v">{_percent(move)}</div></div>'
+        f'<div><div class="k">Cost</div>'
+        f'<div class="v" style="color:var(--muted)">{_percent(cost)}</div></div>'
+        f'<div><div class="k">Net</div>'
+        f'<div class="v big" style="color:var(--{_net_colour(net)})">'
+        f'{_percent(net, signed=True)}</div></div></div>'
+    )
+
+
+def _signal_note(note):
+    return f'<div class="egx-note">{html.escape(str(note))}</div>' if note else ""
+
+
+def _net_tone(net):
+    if net is None:
+        return "unk"
+    return "pos" if net > 0 else "neg"
+
+
+def _net_colour(net):
+    if net is None:
+        return "muted"
+    return "green" if net > 0 else "red"
+
+
+def _price(value):
+    return f"{value:,.3f}".rstrip("0").rstrip(".") if value is not None else "—"
+
+
+def _percent(value, signed=False):
+    if value is None:
+        return "unknown"
+    return f"{value:+.2f}%" if signed else f"{value:.2f}%"
 
 
 def badge_html(text, tone="gray", title=""):
