@@ -238,6 +238,48 @@ class CollectorSupervisor:
             self.child.wait(timeout=5)
         self.log.emit("collector_stopped", return_code=self.child.returncode)
 
+    def previous_run_shut_down_cleanly(self) -> bool:
+        """Did the last supervisor leave through its own shutdown path?
+
+        Only a clean exit writes ``shutdown: true``, and only after the
+        database has been checkpointed. A kill, a power cut or a crash leaves
+        the flag absent -- which is exactly when the file is worth verifying.
+
+        Unreadable or missing counts as *not* clean: an unknown history is a
+        reason to check, never a reason to skip.
+        """
+        try:
+            record = json.loads(self.health_file.read_text(encoding="utf-8"))
+            return record.get("shutdown") is True
+        except (OSError, ValueError):
+            return False
+
+    def verify_database_in_background(self, *, skip: bool) -> None:
+        """Verify every page, without holding the collector up.
+
+        ``integrity_check`` reads the whole database -- 148 s for the cheaper
+        pragma on 5.84 GB with nothing competing, and 233-635 s during a
+        session. On the startup path that is the collector not collecting, so
+        it runs on a daemon thread behind a collector that is already up.
+
+        Skipped entirely after a clean shutdown, which verified the same file
+        on its way out. Nothing consumes the verdict beyond the log, so the
+        cost has to be earned.
+        """
+        if skip:
+            self.log.emit("database_startup_check_skipped",
+                          reason="previous run shut down cleanly")
+            return
+
+        def verify():
+            try:
+                self.log.emit("database_startup_check",
+                              **database_maintenance(self.database, integrity=True))
+            except Exception as error:  # noqa: BLE001 - a check must not kill the run
+                self.log.emit("database_startup_check_failed", error=str(error))
+
+        threading.Thread(target=verify, name="startup-integrity", daemon=True).start()
+
     def stop_requested_on_disk(self):
         """True when something asked for a clean stop by creating the flag.
 
@@ -280,13 +322,16 @@ class CollectorSupervisor:
             self.log.emit("supervisor_duplicate_blocked", reason=str(error))
             raise
         backoff = float(self.args.restart_backoff_seconds)
-        # Verify once here, before the day's data is relied on. This is the
-        # moment a corrupt database is worth knowing about, and the one time
-        # the check is not competing with the collector for the disk.
-        self.log.emit("database_startup_check",
-                      **database_maintenance(self.database, integrity=True))
+        # Read before the loop starts overwriting the health file.
+        previous_was_clean = self.previous_run_shut_down_cleanly()
         try:
             self.start_child()
+            # Only after the collector is up, and only when corruption is
+            # actually plausible. Verifying before start_child held the
+            # collector for 156 seconds and counting on a 5.84 GB database --
+            # at 09:10 that is the opening auction missed, which is far worse
+            # than learning about corruption two minutes later.
+            self.verify_database_in_background(skip=previous_was_clean)
             while not STOP_REQUESTED and not self.stop_requested_on_disk():
                 health = self.health()
                 atomic_json(self.health_file, health)

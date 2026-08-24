@@ -212,12 +212,15 @@ def test_the_flag_drives_the_real_loop_out_through_its_shutdown_path(tmp_path, m
     assert harness.run() == 0, "a flagged stop is a normal exit, not a failure"
 
     assert "stop_requested_by_flag" in log.names()
-    # The lock is released last, after the database is safely checkpointed --
-    # never before, or the next start could open a database mid-checkpoint. The
-    # startup pass verifies before any data is relied on; the shutdown pass
-    # verifies again on the way out.
-    assert order == ["lock", "verify", "start_child", "stop_child", "verify",
-                     "unlock"], order
+    # The collector starts before anything verifies: startup verification runs
+    # on a daemon thread, so where it lands in this list is not deterministic
+    # and only its position *after* start_child is asserted.
+    assert order[:2] == ["lock", "start_child"], order
+
+    # The shutdown sequence is synchronous and its order is the whole point:
+    # the lock is released last, after the database is safely checkpointed,
+    # never before -- or the next start could open a database mid-checkpoint.
+    assert order[-3:] == ["stop_child", "verify", "unlock"], order
     assert "supervisor_shutdown" in log.names(), (
         "without this line nothing can tell a clean stop from a process that died"
     )
