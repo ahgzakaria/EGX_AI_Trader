@@ -215,16 +215,35 @@ def test_the_page_states_what_the_strategy_is_not():
     assert "not an order" in text
 
 
-def test_the_page_records_the_factor_that_could_not_be_tested():
-    """Value is the strongest factor the frontier literature reports, and it
-    is absent because fundamentals are not in the subscription. Absent for a
-    reason is not the same as dismissed, and the next reader needs to know
-    which."""
+def test_the_page_records_what_the_value_test_actually_found():
+    """Value is the strongest factor the frontier literature reports.
+
+    It used to be absent here because EODHD returns 403 on fundamentals. Yahoo
+    carries them for EGX, and annual equity read months after publication is
+    untouched by the late-candle problem that retired Yahoo operationally -- so
+    it was tested. It failed, and the page has to say so with its numbers
+    rather than leave a reader thinking it is still an open question.
+    """
 
     text = _page_text(_rendered_page())
 
-    assert "403" in text
-    assert "not dismissed" in text
+    assert "Value was tested" in text
+    # The two eras disagreeing is the finding, so both halves must be shown.
+    assert "5.23" in text and "5.31" in text, "the training halves, which tie"
+    assert "6.14" in text and "2.94" in text, "the validation halves, which do not"
+    # Coverage settles it regardless of the averages.
+    assert "23%" in text
+    assert "value_factor.py" in text
+
+
+def test_the_page_never_claims_value_is_untested():
+    """The old text said fundamentals were unavailable. Leaving that in beside
+    a result would be two answers to one question."""
+
+    text = _page_text(_rendered_page())
+
+    assert "could not be tested" not in text
+    assert "not dismissed" not in text
 
 
 def test_the_page_shows_that_the_momentum_filter_was_not_fitted():

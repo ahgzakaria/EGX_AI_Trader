@@ -189,9 +189,34 @@ tail of large winners, which is what a breakout strategy is and what makes it
 hard to hold through a losing run. It is not a probability, not a
 recommendation, and not an order.
 
-**What could not be tested.** The frontier-market literature rates value the
-strongest factor of all. Fundamentals return HTTP 403 on this data
-subscription, so it is absent here — not dismissed.
+**Value was tested, and did not earn a place.** The frontier-market literature
+rates it the strongest factor of all. EODHD returns HTTP 403 on fundamentals
+here, but Yahoo carries them for EGX, and annual equity read months after
+publication does not care that Yahoo's daily candle arrives late.
+
+| P/B quintile | training | validation |
+| --- | --- | --- |
+| cheapest | +11.20% | +5.67% |
+| | +1.15% | +7.61% |
+| | +3.52% | +3.20% |
+| | +10.19% | +3.10% |
+| dearest | −1.93% | +3.59% |
+| **cheapest half** | **+5.23%** | **+6.14%** |
+| **dearest half** | **+5.31%** | +2.94% |
+
+In training the two halves are the same number — value separates nothing. In
+validation the cheap half leads by 3.2 points, but neither era grades smoothly
+and the quintiles disagree about where the effect even lives. That is what
+noise looks like. Momentum, which was kept, strengthened monotonically as it
+was tightened and weakened when inverted, in both eras.
+
+Coverage settles it regardless: only **23% of breakouts** can be scored at all,
+because Yahoo's annual history begins around 2022 for most of this universe and
+25 of the 60 names carry no usable equity. Two years of validation against the
+fourteen behind momentum, on a quarter of the signals, cannot justify a gate —
+and Yahoo serves restated figures, which flatters even that.
+
+Re-run it with `scripts/research/value_factor.py`.
 
 Re-derive anything above with `scripts/research/swing_candidates.py` and
 `scripts/research/breakout_filters.py`. Engine `{ENGINE_VERSION}`.

@@ -105,3 +105,24 @@ One bad row — `ZMID 2022-10-04`, printed with a high and close of 1,000,000
 against a 6.81 open — was enough to make "hold to close" average +129% per
 trade across 112,000 trades before it was caught. Every script now rejects
 rows whose range exceeds what the exchange's own ±20% limit permits.
+
+## `value_factor.py`
+
+Does a value filter add anything to the volume breakout? Answer: no, on the
+evidence available. In training the cheapest and dearest halves return the same
+number (+5.23% against +5.31%); in validation the cheap half leads by 3.2
+points, but neither era grades smoothly across quintiles and the two disagree
+about where the effect sits. Momentum, which was kept, strengthened
+monotonically as it was tightened and weakened when inverted, in both eras.
+
+Fundamentals come from Yahoo under the `.CA` suffix the universe already stores
+as `engine_symbol`. Yahoo was retired as an *operational* provider because its
+daily candle arrives hours to days late; annual equity read months after
+publication is untouched by that objection. Point-in-time is enforced with a
+120-day publication lag, so a period ending 2022-12-31 is unknown until
+2023-04-30.
+
+Two limits bound the result and are printed with it: only 23% of breakouts can
+be scored (Yahoo's annual history starts around 2022 for most of this universe,
+and 25 of 60 names carry no usable equity), and Yahoo serves restated figures
+rather than what was first reported.
