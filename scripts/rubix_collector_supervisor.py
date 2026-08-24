@@ -103,15 +103,39 @@ def validate_adapter(path: Path) -> Path:
     return path
 
 
-def database_maintenance(path: Path) -> dict:
+def database_maintenance(path: Path, *, integrity: bool = True) -> dict:
+    """Checkpoint the WAL, and optionally verify every page.
+
+    The two halves cost wildly different amounts. ``wal_checkpoint(PASSIVE)``
+    writes back only what the WAL holds, so it is proportional to recent
+    activity. ``integrity_check`` reads and verifies *every page of the
+    database*, so it is proportional to the whole file -- 5.84 GB of it.
+
+    Measured from this supervisor's own log on 2026-08-24, from the gaps
+    between maintenance events against the 300 s schedule: after the close the
+    check took 33-63 s, but **during the session, with the collector writing
+    concurrently, it took 233-635 s**. One took ten and a half minutes. The
+    supervisor was spending roughly seventy percent of the trading session
+    reading a six-gigabyte file at over 100 MB/s, which is what made the
+    machine heavy at exactly the hours it needed to be responsive.
+
+    Nothing consumed the periodic verdict. It went to a log line and the health
+    file; System Health and the scalping page run their own checks on demand.
+    So it now runs where it is worth its cost -- at startup, before the day's
+    data is relied on, and at shutdown -- and the periodic pass checkpoints
+    only.
+    """
     if not path.is_file():
         return {"integrity": "MISSING", "wal_checkpoint": None, "bytes": 0}
     try:
         with sqlite3.connect(path, timeout=15) as connection:
-            integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
+            verdict = (
+                connection.execute("PRAGMA integrity_check").fetchone()[0]
+                if integrity else "NOT_CHECKED"
+            )
             checkpoint = connection.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()
         return {
-            "integrity": integrity,
+            "integrity": verdict,
             "wal_checkpoint": list(checkpoint) if checkpoint else None,
             "bytes": path.stat().st_size,
         }
@@ -256,6 +280,11 @@ class CollectorSupervisor:
             self.log.emit("supervisor_duplicate_blocked", reason=str(error))
             raise
         backoff = float(self.args.restart_backoff_seconds)
+        # Verify once here, before the day's data is relied on. This is the
+        # moment a corrupt database is worth knowing about, and the one time
+        # the check is not competing with the collector for the disk.
+        self.log.emit("database_startup_check",
+                      **database_maintenance(self.database, integrity=True))
         try:
             self.start_child()
             while not STOP_REQUESTED and not self.stop_requested_on_disk():
@@ -271,8 +300,13 @@ class CollectorSupervisor:
                     self.start_child()
                 now = time.monotonic()
                 if now - self.last_maintenance >= self.args.maintenance_seconds:
-                    self.last_maintenance = now
-                    self.log.emit("database_maintenance", **database_maintenance(self.database))
+                    # Checkpoint only. The full verification runs at startup and
+                    # at shutdown; running it here consumed most of the session.
+                    self.log.emit("database_maintenance",
+                                  **database_maintenance(self.database, integrity=False))
+                    # Taken after the work, not before: on a slow checkpoint the
+                    # next one should be a full interval away, not immediate.
+                    self.last_maintenance = time.monotonic()
                 time.sleep(self.args.heartbeat_seconds)
             return 0
         finally:

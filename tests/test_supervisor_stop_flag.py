@@ -190,8 +190,13 @@ def test_the_flag_drives_the_real_loop_out_through_its_shutdown_path(tmp_path, m
             order.append("stop_child")
             self.child.stopped = True
 
-    monkeypatch.setattr(module, "database_maintenance",
-                        lambda _db: (order.append("checkpoint"), {"integrity": "ok"})[1])
+    def _maintenance(_db, *, integrity=True):
+        # Recorded separately: the startup pass verifies, the shutdown pass
+        # verifies, and the periodic pass must not.
+        order.append("verify" if integrity else "checkpoint")
+        return {"integrity": "ok" if integrity else "NOT_CHECKED"}
+
+    monkeypatch.setattr(module, "database_maintenance", _maintenance)
     class _Lock:
         def acquire(self):
             order.append("lock")
@@ -208,8 +213,11 @@ def test_the_flag_drives_the_real_loop_out_through_its_shutdown_path(tmp_path, m
 
     assert "stop_requested_by_flag" in log.names()
     # The lock is released last, after the database is safely checkpointed --
-    # never before, or the next start could open a database mid-checkpoint.
-    assert order == ["lock", "start_child", "stop_child", "checkpoint", "unlock"], order
+    # never before, or the next start could open a database mid-checkpoint. The
+    # startup pass verifies before any data is relied on; the shutdown pass
+    # verifies again on the way out.
+    assert order == ["lock", "verify", "start_child", "stop_child", "verify",
+                     "unlock"], order
     assert "supervisor_shutdown" in log.names(), (
         "without this line nothing can tell a clean stop from a process that died"
     )
