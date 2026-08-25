@@ -27,6 +27,11 @@ class BacktestStatistics:
 
         self.profit_field = profit_field
 
+        #: Why the backtest's span could not be measured, when it could not.
+        #: Empty on a normal run. Read it rather than guessing why six of the
+        #: reported statistics came back as None.
+        self.total_days_error = ""
+
     # ==================================
     # Summary
     # ==================================
@@ -107,22 +112,29 @@ class BacktestStatistics:
 
         total_days = self._total_days()
 
-        trades_per_year = (
-            round(total_trades / (total_days / 365.25), 2)
-            if total_days > 0
-            else total_trades
-        )
+        # Everything below this line is annualised, so all of it depends on
+        # knowing how long the backtest ran. When that is unknown, each of
+        # these reports as unknown rather than as a number derived from a
+        # guess -- an unmeasured Sharpe is not a small Sharpe.
+        if total_days is None:
+            trades_per_year = sharpe = sortino = cagr = calmar = None
+        else:
+            trades_per_year = (
+                round(total_trades / (total_days / 365.25), 2)
+                if total_days > 0
+                else total_trades
+            )
 
-        sharpe = self._sharpe_ratio(trades_per_year)
-        sortino = self._sortino_ratio(trades_per_year)
+            sharpe = self._sharpe_ratio(trades_per_year)
+            sortino = self._sortino_ratio(trades_per_year)
 
-        cagr = self._cagr(final_capital, total_days)
+            cagr = self._cagr(final_capital, total_days)
 
-        calmar = (
-            round(cagr / max_drawdown, 2)
-            if max_drawdown > 0
-            else 0
-        )
+            calmar = (
+                round(cagr / max_drawdown, 2)
+                if max_drawdown > 0
+                else 0
+            )
 
         recovery_factor = (
             round(net_profit / max_drawdown_amount, 2)
@@ -136,7 +148,8 @@ class BacktestStatistics:
             average_loss
         )
 
-        exposure_percent = self._exposure_percent(total_days)
+        exposure_percent = (None if total_days is None
+                            else self._exposure_percent(total_days))
 
         return {
 
@@ -260,9 +273,25 @@ class BacktestStatistics:
     # ==================================
 
     def _total_days(self):
+        """Days from the first entry to the last exit, or ``None``.
+
+        ``None`` means the span could not be determined, and it is not the same
+        as one day. This used to return 1 on any failure, silently, and 1 is
+        the most damaging value it could have picked: it divides into every
+        annualised figure this class reports.
+
+        With 500 trades and a malformed date, ``trades_per_year`` became
+        500 / (1 / 365.25) = 182,625, and a Sharpe that should read near 1.0
+        was inflated roughly sixty-fold. CAGR, Calmar and exposure were
+        annualised over a single day. Six reported statistics, all invented,
+        none of them flagged.
+
+        The caller now reports every one of them as unknown instead.
+        """
+        if not self.trades:
+            return None
 
         try:
-
             entries = [
                 datetime.strptime(t.entry_date, "%Y-%m-%d")
                 for t in self.trades
@@ -272,14 +301,15 @@ class BacktestStatistics:
                 datetime.strptime(t.exit_date, "%Y-%m-%d")
                 for t in self.trades
             ]
+        except (TypeError, ValueError) as error:
+            # Narrow on purpose: a malformed or missing date is the failure
+            # this is guarding, and anything else here is a bug that should
+            # surface rather than be absorbed into a missing statistic.
+            self.total_days_error = f"{type(error).__name__}: {error}"
+            return None
 
-            days = (max(exits) - min(entries)).days
-
-            return max(days, 1)
-
-        except Exception:
-
-            return 1
+        days = (max(exits) - min(entries)).days
+        return max(days, 1)
 
     # ==================================
     # Sharpe Ratio (مبني على عائد % كل صفقة، مُقارَب سنويًا
@@ -403,6 +433,14 @@ class BacktestStatistics:
     # ==================================
 
     def _exposure_percent(self, total_days):
+        """Share of capital-days actually deployed. ``None`` when unknowable.
+
+        The caller does not pass ``None`` -- it reports unknown itself -- but
+        the guard stays honest about what a zero here would mean: no exposure,
+        which is a very different claim from an unmeasured one.
+        """
+        if total_days is None:
+            return None
 
         if total_days <= 0 or self.initial_capital <= 0:
             return 0
