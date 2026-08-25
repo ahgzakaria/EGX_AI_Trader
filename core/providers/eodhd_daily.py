@@ -23,6 +23,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from core.environment import load_project_environment
 from providers.symbol_mapping import to_eodhd_symbol
 
 BASE = "https://eodhd.com/api"
@@ -52,6 +53,15 @@ class EodhdResult:
 
 class EodhdDailyClient:
     def __init__(self, api_token=None, min_interval_seconds=1.0, timeout=20):
+        # The token lives in .env, and reading os.getenv without loading it
+        # first finds nothing. providers/eodhd_client.py has always called this;
+        # this class never did, so key_configured returned False in any process
+        # that had not loaded the environment for its own reasons -- and the
+        # finalization observer, which runs standalone, recorded API_KEY_MISSING
+        # every time from 2026-07-22 onward while the key sat in the file.
+        # A missing key and an unloaded environment are not the same thing, and
+        # only one of them is the operator's problem.
+        load_project_environment()
         # Never stored anywhere that is surfaced; only used to sign requests.
         self._token = api_token or os.getenv("EODHD_API_TOKEN") or os.getenv("EODHD_API_KEY")
         self.min_interval = float(min_interval_seconds)

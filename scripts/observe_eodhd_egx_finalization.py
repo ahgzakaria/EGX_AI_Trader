@@ -49,10 +49,27 @@ def _existing_keys(path):
 
 
 def _append(path, rows):
+    """Append observations, refusing to write under a header that lies.
+
+    Rows are written in FIELDS order but the header is only written for a new
+    file. When the two disagree -- as they did here, where a month of
+    API_KEY_MISSING placeholders had left a four-column header in place -- every
+    later row lands under the wrong names and reads back as nonsense while
+    looking perfectly well-formed. The stale file is moved aside rather than
+    appended to or deleted: it is evidence of when the observer was blind.
+    """
     if not rows:
         return
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
+
+    if p.is_file():
+        with p.open("r", newline="", encoding="utf-8") as f:
+            header = next(csv.reader(f), [])
+        if header != list(FIELDS):
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+            p.replace(p.with_name(f"{p.stem}.superseded-{stamp}{p.suffix}"))
+
     new = not p.is_file()
     with p.open("a", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=FIELDS)
