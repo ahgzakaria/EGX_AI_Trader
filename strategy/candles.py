@@ -1,10 +1,22 @@
 def candle_score(df, i):
 
+    # Every pattern below reads Open. Where the source supplies a carried-forward
+    # Open, two of them are structurally unreachable -- Bullish Engulfing needs
+    # Open < prev Close and Harami needs Open > prev Close, and both reduce to
+    # x < x when Open equals prev Close -- while Doji degenerates into "the close
+    # barely moved". The verdict is attached by providers.base_provider once per
+    # frame; it is reported here, and deliberately does NOT change the score.
+    # Gating on it would change which signals fire and is a separate decision.
+    integrity = (df.attrs or {}).get("open_integrity")
+    open_status = getattr(integrity, "verdict", None)
+    open_status = getattr(open_status, "value", None) or "UNKNOWN"
+
     if i < 2:
         return {
             "score": 0,
             "confidence": 0,
-            "reasons": []
+            "reasons": [],
+            "open_integrity": open_status
         }
 
     last = df.iloc[i]
@@ -76,5 +88,6 @@ def candle_score(df, i):
     return {
         "score": score,
         "confidence": confidence,
-        "reasons": reasons
+        "reasons": reasons,
+        "open_integrity": open_status
     }

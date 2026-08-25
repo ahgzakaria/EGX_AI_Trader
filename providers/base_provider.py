@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
+from core.daily_open_integrity import classify_open
+
 
 REQUIRED_COLUMNS = ("Open", "High", "Low", "Close", "Volume")
 OPTIONAL_COLUMNS = ("Adj Close",)
@@ -118,6 +120,10 @@ def normalize_history(frame, symbol, provider):
         "symbol": symbol,
         "received_timestamp": datetime.now(timezone.utc).astimezone().isoformat(),
     }
+    # Judged once here, where every provider's frame passes through, rather than
+    # per bar in the hot path. This records what the Open column is; it does not
+    # repair it, substitute it, or change a single candle value.
+    normalized.attrs["open_integrity"] = classify_open(normalized)
     return normalized
 
 

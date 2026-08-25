@@ -79,9 +79,18 @@ record the entire backtest rests on.
 
 - **Do not rebuild the cache.** It cannot be made correct from anything currently
   on disk, and the attempt would be destructive.
-- **The `close`, `high` and `low` columns remain usable.** Only `open` is
-  fabricated; the swing backtest's entries and exits never read it. The existing
-  cache should be kept.
+- **Keep the existing cache.** `open` is the column with proof against it, and
+  the swing backtest's entries and exits never read it.
+
+  This should not harden into "close, high and low are sound." A parallel check
+  against minute-derived truth (n=161, contaminated by a 10:1 scale artifact on
+  ORAS.CA and a stale cohort near the cache cutoff) puts `close` at a median
+  offset of exactly **0.000%** with 29.2% of rows differing by more than 0.1% —
+  that half holds. But `high` (+0.270%, 62.7%) and `low` (-0.200%, 57.8%) carry
+  small non-zero median offsets. The sample is too small and too contaminated to
+  resolve whether that is real. It does not change the priority — `open` is the
+  one with impossible bars — but the soundness of `high` and `low` is a caveat
+  awaiting a larger overlap, not an established finding.
 - **The honest framing is a missing column, not a corrupt cache.** EGX daily
   opens are not available from any source this project currently has. Consumers
   should be made to fail loudly on a missing open rather than silently consume a
