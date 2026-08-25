@@ -192,7 +192,26 @@ class RubixDailyBuilder:
         # bar is FINAL and OHLCV valid — auction confirmation is NOT required.
         bar.expected_range_eligible = bar.continuous_bar_status == FINAL_CONTINUOUS and not vol_status
         # Swing/Daily must NOT consume Rubix rows until official OHLC + corporate
-        # actions + external reconciliation are validated. Always false for now.
+        # actions + external reconciliation are validated. The third of those
+        # was performed on 2026-08-25 and it failed, so this stays False on a
+        # measurement rather than on caution -- see
+        # scripts/research/rubix_eodhd_reconciliation.py.
+        #
+        # Volume reconciles exactly: Rubix over EODHD is 1.000x from the 5th
+        # percentile to the 95th. Closes do not. On the best subset -- official
+        # close, auction captured, 1,421 bars -- only 22.8% match to within
+        # 0.01% and a quarter differ by more than 0.5%.
+        #
+        # Nor is it corporate-action drift, which would hold the ratio steady
+        # within a symbol between actions: across 175 symbols with five or more
+        # bars, none is stable to within 0.2% and 125 wobble by over 1%. The
+        # two sources disagree about the close day by day, which no adjustment
+        # factor repairs.
+        #
+        # Substituting the Rubix close flips 1.06% of breakout decisions -- 6
+        # the strategy would not have seen, 9 it would have lost. Every flip
+        # sits on a close within thousandths of its level, which is precisely
+        # the population this strategy selects from.
         bar.swing_daily_eligible = False
 
         # legacy finalization_status: FINAL == continuous-final (what the ERS overlay
