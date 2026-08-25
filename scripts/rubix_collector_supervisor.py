@@ -103,7 +103,8 @@ def validate_adapter(path: Path) -> Path:
     return path
 
 
-def database_maintenance(path: Path, *, integrity: bool = True) -> dict:
+def database_maintenance(path: Path, *, integrity: bool = True,
+                         truncate: bool = False) -> dict:
     """Checkpoint the WAL, and optionally verify every page.
 
     The two halves cost wildly different amounts. ``wal_checkpoint(PASSIVE)``
@@ -133,7 +134,20 @@ def database_maintenance(path: Path, *, integrity: bool = True) -> dict:
                 connection.execute("PRAGMA integrity_check").fetchone()[0]
                 if integrity else "NOT_CHECKED"
             )
-            checkpoint = connection.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()
+            # PASSIVE checkpoints the frames but leaves the file at its
+            # high-water mark. Measured directly: with journal_size_limit set,
+            # PASSIVE and RESTART both left a 4,301,312-byte WAL untouched and
+            # only TRUNCATE returned it to zero. journal_size_limit is not the
+            # lever here, whatever it reads like -- TRUNCATE is.
+            #
+            # It is also why the live WAL reached 30.73 GB against a 5.85 GB
+            # database: every stop before 2026-08-24 was a kill, so the shutdown
+            # checkpoint never ran at all, and nothing ever truncated. TRUNCATE
+            # waits for readers, so it belongs at shutdown once the child is
+            # stopped -- never mid-session, where waiting is a stall in the one
+            # process that must not stall.
+            mode = "TRUNCATE" if truncate else "PASSIVE"
+            checkpoint = connection.execute(f"PRAGMA wal_checkpoint({mode})").fetchone()
         return {
             "integrity": verdict,
             "wal_checkpoint": list(checkpoint) if checkpoint else None,
@@ -356,7 +370,9 @@ class CollectorSupervisor:
             return 0
         finally:
             self.stop_child()
-            maintenance = database_maintenance(self.database)
+            # The child is stopped by now, so nothing else holds the file and
+            # the WAL can actually be returned to zero.
+            maintenance = database_maintenance(self.database, truncate=True)
             self.log.emit("supervisor_shutdown", **maintenance)
             atomic_json(self.health_file, {**self.health(), "shutdown": True, "database": maintenance})
             if self.lock is not None:

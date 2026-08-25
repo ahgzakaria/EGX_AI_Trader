@@ -190,7 +190,7 @@ def test_the_flag_drives_the_real_loop_out_through_its_shutdown_path(tmp_path, m
             order.append("stop_child")
             self.child.stopped = True
 
-    def _maintenance(_db, *, integrity=True):
+    def _maintenance(_db, *, integrity=True, truncate=False):
         # Recorded separately: the startup pass verifies, the shutdown pass
         # verifies, and the periodic pass must not.
         order.append("verify" if integrity else "checkpoint")

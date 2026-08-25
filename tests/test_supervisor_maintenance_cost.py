@@ -89,7 +89,7 @@ def test_verification_runs_off_the_main_thread():
 def test_shutdown_still_verifies():
     """The one moment nothing is waiting on the collector."""
     shutdown = inspect.getsource(CollectorSupervisor.run).split("finally", 1)[1]
-    assert "database_maintenance(self.database)" in shutdown
+    assert "database_maintenance(self.database, truncate=True)" in shutdown
     assert "integrity=False" not in shutdown
 
 
