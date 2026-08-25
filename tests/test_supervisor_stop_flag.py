@@ -178,6 +178,10 @@ def test_the_flag_drives_the_real_loop_out_through_its_shutdown_path(tmp_path, m
             self.args = SimpleNamespace(
                 restart_backoff_seconds=1, max_restarts=20,
                 maintenance_seconds=999, heartbeat_seconds=0.05,
+                # Retention is exercised in its own tests; here it is off so
+                # this one keeps testing the shutdown *path* and nothing else.
+                prune_telemetry=False, telemetry_retention_days=7,
+                telemetry_prune_seconds=1.0,
             )
 
         def health(self):

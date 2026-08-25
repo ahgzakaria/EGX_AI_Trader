@@ -252,6 +252,33 @@ class CollectorSupervisor:
             self.child.wait(timeout=5)
         self.log.emit("collector_stopped", return_code=self.child.returncode)
 
+    def prune_telemetry(self) -> None:
+        """Age out per-tick telemetry, within a budget, on the way out.
+
+        ``feed_metrics`` had reached 44,246,339 rows against 18,249,746 in
+        ``quotes`` -- the telemetry two and a half times the data it describes,
+        with no index on it. The health snapshot counts those rows on every
+        read.
+
+        Bounded on purpose: one call deletes what it can inside its budget and
+        the next resumes. The first pass will not catch up on forty million
+        rows, and a shutdown that took minutes to do so would be a worse
+        problem than the one being fixed.
+        """
+        if not self.args.prune_telemetry:
+            return
+        try:
+            from services.feed_metrics_retention import prune
+
+            result = prune(
+                self.database,
+                retention_days=self.args.telemetry_retention_days,
+                budget_seconds=self.args.telemetry_prune_seconds,
+            )
+            self.log.emit("telemetry_pruned", **result.as_log_fields())
+        except Exception as error:  # noqa: BLE001 - never cost the checkpoint
+            self.log.emit("telemetry_prune_failed", error=str(error))
+
     def previous_run_shut_down_cleanly(self) -> bool:
         """Did the last supervisor leave through its own shutdown path?
 
@@ -372,6 +399,11 @@ class CollectorSupervisor:
             self.stop_child()
             # The child is stopped by now, so nothing else holds the file and
             # the WAL can actually be returned to zero.
+            #
+            # Pruning runs first and the checkpoint second, deliberately: the
+            # deletes are themselves journalled, so truncating before them
+            # would leave the freed space in the WAL instead of reclaiming it.
+            self.prune_telemetry()
             maintenance = database_maintenance(self.database, truncate=True)
             self.log.emit("supervisor_shutdown", **maintenance)
             atomic_json(self.health_file, {**self.health(), "shutdown": True, "database": maintenance})
@@ -406,6 +438,16 @@ def build_parser():
     # the health file claiming the collector was still up.
     parser.add_argument("--stop-file",
                         default=str(PROJECT_ROOT / "data" / "runtime" / "stop_requested.flag"))
+    # Telemetry retention. On by default because leaving it off is what let
+    # feed_metrics reach 44 million rows, but every part of it is adjustable
+    # and the whole thing is one flag away from off.
+    parser.add_argument("--no-prune-telemetry", dest="prune_telemetry",
+                        action="store_false",
+                        help="keep every per-tick metric row forever")
+    parser.add_argument("--telemetry-retention-days", type=int, default=7,
+                        help="days of latency/interval/duplicate rows to keep")
+    parser.add_argument("--telemetry-prune-seconds", type=float, default=60.0,
+                        help="ceiling on how long one shutdown spends pruning")
     return parser
 
 
