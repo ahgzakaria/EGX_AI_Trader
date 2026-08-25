@@ -88,6 +88,17 @@ class SwingConfig:
     minimum_volume_ratio: float = 2.5
     volume_average_window: int = 20
 
+    #: The close must sit above its own average over this many sessions. Not a
+    #: market filter -- one of those was measured and does nothing, cutting the
+    #: return while leaving the fall at -19.5%, because the drawdown comes from
+    #: forty positions moving together rather than from any one breaking down.
+    #: This is the name's own long trend, and it is the only exit- or
+    #: entry-side change of eight tested that improved both eras at once:
+    #: +2.99% to +3.66% training, +3.35% to +3.44% validation, with the worst
+    #: fall from -19.5% to -16.7%. It removes 8% of trades, and those trades
+    #: carry a lift of -2.64% on their own.
+    long_trend_window: int = 200
+
     #: Cross-sectional rank of 12-1 momentum, the standard construction: the
     #: eleven months ending one month ago, skipping the most recent month
     #: because it tends to reverse. Kept at the top third, where the monotone
@@ -186,9 +197,11 @@ def _indicators(frame: pd.DataFrame, config: SwingConfig) -> Optional[dict]:
         axis=1,
     ).max(axis=1)
     atr = true_range.rolling(14).mean().iloc[-1]
+    long_average = close.rolling(config.long_trend_window).mean().iloc[-1]
 
     return {
         "close": float(close.iloc[-1]),
+        "long_trend_average": float(long_average) if pd.notna(long_average) else None,
         "level": float(level),
         "volume_ratio": float(volume.iloc[-1] / average_volume),
         "momentum": float((recent / then - 1) * 100.0),
@@ -239,6 +252,13 @@ def scan(histories: dict, *, session_date=None,
             continue
         if ranks[symbol] < config.minimum_momentum_rank:
             skipped[symbol] = "MOMENTUM_RANK_BELOW_GATE"
+            continue
+        average = values["long_trend_average"]
+        if average is None or values["close"] <= average:
+            # A breakout inside a long downtrend is a bounce in something that
+            # is still falling. Measured over 25 years these are 159 trades
+            # with a lift of -2.64%: not a smaller edge, a negative one.
+            skipped[symbol] = "BELOW_LONG_TREND"
             continue
         candidates.append(SwingCandidate(
             symbol=symbol,

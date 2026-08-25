@@ -165,10 +165,21 @@ def _show_basis(config: SwingConfig) -> None:
         st.caption(MEASUREMENT_PROVENANCE)
         st.markdown(
             f"""
-**The three conditions.** A close above the highest high of the previous
+**The four conditions.** A close above the highest high of the previous
 {config.breakout_lookback} sessions, on at least **{config.minimum_volume_ratio:g}×**
 its own 20-day average volume, in a name whose 12-1 momentum sits in the top
-**{(1 - config.minimum_momentum_rank) * 100:.0f}%** of the universe that day.
+**{(1 - config.minimum_momentum_rank) * 100:.0f}%** of the universe that day, and
+whose close is above its own **{config.long_trend_window}-day average**.
+
+**The long-trend condition was the last thing to earn a place**, out of eight
+exit- and entry-side rules tested against a fixed 20-day hold. Trailing stops,
+hard stops, longer holds and a trend-break exit all lost; a market-regime
+filter did nothing at all, because the drawdown comes from forty positions
+falling together rather than from any one breaking down. The name's own trend
+was different: **+2.99% to +3.66% training, +3.35% to +3.44% validation**, with
+the worst fall from −19.5% to −16.7%. It removes 8% of trades, and those trades
+carry a lift of **−2.64%** on their own — it is cutting a loss, not trimming a
+win.
 
 **Lift over owning every name in the universe on the same days**, which is the
 only honest benchmark because the validation era was a strong bull market:

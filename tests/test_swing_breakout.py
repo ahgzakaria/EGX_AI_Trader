@@ -316,3 +316,37 @@ def test_the_page_shows_what_the_widening_cost_and_bought():
     assert "+277%" in text, "the annual lift the floor was chosen on"
     assert "20,000 EGP a day" in text, "why the count-based universe was fiction"
     assert "survivorship" in text
+
+
+def test_a_breakout_below_the_long_trend_is_declined():
+    """A breakout inside a long downtrend is a bounce in something still
+    falling. Over 25 years those are 159 trades carrying a lift of -2.64%:
+    not a smaller edge, a negative one."""
+    frame = rising(12.0, volume=5000.0)
+    # The high prices have to sit *inside* the 200-day window or they never
+    # reach the average being tested. A first version of this put them outside
+    # it and the test passed a name that was plainly above its own trend.
+    frame.loc[len(frame) - 190 : len(frame) - 10, "Close"] = 60.0
+
+    result = scan({"FALLING": frame}, session_date="2026-08-25")
+
+    assert result.candidate_count == 0
+    assert result.symbols_skipped["FALLING"] == "BELOW_LONG_TREND"
+
+
+def test_a_breakout_above_the_long_trend_still_passes():
+    result = scan({"UP": rising(12.0, volume=5000.0)}, session_date="2026-08-25")
+    assert result.candidate_count == 1
+
+
+def test_the_long_trend_gate_is_the_names_own_not_the_markets():
+    """A market-regime filter was measured and does nothing: it cuts the
+    return while leaving the worst fall at -19.5%, because the drawdown comes
+    from forty positions moving together, not from any one breaking down."""
+    from pathlib import Path
+
+    source = Path("services/swing_breakout.py").read_text(encoding="utf-8")
+    assert "long_trend_window" in source
+    assert SwingConfig().long_trend_window == 200
+    # The gate reads the symbol's own frame, never an index or a peer group.
+    assert "close.rolling(config.long_trend_window)" in source
