@@ -115,7 +115,7 @@ def show_swing_signals() -> None:
         st.error("No history could be read for any symbol.")
         return
 
-    universe = most_traded(histories, count=60)
+    universe = most_traded(histories, count=config.universe_size)
     session = max(
         (str(frame.index[-1])[:10] for frame in universe.values()),
         default=date.today().isoformat(),
@@ -140,9 +140,9 @@ def show_swing_signals() -> None:
     if result.candidate_count == 0:
         st.info(
             f"Nothing met all three conditions on {result.session_date}. The "
-            f"strategy fires about fifty times a year across sixty names, so "
-            f"most sessions produce nothing and that is the design working, "
-            f"not a fault.",
+            f"strategy fires about sixty times a year across "
+            f"{config.universe_size} names, so most sessions produce nothing "
+            f"and that is the design working, not a fault.",
         )
     else:
         st.dataframe(
@@ -177,6 +177,25 @@ only honest benchmark because the validation era was a strong bull market:
 | --- | --- | --- | --- |
 | breakout on volume alone | +3.17% | +2.79% | 59% |
 | **and momentum in the top third** | **+3.90%** | **+5.22%** | **62%** |
+
+**The universe is {config.universe_size} names, and that was measured too.**
+Swept from 40 to 200 with no gate touched, so this widens the opportunity set
+rather than loosening a threshold:
+
+| universe | trades/year | training | validation | win rate |
+| --- | --- | --- | --- | --- |
+| 40 | 25 | +2.53% | +2.71% | 64% |
+| 60 | 34 | +2.57% | +4.42% | 62% |
+| **100** | **61** | **+3.74%** | **+3.56%** | **57%** |
+| 150 | 90 | +2.57% | +2.42% | 53% |
+| 200 | 118 | +2.59% | +2.40% | 54% |
+
+At sixty the validation lift is nearly double the training one, which reads
+that era rather than the strategy. At a hundred the two agree and the trade
+count nearly doubles. Past that the edge decays toward a coin. Liquidity is
+ranked on recent turnover and applied backwards, so every row above carries the
+same survivorship flattery — the comparison between them is fair, the absolute
+level is optimistic.
 
 **The momentum filter was not fitted.** Tightening it strengthens the result
 monotonically — top 75% gives +3.52%, top half +4.44%, top third +5.22% — and

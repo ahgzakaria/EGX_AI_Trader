@@ -1,22 +1,20 @@
-"""Streamlit entry point: three workspaces, one per way of trading.
-
-The three are not cosmetic groupings. They hold different timeframes with
-different economics, and the split exists so a number from one is never read
-as if it came from the other:
+"""Streamlit entry point: two workspaces, one per way of trading.
 
 * **SWING** works on daily bars over days to weeks. The round-trip cost of
   0.46% plus spread is a minor term there -- on a twenty-day hold it is 46% of
   the average move, and the strategy has 559,483 stock-days of history to be
   validated against.
-* **SCALPING** works inside one session, where that same cost is roughly ten
-  times the average intraday drift of +0.078%. Everything on that surface has
-  to earn its way past a cost that dominates it.
-* **AI ANALYSIS** is per-symbol narrative research and belongs to neither; it
-  was previously buried under a "Research & System" heading with the
-  diagnostics, which said nothing about what it is for.
+* **AI ANALYSIS** is per-symbol narrative research and belongs to neither
+  timeframe; it was previously buried under a "Research & System" heading with
+  the diagnostics, which said nothing about what it is for.
 
-System Health and Settings are tools rather than a fourth way of trading, and
-the legacy research pages stay reachable only from System Health.
+There was a third. SCALPING worked inside one session, where the same cost is
+1,030% of the average intraday drift of +0.078% -- and on 2026-08-25 the live
+signals confirmed what that ratio implied. It is retired, and the reason sits
+beside its former place below.
+
+System Health and Settings are tools rather than a way of trading, and the
+retired research pages stay reachable only from System Health.
 """
 
 import streamlit as st
@@ -70,20 +68,21 @@ navigation = st.navigation({
         st.Page(show_watchlist, title="Watchlist", icon="⭐"),
         st.Page(show_stock_details_page, title="Stock Details", icon="🔎"),
     ],
-    # Inside one session. The legacy scalping pages (Scalping Dashboard /
-    # Active Trades / History, backed by `scalping/`,
-    # `scalping_expected_range/` and `scalping_uptrend_pullback/`) are retired
-    # from navigation. Their code and research databases are intentionally
-    # left in place: that removal is a separate, deliberate change, and
-    # ~19k lines are still imported by two `core`/`services` modules.
-    "سكالبنج · SCALPING": [
-        st.Page(
-            show_orb_signals,
-            title="ORB Signals",
-            icon="🎯",
-            url_path="orb-signals",
-        ),
-    ],
+    # There is no SCALPING workspace any more. ORB Signals joined the earlier
+    # retirements (Scalping Dashboard / Active Trades / History, backed by
+    # `scalping/`, `scalping_expected_range/` and `scalping_uptrend_pullback/`)
+    # on 2026-08-25, on the same evidence they went on: the arithmetic.
+    #
+    # The round trip is 1,030% of the average intraday move on EGX and 292% at
+    # three days; only at ten does the average move first exceed it. Measured
+    # on 48 live ORB signals over six sessions, the median best price a signal
+    # ever reached was +0.57% against a 0.75% cost, only 46% ever saw a price
+    # that covered the cost even with a perfect exit at the day's best tick,
+    # and of the 13 that did reach their target only 5 made money.
+    #
+    # The code, the engine, the collector and the shadow sessions all stay.
+    # Retiring the route is not deleting the work, and the page is still
+    # reachable from System Health with the rest of the research views.
     # Per-symbol narrative research, on its own rather than filed with the
     # diagnostics. Compatibility name used by integration tests:
     # AI Stock Analysis.

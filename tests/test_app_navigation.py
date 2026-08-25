@@ -78,25 +78,40 @@ def test_navigation_is_three_workspaces_plus_tools():
     sections = _section_titles()
     headings = list(sections)
 
-    assert len(headings) == 4, headings
+    assert len(headings) == 3, headings
     assert "SWING" in headings[0]
-    assert "SCALPING" in headings[1]
-    assert "AI ANALYSIS" in headings[2]
-    assert "SYSTEM" in headings[3]
+    assert "AI ANALYSIS" in headings[1]
+    assert "SYSTEM" in headings[2]
 
     # AI Analysis is its own workspace, not filed with the diagnostics.
-    assert sections[headings[2]] == ["AI Analysis"]
+    assert sections[headings[1]] == ["AI Analysis"]
     # System holds tools only; nothing that produces a trading signal.
-    assert sections[headings[3]] == ["System Health", "Settings"]
+    assert sections[headings[2]] == ["System Health", "Settings"]
 
 
-def test_orb_signals_is_the_only_scalping_route():
-    """The legacy scalping pages were retired; their code still exists but is
-    no longer a way in."""
+def test_there_is_no_scalping_workspace_left():
+    """ORB Signals joined the earlier scalping retirements on 2026-08-25.
+
+    Not on preference. The round trip is 1,030% of the average intraday move
+    on EGX, and across 48 live signals over six sessions only 46% ever saw a
+    price covering their own cost -- with a perfect exit at the day's best
+    tick. Of the 13 that reached their target, 5 made money.
+    """
 
     sections = _section_titles()
-    scalping = next(v for k, v in sections.items() if "SCALPING" in k)
-    assert scalping == ["ORB Signals"]
+    assert not [k for k in sections if "SCALPING" in k], sections
+
+    titles = _page_titles()
+    assert "ORB Signals" not in titles
+
+
+def test_the_retired_orb_page_is_still_reachable_from_system_health():
+    """Retiring a route is not deleting the work: the engine, the shadow
+    sessions and six sessions of evidence all remain."""
+
+    source = Path("dashboard/system_health.py").read_text(encoding="utf-8")
+    assert "dashboard.orb_signals" in source
+    assert "show_orb_signals" in source
 
 
 def test_every_page_is_reachable_exactly_once():
@@ -104,13 +119,14 @@ def test_every_page_is_reachable_exactly_once():
     assert len(titles) == len(set(titles)), f"a page is listed twice: {titles}"
     assert set(titles) == {
         "Daily Dashboard", "Swing Breakout", "Watchlist", "Stock Details",
-        "ORB Signals", "AI Analysis", "System Health", "Settings",
+        "AI Analysis", "System Health", "Settings",
     }
 
 
 def test_retired_scalping_pages_are_not_navigable():
     titles = _page_titles()
-    for retired in ("Scalping Dashboard", "Active Trades", "History"):
+    for retired in ("Scalping Dashboard", "Active Trades", "History",
+                    "ORB Signals"):
         assert retired not in titles
 
 

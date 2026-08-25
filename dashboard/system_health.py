@@ -73,6 +73,15 @@ def _legacy_research_tools():
         "هذه الأدوات مخصصة للبحث والتشخيص فقط، وليست جزءاً من مسار التداول اليومي."
     )
     tools = {
+        # Retired from navigation 2026-08-25 on measurement, not preference:
+        # the round trip is 1,030% of the average intraday move on EGX, and
+        # across 48 live signals only 46% ever saw a price covering their own
+        # cost even with a perfect exit. Kept reachable because the engine,
+        # the shadow sessions and the evidence all remain.
+        "إشارات ORB (متقاعدة)": (
+            "dashboard.orb_signals",
+            "show_orb_signals",
+        ),
         "الفرص القديمة (Opportunities)": (
             "dashboard.opportunities",
             "show_opportunities",
