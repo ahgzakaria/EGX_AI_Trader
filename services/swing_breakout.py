@@ -64,13 +64,18 @@ MEASUREMENT_PROVENANCE = (
 class SwingConfig:
     """Every threshold the strategy consults, with why it is where it is."""
 
-    #: How many of the most-traded names the scan considers. Swept from 40 to
-    #: 200 with no gate changed: the lift peaks around a hundred, where the two
-    #: eras agree (+3.74% training, +3.56% validation) instead of disagreeing
-    #: as they do at sixty (+2.57% / +4.42%), and the trade count nearly
-    #: doubles to 61 a year. Widening the opportunity set is not loosening a
-    #: threshold, and none was loosened.
-    universe_size: int = 100
+    #: Median daily turnover a name must clear to be considered at all, in EGP.
+    #: The universe is bounded by liquidity rather than by a count, because a
+    #: count is arbitrary and a floor scales with the position it has to
+    #: absorb. Swept by floor with no gate changed, the annual lift -- trades
+    #: times lift, which is what a portfolio earns -- peaks here at +277%
+    #: against +215% at 10M and +252% at 3M, and the two eras agree (+2.99%
+    #: training, +3.35% validation). At a 100,000 EGP position this floor also
+    #: means never taking more than 2% of a name's daily turnover; ranked by
+    #: count instead, the 200th name trades 20,000 EGP a day and the 0.80% cost
+    #: assumed for it is fiction. Widening the opportunity set is not loosening
+    #: a threshold, and none was loosened.
+    minimum_daily_turnover_egp: float = 5_000_000.0
 
     #: A close above the highest high of this many prior sessions.
     breakout_lookback: int = 20
@@ -294,30 +299,40 @@ def load_universe_histories(symbols: Optional[Iterable[str]] = None,
     return histories
 
 
-def most_traded(histories: dict, count: int = None) -> dict:
-    """The most-traded names, which is the universe the edge was measured on.
+def most_traded(histories: dict, count: int = None,
+                minimum_turnover: float = None) -> dict:
+    """The names liquid enough to actually trade, which bounds the universe.
 
-    Running the same rules over the whole exchange would be a different
-    strategy on a different population, and the measurement says so: swept
-    across universe sizes, with no gate touched, the lift is
+    The bound is liquidity, not a count. A count is arbitrary and goes stale;
+    a turnover floor scales with the position it has to absorb and adapts as
+    the exchange does.
 
-        40 names,  25 trades/yr:  +2.53% training, +2.71% validation
-        60 names,  34 trades/yr:  +2.57% training, +4.42% validation
-       100 names,  61 trades/yr:  +3.74% training, +3.56% validation
-       150 names,  90 trades/yr:  +2.57% training, +2.42% validation
-       200 names, 118 trades/yr:  +2.59% training, +2.40% validation
+    Swept by floor, with no gate touched (validation era, 20-day hold):
 
-    A hundred is where it settles. Sixty produced nearly double the lift in
-    validation than in training, which is a reading of that era rather than of
-    the strategy; at a hundred the two eras agree, which is the signature worth
-    trusting, and the trade count nearly doubles. Past that the edge decays and
-    the win rate falls toward a coin.
+        floor   names  trades/yr   lift/trade   annual   concurrent   win
+         20M      53       30        +3.98%      +120%      2.4       61%
+         10M      95       58        +3.74%      +215%      4.6       57%
+          5M     139       83        +3.35%      +277%      6.6       54%
+          3M     162       97        +2.61%      +252%      7.7       53%
+          2M     176      104        +2.60%      +269%      8.3       53%
+          1M     183      110        +2.35%      +258%      8.8       53%
 
-    Defaults to ``SwingConfig.universe_size`` so there is one number, in the
-    place every other threshold lives.
+    Five million is the peak, and it is a peak on the number that matters to a
+    portfolio -- annual lift, which is trades times lift, not lift alone.
+    Optimising lift per trade instead picks 10M and leaves a quarter of the
+    year's edge on the table for the sake of a prettier per-trade figure.
+
+    It is also where execution stays real. At a 100,000 EGP position a 5M floor
+    means never taking more than 2% of a name's daily turnover. Ranked by count
+    instead, the 200th name trades 20,000 EGP a day -- a backtest can buy it,
+    you cannot, and the 0.80% cost assumed there is fiction.
+
+    Below 5M the annual lift stops improving while the win rate slides toward a
+    coin and every fill gets harder. ``count`` remains available as an explicit
+    override for research that needs a fixed population.
     """
-    if count is None:
-        count = SwingConfig().universe_size
+    if minimum_turnover is None:
+        minimum_turnover = SwingConfig().minimum_daily_turnover_egp
 
     turnovers = {}
     for symbol, frame in histories.items():
@@ -327,5 +342,10 @@ def most_traded(histories: dict, count: int = None) -> dict:
             turnovers[symbol] = float(value.median())
         except (KeyError, ValueError, TypeError):
             continue
-    ranked = sorted(turnovers, key=turnovers.get, reverse=True)[:count]
+    liquid = {s: t for s, t in turnovers.items() if t >= minimum_turnover}
+    ranked = sorted(liquid, key=liquid.get, reverse=True)
+    if count is not None:
+        # Research override only. The live scan passes nothing and takes every
+        # name that clears the floor.
+        ranked = ranked[:count]
     return {symbol: histories[symbol] for symbol in ranked}

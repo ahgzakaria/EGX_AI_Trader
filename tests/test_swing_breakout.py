@@ -251,3 +251,68 @@ def test_the_page_shows_that_the_momentum_filter_was_not_fitted():
 
     assert "monotonically" in text
     assert "1.49" in text
+
+
+def test_the_universe_is_bounded_by_liquidity_not_by_a_count():
+    """A count is arbitrary and goes stale; a floor scales with the position.
+
+    Ranked by count, the 200th name on the exchange trades 20,000 EGP a day.
+    A backtest can buy it and the operator cannot, so the 0.80% cost assumed
+    for it is fiction and any lift measured on it is unclaimable.
+    """
+    import pandas as pd
+
+    from services.swing_breakout import SwingConfig, most_traded
+
+    def history(turnover):
+        return pd.DataFrame({"close": [10.0] * 300,
+                             "volume": [turnover / 10.0] * 300})
+
+    config = SwingConfig()
+    floor = config.minimum_daily_turnover_egp
+    histories = {
+        "LIQUID": history(floor * 4),
+        "AT_THE_FLOOR": history(floor),
+        "TOO_THIN": history(floor / 10),
+    }
+
+    kept = most_traded(histories)
+
+    assert "LIQUID" in kept
+    assert "AT_THE_FLOOR" in kept, "the floor is inclusive"
+    assert "TOO_THIN" not in kept
+
+
+def test_the_floor_keeps_the_position_under_two_percent_of_turnover():
+    """The floor is not a round number: it is what a 100,000 EGP position can
+    take without being the market."""
+    from services.swing_breakout import SwingConfig
+
+    position = 100_000.0
+    floor = SwingConfig().minimum_daily_turnover_egp
+    assert position / floor <= 0.02
+
+
+def test_a_count_is_still_available_for_research():
+    """The sweep that chose the floor needs a fixed population to sweep."""
+    import pandas as pd
+
+    from services.swing_breakout import most_traded
+
+    def history(turnover):
+        return pd.DataFrame({"close": [10.0] * 300,
+                             "volume": [turnover / 10.0] * 300})
+
+    histories = {f"S{i}": history(50_000_000 - i * 1_000_000) for i in range(20)}
+    assert len(most_traded(histories, count=5)) == 5
+
+
+def test_the_page_shows_what_the_widening_cost_and_bought():
+    """More trades at a lower per-trade edge is a trade-off, not a free win,
+    and the page has to show both sides of it."""
+    text = _page_text(_rendered_page())
+
+    assert "bounded by liquidity" in text
+    assert "+277%" in text, "the annual lift the floor was chosen on"
+    assert "20,000 EGP a day" in text, "why the count-based universe was fiction"
+    assert "survivorship" in text

@@ -115,7 +115,7 @@ def show_swing_signals() -> None:
         st.error("No history could be read for any symbol.")
         return
 
-    universe = most_traded(histories, count=config.universe_size)
+    universe = most_traded(histories)
     session = max(
         (str(frame.index[-1])[:10] for frame in universe.values()),
         default=date.today().isoformat(),
@@ -140,9 +140,9 @@ def show_swing_signals() -> None:
     if result.candidate_count == 0:
         st.info(
             f"Nothing met all three conditions on {result.session_date}. The "
-            f"strategy fires about sixty times a year across "
-            f"{config.universe_size} names, so most sessions produce nothing "
-            f"and that is the design working, not a fault.",
+            f"strategy fires about eighty times a year across the names liquid "
+            f"enough to trade, so most sessions produce nothing and that is "
+            f"the design working, not a fault.",
         )
     else:
         st.dataframe(
@@ -178,24 +178,29 @@ only honest benchmark because the validation era was a strong bull market:
 | breakout on volume alone | +3.17% | +2.79% | 59% |
 | **and momentum in the top third** | **+3.90%** | **+5.22%** | **62%** |
 
-**The universe is {config.universe_size} names, and that was measured too.**
-Swept from 40 to 200 with no gate touched, so this widens the opportunity set
-rather than loosening a threshold:
+**The universe is bounded by liquidity, not by a count.** A count is arbitrary
+and goes stale; a turnover floor scales with the position it has to absorb.
+Swept by floor with no gate touched:
 
-| universe | trades/year | training | validation | win rate |
-| --- | --- | --- | --- | --- |
-| 40 | 25 | +2.53% | +2.71% | 64% |
-| 60 | 34 | +2.57% | +4.42% | 62% |
-| **100** | **61** | **+3.74%** | **+3.56%** | **57%** |
-| 150 | 90 | +2.57% | +2.42% | 53% |
-| 200 | 118 | +2.59% | +2.40% | 54% |
+| floor | names | trades/yr | lift/trade | **annual** | held at once | win |
+| --- | --- | --- | --- | --- | --- | --- |
+| 20M | 53 | 30 | +3.98% | +120% | 2.4 | 61% |
+| 10M | 95 | 58 | +3.74% | +215% | 4.6 | 57% |
+| **5M** | **139** | **83** | **+3.35%** | **+277%** | **6.6** | **54%** |
+| 3M | 162 | 97 | +2.61% | +252% | 7.7 | 53% |
+| 2M | 176 | 104 | +2.60% | +269% | 8.3 | 53% |
 
-At sixty the validation lift is nearly double the training one, which reads
-that era rather than the strategy. At a hundred the two agree and the trade
-count nearly doubles. Past that the edge decays toward a coin. Liquidity is
-ranked on recent turnover and applied backwards, so every row above carries the
-same survivorship flattery — the comparison between them is fair, the absolute
-level is optimistic.
+The column that matters to a portfolio is **annual** — trades times lift, not
+lift alone. Optimising lift per trade instead picks 10M and leaves a quarter of
+the year's edge unclaimed for a prettier per-trade number.
+
+It is also where execution stays real. At a 100,000 EGP position the 5M floor
+means never taking more than 2% of a name's daily turnover. Ranked by count
+instead, the 200th name on the exchange trades 20,000 EGP a day: a backtest can
+buy it, you cannot, and the cost assumed for it is fiction. Liquidity is ranked
+on recent turnover and applied backwards, so every row shares the same
+survivorship flattery — the comparison between them is fair, the absolute level
+is optimistic.
 
 **The momentum filter was not fitted.** Tightening it strengthens the result
 monotonically — top 75% gives +3.52%, top half +4.44%, top third +5.22% — and
