@@ -87,21 +87,32 @@ COMI is typical: every open equals the prior close, and on 2026-07-19 the open o
 The open is carried forward, not observed. Anything reading it is reading a
 constant.
 
+Also worth splitting by volume: zero-volume bars are **0.00%** impossible, since
+they are trivially `O=H=L=C`. **Traded bars are 31.87%.** All of the corruption
+lands on the sessions a strategy actually acts on.
+
 ### What this does *not* break
 
-Entries are safe. With `execution_delay_bars = 0` — the default everywhere in
-`services/backtest_service.py` — `entry_manager` fills at `buy_high`, a resting
-limit, and never reads `open`. Exits use close, target and stop. The headline
-swing backtest is insulated.
+The swing entry path is safe. With `execution_delay_bars = 0` — the default
+everywhere in `services/backtest_service.py` — `entry_manager` fills at
+`buy_high`, a resting limit, and never reads `open`. Exits use close, target and
+stop. The headline swing backtest is insulated **at the fill**.
 
-Two callers do pass `execution_delay_bars = 1`, and that branch fills at
-`float(data.open[execution_index])`:
+Three other execution paths are not:
 
-- `services/ranking_robustness.py:250`
-- `core/ai_pullback_research.py:486`
+- `services/ranking_robustness.py:250` and `core/ai_pullback_research.py:486`
+  pass `execution_delay_bars = 1`, and that branch fills at
+  `float(data.open[execution_index])`.
+- `strategy_breakout/breakout_backtest.py:149` fills at
+  `frame["Open"].iloc[entry_index]` **unconditionally** — there is no `buy_high`
+  branch on that path at all — with `entry_delay_bars` defaulting to 1
+  (`breakout_strategy.py:88`). Worse, the RR guard immediately below it at `:158`
+  is annotated *"A gap can invalidate yesterday's geometry"* and is fed
+  `actual_entry` derived from that open. With `open ≡ previous close` there is no
+  gap by construction, so the guard can never fire for the reason it was written,
+  and admits trades it exists to reject.
 
-Those two runs enter at the fabricated price. Their results should be treated as
-unreliable until the field is fixed.
+Those results should be treated as unreliable until the field is fixed.
 
 ## 4. What it does break: candle confirmation
 
@@ -115,10 +126,22 @@ With `Open ≡ previous Close` the patterns stop being candle geometry:
 | Morning Star | 181 (26.5%) | a comparison of lagged returns |
 | Hammer | 51 (7.5%) | wicks measured against a fake body |
 | Bullish Engulfing | 5 (0.7%) | needs `Open < prev Close`; unreachable when equal |
+| Bullish Harami | 0 | needs `Open > prev Close`; unreachable from the other side |
 
-Bullish Engulfing firing 5 times in 684 is the confirmation: the condition is
-structurally unreachable and only survives on the 2.6% of bars where the open is
-not exactly carried forward.
+**Two of the five patterns are structurally dead, not merely distorted.**
+Engulfing at `candles.py:22` requires `last["Open"] < prev["Close"]` and Harami
+at `:69` requires `last["Open"] > prev["Close"]`; with the two quantities
+identical, both reduce to `x < x` and `x > x`. Engulfing's 5 citations in 684 are
+not counter-evidence — they are the residue of the 2.6% of bars where the
+carry-forward did not happen.
+
+`Hammer` is worse than distorted: it computes
+`lower = min(Close, Open) - Low`, which goes **negative** on the third of traded
+bars where the fabricated open sits below the bar's own low.
+
+A parallel sweep of `candle_score` over 148,240 sessions of the cache puts the
+firing rates at Doji 19.85%, Morning Star 2.13%, Hammer 1.40%, Harami 0.014%,
+Engulfing 0.005% — Doji alone is 85% of all non-zero candle score.
 
 The most-cited confirmation in the entire record — Doji, on two thirds of trades
 — is really "the close barely moved from yesterday." The detector still produces
@@ -133,11 +156,16 @@ nobody reading `Morning Star` in a signal's reasons is being told the truth.
 - **Its edge is roughly a third smaller than reported** once the real spread is
   charged. It stays clearly positive.
 - **Its entries are sound; its confirmation layer is not.** Fixing the `open`
-  field will change which signals fire, so the backtest will need re-running
-  afterwards, and the current numbers should be treated as provisional in that
-  respect.
-- **Two research paths enter at the fabricated open** and should be re-run once
-  it is fixed.
+  field will change which signals fire, so the backtest will need re-running.
+  That re-run **cannot currently be performed**: every historical open in the
+  cache is fabricated, so there is nothing to correct toward;
+  `rubix_live_market.db` only reaches back to 2026-07-01; and the EODHD seed is
+  no substitute, since its opens are carried forward too and merely clipped into
+  range so the impossible-bar test cannot see it. The honest status of these
+  numbers is **cannot currently be validated**, not *provisional*.
+- **Three other execution paths enter at the fabricated open** — the two
+  `execution_delay_bars = 1` callers and the entire breakout backtest — and
+  should be re-run once a real source exists.
 
 ## Limits
 

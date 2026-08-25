@@ -147,12 +147,12 @@ def open_field() -> None:
         total_bars += 1
         if o > h + 1e-9 or o < l - 1e-9:
             impossible += 1
-        series[(prov, sym, per)].append((o, c))
+        series[(prov, sym, per)].append((o, c, h, l))
     conn.close()
 
     agg = defaultdict(lambda: [0, 0])
     for (prov, _s, _p), rows in series.items():
-        for (_o0, c0), (o1, _c1) in zip(rows, rows[1:]):
+        for (_o0, c0, _h0, _l0), (o1, _c1, _h1, _l1) in zip(rows, rows[1:]):
             agg[prov][0] += 1
             if abs(o1 - c0) < 1e-9:
                 agg[prov][1] += 1
@@ -163,6 +163,22 @@ def open_field() -> None:
           f"{impossible:,} of {total_bars:,} ({100.0 * impossible / total_bars:.1f}%)")
     print("\n  The open is carried forward, not observed, and is not even clipped")
     print("  into the bar's own range. Anything reading it is reading a constant.")
+
+    # Anything filling at the open -- ai_pullback_research does, and the
+    # execution_delay_bars=1 branch does -- is filling at a price that in a
+    # quarter of bars never traded.
+    above = below = n = 0
+    for rows in series.values():
+        for _prev, (o1, _c1, h1, l1) in zip(rows, rows[1:]):
+            n += 1
+            if o1 > h1 + 1e-9:
+                above += 1
+            elif o1 < l1 - 1e-9:
+                below += 1
+    print(f"\n  For anything that FILLS at the open:")
+    print(f"    fill above that bar's own high: {100.0 * above / n:5.1f}%")
+    print(f"    fill below that bar's own low:  {100.0 * below / n:5.1f}%")
+    print(f"    unfillable in total:            {100.0 * (above + below) / n:5.1f}%")
 
 
 def candle_dependence(trades) -> None:
