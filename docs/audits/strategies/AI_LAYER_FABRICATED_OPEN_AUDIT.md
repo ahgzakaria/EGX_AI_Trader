@@ -33,11 +33,18 @@ them.
 
 ## 2. Compromised — the training population
 
-`ai/models/trading_model.metadata.json` records `samples: 684` with a class split
-of 504 / 180. That is exactly the backtest trade record: the same 684 rows, the
-same 180 wins.
+The working-tree `ai/models/trading_model.metadata.json` records `samples: 684`
+with a class split of 504 / 180, matching the working-tree
+`reports/backtest_results.csv` exactly — 685 lines, 684 trades, 180 wins.
 
-Those 684 trades are the ones that passed `strategy.require_candle_confirmation`,
+**Both artifacts are uncommitted local modifications.** The committed versions
+are a different, earlier run: `samples: 702`, split 519 / 183, against a 703-line
+result file. The two are each internally consistent; they are two generations of
+the same pipeline, and a reader checking `git show HEAD:` will see the other
+pair. The argument below holds for either, because it is about lineage, not
+counts.
+
+Those trades are the ones that passed `strategy.require_candle_confirmation`,
 a gate computed from the fabricated open (see
 [SWING_STRATEGY_PROBE.md §4](SWING_STRATEGY_PROBE.md)). So the model has learned
 what predicts success *among the trades a mislabelled filter admitted*, not among
