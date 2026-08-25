@@ -350,3 +350,61 @@ def test_the_long_trend_gate_is_the_names_own_not_the_markets():
     assert SwingConfig().long_trend_window == 200
     # The gate reads the symbol's own frame, never an index or a peer group.
     assert "close.rolling(config.long_trend_window)" in source
+
+
+# --- the page must price the measurement, never invent a level -------------
+
+
+def _where_page():
+    from types import SimpleNamespace
+
+    from streamlit.testing.v1 import AppTest
+
+    app = AppTest.from_string(
+        "from types import SimpleNamespace\n"
+        "from dashboard.swing_signals import _show_where_trades_went\n"
+        "_show_where_trades_went(SimpleNamespace(candidates=["
+        "SimpleNamespace(symbol='AMIA', close=20.34)]))\n"
+    )
+    app.run(timeout=30)
+    assert not app.exception, app.exception
+    return app
+
+
+def test_the_page_prices_the_measured_distribution_against_the_close():
+    """1,897 historical signals, quoted as quartiles against each candidate."""
+    from services.swing_breakout import EXCURSION_QUANTILES
+
+    frame = _where_page().dataframe[0].value
+    close = 20.34
+    expected = close * (1 + EXCURSION_QUANTILES["worst_point"]["median"] / 100)
+    assert frame.iloc[0]["Worst point (typical)"] == pytest.approx(expected)
+
+
+def test_the_page_never_calls_any_of_it_a_target_or_a_stop():
+    """The strategy has neither. Seven exit rules were tested against the fixed
+    hold and none beat it, so there is no measured level to propose -- and a
+    column headed "target" would be a price invented for the screen."""
+    text = _page_text(_where_page()).lower()
+
+    assert "not a target and not a stop" in text
+    for banned in ("take profit", "stop loss", "entry price"):
+        assert banned not in text, banned
+
+
+def test_the_page_says_that_being_underwater_is_normal():
+    """63% of trades fall more than 5% at some point and 39% more than 10%.
+    A screen that shows only where trades end teaches the wrong reflex."""
+    text = _page_text(_where_page())
+
+    assert "normal case" in text
+    assert "63%" in text and "40%" in text
+
+
+def test_the_typical_day_20_sits_below_the_typical_best_point():
+    """The gap between them is the strategy: most of the best price is given
+    back, and a page that showed only the best point would flatter it."""
+    frame = _where_page().dataframe[0].value
+
+    assert frame.iloc[0]["Day 20 (typical)"] < frame.iloc[0]["Best point (typical)"]
+    assert frame.iloc[0]["Worst point (typical)"] < frame.iloc[0]["Close"]

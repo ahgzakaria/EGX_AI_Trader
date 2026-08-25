@@ -25,7 +25,9 @@ import streamlit as st
 from dashboard.ui import page_header
 
 from services.swing_breakout import (
+    DRAWDOWN_FREQUENCY,
     ENGINE_VERSION,
+    EXCURSION_QUANTILES,
     MEASUREMENT_PROVENANCE,
     SwingConfig,
     load_universe_histories,
@@ -94,7 +96,10 @@ def _column_config() -> dict:
 def show_swing_signals() -> None:
     """Streamlit page: today's swing breakout candidates."""
 
-    page_header("Swing Breakout", "Three conditions, each from a measurement rather than a judgement. It never places an order and never reports a fill.", icon="📈")
+    page_header("Swing Breakout",
+            "Four conditions, each from a measurement rather than a "
+            "judgement. It never places an order and never reports a fill.",
+            icon="📈")
     config = SwingConfig()
     if not st.button("افحص السوق · Scan the market", type="primary"):
         st.info(
@@ -149,13 +154,87 @@ def show_swing_signals() -> None:
             _candidate_frame(result), hide_index=True, width="stretch",
             column_config=_column_config(),
         )
-        st.caption(
-            f"Measured holding period was **{MEASURED_HOLD} sessions**. That is "
-            f"what the numbers below were measured over, not an instruction to "
-            f"exit on day {MEASURED_HOLD}."
-        )
+        _show_where_trades_went(result)
 
     _show_basis(config)
+
+
+def _show_where_trades_went(result) -> None:
+    """The measured distribution, priced against each candidate's own close.
+
+    Deliberately not a target and not a stop. The strategy has neither -- seven
+    exit rules were tested against the fixed hold and none beat it -- so there
+    is no measured level to propose. What exists is where 1,897 historical
+    trades actually went, and quoting its quartiles is the difference between
+    reporting a measurement and inventing a price.
+    """
+    st.subheader("Where the trades went")
+    st.caption(
+        f"Not a target and not a stop: this strategy has neither. These are "
+        f"the quartiles of **1,897 historical signals** over {MEASURED_HOLD} "
+        f"sessions, priced against each close. A single trade lands anywhere "
+        f"in that range, including outside it."
+    )
+
+    rows = []
+    for candidate in result.candidates:
+        row = {"Ticker": candidate.symbol, "Close": candidate.close}
+        for label, key in (("Worst point", "worst_point"),
+                           ("Best point", "best_point"),
+                           (f"Day {MEASURED_HOLD}", "at_day_20")):
+            quantiles = EXCURSION_QUANTILES[key]
+            row[f"{label} (typical)"] = candidate.close * (1 + quantiles["median"] / 100)
+            row[f"{label} (range)"] = (
+                f"{candidate.close * (1 + quantiles['lower'] / 100):.2f}"
+                f" – {candidate.close * (1 + quantiles['upper'] / 100):.2f}"
+            )
+        rows.append(row)
+
+    price = st.column_config.NumberColumn(format="%.2f", width="small")
+    st.dataframe(
+        pd.DataFrame(rows), hide_index=True, width="stretch",
+        column_config={
+            "Ticker": st.column_config.TextColumn(width="small", pinned=True),
+            "Close": price,
+            "Worst point (typical)": st.column_config.NumberColumn(
+                "Worst (typical)", format="%.2f", width="small",
+                help="The median trade's lowest point in the window. Half of "
+                     "them went lower.",
+            ),
+            "Worst point (range)": st.column_config.TextColumn(
+                "Worst (middle half)", width="small"),
+            "Best point (typical)": st.column_config.NumberColumn(
+                "Best (typical)", format="%.2f", width="small",
+                help="The median trade's highest point. Reaching it and "
+                     "keeping it are different things.",
+            ),
+            "Best point (range)": st.column_config.TextColumn(
+                "Best (middle half)", width="small"),
+            f"Day {MEASURED_HOLD} (typical)": st.column_config.NumberColumn(
+                f"Day {MEASURED_HOLD} (typical)", format="%.2f", width="small",
+                help="Where the median trade actually closed the window, "
+                     "which is well below its best point.",
+            ),
+            f"Day {MEASURED_HOLD} (range)": st.column_config.TextColumn(
+                f"Day {MEASURED_HOLD} (middle half)", width="small"),
+        },
+    )
+
+    falls = " · ".join(
+        f"**{share:.0f}%** fall more than {threshold}%"
+        for threshold, share in sorted(DRAWDOWN_FREQUENCY.items())
+    )
+    st.warning(
+        f"Being underwater is the normal case, not a broken trade: {falls} at "
+        f"some point inside the window. The median trade's worst moment is "
+        f"**{EXCURSION_QUANTILES['worst_point']['median']:+.2f}%** before it "
+        f"does anything.",
+        icon="📉",
+    )
+    st.caption(
+        f"{MEASURED_HOLD} sessions is what the measurement held for, not an "
+        f"instruction to exit on day {MEASURED_HOLD}."
+    )
 
 
 def _show_basis(config: SwingConfig) -> None:

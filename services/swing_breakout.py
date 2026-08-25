@@ -48,6 +48,29 @@ import pandas as pd
 #: Trading days in a month, for the momentum window.
 MONTH = 21
 
+#: Where the median historical trade actually went inside the holding window,
+#: measured over the 1,897 signals the four conditions produced across 25 years
+#: on the 5M-turnover universe. Percentages against the entry close.
+#:
+#: These are NOT a target and NOT a stop. The strategy has neither: seven exit
+#: rules were tested against the fixed hold -- trailing stops at three widths,
+#: hard stops at two, a longer hold, a trend-break exit -- and none beat it, so
+#: there is no measured level to propose. What there is, is a distribution, and
+#: showing its quantiles is the difference between reporting a measurement and
+#: inventing a price.
+#:
+#: The lower quartile matters most: 63% of trades fall more than 5% at some
+#: point and 39% fall more than 10%, so a position that is down is the normal
+#: case rather than a broken one.
+EXCURSION_QUANTILES = {
+    "worst_point": {"lower": -13.94, "median": -7.89, "upper": -2.99},
+    "best_point": {"lower": 6.34, "median": 13.65, "upper": 28.31},
+    "at_day_20": {"lower": -7.05, "median": 2.17, "upper": 15.74},
+}
+
+#: Share of trades that fell at least this far at some point in the window.
+DRAWDOWN_FREQUENCY = {5: 63.4, 10: 39.5, 15: 22.2, 20: 12.4}
+
 #: The engine's own name, stored with every candidate so a stored result stays
 #: interpretable after the rules move.
 ENGINE_VERSION = "swing-volume-breakout/1.0.0"
