@@ -75,15 +75,15 @@ this correction reaches ranking, not just the page.
 
 ---
 
-## Not fixed, and not mine to fix: the routing tier file is stale
+## Not fixed: the universe refresh only reached one system
 
 Nine symbols still fail with `DATA_UNAVAILABLE — "no validated local seed and
-EODHD unsupported"`: AGIG, AIND, ALRA, AUTO, MATD, MEDP, NDRL, ORMT, QNBA.
+EODHD unsupported"`. **At least one of them is not unsupported**: `QNBA` has
+4,220 EODHD bars cached, 2001-08-14 to 2026-08-17.
 
-**At least one of them is not unsupported.** `QNBA` has 4,220 EODHD bars cached,
-2001-08-14 to 2026-08-17.
+Following it produced a single root cause with two symptoms.
 
-The cause is in `core/research_router.py`:
+`core/research_router.py` defaults any unknown symbol to unsupported:
 
 ```python
 def symbol_tier(symbol):
@@ -91,27 +91,66 @@ def symbol_tier(symbol):
     return (entry or {}).get("tier", "TIER_D_UNSUPPORTED_OR_MANUAL")
 ```
 
-`tier_map()` reads `data/eodhd/historical_symbol_routing_review.json`, and **any
-symbol absent from that file defaults to unsupported**. The file was generated
-`2026-07-23` and holds **265 entries** — the retired universe. It contains
-`QNBE` (tier `TIER_B_FORWARD_EODHD_NO_FALLBACK`) and not `QNBA`, the ticker that
-replaced it.
+`tier_map()` reads `data/eodhd/historical_symbol_routing_review.json`, generated
+`2026-07-23` with **265 entries** — the retired universe. It holds `QNBE` and
+not `QNBA`, the ticker that replaced it. Regenerating it does not help on its
+own: `scripts/build_eodhd_routing_tiers.py` takes its symbol list from
+`reports/eodhd_symbol_mapping.csv`, which is *also* the retired 265 list of
+2026-07-23. The whole EODHD evidence chain predates the universe.
 
-So every symbol admitted to the universe after 2026-07-23 is silently routed as
-EODHD-unsupported, falls through to the frozen-Yahoo-seed path, finds no seed
-because it is new, and fails.
+Measured against the live universe:
 
-**This is not a sector-flow defect.** The scanner and backtest read the same
-router, so the same nine symbols are unreachable there. It is the third artifact
-found in this work that was built from the retired 265-symbol universe, after
-`data/sectors.csv` and `data/symbols.csv` itself.
+| | Count |
+| --- | --- |
+| Active symbols | 241 |
+| Present in the tier file | 225 |
+| **Absent → silently `TIER_D_UNSUPPORTED`** | **16** |
+| Tier entries for symbols no longer active | 40 |
 
-The fix is to regenerate the routing review against the 241-symbol universe with
-`scripts/build_eodhd_routing_tiers.py`. **That has not been done here.** Each
-entry carries `approved`, `evidence_status` and `last_reviewed` fields, and the
-file decides which provider serves which symbol across the whole application.
-Regenerating it is an approval-gated change to the live data path and belongs to
-whoever owns that approval, not to a sector-liquidity task.
+The 16 are not obscure: **GB Corp (AUTO)**, **Orascom Investment Holding
+(ORMT)**, **Qatar National Bank (QNBA)**, National Drilling, Pioneers Holding,
+Sarwa Capital, Arabia Investments Holding.
+
+### The same 16 are also missing from the live feed — and that part is by design
+
+Every one of the 16 carries `UNVERIFIED_NO_FEED_OBSERVATION`, and the two sets
+are **identical**: `absent from tier file` ∩ `never observed by the feed` = 16,
+with nothing in either set alone. Both systems predate the universe's
+`source_as_of` of 2026-07-30.
+
+An earlier reading of this — that the collector is still subscribed to the old
+265-symbol list — was wrong. The live `quotes` table holds 265 tickers because
+it accumulated them before the migration. The current subscription is correct:
+`build_rubix_subscription_plan()` requests all 241, produces 225 valid
+subscriptions, and reports exactly these 16 as `unmapped_symbols`. Over the last
+week the collector recorded 224 tickers, **none of them retired**.
+
+The 16 are excluded deliberately. `providers/rubix_subscription.py` will not
+emit a `CASE~TICKER` key for a symbol with no verified mapping:
+
+> Active symbols with no VERIFIED Rubix mapping. Reported, never guessed — an
+> operator resolves these; a fabricated `CASE~` key is never emitted.
+
+That is a chicken-and-egg the code resolves in favour of safety: a symbol needs
+an observed mapping to be subscribed, and cannot be observed without one, so a
+human confirms it rather than the software guessing.
+
+### What this needs, in order
+
+1. An operator resolves the Rubix mapping for the 16 `unmapped_symbols`. This is
+   the gate the code was written to enforce and it is not automatable here.
+2. Rebuild `reports/eodhd_symbol_mapping.csv` against the 241-symbol universe.
+3. Re-run the EODHD evidence audits that the tier generator consumes.
+4. Regenerate the routing review with `scripts/build_eodhd_routing_tiers.py`.
+
+**None of this was done here.** Step 1 is an operational decision about real
+securities; steps 2–4 rebuild approval-gated artifacts (`approved`,
+`evidence_status`, `last_reviewed`) that decide which provider serves which
+symbol across the whole application. Neither belongs to a sector-liquidity task.
+
+It is worth recording that this is the fourth artifact found in this work built
+from the retired 265-symbol universe, after `data/symbols.csv`, the sector map
+this project first shipped, and `reports/eodhd_symbol_mapping.csv`.
 
 ## The rest of the 19
 
