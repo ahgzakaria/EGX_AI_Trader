@@ -168,10 +168,12 @@ inflates the opening window's apparent skill (0.933 rank against full-day versus
 
 Two constraints on acting on this:
 
-* Only **32 days** of 1-minute candles exist (2026-07-01 onward), and the
-  collector produced a single candle per ticker on 2026-08-17 and 2026-08-20 —
-  26 days survive. That is enough to measure a blend, nowhere near enough to
-  train and validate a model.
-* Intraday history only accumulates forward. Every day the collector misses is
-  permanently unrecoverable, which makes collector reliability a prerequisite for
-  this phase rather than a detail.
+* Only **32 days** of 1-minute candles exist (2026-07-01 onward), and 26 survive
+  a completeness check. That is enough to measure a blend, nowhere near enough
+  to train and validate a model.
+* The thin days are not a collector fault — the machine was simply not running
+  on 2026-08-17 or 2026-08-20. This is the normal condition of a desktop-hosted
+  collector, so Phase 4 must treat missing and partial days as expected input,
+  not as an incident. A day is admitted on measured coverage, never assumed.
+* Intraday history only accumulates forward and cannot be backfilled from the
+  daily feed, so the usable sample grows one session at a time.
