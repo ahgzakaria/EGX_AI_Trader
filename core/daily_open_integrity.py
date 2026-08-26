@@ -32,8 +32,15 @@ CARRY_FORWARD_LIMIT = 0.20
 #: the tolerance is for float noise only.
 OUT_OF_RANGE_LIMIT = 0.0
 
-#: Below this many transitions the rates are not worth reading.
-MINIMUM_OBSERVATIONS = 20
+#: Below this many transitions the rates are not worth reading. Set from the
+#: false-positive risk rather than by feel: against a 20% limit and an honest
+#: rate of 11.7-12.9%, the chance of condemning a *clean* source by luck is
+#: 7.6-10.6% at 20 transitions, 2.8-5.1% at 50, and 0.5-1.6% at 100. Catching
+#: fabrication is unaffected either way -- every fabricated source on disk sits
+#: above 72%, nowhere near the boundary -- so the threshold is set to protect
+#: the short, clean, minute-derived forward path from being libelled while it
+#: is still accumulating history.
+MINIMUM_OBSERVATIONS = 100
 
 
 class OpenIntegrity(str, Enum):

@@ -21,6 +21,8 @@
         "interval": "1d",
         "min_bars": 250
     },
+    "minimum_daily_market_coverage_percent": 60.0,
+    "rubix_live_quote_freshness_seconds": 300.0,
     "rubix_daily_bridge": {
         "enabled": false,
         "shadow_mode": true,
@@ -57,7 +59,7 @@
     "strategy": {
         "min_score": 50,
         "min_confidence": 65,
-        "min_rr": 1.5,
+        "min_rr": 3.0,
         "min_trend": 12,
         "min_momentum": 3,
         "min_volume": 0,
@@ -68,7 +70,7 @@
         "market_index_fast_ema": 50,
         "market_index_slow_ema": 200,
         "max_rr": 100.0,
-        "require_candle_confirmation": true,
+        "require_candle_confirmation": false,
         "require_market_analyzer": true,
         "require_quality_filter": true,
         "quality_min_adx": 21,
@@ -94,8 +96,11 @@
         "max_open_positions": 10,
         "max_portfolio_risk_percent": 10.0,
         "initial_capital": 100000,
-        "commission": 0.003,
-        "slippage": 0.0005
+        "commission": 0.001819,
+        "slippage": 0.0005,
+        "spread_percent": 0.5,
+        "max_spread_percent": null,
+        "unmeasured_spread_percent": 0.927
     },
     "decision_support": {
         "enabled": true,
@@ -140,7 +145,6 @@
         "quote_max_age_seconds": 60,
         "commission": 0.001819,
         "slippage": 0.0005,
-        "capital_gains_tax_percent": 0,
         "initial_capital": 100000.0,
         "risk_per_trade_percent": 0.5,
         "max_open_positions": 3,
@@ -168,6 +172,7 @@
                 "tick_size": 0.01
             }
         ],
+        "capital_gains_tax_percent": 0,
         "fee_schedule": {
             "_source": "broker contract note, 2026-08-18, notional 102,560.00 EGP",
             "brokerage_and_custody_percent": 0.1,
