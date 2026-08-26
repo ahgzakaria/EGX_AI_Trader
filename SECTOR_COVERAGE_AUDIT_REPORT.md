@@ -207,3 +207,81 @@ this project first shipped, and `reports/eodhd_symbol_mapping.csv`.
   sector_flow.builder`. Tests passed only because they imported in a lucky
   order. Storage constants moved to `sector_flow/__init__.py`, and a test now
   imports each module first in a fresh interpreter.
+
+
+---
+
+## Step 3 — the evidence audits, and why most of the rerun was discarded
+
+Authorised after steps 2 and 4. The result is 229 of 241 active symbols loading,
+up from 198 of 232 when this audit began — but the route there found a defect in
+the audit itself.
+
+### The rerun manufactured discrepancies
+
+Re-running `audit_eodhd_full_universe` moved `MANUAL_REVIEW` from 15 symbols to
+43, and regenerating the tiers on that evidence demoted **34 working symbols** to
+`TIER_D` — Elsewedy Electric, Faraz Pharma, Juhayna and Arabian Cement among
+them. Every one of those then failed to load.
+
+The cause is visible in the audit's own columns:
+
+| | 2026-07-23 run | rerun |
+| --- | --- | --- |
+| SWDY `yahoo_rows` | 248 | **248** |
+| SWDY `common_sessions` | 243 | **243** |
+| SWDY `eodhd_rows` | 253 | 255 |
+| SWDY `max_close_pct_diff` | 1.01% | **12.43%** |
+
+Yahoo did not advance by a single session, because it is a **frozen seed** — the
+project's own policy is that Yahoo is never an operational source. EODHD moved
+on. The audit compares the two and reads a month of accumulated staleness as a
+data discrepancy.
+
+**This audit is only valid run close to the seed's freeze date.** Re-run later
+it does not measure EODHD's quality; it measures how long ago the seed was
+frozen, and it converts that into `MANUAL_REVIEW`.
+
+### What was kept
+
+Old evidence for the 225 symbols it covers — gathered while the Yahoo baseline
+was current, and therefore the valid measurement. New evidence only for the 16
+symbols that had none, where it is the only measurement that exists.
+
+`corporate_action_inventory.csv` was kept from the rerun in full: it is
+Yahoo-independent, covers all 241 symbols, and found 2,182 actions with zero
+invalid splits. `real_backtest_summary.csv` was **not** re-run — its symbol list
+is ten hardcoded tickers and its windows are frozen dates, so a rerun returns
+the same rows and none of the 16 appear in it.
+
+On the merged evidence, **two** pre-existing symbols change tier: `ACGC` and
+`OCPH`, both `TIER_A → TIER_C`, because the fresh corporate-action inventory
+found recent splits. Both had been failing the sector build with
+`VOLUME_POLICY_UNRESOLVED`, so the more conservative tier agrees with what was
+already observed.
+
+### A third generator defect
+
+With the queue resolution restored to its earlier state, `SEIGA` — classified
+`PRICE_SCALE_ANOMALY` by the fresh audit — fell through to the final branch and
+was granted `TIER_A_FORWARD_SAFE` on the reason *"no scale issue"*. A price-scale
+anomaly is precisely what must not be called forward-safe. The generator now
+holds an unresolved scale anomaly at `scale_anomaly_unresolved` instead.
+
+### Where the universe stands
+
+**229 of 241 active symbols load.** The remaining 12:
+
+| Cause | Count | Symbols |
+| --- | --- | --- |
+| `VOLUME_POLICY_UNRESOLVED` | 5 | ACGC, JUFO, MTIE, NCCW, OCPH |
+| `LOCAL_SEED_ONLY_STALE` | 4 | CFGH, DEIN, MEGM, TRTO |
+| `LOCAL_PLUS_RUBIX_STALE` | 1 | NAHO |
+| Retired ISIN twin, held | 1 | EDBM |
+| Scale anomaly, held | 1 | SEIGA |
+
+Fourteen of the sixteen are now reachable. The sector history rebuilt to **218
+of 228 classified symbols** across 5,864 sessions.
+
+Step 1 — the 16 Rubix feed mappings — remains open, and is still the operator's.
+Those symbols now have daily history but no live quote overlay.

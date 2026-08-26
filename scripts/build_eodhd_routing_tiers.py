@@ -26,7 +26,9 @@ OUT = PROJECT_ROOT / "data" / "eodhd" / "historical_symbol_routing_review.json"
 
 def _csv(name):
     try:
-        return pd.read_csv(REP / name)
+        # keep_default_na: the EGX ticker "NULL" is a real code, not a missing
+        # value, and pandas would drop it out of every evidence lookup below.
+        return pd.read_csv(REP / name, keep_default_na=False)
     except Exception:
         return pd.DataFrame()
 
@@ -102,6 +104,16 @@ def main():
                      price_series="SPLIT_ADJUSTED", volume_policy="EVENT_SPECIFIC",
                      evidence_status="rubix_confirmed", risk_level="medium",
                      approval_reason="EODHD==Rubix; Yahoo proven bad — no Yahoo fallback ever")
+        elif c == "PRICE_SCALE_ANOMALY" and not q:
+            # A scale anomaly is precisely what must not be called forward-safe.
+            # Normally resolve_eodhd_manual_queue supplies a classification for
+            # these; without one the final else below would grant TIER_A on the
+            # claim that there is "no scale issue", which is the opposite of
+            # what was measured.
+            e.update(tier="TIER_D_UNSUPPORTED_OR_MANUAL", forward_primary=None,
+                     evidence_status="scale_anomaly_unresolved", risk_level="hold",
+                     approval_reason="price-scale anomaly with no manual-queue resolution — "
+                     "hold until resolved")
         elif q == "SYMBOL_NOT_LIQUID" or c == "MANUAL_REVIEW":
             e.update(tier="TIER_D_UNSUPPORTED_OR_MANUAL", forward_primary=None,
                      evidence_status="insufficient", risk_level="hold",

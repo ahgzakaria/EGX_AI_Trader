@@ -38,7 +38,10 @@ _ABS = 1e-9
 
 
 def _mapped_symbols():
-    df = pd.read_csv(PROJECT_ROOT / "reports" / "eodhd_symbol_mapping.csv")
+    # keep_default_na: EGX lists a security whose ticker is literally "NULL".
+    # Left to pandas it becomes NaN and the symbol silently drops out of the audit.
+    df = pd.read_csv(PROJECT_ROOT / "reports" / "eodhd_symbol_mapping.csv",
+                     keep_default_na=False)
     return [str(s) for s in df[df["mapping_status"] == "VERIFIED_EXACT"]["internal_symbol"]]
 
 

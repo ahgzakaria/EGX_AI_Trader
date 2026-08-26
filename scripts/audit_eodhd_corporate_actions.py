@@ -30,7 +30,9 @@ OUT = PROJECT_ROOT / "reports" / "eodhd"
 
 
 def _mapped():
-    df = pd.read_csv(PROJECT_ROOT / "reports" / "eodhd_symbol_mapping.csv")
+    # keep_default_na: the EGX ticker "NULL" is a real code, not a missing value.
+    df = pd.read_csv(PROJECT_ROOT / "reports" / "eodhd_symbol_mapping.csv",
+                     keep_default_na=False)
     return [str(s) for s in df[df["mapping_status"] == "VERIFIED_EXACT"]["internal_symbol"]]
 
 

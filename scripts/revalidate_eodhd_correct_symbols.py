@@ -27,7 +27,7 @@ OUT = PROJECT_ROOT / "reports" / "eodhd"
 
 
 def _symbols():
-    df = pd.read_csv(OUT / "manual_queue_resolution.csv")
+    df = pd.read_csv(OUT / "manual_queue_resolution.csv", keep_default_na=False)
     return list(df[df["classification"] == "EODHD_CORRECT"]["symbol"])
 
 

@@ -8,5 +8,15 @@
     "value": 0.028,
     "unadjustedValue": 0.14,
     "currency": "EGP"
+  },
+  {
+    "date": "2026-08-10",
+    "declarationDate": null,
+    "recordDate": null,
+    "paymentDate": null,
+    "period": null,
+    "value": 0.1,
+    "unadjustedValue": 0.1,
+    "currency": "EGP"
   }
 ]

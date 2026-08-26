@@ -31,7 +31,7 @@ _TOL = 0.03      # 3% → "agree"
 
 
 def _queue():
-    df = pd.read_csv(OUT / "full_universe_symbol_results.csv")
+    df = pd.read_csv(OUT / "full_universe_symbol_results.csv", keep_default_na=False)
     return list(df[df["category"].isin(["MANUAL_REVIEW", "PRICE_SCALE_ANOMALY"])]["symbol"])
 
 

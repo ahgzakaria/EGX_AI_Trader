@@ -6,7 +6,7 @@
     "paymentDate": null,
     "period": null,
     "value": 0.072,
-    "unadjustedValue": 0.12,
+    "unadjustedValue": 0.15,
     "currency": "EGP"
   },
   {
@@ -16,7 +16,7 @@
     "paymentDate": null,
     "period": null,
     "value": 0.072,
-    "unadjustedValue": 0.12,
+    "unadjustedValue": 0.15,
     "currency": "EGP"
   },
   {
@@ -26,7 +26,7 @@
     "paymentDate": null,
     "period": null,
     "value": 0.064,
-    "unadjustedValue": 0.08,
+    "unadjustedValue": 0.1,
     "currency": "EGP"
   },
   {
@@ -36,7 +36,7 @@
     "paymentDate": null,
     "period": null,
     "value": 0.096,
-    "unadjustedValue": 0.12,
+    "unadjustedValue": 0.15,
     "currency": "EGP"
   },
   {
@@ -46,7 +46,7 @@
     "paymentDate": null,
     "period": null,
     "value": 0.096,
-    "unadjustedValue": 0.12,
+    "unadjustedValue": 0.15,
     "currency": "EGP"
   },
   {
@@ -56,7 +56,7 @@
     "paymentDate": null,
     "period": null,
     "value": 0.064,
-    "unadjustedValue": 0.08,
+    "unadjustedValue": 0.1,
     "currency": "EGP"
   },
   {
@@ -66,7 +66,7 @@
     "paymentDate": null,
     "period": null,
     "value": 0.128,
-    "unadjustedValue": 0.16,
+    "unadjustedValue": 0.2,
     "currency": "EGP"
   },
   {
@@ -76,7 +76,7 @@
     "paymentDate": null,
     "period": null,
     "value": 0.128,
-    "unadjustedValue": 0.16,
+    "unadjustedValue": 0.2,
     "currency": "EGP"
   },
   {
@@ -86,7 +86,7 @@
     "paymentDate": null,
     "period": null,
     "value": 0.128,
-    "unadjustedValue": 0.16,
+    "unadjustedValue": 0.2,
     "currency": "EGP"
   },
   {
@@ -96,7 +96,7 @@
     "paymentDate": null,
     "period": null,
     "value": 0.224,
-    "unadjustedValue": 0.28,
+    "unadjustedValue": 0.35,
     "currency": "EGP"
   },
   {
@@ -106,7 +106,7 @@
     "paymentDate": null,
     "period": null,
     "value": 0.096,
-    "unadjustedValue": 0.12,
+    "unadjustedValue": 0.15,
     "currency": "EGP"
   },
   {
@@ -116,7 +116,7 @@
     "paymentDate": null,
     "period": null,
     "value": 0.128,
-    "unadjustedValue": 0.16,
+    "unadjustedValue": 0.2,
     "currency": "EGP"
   },
   {
@@ -126,7 +126,7 @@
     "paymentDate": null,
     "period": null,
     "value": 0.192,
-    "unadjustedValue": 0.24,
+    "unadjustedValue": 0.3,
     "currency": "EGP"
   },
   {
@@ -136,7 +136,7 @@
     "paymentDate": null,
     "period": null,
     "value": 0.32,
-    "unadjustedValue": 0.32,
+    "unadjustedValue": 0.4,
     "currency": "EGP"
   }
 ]
