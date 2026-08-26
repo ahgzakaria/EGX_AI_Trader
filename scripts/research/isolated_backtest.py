@@ -103,6 +103,52 @@ def _data_fingerprint():
     return fingerprint
 
 
+def _period_stability(results_csv: Path):
+    """Per-year expectancy, so an aggregate cannot hide an unstable effect.
+
+    Disabling the trailing stop looked like a decisive win in aggregate --
+    -0.046% to +0.317% per trade. Split by entry year it helped in five years
+    and hurt in five, with the aggregate carried by 2017, 2020 and 2025. That
+    check was done by hand, after the recommendation had already been made. It
+    belongs in the run.
+    """
+    import csv as _csv
+    import statistics as _stats
+    from collections import defaultdict
+
+    if not results_csv.exists():
+        return None
+    buckets = defaultdict(list)
+    with results_csv.open(encoding="utf-8-sig") as handle:
+        for row in _csv.DictReader(handle):
+            year = (row.get("entry_date") or "")[:4]
+            try:
+                profit = float(row["profit_percent"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if year:
+                buckets[year].append(profit)
+    if not buckets:
+        return None
+    out = {}
+    for year in sorted(buckets):
+        values = buckets[year]
+        out[year] = {
+            "trades": len(values),
+            "avg_profit_percent": round(_stats.mean(values), 4),
+            "median_profit_percent": round(_stats.median(values), 4),
+            "win_rate": round(
+                100.0 * sum(1 for v in values if v > 0) / len(values), 2),
+        }
+    positive = sum(1 for y in out.values() if y["avg_profit_percent"] > 0)
+    out["_summary"] = {
+        "years": len(out),
+        "years_positive": positive,
+        "years_negative": len(out) - positive,
+    }
+    return out
+
+
 def _assign(data: dict, dotted: str, value):
     """Set `section.key` (or `section.key.sub`) on the in-memory settings."""
     parts = dotted.split(".")
@@ -255,6 +301,8 @@ class IsolatedBacktest:
             "data_fingerprint": _data_fingerprint(),
             "outputs_before_run": before,
             "outputs_produced": produced,
+            "period_stability": _period_stability(
+                self.run_dir / "backtest_results.csv"),
             "summary": (final or {}).get("summary"),
             "symbols": (final or {}).get("symbols"),
             "signals": (final or {}).get("signals"),
@@ -306,12 +354,28 @@ def main() -> None:
     if manifest["error"]:
         print(f"ERROR: {manifest['error']}")
         return
+    intercepted = manifest.get("settings_calls_intercepted", {})
+    if intercepted.get("reload"):
+        print(f"note: {intercepted['reload']} settings reload(s) intercepted; "
+              "the pin held")
     summary = manifest["summary"] or {}
     for key in ("Trades", "WinRate", "ProfitFactor", "TotalReturn",
                 "MaxDrawdown", "AverageProfitPercent", "AverageHoldingDays",
                 "SharpeRatio", "BacktestDays"):
         if key in summary:
             print(f"  {key:22}: {summary[key]}")
+
+    stability = manifest.get("period_stability")
+    if stability:
+        overall = stability.pop("_summary", {})
+        print(f"\n  per-year expectancy  ({overall.get('years_positive')} of "
+              f"{overall.get('years')} years positive)")
+        print(f"  {'year':>8}{'n':>6}{'avg':>10}{'median':>10}{'win%':>8}")
+        for year, row in stability.items():
+            print(f"  {year:>8}{row['trades']:>6}"
+                  f"{row['avg_profit_percent']:>+9.3f}%"
+                  f"{row['median_profit_percent']:>+9.3f}%"
+                  f"{row['win_rate']:>7.1f}%")
 
 
 if __name__ == "__main__":

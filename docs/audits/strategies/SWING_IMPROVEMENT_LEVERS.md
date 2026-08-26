@@ -1,5 +1,19 @@
 # What Can Actually Be Improved
 
+> **WITHDRAWN — see [TRAILING_STOP_VERDICT.md](TRAILING_STOP_VERDICT.md).**
+>
+> The headline recommendation below — disable the trailing stop — was measured
+> again with a corrected cost model and does not survive. Per-trade expectancy
+> goes from -0.0047% to **-0.1005%**, drawdown from 51.15% to 56.44%, Sharpe
+> from -0.01 to -0.06, and it is better in exactly 5 of 10 years.
+>
+> Every figure below carrying the manual "0.161% friction correction" is
+> unreliable. That subtraction assumed cost changes alter trade outcomes only;
+> they also alter which trades are taken, so the correction is not additive.
+>
+> What survives: the exit-mix observation (§2), the finding that the scoring
+> system does not rank (§4), and the warning about post-hoc filters (§5).
+
 **Question:** the swing strategy has negative expectancy once real friction is
 charged. What, measurably, would fix it?
 
