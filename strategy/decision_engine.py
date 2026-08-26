@@ -161,6 +161,22 @@ def evaluate(df, i):
     entry = entry_signal(df, i)
     momentum = momentum_score(df, i)
     candles = candle_score(df, i)
+    # Still computed and still reported as "Breakout" below, but no longer
+    # added to the score, the confidence or the reasons.
+    #
+    # It scored 0.000 on all 638 trades of the corrected baseline -- one
+    # distinct value across the whole record -- because it contradicts a gate
+    # the strategy also applies. It rewards Close above the 20-bar high or
+    # within 2% of it, while quality_filter demands at least 3% of room below
+    # resistance and require_quality_filter is true. Over 10,373 real bars the
+    # two hold together on 1.15% where independence predicts 13.4%.
+    #
+    # So twenty of the hundred points were unreachable and the strategy was
+    # ranking on an 80-point scale believing it had 100. Dissolving the
+    # contradiction the other way was measured -- quality_min_resistance_room
+    # at 0.0 -- and is worse: profit factor 0.90 against 0.94, total return
+    # -23.79% against -14.27%. The quality thesis wins, so the component goes.
+    # See docs/audits/strategies/SCORE_DIAGNOSIS.md.
     breakout = breakout_score(df, i)
 
     # ==================================
@@ -175,7 +191,6 @@ def evaluate(df, i):
         + entry["score"]
         + momentum["score"]
         + candles["score"]
-        + breakout["score"]
 
     )
 
@@ -190,7 +205,6 @@ def evaluate(df, i):
     pattern_confidence = (
 
         candles["confidence"]
-        + breakout["confidence"]
 
     )
 
@@ -222,7 +236,6 @@ def evaluate(df, i):
         + entry["reasons"]
         + momentum["reasons"]
         + candles["reasons"]
-        + breakout["reasons"]
 
     )
 
