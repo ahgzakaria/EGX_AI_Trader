@@ -84,6 +84,37 @@ def read_excluded_instruments(workbook):
     }
 
 
+def deduplicate_by_isin(universe):
+    """Collapse renamed companies that appear twice under one ISIN.
+
+    Four EGX companies are listed in the universe under both their old and new
+    tickers -- Pioneers/Aspire, Sarwa/Contact, Arabian Metal/Arab Valves and
+    Lift Slab/Creast Mark -- sharing one ISIN each. Classifying both would put
+    a single company's turnover into its sector twice the moment the retired
+    ticker starts resolving. The row the live feed has actually observed wins;
+    with nothing to separate them, the first is kept so the result is stable.
+    """
+
+    chosen, dropped = {}, []
+    for record in universe:
+        isin = _key(record.isin)
+        if not isin or isin == "NAN":
+            chosen[f"__no_isin__{record.canonical_symbol}"] = record
+            continue
+        held = chosen.get(isin)
+        if held is None:
+            chosen[isin] = record
+            continue
+        observed = str(record.rubix_mapping_status or "").startswith("VERIFIED")
+        held_observed = str(held.rubix_mapping_status or "").startswith("VERIFIED")
+        if observed and not held_observed:
+            chosen[isin] = record
+            dropped.append(held)
+        else:
+            dropped.append(record)
+    return list(chosen.values()), dropped
+
+
 def build_rows(universe, by_isin, by_code, excluded):
     """Return the mapped rows and the unmapped reconciliation rows."""
 
@@ -128,7 +159,19 @@ def build(workbook, output_path, report_path, universe_path=None):
     by_isin, by_code = read_workbook(workbook)
     excluded = read_excluded_instruments(workbook)
     universe = active_universe(universe_path)
-    mapped, unmapped = build_rows(universe, by_isin, by_code, excluded)
+    deduplicated, superseded = deduplicate_by_isin(universe)
+    mapped, unmapped = build_rows(deduplicated, by_isin, by_code, excluded)
+    if superseded:
+        rows = pd.DataFrame([{
+            "Ticker": record.engine_symbol,
+            "EGXCode": record.canonical_symbol,
+            "ISIN": record.isin,
+            "CompanyName": record.company_name,
+            "Reason": "SUPERSEDED_BY_ISIN_TWIN",
+            "Detail": "Another active symbol carries the same ISIN and is feed-observed.",
+        } for record in superseded])
+        unmapped = pd.concat([unmapped, rows], ignore_index=True) if not unmapped.empty else rows
+        unmapped = unmapped.sort_values("Ticker").reset_index(drop=True)
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     mapped.to_csv(output_path, index=False)

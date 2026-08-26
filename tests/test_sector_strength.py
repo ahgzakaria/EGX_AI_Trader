@@ -201,3 +201,23 @@ def test_edge_score_is_recomputed_after_the_sector_factor_lands(tmp_path, monkey
     for row in rows:
         assert row["EdgeFactors"]["sector_strength"] == row["SectorStrength"]
         assert "EdgeScore" in row and "EdgeContributions" in row
+
+
+def test_the_sector_modules_import_in_any_order():
+    """sector_flow.strength must not reach decision_support and back again.
+
+    decision_support.service imports sector_flow.strength, and sector_flow's
+    builder imports decision_support. If strength also imported the builder,
+    importing the builder first would close the cycle and fail.
+    """
+
+    import subprocess
+    import sys
+
+    for module in ("sector_flow.builder", "sector_flow.strength",
+                   "decision_support.service"):
+        result = subprocess.run(
+            [sys.executable, "-c", f"import {module}"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"importing {module} first failed:\n{result.stderr}"

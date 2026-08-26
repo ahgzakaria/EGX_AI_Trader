@@ -25,7 +25,7 @@ import sqlite3
 
 import pandas as pd
 
-from sector_flow.builder import DEFAULT_DATABASE, HISTORY_TABLE
+from sector_flow import DEFAULT_DATABASE, HISTORY_TABLE
 from sector_flow.history import DEFAULT_MIN_COVERAGE, latest_snapshot
 
 

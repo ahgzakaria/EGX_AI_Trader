@@ -18,6 +18,7 @@ import sqlite3
 import pandas as pd
 
 from core.data_provider import load_history, provider_purpose
+from sector_flow import DEFAULT_DATABASE, HISTORY_TABLE, METADATA_TABLE
 from core.universe import UNIVERSE_SOURCE, active_engine_symbols
 from decision_support.sector_analysis import load_sector_map
 from sector_flow.history import (
@@ -31,15 +32,21 @@ from sector_flow.history import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_DATABASE = "data/sector_flow.db"
 PROGRESS_EVERY = 25
 DEFAULT_PURPOSE = "dashboard"
-HISTORY_TABLE = "sector_daily"
-METADATA_TABLE = "sector_flow_builds"
+# The configured 250-bar minimum exists because *indicators* need history --
+# moving averages and momentum cannot be computed without it. Turnover
+# aggregation needs none: a symbol listed three months ago still traded real
+# value on those days, and excluding it understates its sector's share on
+# exactly the sessions a new listing is busiest. Measured on 2026-08-26, the
+# 250-bar rule was dropping 2.28% of the market's turnover over 30 sessions,
+# 3.07bn EGP of it from a single new listing. 20 bars is enough to be a real
+# trading record.
+TURNOVER_MIN_BARS = 20
 
 
 def load_universe_frames(symbols, sector_map, purpose=DEFAULT_PURPOSE,
-                         period=None, interval=None, min_bars=None):
+                         period=None, interval=None, min_bars=TURNOVER_MIN_BARS):
     """Return ``{ticker: daily frame}`` plus per-symbol load outcomes."""
 
     frames = {}
@@ -84,7 +91,7 @@ def load_universe_frames(symbols, sector_map, purpose=DEFAULT_PURPOSE,
 
 def build(universe_path=None, sector_file="data/sectors.csv",
           purpose=DEFAULT_PURPOSE, method="typical", period=None, interval=None,
-          min_bars=None, window=DEFAULT_BASELINE_WINDOW,
+          min_bars=TURNOVER_MIN_BARS, window=DEFAULT_BASELINE_WINDOW,
           share_lookback=DEFAULT_SHARE_LOOKBACK):
     """Build the per-sector daily liquidity history for the whole universe."""
 
@@ -107,6 +114,7 @@ def build(universe_path=None, sector_file="data/sectors.csv",
         "purpose": purpose,
         "universe_source": str(universe_path or UNIVERSE_SOURCE),
         "turnover_method": method,
+        "min_bars": min_bars,
         "baseline_window": window,
         "share_lookback": share_lookback,
         "universe_symbols": len(symbols),

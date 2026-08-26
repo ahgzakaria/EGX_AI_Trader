@@ -291,3 +291,50 @@ def test_full_sessions_keep_full_coverage():
     frames, sectors = universe()
     history = sector_history(frames, sectors)
     assert (history["SessionCoverage"] >= 0.99).all()
+
+
+def test_no_two_mapped_tickers_share_an_isin():
+    """A renamed company must not put its turnover into a sector twice."""
+
+    mapped = pd.read_csv("data/sectors.csv")
+    isins = mapped["ISIN"].dropna().astype(str).str.strip().str.upper()
+    isins = isins[(isins != "") & (isins != "NAN")]
+    duplicated = sorted(isins[isins.duplicated()].unique())
+    assert not duplicated, f"ISINs classified more than once: {duplicated}"
+
+
+def test_superseded_tickers_are_reported_not_silently_dropped():
+    from scripts.build_sector_map import deduplicate_by_isin
+
+    live = SimpleNamespace(canonical_symbol="ASPI", engine_symbol="ASPI.CA",
+                           isin="EGS691L1C018", company_name="Aspire",
+                           rubix_mapping_status="VERIFIED_FEED_OBSERVED")
+    retired = SimpleNamespace(canonical_symbol="PIOH", engine_symbol="PIOH.CA",
+                              isin="EGS691L1C018", company_name="Pioneers",
+                              rubix_mapping_status="UNVERIFIED_NO_FEED_OBSERVATION")
+
+    for order in ([retired, live], [live, retired]):
+        kept, dropped = deduplicate_by_isin(order)
+        assert [record.canonical_symbol for record in kept] == ["ASPI"]
+        assert [record.canonical_symbol for record in dropped] == ["PIOH"]
+
+
+def test_symbols_without_an_isin_are_all_kept():
+    from scripts.build_sector_map import deduplicate_by_isin
+
+    records = [
+        SimpleNamespace(canonical_symbol=code, engine_symbol=f"{code}.CA", isin="",
+                        company_name=code, rubix_mapping_status="")
+        for code in ("AAA", "BBB")
+    ]
+    kept, dropped = deduplicate_by_isin(records)
+    assert len(kept) == 2 and not dropped
+
+
+def test_turnover_aggregation_does_not_inherit_the_indicator_bar_minimum():
+    """250 bars is what indicators need, not what turnover needs."""
+
+    from sector_flow.builder import TURNOVER_MIN_BARS
+
+    assert TURNOVER_MIN_BARS < 250
+    assert TURNOVER_MIN_BARS >= 2  # pct_change needs a predecessor
