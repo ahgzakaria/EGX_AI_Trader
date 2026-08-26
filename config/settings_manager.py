@@ -169,7 +169,19 @@ DEFAULT_SETTINGS = {
         # the trade-weighted median is 0.500%, charged once per round trip.
         # Together with the commission correction this moves a round trip from
         # 0.703% to 0.964% -- the two errors had been cancelling.
-        "spread_percent": 0.5
+        "spread_percent": 0.5,
+        # Universe filter, off by default. When set, the backtest trades only
+        # symbols quoting at or inside this spread. Costs are already charged
+        # per symbol, so this is a decision about which names to trade at all
+        # rather than about how to price them. None means no filter.
+        "max_spread_percent": None,
+        # Symbols with too few quotes to measure are charged this rather than
+        # the universe median. They quote thinner than the thinnest measured
+        # name, and thin quoting predicts a wide spread (correlation -0.445;
+        # least-quoted quartile 0.652% median against 0.188% for the most). This
+        # is the 90th percentile of the measured distribution -- conservative,
+        # because the alternative is flattering something nobody has observed.
+        "unmeasured_spread_percent": 0.927
     },
 
     # Additive advisory scoring only. It never replaces the frozen strategy

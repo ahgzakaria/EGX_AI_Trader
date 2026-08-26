@@ -51,18 +51,46 @@ of this; this is the real one.
 **Done when.** Either the risk improvement survives out of sample, or it does
 not and the shipped setting is revisited.
 
-## Step 3 — Spread-filtered universe
+## Step 3 — Spread-filtered universe — **DONE, and the answer is no**
 
-**Why.** The one lever with headroom. Restricting to names with a spread of 0.3%
-or less moves friction from 0.760% to 0.550%, against a drift of 0.9630% — a
-margin of **+0.413%** per round trip where the current margin is **+0.0008%**.
-At 0.2% the margin is +0.460%.
+**The premise was wrong.** The headroom calculation held drift constant at
++0.9630% while cutting friction. Drift is *not* independent of spread: wider,
+thinner names carry enough extra drift to cover their extra cost. That is the
+liquidity premium, and the calculation assumed it away.
 
-**Cost.** It also removes 71% of the trades, which is a real loss of
-diversification and of sample size.
+Measured, tightening the filter makes things worse, monotonically:
 
-**Done when.** The trade-off between margin per trade and trade count is
-measured across thresholds, out of sample.
+| Filter | Trades | Profit factor | Return | Drawdown | Avg/trade | Sharpe |
+|---|--:|--:|--:|--:|--:|--:|
+| none | 485 | 1.29 | +60.55% | 16.13% | +0.38% | 0.55 |
+| ≤ 1.0% | 468 | 1.39 | +75.67% | 14.07% | +0.50% | 0.70 |
+| ≤ 0.5% | 347 | 1.33 | +48.02% | 14.68% | +0.43% | 0.52 |
+| ≤ 0.3% | 142 | 1.24 | +14.73% | 26.63% | +0.34% | 0.32 |
+
+The `≤ 1.0%` row looks like a win and is not one. It differs from no filter by
+**23 trades**, and removing the worst *three* of those leaves the remaining
+twenty summing to **+2.3%** — positive. A structural rule resting on three
+observations is not a rule.
+
+Costs are already charged per symbol, so a wide-spread name already pays for
+itself. The filter does not save a mispriced cost; it just removes names, and
+the names it removes were paying their way.
+
+**Shipped instead: a pricing fix.** Symbols too thinly quoted to measure were
+being charged the universe median, 0.500%. They quote thinner than the thinnest
+*measured* name — under 50 quotes against 241 — and thin quoting predicts a wide
+spread: across the 217 measured symbols the correlation between quote count and
+spread is **-0.445**, the least-quoted quartile sitting at a **0.652%** median
+against **0.188%** for the most-quoted. They now pay **0.927%**, the 90th
+percentile of the measured distribution.
+
+Effect on the shipped configuration: profit factor 1.29, return +60.08% against
++60.55%, drawdown 16.17%. Almost nothing, because only six trades were affected
+— which is the right size for a correctness fix that was never going to move a
+headline.
+
+The universe filter stays in the code, defaulted **off**, because measuring it
+was worth doing and re-measuring it later will be too.
 
 ## Step 4 — The eleven-setting divergence
 
@@ -84,6 +112,14 @@ None of these steps creates an edge. Steps 1 and 2 make the numbers trustworthy;
 step 3 is the only one with a plausible path to a positive expectancy, and it
 buys that by trading far less.
 
-If step 3 fails, the honest conclusion is available and worth stating: EGX at
-this cost structure does not support swing trading at this frequency. That is a
-result, not a failure to find one.
+Step 3 has now failed, and the conclusion it was set up to reach is available:
+**there is no cost lever left**. Costs are charged per symbol and correctly, the
+cheap names are not systematically better after their own costs, and the one
+filter that looked promising rests on three trades.
+
+What remains is step 4, and beyond it the finding that has been true since
+[SELECTION_AND_EXECUTION.md](SELECTION_AND_EXECUTION.md): the strategy clears
+its costs by about a sixth of a percent per round trip, entirely from the drift
+of names its gates select for being in an uptrend, and its entry timing adds
+nothing measurable (t = +0.65). That is a real but thin result, and no parameter
+in this system has been shown to improve on it.

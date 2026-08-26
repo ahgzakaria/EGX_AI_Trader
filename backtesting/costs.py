@@ -36,6 +36,14 @@ ones -- and no universe filter can be evaluated while every symbol costs the
 same. The table is `data/universe/egx_spread_table.csv`, built by
 `scripts/research/build_spread_table.py`; symbols absent from it fall back to the
 configured flat `spread_percent` rather than being guessed at.
+
+Symbols with too few quotes to measure are charged `unmeasured_spread_percent`,
+the 90th percentile of the measured distribution, rather than the median. They
+quote thinner than the thinnest measured name, and thin quoting predicts a wide
+spread -- across the 217 measured symbols the correlation between quote count
+and spread is -0.445, the least-quoted quartile sitting at a 0.652% median
+against 0.188% for the most-quoted. Charging them the median would flatter the
+only names nobody has observed.
 """
 
 import csv
@@ -95,9 +103,10 @@ class TradingCosts:
         spread_percent = 0.50     -> flat fallback, full width once per round trip
         symbol         = "COMI.CA" -> charge this symbol's measured spread instead
 
-        An explicit `spread_percent` always wins, so a caller asking for zero
-        costs gets zero costs. Otherwise a measured spread is used when the
-        symbol has one, and the flat rate when it does not.
+        Resolution order: an explicit `spread_percent` always wins, so a caller
+        asking for zero costs gets zero costs; then the measured table; then the
+        conservative rate for symbols too thinly quoted to measure; then the
+        flat default if no conservative rate is configured.
 
         لو محددتش القيم صراحة، بيتقروا Live من settings.json وقت إنشاء
         الكلاس (مش وقت استيراد الملف).
@@ -131,8 +140,24 @@ class TradingCosts:
             if measured is not None:
                 spread, self.spread_source = measured, "measured"
             else:
-                spread = getattr(cfg, "SPREAD_PERCENT", 0.0)
-                self.spread_source = "flat_default"
+                # An unmeasured symbol is not an average symbol. It has fewer
+                # than 50 quotes across the dense era, which makes it thinner
+                # than the thinnest symbol that *is* measured (241 quotes), and
+                # thin quoting predicts a wide spread: across the 217 measured
+                # names the correlation between quote count and spread is
+                # -0.445, with the least-quoted quartile at a 0.652% median
+                # against 0.188% for the most-quoted.
+                #
+                # So charging it the universe median flatters it. The fallback
+                # is the 90th percentile of the measured distribution instead.
+                # When the alternative is guessing about something unobserved,
+                # the conservative side is the correct one.
+                spread = getattr(cfg, "UNMEASURED_SPREAD_PERCENT", None)
+                if spread is None:
+                    spread = getattr(cfg, "SPREAD_PERCENT", 0.0)
+                    self.spread_source = "flat_default"
+                else:
+                    self.spread_source = "unmeasured_conservative"
 
         self.spread_percent = float(spread)
         # Half a width on each fill, so the round trip pays one full width.

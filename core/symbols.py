@@ -300,3 +300,43 @@ def load_active_symbols(source=SYMBOL_SOURCE):
         )
         frame = frame[active]
     return load_symbols(frame["Ticker"].tolist())
+
+
+def filter_by_spread(symbols, maximum_percent, spreads=None):
+    """Keep only symbols quoting at or inside `maximum_percent`.
+
+    Separate from `load_symbols` on purpose. That function is the shared
+    boundary the dashboard, optimizer and backtest all pass through, and its
+    whole value is that they cannot diverge on symbol cleaning. This is a
+    strategy-scoped universe decision, so it is applied by the caller that wants
+    it rather than imposed on every caller.
+
+    `maximum_percent` of None means no filter, which is the default everywhere.
+
+    Symbols with no measured spread are **dropped** when a filter is active. The
+    point of the filter is to trade only what is known to be cheap, and an
+    unmeasured symbol is not known to be anything. Failing open here would
+    quietly re-admit exactly the illiquid names the filter exists to exclude.
+
+    Returns `(kept, dropped_reasons)` so a caller can report what it removed
+    instead of silently shrinking its own universe.
+    """
+    if maximum_percent is None:
+        return list(symbols), {}
+
+    from backtesting.costs import spread_table
+
+    table = spread_table()
+    kept, dropped = [], {"too_wide": [], "unmeasured": []}
+    for symbol in symbols:
+        key = str(symbol).strip().upper()
+        value = table.get(key)
+        if value is None and key.endswith(".CA"):
+            value = table.get(key[:-3])
+        if value is None:
+            dropped["unmeasured"].append(symbol)
+        elif value > maximum_percent:
+            dropped["too_wide"].append(symbol)
+        else:
+            kept.append(symbol)
+    return kept, dropped

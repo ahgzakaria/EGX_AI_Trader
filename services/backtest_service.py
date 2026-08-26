@@ -12,7 +12,7 @@ from backtesting.engine import BacktestEngine
 from backtesting.report import BacktestReport
 from backtesting.statistics import BacktestStatistics
 from config.settings_manager import settings
-from core.symbols import SYMBOL_SOURCE, load_symbols
+from core.symbols import SYMBOL_SOURCE, filter_by_spread, load_symbols
 from portfolio.portfolio_simulator import PortfolioSimulator
 from services.risk_overlay_reporting import create_risk_overlay_reports
 from services.experiment_tracking import ExperimentRun, RunRepository
@@ -251,6 +251,11 @@ def run_backtest(scope=FULL_HISTORY):
     settings.reload()
     cfg = load_backtest_config()
     symbols = load_symbols(SYMBOL_SOURCE)
+    # Applied here rather than inside load_symbols, which is the shared boundary
+    # the dashboard and optimizer also cross. A spread ceiling is a choice about
+    # which names this strategy will trade, not a symbol-cleaning rule.
+    symbols, dropped_for_spread = filter_by_spread(
+        symbols, getattr(cfg, "MAX_SPREAD_PERCENT", None))
     mode = cfg.AI_MODE
     if scope not in {FULL_HISTORY, VALIDATED_OOS}:
         raise ValueError(f"Unsupported backtest scope: {scope}")

@@ -12,6 +12,8 @@ imprecise, so an unknown symbol must fall back visibly and an explicit request
 must always win.
 """
 
+import statistics
+
 import pytest
 
 from backtesting.costs import (
@@ -50,12 +52,23 @@ def test_a_wide_symbol_is_charged_more_than_the_flat_rate():
 
 def test_an_unknown_symbol_falls_back_visibly_rather_than_guessing():
     costs = TradingCosts(symbol="NOTAREALTICKER.CA")
-    assert costs.spread_source == "flat_default"
-    assert costs.spread_percent == pytest.approx(0.5)
+    assert costs.spread_source == "unmeasured_conservative"
 
 
-def test_no_symbol_at_all_falls_back_the_same_way():
-    assert TradingCosts(symbol=None).spread_source == "flat_default"
+def test_an_unmeasured_symbol_is_charged_more_than_the_median_not_less():
+    # The point of the fallback. A symbol with too few quotes to measure is
+    # thinner than the thinnest measured name, and thin quoting predicts a wide
+    # spread: correlation -0.445 across the 217 measured symbols, the
+    # least-quoted quartile at a 0.652% median against 0.188% for the most.
+    # Charging it the universe median would flatter the one name nobody has
+    # observed, which is the wrong direction to be wrong in.
+    unmeasured = TradingCosts(symbol="NOTAREALTICKER.CA")
+    median_of_measured = statistics.median(spread_table().values())
+    assert unmeasured.spread_percent > median_of_measured
+
+
+def test_no_symbol_at_all_is_treated_as_unmeasured():
+    assert TradingCosts(symbol=None).spread_source == "unmeasured_conservative"
 
 
 def test_an_explicit_spread_always_wins_over_a_measured_one():
@@ -76,15 +89,17 @@ def test_lookup_is_case_insensitive():
     assert TradingCosts(symbol="comi.ca").spread_source == "measured"
 
 
-def test_a_missing_table_degrades_to_the_flat_rate(monkeypatch, tmp_path):
-    # A run without the table should be less precise, not wrong, and must not
-    # raise -- the table is research output, not a deployment dependency.
+def test_a_missing_table_degrades_conservatively_and_does_not_raise(
+        monkeypatch, tmp_path):
+    # A run without the table should be pessimistic and obvious, not average and
+    # quiet, and must not raise -- the table is research output, not a
+    # deployment dependency.
     import backtesting.costs as module
 
     monkeypatch.setattr(module, "SPREAD_TABLE_PATH", tmp_path / "absent.csv")
     reset_spread_table()
     costs = TradingCosts(symbol="COMI.CA")
-    assert costs.spread_source == "flat_default"
+    assert costs.spread_source == "unmeasured_conservative"
     assert costs.round_trip_percent() > 0
 
 

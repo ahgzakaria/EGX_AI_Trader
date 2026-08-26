@@ -54,6 +54,9 @@ def load():
         # COSTS
         COMMISSION=backtest["commission"],
         SLIPPAGE=backtest["slippage"],
-        SPREAD_PERCENT=backtest.get("spread_percent", 0.0)
+        SPREAD_PERCENT=backtest.get("spread_percent", 0.0),
+        MAX_SPREAD_PERCENT=backtest.get("max_spread_percent", None),
+        UNMEASURED_SPREAD_PERCENT=backtest.get(
+            "unmeasured_spread_percent", None)
 
     )
