@@ -55,7 +55,9 @@ def load_minute_turnover(database_path, sector_map):
         f"substr(minute, 12, 5) AS Minute, ticker, high, low, close, volume "
         f"FROM {MINUTE_TABLE} WHERE volume > 0"
     )
-    with sqlite3.connect(database_path) as connection:
+    # Read-only: the collector owns this database and may be writing to it now.
+    # A reader must not be able to alter it, or hold a write lock against it.
+    with sqlite3.connect(f"file:{database_path}?mode=ro", uri=True) as connection:
         frame = pd.read_sql(query, connection)
 
     frame = frame[(frame["Minute"] >= SESSION_OPEN) & (frame["Minute"] <= SESSION_CLOSE)]

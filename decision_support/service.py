@@ -28,6 +28,7 @@ from decision_support.quality import (
 )
 from decision_support.reporting import write_daily_report
 from decision_support.sector_analysis import load_sector_map, sector_summary
+from sector_flow.strength import load_latest_strength
 from providers.symbol_mapping import to_engine_symbol, to_rubix_symbol
 
 
@@ -300,14 +301,39 @@ class DecisionSupportService:
         }
 
     def _apply_sector_strength(self, rows, sectors):
-        if sectors is None or sectors.empty:
+        """Score each row's sector, preferring an independently measured strength.
+
+        ``sector_summary`` derives a sector's strength from the Edge and
+        Momentum of the very rows being scored, and that strength then feeds
+        back into their Edge scores -- the quantity is partly a function of
+        itself. ``sector_flow`` measures it instead from how far the sector's
+        traded value exceeded its own trailing median, which nothing in this
+        scan can influence, so it is preferred wherever it is available.
+
+        The circular value remains the fallback. It is a weaker measurement,
+        but it is a real one, and dropping the factor entirely would silently
+        change what an Edge score means.
+        """
+
+        derived = {}
+        if sectors is not None and not sectors.empty:
+            derived = {
+                str(row["Sector"]): float(row["SectorStrength"])
+                for _, row in sectors.iterrows() if str(row["Sector"]) != "Unknown"
+            }
+        measured = load_latest_strength(
+            self.config.get("sector_flow_database", "data/sector_flow.db")
+        )
+        if not derived and not measured:
             return
-        strengths = {
-            str(row["Sector"]): float(row["SectorStrength"])
-            for _, row in sectors.iterrows() if str(row["Sector"]) != "Unknown"
-        }
+
         for row in rows:
-            strength = strengths.get(str(row.get("Sector")))
+            sector = str(row.get("Sector"))
+            strength = measured.get(sector)
+            source = "LIQUIDITY"
+            if strength is None:
+                strength, source = derived.get(sector), "SCAN_DERIVED"
+            row["SectorStrengthSource"] = source if strength is not None else None
             row["SectorStrength"] = strength
             row["EdgeFactors"]["sector_strength"] = strength
             edge = calculate_edge_score(

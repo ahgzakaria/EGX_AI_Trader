@@ -32,6 +32,7 @@ from dashboard.backtest_state import (
 from dashboard.ai_stock_analysis import show_ai_stock_analysis
 from dashboard.home import show_dashboard, show_stock_details_page
 from dashboard.orb_signals import show_orb_signals
+from dashboard.sector_flow import show_sector_flow
 from dashboard.settings import show_settings
 from dashboard.swing_signals import show_swing_signals
 from dashboard.system_health import show_system_health
@@ -64,6 +65,12 @@ navigation = st.navigation({
             title="Swing Breakout",
             icon="📈",
             url_path="swing-breakout",
+        ),
+        st.Page(
+            show_sector_flow,
+            title="Sector Liquidity",
+            icon="🌊",
+            url_path="sector-liquidity",
         ),
         st.Page(show_watchlist, title="Watchlist", icon="⭐"),
         st.Page(show_stock_details_page, title="Stock Details", icon="🔎"),
