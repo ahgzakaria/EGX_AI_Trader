@@ -18,7 +18,7 @@ import sqlite3
 import pandas as pd
 
 from core.data_provider import load_history, provider_purpose
-from core.symbols import load_symbols
+from core.universe import UNIVERSE_SOURCE, active_engine_symbols
 from decision_support.sector_analysis import load_sector_map
 from sector_flow.history import (
     DEFAULT_BASELINE_WINDOW,
@@ -82,7 +82,7 @@ def load_universe_frames(symbols, sector_map, purpose=DEFAULT_PURPOSE,
     return frames, pd.DataFrame(outcomes)
 
 
-def build(symbols_path="data/symbols.csv", sector_file="data/sectors.csv",
+def build(universe_path=None, sector_file="data/sectors.csv",
           purpose=DEFAULT_PURPOSE, method="typical", period=None, interval=None,
           min_bars=None, window=DEFAULT_BASELINE_WINDOW,
           share_lookback=DEFAULT_SHARE_LOOKBACK):
@@ -93,7 +93,7 @@ def build(symbols_path="data/symbols.csv", sector_file="data/sectors.csv",
         raise ValueError(
             f"No sector map at {sector_file}. Run scripts/build_sector_map.py first."
         )
-    symbols = load_symbols(symbols_path)
+    symbols = list(active_engine_symbols(universe_path))
     frames, outcomes = load_universe_frames(
         symbols, sector_map, purpose=purpose, period=period,
         interval=interval, min_bars=min_bars,
@@ -105,6 +105,7 @@ def build(symbols_path="data/symbols.csv", sector_file="data/sectors.csv",
     metadata = {
         "built_at": datetime.now(timezone.utc).astimezone().isoformat(),
         "purpose": purpose,
+        "universe_source": str(universe_path or UNIVERSE_SOURCE),
         "turnover_method": method,
         "baseline_window": window,
         "share_lookback": share_lookback,

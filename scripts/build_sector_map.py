@@ -1,10 +1,19 @@
 """Build data/sectors.csv from the EGX active-listing workbook.
 
-The workbook is the security master: EGX official sector per ticker, mapped to
-the 18-sector taxonomy, with ISIN and market capitalisation. This script only
-transcribes it. Universe symbols the workbook does not classify stay unmapped
-and are reported, never guessed -- decision_support.sector_analysis treats an
-absent ticker as "Unknown" by design.
+The workbook is the sector authority: EGX's official sector per company, mapped
+to the 18-sector taxonomy. The operational universe (core.universe) is the
+symbol authority. This script joins the two and transcribes the result; it never
+invents a classification.
+
+The join is on **ISIN first, ticker second**. ISIN is the stable identifier --
+EGX tickers are reused and renamed -- but neither key alone is sufficient here:
+ISIN matches 226 of the 241 active symbols and ticker matches 220, while the two
+together reach 232. Which key produced each row is recorded in ``MatchedBy`` so
+a ticker-only match can be reviewed.
+
+Symbols the workbook does not classify stay unmapped and are reported.
+``decision_support.sector_analysis`` treats an absent ticker as "Unknown" by
+design, and that contract is preserved.
 """
 
 from __future__ import annotations
@@ -19,8 +28,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from core.symbols import load_symbols
-from providers.symbol_mapping import to_egx_code, to_engine_symbol
+from core.universe import UNIVERSE_SOURCE, active_universe
 
 
 DEFAULT_WORKBOOK = r"D:\EGX_00\EGX_Active_Stocks_By_Sector_Market_Cap.xlsx"
@@ -30,34 +38,34 @@ STOCK_SHEET = "All_Stocks"
 EXCEPTION_SHEET = "Exceptions"
 
 
-def read_workbook_sectors(workbook):
-    """Return one row per classified equity, keyed by the engine ticker."""
+def _key(value):
+    return str(value).strip().upper()
+
+
+def read_workbook(workbook):
+    """Return the workbook's classified equities indexed by ISIN and by ticker."""
 
     frame = pd.read_excel(workbook, sheet_name=STOCK_SHEET)
     missing = {"EGX Ticker", "Sector"} - set(frame.columns)
     if missing:
         raise ValueError(f"{STOCK_SHEET} is missing required columns: {sorted(missing)}")
 
-    rows = []
+    by_isin, by_code = {}, {}
     for _, row in frame.iterrows():
-        code = str(row["EGX Ticker"]).strip().upper()
         sector = str(row["Sector"]).strip()
-        if not code or code in {"NAN", "NONE"} or not sector or sector.lower() == "nan":
+        code = _key(row["EGX Ticker"])
+        if not sector or sector.lower() == "nan" or not code or code == "NAN":
             continue
         market_cap = row.get("Market Cap (EGP)")
-        rows.append({
-            "Ticker": to_engine_symbol(code),
+        record = {
             "Sector": sector,
-            "CompanyName": str(row.get("Company Name", "")).strip(),
-            "ISIN": str(row.get("ISIN", "")).strip(),
             "MarketCapEGP": "" if pd.isna(market_cap) else int(market_cap),
-        })
-
-    mapped = pd.DataFrame(rows)
-    duplicates = mapped["Ticker"][mapped["Ticker"].duplicated()].tolist()
-    if duplicates:
-        raise ValueError(f"Workbook lists a ticker more than once: {sorted(set(duplicates))}")
-    return mapped.sort_values("Ticker").reset_index(drop=True)
+        }
+        isin = _key(row.get("ISIN", ""))
+        if isin and isin != "NAN":
+            by_isin[isin] = record
+        by_code[code] = record
+    return by_isin, by_code
 
 
 def read_excluded_instruments(workbook):
@@ -69,39 +77,58 @@ def read_excluded_instruments(workbook):
         return {}
     if "EGX Ticker" not in frame or "Issue Type" not in frame:
         return {}
-    excluded = {}
-    for _, row in frame.iterrows():
-        issue = str(row.get("Issue Type", "")).strip()
-        if not issue.lower().startswith("excluded"):
+    return {
+        _key(row["EGX Ticker"]).split("_")[0]: str(row["Issue Type"]).strip()
+        for _, row in frame.iterrows()
+        if str(row.get("Issue Type", "")).strip().lower().startswith("excluded")
+    }
+
+
+def build_rows(universe, by_isin, by_code, excluded):
+    """Return the mapped rows and the unmapped reconciliation rows."""
+
+    mapped, unmapped = [], []
+    for record in universe:
+        isin = _key(record.isin)
+        code = _key(record.canonical_symbol)
+        # ISIN is the stable identifier, so it decides when both keys match.
+        match, matched_by = by_isin.get(isin), "ISIN"
+        if match is None:
+            match, matched_by = by_code.get(code), "TICKER"
+
+        if match is None:
+            issue = excluded.get(code)
+            unmapped.append({
+                "Ticker": record.engine_symbol,
+                "EGXCode": code,
+                "ISIN": record.isin,
+                "CompanyName": record.company_name,
+                "Reason": "NON_EQUITY_INSTRUMENT" if issue else "NOT_IN_WORKBOOK",
+                "Detail": issue or "No ISIN or ticker match in the listing workbook.",
+            })
             continue
-        excluded[to_egx_code(row["EGX Ticker"])] = issue
-    return excluded
 
-
-def reconcile(universe, mapped, excluded):
-    """Return the universe symbols the workbook does not classify."""
-
-    known = set(mapped["Ticker"])
-    unmapped = []
-    for symbol in universe:
-        if symbol in known:
-            continue
-        code = to_egx_code(symbol)
-        issue = excluded.get(code)
-        unmapped.append({
-            "Ticker": symbol,
-            "EGXCode": code,
-            "Reason": "NON_EQUITY_INSTRUMENT" if issue else "NOT_IN_ACTIVE_LISTING",
-            "Detail": issue or "Absent from the workbook's active listed equities.",
+        mapped.append({
+            "Ticker": record.engine_symbol,
+            "Sector": match["Sector"],
+            "CompanyName": record.company_name,
+            "ISIN": record.isin,
+            "MarketCapEGP": match["MarketCapEGP"],
+            "MatchedBy": matched_by,
         })
-    return pd.DataFrame(unmapped)
+
+    return (
+        pd.DataFrame(mapped).sort_values("Ticker").reset_index(drop=True),
+        pd.DataFrame(unmapped).sort_values("Ticker").reset_index(drop=True)
+        if unmapped else pd.DataFrame(),
+    )
 
 
-def build(workbook, symbols_path, output_path, report_path):
-    mapped = read_workbook_sectors(workbook)
+def build(workbook, output_path, report_path, universe_path=None):
+    by_isin, by_code = read_workbook(workbook)
     excluded = read_excluded_instruments(workbook)
-    universe = load_symbols(symbols_path)
-    unmapped = reconcile(universe, mapped, excluded)
+    universe = active_universe(universe_path)
+    mapped, unmapped = build_rows(universe, by_isin, by_code, excluded)
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     mapped.to_csv(output_path, index=False)
@@ -113,22 +140,25 @@ def build(workbook, symbols_path, output_path, report_path):
 def main():
     parser = argparse.ArgumentParser(description="Build the EGX sector map from the listing workbook.")
     parser.add_argument("--workbook", default=DEFAULT_WORKBOOK)
-    parser.add_argument("--symbols", default="data/symbols.csv")
+    parser.add_argument("--universe", default=None, help=f"Defaults to {UNIVERSE_SOURCE}")
     parser.add_argument("--output", default=DEFAULT_OUTPUT)
     parser.add_argument("--report", default=DEFAULT_REPORT)
     args = parser.parse_args()
 
-    mapped, unmapped, universe = build(args.workbook, args.symbols, args.output, args.report)
-    covered = len(universe) - len(unmapped)
-    print(f"sector map      : {len(mapped)} tickers across {mapped['Sector'].nunique()} sectors -> {args.output}")
-    print(f"universe        : {covered}/{len(universe)} symbols classified ({covered / len(universe):.1%})")
+    mapped, unmapped, universe = build(args.workbook, args.output, args.report, args.universe)
+    print(f"universe        : {len(universe)} active symbols ({args.universe or UNIVERSE_SOURCE})")
+    print(f"sector map      : {len(mapped)} classified across {mapped['Sector'].nunique()} sectors"
+          f" -> {args.output}")
+    print(f"coverage        : {len(mapped) / len(universe):.1%}")
+    print(f"matched by      : {mapped['MatchedBy'].value_counts().to_dict()}")
     print(f"unmapped        : {len(unmapped)} -> {args.report}")
     if not unmapped.empty:
         for reason, count in unmapped["Reason"].value_counts().items():
             print(f"  {reason}: {count}")
+        print(f"  {', '.join(unmapped['EGXCode'])}")
     print()
     print(mapped["Sector"].value_counts().to_string())
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

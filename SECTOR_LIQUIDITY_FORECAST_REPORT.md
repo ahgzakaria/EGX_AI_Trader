@@ -2,11 +2,12 @@
 
 Builds on Phases 1 & 2 (see `SECTOR_LIQUIDITY_FLOW_REPORT.md`).
 
-**Headline: the learned model does not beat a 5-session moving average.**
-It beats persistence comfortably (+0.240 skill), but persistence is the weaker
-baseline, and the margin over the stronger one is +0.002 — indistinguishable
-from nothing. The shipped default forecaster is therefore the 5-session mean,
-and the model is returned beside it for comparison, not in place of it.
+**Headline: the learned model does not reliably beat a 5-session moving
+average.** It beats persistence comfortably (+0.249 skill), but persistence is
+the weaker baseline, and the margin over the stronger one is +0.013 — below the
++0.02 threshold this module treats as usable. The shipped default forecaster is
+therefore the 5-session mean, and the model is returned beside it for
+comparison, not in place of it.
 
 ---
 
@@ -47,44 +48,50 @@ implementation to drift.
 
 ## Results — walk-forward, 5 folds
 
-Dataset: **61,515 rows, 4,807 sessions, 2001-08-14 → 2026-08-24.**
-Scored on 60,197 out-of-sample predictions across 4,005 sessions.
+Dataset: **61,533 rows, 4,808 sessions, 2001-08-14 → 2026-08-25**, built from
+the 241-symbol operational universe. Scored on 60,212 out-of-sample predictions
+across 4,005 sessions.
 
 | Metric | Model | Persistence | Mean-5 |
 | --- | --- | --- | --- |
-| MAE | 0.021486 | 0.023448 | **0.021124** |
-| RMSE | 0.044940 | 0.051566 | — |
-| Rank correlation | 0.8994 | **0.9011** | — |
-| Top-3 hit rate | **0.8434** | 0.8166 | — |
+| MAE | 0.021413 | 0.023428 | **0.021104** |
+| Rank correlation | **0.9022** | 0.9014 | — |
+| Top-3 hit rate | **0.8430** | 0.8165 | — |
 
 | Skill score | Value |
 | --- | --- |
-| vs persistence | **+0.240** |
-| vs mean-5 | **+0.003** |
-| vs best baseline | **+0.002** |
+| vs persistence | **+0.249** |
+| vs mean-5 | **+0.013** |
+| vs best baseline | **+0.013** |
 
-**Mean-5 beats the model on MAE. Persistence beats the model on rank
-correlation.** The model's only clear win is top-3 hit rate (+2.7pp).
+**Mean-5 still beats the model on MAE.** The model wins narrowly on rank
+correlation and clearly on top-3 hit rate (+2.7pp), but +0.013 skill against the
+strongest baseline is below the +0.02 line and is reported as MARGINAL, not as
+a working forecaster.
+
+An earlier run of the same code against the **retired** 265-symbol universe
+scored +0.003 against mean-5. Correcting the universe (Phase 1) roughly
+quadrupled the margin without changing the verdict — worth recording, because it
+shows the ceiling here is a data problem before it is a model problem.
 
 ### Per fold
 
 | Fold | Test window | Rows | MAE | MAE persistence | Skill vs persistence |
 | --- | --- | --- | --- | --- | --- |
-| 1 | 2006-03-16 → 2010-04-01 | 3,215 | 0.0850 | 0.0800 | +0.133 |
-| 2 | 2010-04-06 → 2014-06-17 | 14,268 | 0.0190 | 0.0203 | +0.294 |
-| 3 | 2014-06-18 → 2018-07-12 | 13,956 | 0.0178 | 0.0205 | +0.331 |
-| 4 | 2018-07-16 → 2022-08-31 | 14,340 | 0.0189 | 0.0221 | +0.320 |
-| 5 | 2022-09-01 → 2026-08-24 | 14,418 | 0.0159 | 0.0182 | +0.298 |
-
-Skill against persistence is stable at roughly +0.30 across folds. That
+Skill against persistence is stable at roughly +0.30 across folds (per-fold rows
+are written to `reports/sector_forecast_folds_level.csv`). That
 stability is real but not useful: it measures how much better than "tomorrow =
 today" a smoother is, and a 5-session mean captures nearly all of it for free.
 
 ### Variants tested
 
+Measured on the retired universe unless noted; the level/residual pair was
+re-measured on the corrected universe and moved together.
+
 | Variant | Skill vs mean-5 |
 | --- | --- |
-| All history, level target | **+0.003** |
+| All history, level target (corrected universe) | **+0.013** |
+| All history, residual target (corrected universe) | −0.012 |
 | All history, residual target (learn mean-5's error) | −0.011 |
 | All history, + sector identity as a categorical feature | −0.004 |
 | 2026 only (149 sessions, post Sunday-fix) | −0.117 |
@@ -106,9 +113,9 @@ average outperforms on MAE. `_verdict()` now scores against **whichever naive
 baseline is hardest to beat**, and explicitly calls out the case where the model
 beats the weak baseline but not the strong one:
 
-> NO SKILL: the model does not beat the best naive baseline (skill −0.011). Do
-> not use these forecasts. It does beat persistence (+0.230), but persistence is
-> the weaker baseline and that margin is mostly smoothing.
+> MARGINAL: skill +0.013 over the best naive baseline is too small to rely on.
+> Treat as unproven. It does beat persistence (+0.249), but persistence is the
+> weaker baseline and that margin is mostly smoothing.
 
 Four tests pin this behaviour, including
 `test_skill_against_best_baseline_never_exceeds_the_weaker_one`.
@@ -118,7 +125,7 @@ Four tests pin this behaviour, including
 * `tests/test_sector_forecast.py` — 20 tests: target alignment against the next
   retained session, session-blocked folds, share normalisation, skill-score
   correctness at the 0 and 1 endpoints, and verdict wording at each threshold.
-* `tests/test_sector_flow.py` — 20 tests (Phases 1 & 2) still pass.
+* `tests/test_sector_flow.py` — 23 tests (Phases 1 & 2) still pass.
 
 ## Running it
 

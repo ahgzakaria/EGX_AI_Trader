@@ -1,6 +1,7 @@
 """Tests for the sector map build and the per-sector liquidity history."""
 
 from pathlib import Path
+from types import SimpleNamespace
 import sqlite3
 
 import numpy as np
@@ -163,29 +164,82 @@ def test_sector_map_matches_the_universe_convention():
     assert "Unknown" not in set(mapping.values())
 
 
-def test_reconciliation_separates_non_equity_from_delisted():
-    from scripts.build_sector_map import reconcile
+def universe_record(code, isin, name="Example"):
+    return SimpleNamespace(
+        canonical_symbol=code, engine_symbol=f"{code}.CA",
+        isin=isin, company_name=name,
+    )
 
-    mapped = pd.DataFrame({"Ticker": ["COMI.CA"], "Sector": ["Banks"]})
+
+def test_reconciliation_separates_non_equity_from_missing():
+    from scripts.build_sector_map import build_rows
+
+    universe = [
+        universe_record("COMI", "EGS60121C018"),
+        universe_record("EGX30ETF", ""),
+        universe_record("ESRS", "EGS27101C012"),
+    ]
+    by_isin = {"EGS60121C018": {"Sector": "Banks", "MarketCapEGP": 1}}
     excluded = {"EGX30ETF": "Excluded - non-equity instrument"}
-    unmapped = reconcile(["COMI.CA", "EGX30ETF.CA", "ESRS.CA"], mapped, excluded)
+
+    mapped, unmapped = build_rows(universe, by_isin, {}, excluded)
+    assert list(mapped["Ticker"]) == ["COMI.CA"]
 
     reasons = dict(zip(unmapped["Ticker"], unmapped["Reason"]))
-    assert "COMI.CA" not in reasons
     assert reasons["EGX30ETF.CA"] == "NON_EQUITY_INSTRUMENT"
-    assert reasons["ESRS.CA"] == "NOT_IN_ACTIVE_LISTING"
+    assert reasons["ESRS.CA"] == "NOT_IN_WORKBOOK"
+
+
+def test_isin_wins_when_ticker_points_at_a_different_company():
+    """EGX reuses tickers, so a ticker collision must not override the ISIN."""
+
+    from scripts.build_sector_map import build_rows
+
+    universe = [universe_record("ABCD", "EGS00000C001")]
+    by_isin = {"EGS00000C001": {"Sector": "Banks", "MarketCapEGP": 10}}
+    by_code = {"ABCD": {"Sector": "Real Estate", "MarketCapEGP": 20}}
+
+    mapped, _ = build_rows(universe, by_isin, by_code, {})
+    assert mapped["Sector"].iloc[0] == "Banks"
+    assert mapped["MatchedBy"].iloc[0] == "ISIN"
+
+
+def test_ticker_match_is_recorded_when_the_isin_is_absent():
+    from scripts.build_sector_map import build_rows
+
+    universe = [universe_record("ABCD", "")]
+    by_code = {"ABCD": {"Sector": "Real Estate", "MarketCapEGP": 20}}
+
+    mapped, unmapped = build_rows(universe, {}, by_code, {})
+    assert unmapped.empty
+    assert mapped["MatchedBy"].iloc[0] == "TICKER"
+    assert mapped["Sector"].iloc[0] == "Real Estate"
 
 
 def test_shipped_reconciliation_report_covers_every_unmapped_symbol():
-    from core.symbols import load_symbols
+    """The map plus the report must together account for the whole universe."""
+
+    from core.universe import active_engine_symbols
 
     report = Path("reports/sector_map_reconciliation.csv")
     assert report.is_file(), "run scripts/build_sector_map.py"
     unmapped = set(pd.read_csv(report)["Ticker"])
     mapped = set(load_sector_map("data/sectors.csv"))
-    universe = set(load_symbols("data/symbols.csv"))
+    universe = set(active_engine_symbols())
     assert universe - mapped == unmapped
     assert not (unmapped & mapped)
+
+
+def test_sector_map_is_built_from_the_operational_universe():
+    """Guards against rebuilding the map from the retired 265-symbol list."""
+
+    from core.universe import active_engine_symbols
+
+    mapped = set(load_sector_map("data/sectors.csv"))
+    universe = set(active_engine_symbols())
+    # Every classified ticker must be an operational symbol, never an archived one.
+    assert mapped.issubset(universe)
+    assert len(mapped) / len(universe) > 0.9
 
 
 def partial_last_session(frames):

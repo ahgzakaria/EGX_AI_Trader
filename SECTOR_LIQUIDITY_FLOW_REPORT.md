@@ -12,30 +12,56 @@ any frozen engine file.
 
 ## Phase 1 — Sector map
 
-`scripts/build_sector_map.py` transcribes the EGX active-listing workbook
-(`EGX_Active_Stocks_By_Sector_Market_Cap.xlsx`, EGX official sector mapped to the
-18-sector taxonomy) into the file the existing decision-support layer already
-expects.
+`scripts/build_sector_map.py` joins two authorities and transcribes the result:
+the EGX active-listing workbook (`EGX_Active_Stocks_By_Sector_Market_Cap.xlsx`,
+official EGX sector mapped to the 18-sector taxonomy) is the **sector**
+authority; `core.universe` is the **symbol** authority.
 
 **Outputs**
 
 | File | Contents |
 | --- | --- |
-| `data/sectors.csv` | 250 tickers x 18 sectors, engine `.CA` convention, with `CompanyName`, `ISIN`, `MarketCapEGP` |
+| `data/sectors.csv` | 232 tickers x 18 sectors, engine `.CA` convention, with `CompanyName`, `ISIN`, `MarketCapEGP`, `MatchedBy` |
 | `reports/sector_map_reconciliation.csv` | every universe symbol the workbook does not classify, with the reason |
 
-**Coverage: 222 / 265 universe symbols (83.8%).** The 43 unmapped:
+### The join is on ISIN first, ticker second
 
-* **3 non-equity instruments** — `EGREF`, `EGX30ETF`, `KASABF`. The workbook's own
-  Exceptions sheet excludes them.
-* **40 absent from the active listing** — e.g. `ESRS`, `ALEX`, `ESAC`. Presumed
-  suspended or delisted.
+EGX tickers are reused and renamed, so ISIN is the stable key — but neither key
+alone is sufficient:
+
+| Match key | Active symbols matched |
+| --- | --- |
+| ISIN only | 226 |
+| Ticker only | 220 |
+| **Either** | **232** |
+
+ISIN decides when both match. `MatchedBy` records which key produced each row,
+so the 6 ticker-only matches can be reviewed.
+
+**Coverage: 232 / 241 active symbols (96.3%).** The 9 unmapped:
+
+* **2 non-equity instruments** — `EGREF`, `KASABF`, excluded by the workbook's own
+  Exceptions sheet.
+* **7 absent from the workbook** — `FAITA`, `FTNS`, `HBCO`, `NULL`, `SEIGA`,
+  `UTOP`, `VLMR`.
+
+`NULL` is a literal ticker in `data/universe/egx_universe.csv` for "Fitness
+Prime", carrying no ISIN and `UNVERIFIED_NO_FEED_OBSERVATION`. It looks like an
+artifact of the EODHD exchange-symbol list rather than a real security. It is
+reported, not silently dropped.
 
 Unmapped symbols stay `Unknown` and are excluded from sector aggregates. Nothing
 is guessed: `decision_support/sector_analysis.py` was written "without inventing
-unavailable classifications" and that contract is preserved. Tickers are
-converted with `providers.symbol_mapping.to_engine_symbol`, not by string
-concatenation.
+unavailable classifications" and that contract is preserved.
+
+### A correction worth recording
+
+The first version of this map was built from `data/symbols.csv` — the **retired**
+265-symbol universe, archived by the EODHD 241 migration. It reported 83.8%
+coverage, and roughly 40 of its "unmapped, presumed delisted" symbols were simply
+not operational any more. `core.symbols.load_symbols` refuses that file outright,
+and a test now pins the map to `core.universe`
+(`test_sector_map_is_built_from_the_operational_universe`).
 
 **Side effect (intended):** `config/settings.json` has always pointed at
 `data/sectors.csv`, but the file never existed, so `_apply_sector_strength` in
@@ -55,7 +81,14 @@ weight contributed nothing. Shipping the map activates that existing path. The
 
 Market data is read **only** through `core.data_provider.load_history`, so the
 current-research routing (EODHD / validated local + Rubix Daily Bridge) and its
-provenance metadata apply exactly as they do for Scanner and Dashboard.
+provenance metadata apply exactly as they do for Scanner and Dashboard. Symbols
+come from `core.universe.active_engine_symbols()`, and the universe path is
+recorded in each build's provenance row.
+
+**Latest build:** 198 of 232 classified symbols loaded (34 unavailable, 9
+unclassified) across **5,844 sessions x 18 sectors, 2001-08-14 → 2026-08-26**.
+Providers: 186 eodhd, 10 local_plus_rubix, 2 eodhd_plus_rubix. 4,816 sessions
+pass the coverage guard.
 
 **Per (session, sector):** `Turnover`, `TurnoverShare`, `MarketTurnover`,
 `MarketSymbols`, `Symbols`, `Advancers`, `Decliners`, `Breadth`, `MeanReturn`,
@@ -99,6 +132,11 @@ Fixed by the `SessionCoverage` guard. The build now reports the latest
 *complete* session and states explicitly when the newest stored session was
 skipped.
 
+The guard was later observed working in both directions: rebuilt after the
+2026-08-26 session closed, that same date passed the coverage check with a full
+panel and became the latest complete session. The guard rejects a partial day,
+not a particular date.
+
 ### 2. EODHD is missing Sunday bars for ~40% of EGX symbols before 2026
 
 Sunday is a full EGX trading day. The coverage guard flagged roughly one session
@@ -135,10 +173,11 @@ sample of days.
 
 ## Verification
 
-* `tests/test_sector_flow.py` — **20 tests**, covering the turnover proxy,
+* `tests/test_sector_flow.py` — **23 tests**, covering the turnover proxy,
   per-sector (not cross-frame) feature computation, trailing-baseline
   correctness against manual arrays, share normalisation, the coverage guard,
-  the reconciliation split, and persistence round-trip.
+  ISIN-over-ticker precedence, the guard against the retired universe, the
+  reconciliation split, and persistence round-trip.
 * `tests/test_decision_support.py` — 17 tests still pass with the sector map
   present.
 * Full suite: 3 failures, all pre-existing on this branch and untouched by this
@@ -147,13 +186,16 @@ sample of days.
 
 ## Running it
 
-```
+```bash
 venv/Scripts/python.exe scripts/build_sector_map.py
+```
+
+```bash
 venv/Scripts/python.exe scripts/build_sector_flow.py
 ```
 
-The first sector-flow build is slow (~25 min: full universe, 10y, through the
-Rubix Daily Bridge). Progress is logged every 25 symbols.
+The sector-flow build takes ~35 min (full universe, 10y, through the Rubix Daily
+Bridge). Progress is logged every 25 symbols.
 
 ## Not included
 

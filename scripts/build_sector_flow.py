@@ -32,7 +32,8 @@ DEFAULT_COVERAGE_REPORT = "reports/sector_flow_coverage.csv"
 
 def main():
     parser = argparse.ArgumentParser(description="Build the EGX sector liquidity history.")
-    parser.add_argument("--symbols", default="data/symbols.csv")
+    parser.add_argument("--universe", default=None,
+                        help="Universe CSV; defaults to core.universe.UNIVERSE_SOURCE.")
     parser.add_argument("--sector-file", default="data/sectors.csv")
     parser.add_argument("--purpose", default=DEFAULT_PURPOSE,
                         choices=["dashboard", "scanner", "forward_testing"])
@@ -48,7 +49,7 @@ def main():
     )
     load_project_environment()
     history, outcomes, metadata = build(
-        symbols_path=args.symbols, sector_file=args.sector_file,
+        universe_path=args.universe, sector_file=args.sector_file,
         purpose=args.purpose, method=args.method, period=args.period,
     )
 
