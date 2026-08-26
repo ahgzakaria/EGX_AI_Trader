@@ -32,7 +32,10 @@ def _csv(name):
 
 
 def main():
-    mapping = pd.read_csv(REP.parent / "eodhd_symbol_mapping.csv")
+    # keep_default_na: EGX lists a security whose ticker is literally "NULL"
+    # (Fitness Prime). Left to pandas it becomes NaN and then the string "NAN",
+    # which would write a routing entry for a symbol that does not exist.
+    mapping = pd.read_csv(REP.parent / "eodhd_symbol_mapping.csv", keep_default_na=False)
     results = _csv("full_universe_symbol_results.csv")
     queue = _csv("manual_queue_resolution.csv")
     ca = _csv("corporate_action_inventory.csv")
@@ -52,6 +55,12 @@ def main():
     if not bt.empty:
         for _, r in bt[bt["window"] == "1y"].iterrows():
             bt1y[r["symbol"]] = str(r.get("classification"))
+
+    # Every symbol any evidence input has something to say about.
+    evaluated = set()
+    for frame in (results, queue, ca, reval, bt):
+        if not frame.empty and "symbol" in frame:
+            evaluated |= {str(v).upper() for v in frame["symbol"].dropna()}
 
     entries = []
     for _, m in mapping.iterrows():
@@ -74,6 +83,19 @@ def main():
 
         q, c = str(qcls.get(sym, "")), str(cat.get(sym, ""))
         rv = str(revcls.get(sym, ""))
+        # The final `else` below grants TIER_A_FORWARD_SAFE with the reason
+        # "recent prices validated, no scale issue, no recent split". For a
+        # symbol that appears in none of the evidence inputs, not one of those
+        # things was checked. Being mapped to EODHD is not evidence about the
+        # data behind the mapping, so such a symbol is held rather than
+        # promoted on a justification that was never established.
+        if sym not in evaluated:
+            e.update(tier="TIER_D_UNSUPPORTED_OR_MANUAL", forward_primary=None,
+                     evidence_status="not_evaluated", risk_level="hold",
+                     approval_reason="mapped to EODHD but absent from every evidence "
+                     "audit; re-run the audits before any tier can be justified")
+            entries.append(e); continue
+
         if sym == "ORAS":
             e.update(tier="TIER_B_FORWARD_EODHD_NO_FALLBACK", forward_primary="eodhd",
                      historical_backtest_provider="eodhd_or_local", fallback_provider=None,

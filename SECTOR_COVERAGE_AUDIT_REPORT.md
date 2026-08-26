@@ -143,10 +143,45 @@ human confirms it rather than the software guessing.
 3. Re-run the EODHD evidence audits that the tier generator consumes.
 4. Regenerate the routing review with `scripts/build_eodhd_routing_tiers.py`.
 
-**None of this was done here.** Step 1 is an operational decision about real
-securities; steps 2–4 rebuild approval-gated artifacts (`approved`,
-`evidence_status`, `last_reviewed`) that decide which provider serves which
-symbol across the whole application. Neither belongs to a sector-liquidity task.
+### Steps 2 and 4 were subsequently authorised and done; 1 and 3 were not
+
+**Step 2 — symbol mapping rebuilt.** `scripts/audit_eodhd_symbol_mapping.py`
+already read the live universe; it had simply never been re-run. Against
+EODHD's real EGX list (242 symbols) the result is **241/241 `VERIFIED_EXACT`** —
+no not-found, no non-equity, no duplicates. Every one of the 16, QNBA and AUTO
+and ORMT included, is genuinely carried by EODHD. They were "unsupported" only
+because a file from 2026-07-23 did not name them.
+
+**Step 4 — routing review regenerated.** 265 entries become 241: 40 retired
+symbols removed, 16 active ones added, and **zero tier changes for the 225
+symbols that were already there**. The regeneration is a realignment to the
+universe, not a reclassification of anything previously evidenced. Every entry
+remains `approved: false`.
+
+Two defects in the generator were fixed on the way:
+
+* `pd.read_csv` read the EGX ticker `NULL` (Fitness Prime) as a missing value,
+  which would have written a routing entry for the symbol `"NAN"`.
+* The final branch granted `TIER_A_FORWARD_SAFE` — the most permissive tier —
+  with the reason *"recent prices validated, no scale issue, no recent split"*
+  to any mapped symbol that fell through. For the 15 symbols appearing in **no**
+  evidence audit, not one of those things had been checked. Being mapped to
+  EODHD is not evidence about the data behind the mapping. Such a symbol is now
+  held at `evidence_status: not_evaluated`, `risk_level: hold`, with the reason
+  *"mapped to EODHD but absent from every evidence audit; re-run the audits
+  before any tier can be justified"*.
+
+**The 16 are still blocked, and that is the correct outcome.** Loading `QNBA`
+after the rebuild still raises `DATA_UNAVAILABLE`. Steps 2 and 4 can align the
+artifacts with the universe; they cannot manufacture the evidence that decides a
+tier. Unblocking these symbols requires step 3 — re-running the coverage,
+corporate-action, revalidation and backtest audits — after which they would
+tier on their own merits. Promoting them without it was available and was
+declined.
+
+**Steps 1 and 3 were not done.** Step 1 is an operational decision about real
+securities, and the code deliberately routes it to a human. Step 3 rebuilds the
+evidence that `approved`, `evidence_status` and `last_reviewed` rest on.
 
 It is worth recording that this is the fourth artifact found in this work built
 from the retired 265-symbol universe, after `data/symbols.csv`, the sector map
