@@ -76,8 +76,6 @@ shows the ceiling here is a data problem before it is a model problem.
 
 ### Per fold
 
-| Fold | Test window | Rows | MAE | MAE persistence | Skill vs persistence |
-| --- | --- | --- | --- | --- | --- |
 Skill against persistence is stable at roughly +0.30 across folds (per-fold rows
 are written to `reports/sector_forecast_folds_level.csv`). That
 stability is real but not useful: it measures how much better than "tomorrow =
@@ -141,9 +139,39 @@ falling.
 
 ## Where to go next
 
-The result argues against tuning this model further — the ceiling on daily
+The result argues against tuning this model further — the ceiling on next-day
 sector-share prediction from daily bars alone looks close to the mean-5
-baseline. The more promising direction is Phase 4: **intraday**. The first 30
-minutes of `candles_1m` in `rubix_live_market.db` carry information the daily
-panel cannot, and "where is liquidity going *today*" is answerable in a way
-"where will it go tomorrow" appears not to be.
+baseline.
+
+A probe of the intraday data was run before recommending Phase 4, because the
+obvious claim — that the opening minutes carry information the daily panel
+cannot — turned out to be only half true.
+
+Predicting each sector's share of the **rest of the day** (07:30 UTC to close),
+over 26 usable days of `candles_1m`:
+
+| Predictor | Rank corr. | Top-3 | MAE |
+| --- | --- | --- | --- |
+| First 30 minutes of the same day | 0.910 | 0.756 | 0.01966 |
+| Yesterday's full day | 0.914 | 0.747 | 0.01732 |
+| **Even blend of the two** | **0.932** | **0.760** | **0.01514** |
+
+The opening window **alone is not better than yesterday** — it is slightly worse
+on MAE. But the two blended beat either alone, cutting MAE 12.6% below the daily
+baseline. The information is complementary, not redundant. The 50/50 weight is
+untuned, so this is not a fitted result.
+
+The target is deliberately the rest of the day, not the full day: the first 30
+minutes are part of the full day, so scoring against it is partly circular and
+inflates the opening window's apparent skill (0.933 rank against full-day versus
+0.910 against rest-of-day).
+
+Two constraints on acting on this:
+
+* Only **32 days** of 1-minute candles exist (2026-07-01 onward), and the
+  collector produced a single candle per ticker on 2026-08-17 and 2026-08-20 —
+  26 days survive. That is enough to measure a blend, nowhere near enough to
+  train and validate a model.
+* Intraday history only accumulates forward. Every day the collector misses is
+  permanently unrecoverable, which makes collector reliability a prerequisite for
+  this phase rather than a detail.
