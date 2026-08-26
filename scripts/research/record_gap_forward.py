@@ -127,10 +127,43 @@ def session_shapes(session: str, min_bars: int):
     return shapes
 
 
-def record(session: str, min_bars: int) -> None:
+#: A recorded prediction is never rewritten, so an early run against a
+#: half-collected session would be wrong permanently. These make an incomplete
+#: session refuse rather than record: the closing data normally lands within
+#: seconds of 14:30 Cairo, but collection does fail -- 2026-08-20 arrived eight
+#: hours late -- and the difference must not depend on the clock being generous.
+MINIMUM_SYMBOLS = 150
+LATEST_BAR_REQUIRED = "11:25"
+
+
+def session_is_complete(session: str, shapes) -> tuple[bool, str]:
+    if len(shapes) < MINIMUM_SYMBOLS:
+        return False, (f"only {len(shapes)} symbols have {{}} bars; "
+                       f"{MINIMUM_SYMBOLS} expected")
+    conn = sqlite3.connect(f"file:{MARKET_DB}?mode=ro", uri=True)
+    last = conn.execute(
+        "select max(substr(minute,12,5)) from candles_1m "
+        "where substr(minute,1,10) = ? and substr(minute,12,5) <= ?",
+        (session, SESSION_END)).fetchone()[0]
+    conn.close()
+    if not last or last < LATEST_BAR_REQUIRED:
+        return False, f"last bar is {last or 'absent'}, before {LATEST_BAR_REQUIRED}"
+    return True, ""
+
+
+def record(session: str, min_bars: int, force: bool = False) -> None:
     shapes = session_shapes(session, min_bars)
     if not shapes:
         raise SystemExit(f"no usable minute data for {session}")
+
+    complete, why = session_is_complete(session, shapes)
+    if not complete and not force:
+        raise SystemExit(
+            f"session {session} looks incomplete: {why.format(min_bars)}.\n"
+            "Nothing was recorded. A prediction is written once and never "
+            "rewritten, so recording a half-collected session would be wrong "
+            "permanently. Re-run once collection has finished, or pass --force "
+            "if you have checked and disagree.")
     shapes.sort(key=lambda s: -s["intraday"])
     cutoff = max(1, len(shapes) // 5)
     now = datetime.now(timezone.utc).isoformat()
@@ -257,15 +290,48 @@ def report() -> None:
     conn.close()
 
 
+def daily(min_bars: int) -> None:
+    """One invocation for a scheduler: record today, grade what today settles.
+
+    Grading session S needs S+1's opening price, so after today's close the
+    session that becomes gradeable is the previous one -- today's open is its
+    outcome. Recording today and grading yesterday is therefore the complete
+    daily unit, and doing both here means the scheduled task is a single
+    command with no ordering for anyone to get wrong.
+
+    Every step is idempotent, so a task that fires twice, or catches up after a
+    missed day, changes nothing it should not.
+    """
+    conn = sqlite3.connect(f"file:{MARKET_DB}?mode=ro", uri=True)
+    sessions = [r[0] for r in conn.execute(
+        "select distinct substr(minute,1,10) d from candles_1m "
+        "order by d desc limit 2")]
+    conn.close()
+    if not sessions:
+        raise SystemExit("no sessions in the market database")
+
+    record(sessions[0], min_bars)
+    if len(sessions) > 1:
+        print(f"grading {sessions[1]} -- its outcome is {sessions[0]}'s open")
+        grade(sessions[1])
+    else:
+        print("only one session exists; nothing is gradeable yet")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("action", choices=("record", "grade", "report"))
+    ap.add_argument("action", choices=("record", "grade", "report", "daily"))
     ap.add_argument("--session", help="YYYY-MM-DD; defaults to the latest session")
     ap.add_argument("--min-bars", type=int, default=160)
+    ap.add_argument("--force", action="store_true",
+                    help="record even if the session looks incomplete")
     args = ap.parse_args()
 
     if args.action == "report":
         report()
+        return
+    if args.action == "daily":
+        daily(args.min_bars)
         return
 
     session = args.session
@@ -275,7 +341,7 @@ def main() -> None:
             "select max(substr(minute,1,10)) from candles_1m").fetchone()[0]
         conn.close()
     if args.action == "record":
-        record(session, args.min_bars)
+        record(session, args.min_bars, args.force)
     else:
         grade(session)
 

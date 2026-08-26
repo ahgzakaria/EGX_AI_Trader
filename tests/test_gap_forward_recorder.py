@@ -142,3 +142,80 @@ def test_two_rule_versions_are_not_pooled(store, capsys):
     conn.close()
     recorder.report()
     assert "Not pooled" in capsys.readouterr().out
+
+# --- the completeness guard -------------------------------------------------
+#
+# A prediction is written once and never rewritten, so an early or degraded run
+# would be wrong permanently -- the same immutability that protects a standing
+# prediction from being improved also prevents a bad one being corrected. The
+# guard therefore has to refuse rather than record. 2026-08-20 is the real case:
+# collection failed and the session arrived eight and a half hours late.
+
+
+def _market_db(tmp_path, monkeypatch, last_bar):
+    path = tmp_path / "market.db"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE candles_1m (ticker TEXT, minute TEXT, open REAL, "
+        "high REAL, low REAL, close REAL, volume REAL)")
+    conn.execute(
+        "INSERT INTO candles_1m VALUES ('AAA', ?, 1, 1, 1, 1, 1)",
+        (f"2026-08-26T{last_bar}:00+00:00",))
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(recorder, "MARKET_DB", path)
+    return path
+
+
+def test_too_few_symbols_is_refused(tmp_path, monkeypatch):
+    _market_db(tmp_path, monkeypatch, "11:30")
+    shapes = [{"ticker": f"T{i}"} for i in range(recorder.MINIMUM_SYMBOLS - 1)]
+    complete, why = recorder.session_is_complete("2026-08-26", shapes)
+    assert not complete
+    assert "symbols" in why
+
+
+def test_a_session_ending_early_is_refused(tmp_path, monkeypatch):
+    # The 2026-08-20 shape: rows exist, but not through to the close.
+    _market_db(tmp_path, monkeypatch, "08:00")
+    shapes = [{"ticker": f"T{i}"} for i in range(recorder.MINIMUM_SYMBOLS + 10)]
+    complete, why = recorder.session_is_complete("2026-08-26", shapes)
+    assert not complete
+    assert recorder.LATEST_BAR_REQUIRED in why
+
+
+def test_a_complete_session_passes(tmp_path, monkeypatch):
+    _market_db(tmp_path, monkeypatch, "11:30")
+    shapes = [{"ticker": f"T{i}"} for i in range(recorder.MINIMUM_SYMBOLS + 10)]
+    assert recorder.session_is_complete("2026-08-26", shapes)[0]
+
+
+def test_refusing_writes_nothing(tmp_path, monkeypatch, store):
+    _market_db(tmp_path, monkeypatch, "08:00")
+    monkeypatch.setattr(
+        recorder, "session_shapes",
+        lambda *_a, **_k: [{"ticker": f"T{i}", "close": 10.0, "intraday": 1.0,
+                            "range": 2.0, "close_position": 0.5,
+                            "turnover": 5e7, "spread": 0.2}
+                           for i in range(recorder.MINIMUM_SYMBOLS + 10)])
+    with pytest.raises(SystemExit) as excinfo:
+        recorder.record("2026-08-26", 160)
+    assert "Nothing was recorded" in str(excinfo.value)
+    conn = recorder.connect()
+    assert conn.execute("select count(*) from gap_predictions").fetchone()[0] == 0
+    conn.close()
+
+
+def test_force_overrides_the_guard(tmp_path, monkeypatch, store):
+    # For someone who has checked and disagrees. It exists so the guard can be
+    # strict without becoming a dead end.
+    _market_db(tmp_path, monkeypatch, "08:00")
+    monkeypatch.setattr(
+        recorder, "session_shapes",
+        lambda *_a, **_k: [{"ticker": "AAA", "close": 10.0, "intraday": 1.0,
+                            "range": 2.0, "close_position": 0.5,
+                            "turnover": 5e7, "spread": 0.2}])
+    recorder.record("2026-08-26", 160, force=True)
+    conn = recorder.connect()
+    assert conn.execute("select count(*) from gap_predictions").fetchone()[0] == 1
+    conn.close()
