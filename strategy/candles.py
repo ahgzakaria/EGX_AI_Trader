@@ -1,15 +1,31 @@
 def candle_score(df, i):
 
-    # Every pattern below reads Open. Where the source supplies a carried-forward
-    # Open, two of them are structurally unreachable -- Bullish Engulfing needs
-    # Open < prev Close and Harami needs Open > prev Close, and both reduce to
-    # x < x when Open equals prev Close -- while Doji degenerates into "the close
-    # barely moved". The verdict is attached by providers.base_provider once per
-    # frame; it is reported here, and deliberately does NOT change the score.
-    # Gating on it would change which signals fire and is a separate decision.
+    # Every pattern below reads Open, so none of them mean what they are named
+    # for unless the Open was observed. Where the source carries it forward from
+    # the previous close -- 96-98% of bars in every source this project can
+    # reach -- Bullish Engulfing needs Open < prev Close and Harami needs
+    # Open > prev Close, both reducing to x < x; Doji degenerates into "the
+    # close barely moved from yesterday" and fires on 63% of trades; Morning
+    # Star becomes a comparison of lagged returns.
+    #
+    # So when the Open is *known* to be fabricated, this refuses to score and
+    # says why, rather than reporting a Morning Star that did not happen. It
+    # starts working again on its own the day a real Open arrives.
     integrity = (df.attrs or {}).get("open_integrity")
-    open_status = getattr(integrity, "verdict", None)
-    open_status = getattr(open_status, "value", None) or "UNKNOWN"
+    verdict = getattr(integrity, "verdict", None)
+    open_status = getattr(verdict, "value", None) or "UNKNOWN"
+
+    # Only a positive finding silences it. UNKNOWN means the frame lost its
+    # provenance in transit -- pandas `attrs` does not survive every operation
+    # -- and absence of evidence is not evidence of fabrication. Condemning on
+    # UNKNOWN would silently disable candles wherever attrs were dropped.
+    if verdict is not None and open_status in ("CARRIED_FORWARD", "OUT_OF_RANGE"):
+        return {
+            "score": 0,
+            "confidence": 0,
+            "reasons": [f"Candle patterns unavailable (Open {open_status})"],
+            "open_integrity": open_status
+        }
 
     if i < 2:
         return {

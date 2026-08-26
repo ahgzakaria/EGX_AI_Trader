@@ -28,7 +28,7 @@ def _frame(rows):
     return pd.DataFrame(rows, columns=["Open", "High", "Low", "Close"])
 
 
-def _observed(n=60):
+def _observed(n=140):
     """A market whose opens gap around the prior close, as a real one does."""
     rows, close = [], 100.0
     for step in range(n):
@@ -40,7 +40,7 @@ def _observed(n=60):
     return _frame(rows)
 
 
-def _carried_forward(n=60):
+def _carried_forward(n=140):
     """The defect: every open is the previous close, but clipped into range."""
     rows, close = [], 100.0
     for step in range(n):
@@ -87,7 +87,7 @@ def test_a_thin_market_below_the_threshold_still_reads_as_observed():
     # 12.9% carry-forward was measured from traded minutes. A real EGX symbol
     # sits there, and must not be condemned for it.
     rows, close = [], 100.0
-    for step in range(100):
+    for step in range(200):
         open_ = close if step % 8 == 0 else close + 0.35
         close = open_ + (0.3 if step % 2 else -0.2)
         rows.append([open_, max(open_, close) + 0.2, min(open_, close) - 0.2, close])
@@ -121,22 +121,48 @@ def test_normalize_history_attaches_the_verdict_once_per_frame(builder, expected
     assert list(normalized["Open"]) == list(frame["Open"])
 
 
-def test_candle_score_reports_the_verdict_without_changing_the_score():
+def test_candle_score_refuses_to_score_a_fabricated_open():
+    # The contract changed deliberately on 2026-08-26. It used to report the
+    # verdict and score anyway; it now refuses, because every pattern it tests
+    # reads Open and none of them mean what they are named for without one. A
+    # signal citing "Morning Star" on a carried-forward Open was not telling
+    # the reader what happened.
     frame = _carried_forward()
-    scored_blind = candle_score(frame, 30)
     frame.attrs["open_integrity"] = classify_open(frame)
-    scored_aware = candle_score(frame, 30)
-    assert scored_aware["open_integrity"] == OpenIntegrity.CARRIED_FORWARD.value
-    assert scored_blind["open_integrity"] == "UNKNOWN"
-    # The verdict is reported, never acted on. Gating is a separate decision.
-    assert scored_aware["score"] == scored_blind["score"]
-    assert scored_aware["reasons"] == scored_blind["reasons"]
+    scored = candle_score(frame, 30)
+    assert scored["open_integrity"] == OpenIntegrity.CARRIED_FORWARD.value
+    assert scored["score"] == 0
+    assert scored["confidence"] == 0
+    # It says why, rather than going quiet and looking like a real zero.
+    assert scored["reasons"] == ["Candle patterns unavailable (Open CARRIED_FORWARD)"]
+
+
+def test_an_unknown_verdict_does_not_silence_the_detector():
+    # pandas `attrs` does not survive every operation, so a frame can arrive
+    # without provenance. Condemning on UNKNOWN would disable candles silently
+    # wherever that happened. Absence of evidence is not evidence of
+    # fabrication: only a positive finding silences it.
+    frame = _carried_forward()
+    assert "open_integrity" not in frame.attrs
+    scored = candle_score(frame, 30)
+    assert scored["open_integrity"] == "UNKNOWN"
+    assert "unavailable" not in " ".join(scored["reasons"])
+
+
+def test_the_refusal_lifts_when_the_open_is_observed():
+    # It has to start working again on its own the day a real Open arrives,
+    # rather than needing someone to remember to switch it back on.
+    frame = _observed()
+    frame.attrs["open_integrity"] = classify_open(frame)
+    scored = candle_score(frame, 30)
+    assert scored["open_integrity"] == OpenIntegrity.OBSERVED.value
+    assert "unavailable" not in " ".join(scored["reasons"])
 
 
 def test_engulfing_and_harami_are_unreachable_on_a_carried_forward_open():
     # Both require Open to differ from the previous Close in opposite
     # directions, so both reduce to x < x. Neither can ever fire on this data.
-    frame = _carried_forward(n=120)
+    frame = _carried_forward(n=160)
     cited = [reason for i in range(2, len(frame))
              for reason in candle_score(frame, i)["reasons"]]
     assert "Bullish Engulfing" not in cited

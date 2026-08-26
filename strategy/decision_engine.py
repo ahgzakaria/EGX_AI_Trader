@@ -160,6 +160,21 @@ def evaluate(df, i):
     support = support_resistance(df, i)
     entry = entry_signal(df, i)
     momentum = momentum_score(df, i)
+    # Still computed, still reported as "Candles", and still read by the
+    # CandleConfirmation gate below -- but no longer added to the score, the
+    # confidence or the reasons.
+    #
+    # Every pattern it tests reads Open, and the Open this project can reach is
+    # carried forward from the previous close in 96-98% of bars. Two of its five
+    # patterns are then structurally unreachable (Engulfing needs Open < prev
+    # Close, Harami needs Open > prev Close, and both reduce to x < x), "Doji"
+    # degenerates into "the close barely moved from yesterday" and fires on 63%
+    # of trades, and "Morning Star" becomes a comparison of lagged returns.
+    # Measured contribution to the outcome: r = -0.024, t = -0.61. No signal.
+    #
+    # The decisive argument is not performance but truth: a signal citing
+    # "Morning Star" in its reasons was not telling the reader what happened.
+    # See docs/audits/strategies/SCORE_DIAGNOSIS.md.
     candles = candle_score(df, i)
     # Still computed and still reported as "Breakout" below, but no longer
     # added to the score, the confidence or the reasons.
@@ -190,7 +205,6 @@ def evaluate(df, i):
         + support["score"]
         + entry["score"]
         + momentum["score"]
-        + candles["score"]
 
     )
 
@@ -202,11 +216,7 @@ def evaluate(df, i):
     volume_confidence = volume["confidence"]
     momentum_confidence = momentum["confidence"]
 
-    pattern_confidence = (
-
-        candles["confidence"]
-
-    )
+    pattern_confidence = 0
 
     risk_confidence = (
 
@@ -235,7 +245,6 @@ def evaluate(df, i):
         + support["reasons"]
         + entry["reasons"]
         + momentum["reasons"]
-        + candles["reasons"]
 
     )
 
