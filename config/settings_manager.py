@@ -99,7 +99,13 @@ DEFAULT_SETTINGS = {
     "strategy": {
         "min_score": 65,
         "min_confidence": 80,
-        "min_rr": 2.0,
+        # 3.0 rather than 2.0. Swept at 1.5/2.0/2.5/3.0: risk per share falls
+        # monotonically 12.90% -> 6.85%, worst losing streak 22 -> 13 trades and
+        # maximum drawdown 58.89% -> 17.62%, because demanding a higher reward
+        # ratio selects a tighter stop and a tighter stop loses less when hit.
+        # Chosen as a risk control; its return figure is tail-driven and is not
+        # the reason. See docs/audits/strategies/MIN_RR_AS_RISK_CONTROL.md.
+        "min_rr": 3.0,
         "min_trend": 25,
         "min_momentum": 5,
         "min_volume": 5,
@@ -136,7 +142,13 @@ DEFAULT_SETTINGS = {
 
         "trailing_mode": "EMA20",
         "trailing_atr": 2,
-        "trailing_enabled": False,
+        # At min_rr 1.5 disabling this barely mattered. At 3.0 it is the
+        # difference between +40.36% and -32.52%: without it, positions run to
+        # the holding cap at 17.09 days instead of 4.52 and bleed against the
+        # tight stops that a high reward ratio selects. The effect does not
+        # transfer between configurations, which is why it is measured here
+        # alongside min_rr rather than inherited from an earlier sweep.
+        "trailing_enabled": True,
 
         "allow_overlapping_trades": False,
 

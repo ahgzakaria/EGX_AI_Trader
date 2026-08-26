@@ -5,8 +5,10 @@ accidental throttles ([TRAILING_STOP_VERDICT.md](TRAILING_STOP_VERDICT.md),
 [CANDLE_REMOVAL_MEASURED.md](CANDLE_REMOVAL_MEASURED.md)). A deliberate one is
 needed. Is `min_rr` it?
 
-**Status:** measured, four isolated runs. **Not shipped** —
-`config/settings.json` still holds `min_rr: 1.5`, pending a decision.
+**Status:** **shipped.** `min_rr: 3.0` and `trailing_enabled: true`, in both
+`config/settings.json` and `DEFAULT_SETTINGS`. An as-configured run with no
+overrides reproduces the measured run byte-for-byte across all four output
+files — see §5.
 
 **Short answer:** yes, but only as a risk control. Its effect on drawdown is
 monotone, large and mechanically explained. Its effect on return is not, and
@@ -75,10 +77,44 @@ tested has a negative median, and `rr 3.0` has the *least* negative one and the
 The strategy is a lottery in every version. This is the least extreme lottery,
 not a departure from lotteries.
 
-## 4. Recommendation
+## 4. The trailing stop had to ship with it
 
-Ship `min_rr: 3.0` **as the deliberate throttle**, replacing the two accidental
-ones, and justify it on drawdown and loss-streak length rather than on return.
+The sweep ran with `trailing_enabled: true`, but the live config had it
+**false**. Shipping `min_rr 3.0` onto that would have been an unmeasured
+combination, so it was measured:
+
+| At `min_rr 3.0` | Trailing **on** | Trailing **off** |
+|---|--:|--:|
+| Trades | 468 | 244 |
+| Profit factor | **1.19** | 0.89 |
+| Total return | **+40.36%** | **-32.52%** |
+| Max drawdown | **17.62%** | 53.05% |
+| Avg per trade | **+0.32%** | **-0.75%** |
+| Avg holding | 4.52 days | **17.09 days** |
+
+At `min_rr 1.5` disabling the trail barely mattered — -0.0047% against -0.1005%
+([TRAILING_STOP_VERDICT.md](TRAILING_STOP_VERDICT.md)). At 3.0 it is the
+difference between +40.36% and -32.52%.
+
+The mechanism is in the holding column. Without the trail, positions run to the
+holding cap at 17.09 days instead of 4.52, bleeding against the tight stops that
+a high reward ratio selects.
+
+**The effect does not transfer between configurations.** Had the earlier verdict
+been carried over instead of re-measured, this would have shipped the losing
+side.
+
+## 5. Shipped, and verified against what was measured
+
+`min_rr: 3.0` and `trailing_enabled: true`, in `config/settings.json` and in
+`DEFAULT_SETTINGS` so a clean checkout behaves the same.
+
+A confirming run with **no overrides**, reading the live configuration as it
+stands, produces `backtest_results.csv`, `backtest_statistics.csv`,
+`equity_curve.csv` and `symbol_statistics.csv` **byte-identical** to the run the
+decision was made on. What ships is what was measured.
+
+Justified on drawdown and loss-streak length, **not** on return.
 
 The distinction matters. Saying "this returns 40%" sells an in-sample point.
 What is defensible is that maximum drawdown falls from 58.89% to 17.62% and the
@@ -89,6 +125,25 @@ It does not create an edge. Nothing measured in this investigation does — the
 entry date carries no information at t = +0.65, and gross drift equals trading
 costs to four decimal places
 ([SELECTION_AND_EXECUTION.md](SELECTION_AND_EXECUTION.md)).
+
+## 6. Left open deliberately
+
+`DEFAULT_SETTINGS` and the running `config/settings.json` disagree on **eleven
+settings** — `min_score` 65 vs 50, `min_confidence` 80 vs 65, `min_trend` 25 vs
+12, `min_momentum` 5 vs 3, `min_volume` 5 vs 0, `require_market_analyzer` and
+`require_quality_filter` both False vs True, `quality_min_adx` 20 vs 21,
+`exit_mode` TARGET1 vs TARGET2, `partial_exit` False vs True,
+`allow_overlapping_trades` False vs True.
+
+These are not tuning differences; they are two different strategies. Everything
+in this investigation was measured against the running file, which is correct
+because that is what executes — but `min_rr 3.0` is calibrated in *that* context.
+A clean checkout would pair it with closed gates and higher thresholds, a
+combination nobody has measured, and §4 is the demonstration that such
+combinations do not inherit their parts' results.
+
+Not reconciled here. Choosing which of the two is the strategy is a decision
+about the product, not a defect to fix.
 
 ## Limits
 
