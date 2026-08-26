@@ -21,6 +21,17 @@ class FakeMarketData:
 
 
 class StableCosts:
+    """Fixed costs, so these tests measure the tracker and not the spread.
+
+    Accepts and ignores the constructor arguments the real TradingCosts takes.
+    Since 2026-08-26 that includes `symbol`, because the paper path prices per
+    symbol exactly as the backtest does; a double that rejected it would fail
+    for a reason that has nothing to do with what these tests are about.
+    """
+
+    def __init__(self, *_args, **_kwargs):
+        pass
+
     def entry_price(self, value):
         return round(float(value) * 1.0005, 4)
 

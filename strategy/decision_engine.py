@@ -300,6 +300,22 @@ def evaluate(df, i):
 
     }
 
+    # candle_score explains itself when it refuses -- "Candle patterns
+    # unavailable (Open OUT_OF_RANGE)" -- but its reasons are deliberately kept
+    # out of the list above, because the pattern strings it used to emit were
+    # describing things that did not happen.
+    #
+    # That left the one case where the explanation is the whole point: with
+    # require_candle_confirmation on and a fabricated Open, every symbol fails
+    # this gate and nothing anywhere says why. The toggle sits in the settings
+    # UI and reads like a safety feature, so someone will enable it and then
+    # debug "no signals today" against a discarded string.
+    #
+    # So the refusal reason is restored exactly when the gate it explains has
+    # failed, and never otherwise.
+    if not gates["CandleConfirmation"]:
+        reasons = reasons + candles["reasons"]
+
     all_gates_passed = all(gates.values())
 
     # ==================================

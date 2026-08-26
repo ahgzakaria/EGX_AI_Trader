@@ -568,7 +568,8 @@ class PaperTradingTracker:
                 df.loc[idx, "EntryDate"] = str(data.index[filled_index].date())
                 # نفس افتراض الباك تست: تنفيذ limit عند الحد الأعلى
                 # للنطاق بعد احتساب الانزلاق.
-                df.loc[idx, "EntryPrice"] = TradingCosts().entry_price(buy_high)
+                df.loc[idx, "EntryPrice"] = TradingCosts(
+                    symbol=symbol).entry_price(buy_high)
                 row = df.loc[idx]
                 entry_index = filled_index + 1
 
@@ -655,7 +656,7 @@ class PaperTradingTracker:
 
             # allow_timeout=False يمنع إغلاقاً وهمياً قبل اكتمال مدة
             # الاحتفاظ، لكنه يغلق فور تحقق هدف أو ستوب.
-            closed = ExitManager(TradingCosts()).manage(
+            closed = ExitManager(TradingCosts(symbol=symbol)).manage(
                 context,
                 allow_timeout=False
             )

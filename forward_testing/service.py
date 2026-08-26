@@ -360,7 +360,11 @@ class ForwardTestingService:
         elif len(open_positions) >= effective_max:
             reason = "MaxPositions"
 
-        costs = TradingCosts()
+        # Per symbol, exactly as backtesting/engine.py does. Without the
+        # ticker this charges the conservative unmeasured rate to every
+        # name, so paper results would not be comparable to the backtest
+        # they exist to validate.
+        costs = TradingCosts(symbol=position["ticker"])
         entry = costs.entry_price(float(position["buy_high"]))
         sizing = PositionSizer(
             cfg.INITIAL_CAPITAL, cfg.RISK_PERCENT
@@ -405,9 +409,10 @@ class ForwardTestingService:
         )
         if context.entry_index >= data.length:
             return False
-        if not ExitManager(TradingCosts()).manage(context, allow_timeout=False):
+        costs = TradingCosts(symbol=position["ticker"])
+        if not ExitManager(costs).manage(context, allow_timeout=False):
             return False
-        profit_per_share = TradingCosts().net_profit(
+        profit_per_share = costs.net_profit(
             float(position["entry_price"]), float(context.exit_price)
         )
         realized = round(int(position["shares"]) * profit_per_share, 2)
