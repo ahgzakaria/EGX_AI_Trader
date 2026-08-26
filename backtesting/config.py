@@ -53,6 +53,7 @@ def load():
 
         # COSTS
         COMMISSION=backtest["commission"],
-        SLIPPAGE=backtest["slippage"]
+        SLIPPAGE=backtest["slippage"],
+        SPREAD_PERCENT=backtest.get("spread_percent", 0.0)
 
     )

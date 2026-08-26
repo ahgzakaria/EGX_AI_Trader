@@ -31,7 +31,7 @@ class ExitManagerTests(unittest.TestCase):
         entry_index=0,
     )
 
-    manager = ExitManager(TradingCosts(commission=0, slippage=0))
+    manager = ExitManager(TradingCosts(commission=0, slippage=0, spread_percent=0))
     closed = manager.manage(context)
 
     self.assertTrue(closed)
@@ -62,7 +62,7 @@ class ExitManagerTests(unittest.TestCase):
         entry_index=0,
     )
 
-    closed = ExitManager(TradingCosts(commission=0, slippage=0)).manage(
+    closed = ExitManager(TradingCosts(commission=0, slippage=0, spread_percent=0)).manage(
         context,
         allow_timeout=False,
     )
@@ -90,7 +90,7 @@ class ExitManagerTests(unittest.TestCase):
         entry_price=100.0, entry_date="2026-01-01", entry_index=0,
     )
 
-    closed = ExitManager(TradingCosts(commission=0, slippage=0)).manage(
+    closed = ExitManager(TradingCosts(commission=0, slippage=0, spread_percent=0)).manage(
         context, allow_timeout=False
     )
 

@@ -50,22 +50,33 @@ def main():
     ):
         print(f"{reason:15} : {count}")
 
+    # The service reports `errors`, not `successful`/`failed`. Asking it for
+    # those keys raised KeyError on every run, after every result had already
+    # been written -- so the numbers were correct on disk and the run still
+    # looked like a crash. Derived here from what the payload actually carries.
+    failed = len(final.get("errors", []))
     print("\nRUN SUMMARY")
     print(f"Symbols Loaded     : {final['symbols']}")
-    print(f"Successful         : {final['successful']}")
-    print(f"Failed             : {final['failed']}")
+    print(f"Successful         : {final['symbols'] - failed}")
+    print(f"Failed             : {failed}")
     print(f"Total Signals      : {final['signals']}")
     print(f"Total Trades       : {final['trades']}")
     print(f"Elapsed            : {final['elapsed']}")
 
     if final.get("walk_forward"):
-        comparison = final["comparison"]
         print("\nWALK-FORWARD AI VALIDATION")
         print(f"OOS Accuracy       : {final['walk_forward']['accuracy']}")
         print(f"OOS F1             : {final['walk_forward']['f1']}")
-        print(f"Strategy PF        : {comparison['StrategyOnlyProfitFactor']}")
-        print(f"AI-filtered PF     : {comparison['AIFilteredProfitFactor']}")
-        print(f"AI Rejected        : {comparison['AIRejectedTrades']}")
+        # `comparison` is absent from this payload too. It is only ever
+        # populated by the overlay-comparison run, so print it when it is there
+        # and say so when it is not, rather than crashing a finished backtest.
+        comparison = final.get("comparison")
+        if comparison:
+            print(f"Strategy PF        : {comparison['StrategyOnlyProfitFactor']}")
+            print(f"AI-filtered PF     : {comparison['AIFilteredProfitFactor']}")
+            print(f"AI Rejected        : {comparison['AIRejectedTrades']}")
+        else:
+            print("Strategy vs AI     : not produced by this run mode")
 
 
 if __name__ == "__main__":

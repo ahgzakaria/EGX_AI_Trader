@@ -145,8 +145,19 @@ DEFAULT_SETTINGS = {
 
         "initial_capital": 100000,
 
-        "commission": 0.003,
-        "slippage": 0.0005
+        # 0.003 per side was a placeholder, 65% above what the broker actually
+        # charges. The contract note in `scalping.fee_schedule` (notional
+        # 102,560 EGP) totals 0.1819% per side. The breakout package corrected
+        # this already; see tests/test_breakout_weights_are_measured.py. The
+        # classic backtest was left behind.
+        "commission": 0.001819,
+        "slippage": 0.0005,
+        # The spread used to cost nothing here. Measured from live quotes across
+        # the 170 of 172 symbols the backtest actually traded that have them,
+        # the trade-weighted median is 0.500%, charged once per round trip.
+        # Together with the commission correction this moves a round trip from
+        # 0.703% to 0.964% -- the two errors had been cancelling.
+        "spread_percent": 0.5
     },
 
     # Additive advisory scoring only. It never replaces the frozen strategy
