@@ -260,18 +260,43 @@ def show_settings():
                 value=strategy.get("max_rr", 100.0) < 100.0
             )
 
+            # The floor and the fallback both track min_rr rather than sitting
+            # at a fixed 3.0. With min_rr at 3.0 that old default made the cap
+            # collapse the band to "RR exactly 3.00" on a single click -- 34 of
+            # 468 trades instead of 468 -- and nothing on screen said so.
+            _min_rr_now = float(strategy.get("min_rr", 1.5))
             max_rr = st.slider(
                 "Maximum RR (لو مفعّل)",
-                2.0,
-                10.0,
+                max(2.0, _min_rr_now + 0.5),
+                max(10.0, _min_rr_now + 0.5),
                 float(strategy.get("max_rr", 100.0))
-                if strategy.get("max_rr", 100.0) < 100.0
-                else 3.0,
+                if 100.0 > strategy.get("max_rr", 100.0) > _min_rr_now
+                else max(2.0, _min_rr_now + 0.5),
                 0.5,
-                disabled=not max_rr_enabled
+                disabled=not max_rr_enabled,
+                help=(f"Must stay above Minimum RR ({_min_rr_now:g}). "
+                      "Equal values admit only trades whose reward/risk lands "
+                      "exactly on that number.")
             )
 
         with c4:
+
+            # candle_score refuses to score a fabricated Open and returns 0,
+            # so with the current data this gate blocks every signal in the
+            # universe. That is correct -- a confirmation which cannot be
+            # computed cannot be required -- but the control reads like an
+            # ordinary safety toggle, so the state is shown rather than left to
+            # be discovered by a day with no signals.
+            from core.daily_open_integrity import UNUSABLE
+            from core.data_loader import load_data
+
+            _open_usable = None
+            try:
+                _probe = load_data("COMI.CA", period="1y", interval="1d")
+                _verdict = (_probe.attrs or {}).get("open_integrity")
+                _open_usable = (_verdict.verdict not in UNUSABLE) if _verdict else None
+            except Exception:            # a settings screen must still render
+                _open_usable = None
 
             require_candle = st.checkbox(
                 "Require Candle Confirmation "
@@ -279,8 +304,23 @@ def show_settings():
                 value=strategy.get(
                     "require_candle_confirmation",
                     False
+                ),
+                help=(
+                    "UNAVAILABLE right now: the daily Open is carried forward "
+                    "from the previous close, so candle patterns cannot be "
+                    "computed and this gate would reject every symbol. It will "
+                    "start working on its own once a real Open is available."
+                    if _open_usable is False else
+                    "Requires a bullish candle pattern on the signal bar."
                 )
             )
+            if require_candle and _open_usable is False:
+                st.warning(
+                    "Candle confirmation is on, but the daily Open is "
+                    "fabricated — candle patterns cannot be computed, so this "
+                    "will block every signal. See "
+                    "docs/audits/strategies/SCORE_DIAGNOSIS.md."
+                )
 
             require_market_analyzer = st.checkbox(
                 "Require Market Analyzer (EGX30 Index)",
@@ -1045,7 +1085,14 @@ def show_settings():
         "quality_min_resistance_room": quality_min_resistance_room,
     })
     proposed_settings["strategy"] = updated_strategy
-    proposed_settings["backtest"] = {
+    # Updated, not replaced -- the same shape the strategy section above uses.
+    # Replacing it wholesale silently dropped every backtest key without a
+    # widget: spread_percent, max_spread_percent and unmeasured_spread_percent
+    # all vanished on save, which also left the dirty flag stuck on forever,
+    # because the payload could never equal the settings it was compared to.
+    # Preserving unmanaged keys fixes the class, not just today's three.
+    updated_backtest = dict(backtest)
+    updated_backtest.update({
         "entry_wait_days": entry_wait,
         "ai_mode": ai_backtest_mode,
         "walk_forward_splits": walk_forward_splits,
@@ -1065,7 +1112,8 @@ def show_settings():
         "initial_capital": initial_capital,
         "commission": backtest["commission"],
         "slippage": backtest["slippage"],
-    }
+    })
+    proposed_settings["backtest"] = updated_backtest
     proposed_settings["ai"] = {
         "enabled": ai_enabled,
         "min_probability": ai_probability,
