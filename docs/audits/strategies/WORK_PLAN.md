@@ -92,17 +92,25 @@ headline.
 The universe filter stays in the code, defaulted **off**, because measuring it
 was worth doing and re-measuring it later will be too.
 
-## Step 4 — The eleven-setting divergence
+## Step 4 — The eleven-setting divergence — **DONE**
 
 `DEFAULT_SETTINGS` and the running `config/settings.json` describe two different
 strategies, not one with drifted parameters
 ([MIN_RR_AS_RISK_CONTROL.md §6](MIN_RR_AS_RISK_CONTROL.md)). Everything measured
 here is calibrated against the running file.
 
-**This is not mine to decide.** It is a choice about what the product is. What
-can be done without deciding is to measure the code-default configuration under
-the same corrected instrument, so the choice is made against evidence rather than
-against whichever file someone opened first.
+Measured under the corrected instrument, and it was not close. The running
+configuration returns **+60.08%** at profit factor **1.29** with a **16.17%**
+drawdown, seven of ten years positive. The code defaults return **-36.23%** at
+**0.88** with **46.30%**, three of ten.
+
+The defaults were wrong, so the defaults changed. `config/settings.json` is
+untouched — it was already right. Pinned by
+`tests/test_default_settings_are_measured.py`, which asserts the values rather
+than agreement with the settings file, since that file is meant to be edited and
+a test demanding they match would fail on the first legitimate tweak.
+
+Full write-up: [CONFIG_RECONCILIATION.md](CONFIG_RECONCILIATION.md).
 
 ---
 
@@ -117,7 +125,8 @@ Step 3 has now failed, and the conclusion it was set up to reach is available:
 cheap names are not systematically better after their own costs, and the one
 filter that looked promising rests on three trades.
 
-What remains is step 4, and beyond it the finding that has been true since
+All four steps are now done — two positive, two negative. What remains is the
+finding that has been true since
 [SELECTION_AND_EXECUTION.md](SELECTION_AND_EXECUTION.md): the strategy clears
 its costs by about a sixth of a percent per round trip, entirely from the drift
 of names its gates select for being in an uptrend, and its entry timing adds

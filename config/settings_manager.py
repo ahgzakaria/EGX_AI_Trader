@@ -97,8 +97,19 @@ DEFAULT_SETTINGS = {
         "rubix_supervisor_max_restarts": 20
     },
     "strategy": {
-        "min_score": 65,
-        "min_confidence": 80,
+        # These eleven settings were measured against each other on 2026-08-26
+        # under the corrected cost model, and the values below won. The
+        # alternative -- min_score 65, min_confidence 80, min_trend 25,
+        # min_momentum 5, min_volume 5, both gates off, quality_min_adx 20,
+        # exit_mode TARGET1, no partial exit, no overlapping trades -- returned
+        # -36.23% at profit factor 0.88 and a 46.3% drawdown, against +60.08%,
+        # 1.29 and 16.17% here. Three of ten years positive against seven.
+        #
+        # The higher thresholds filter on a score that carries no signal
+        # (r = -0.032), so they discard trades without improving the survivors.
+        # See docs/audits/strategies/CONFIG_RECONCILIATION.md.
+        "min_score": 50,
+        "min_confidence": 65,
         # 3.0 rather than 2.0. Swept at 1.5/2.0/2.5/3.0: risk per share falls
         # monotonically 12.90% -> 6.85%, worst losing streak 22 -> 13 trades and
         # maximum drawdown 58.89% -> 17.62%, because demanding a higher reward
@@ -106,9 +117,9 @@ DEFAULT_SETTINGS = {
         # Chosen as a risk control; its return figure is tail-driven and is not
         # the reason. See docs/audits/strategies/MIN_RR_AS_RISK_CONTROL.md.
         "min_rr": 3.0,
-        "min_trend": 25,
-        "min_momentum": 5,
-        "min_volume": 5,
+        "min_trend": 12,
+        "min_momentum": 3,
+        "min_volume": 0,
         "watch_score": 60,
         "watch_confidence": 65,
         "market_trend_adx": 25,
@@ -118,10 +129,10 @@ DEFAULT_SETTINGS = {
 
         "max_rr": 100.0,
         "require_candle_confirmation": False,
-        "require_market_analyzer": False,
+        "require_market_analyzer": True,
 
-        "require_quality_filter": False,
-        "quality_min_adx": 20,
+        "require_quality_filter": True,
+        "quality_min_adx": 21,
         "quality_min_volume_ratio": 1.0,
         "quality_min_atr_percent": 1.5,
         "quality_min_resistance_room": 3.0
@@ -131,10 +142,10 @@ DEFAULT_SETTINGS = {
         "entry_wait_days": 5,
         "ai_mode": "STRATEGY_ONLY",
         "walk_forward_splits": 5,
-        "exit_mode": "TARGET1",
+        "exit_mode": "TARGET2",
         "max_holding_days": 20,
         "move_to_breakeven": True,
-        "partial_exit": False,
+        "partial_exit": True,
         "partial_percent": 0.50,
 
         "risk_mode": "FIXED",
@@ -150,7 +161,7 @@ DEFAULT_SETTINGS = {
         # alongside min_rr rather than inherited from an earlier sweep.
         "trailing_enabled": True,
 
-        "allow_overlapping_trades": False,
+        "allow_overlapping_trades": True,
 
         "max_open_positions": 10,
         "max_portfolio_risk_percent": 10,
