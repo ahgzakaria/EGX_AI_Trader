@@ -29,14 +29,52 @@ How each component is charged, following `services/trading_costs.py`:
   total lands at 0.964% -- deliberately the conservative side of what was
   measured rather than the flattering one.
 
-The spread is a single universe-level figure rather than per-symbol. Per-symbol
-would be better and is measurable, but `TradingCosts` is constructed without a
-symbol in `backtesting/engine.py`, which is a sealed release file. Charging the
-median to every symbol understates cost on wide names and overstates it on tight
-ones; the measured spread distribution is in `SWING_STRATEGY_PROBE.md`.
+The spread is charged **per symbol** where one has been measured. Real EGX
+spreads run from 0.036% on COMI to 4.4% on the thinnest names, so a flat rate is
+simultaneously too harsh on the liquid ones and too generous on the illiquid
+ones -- and no universe filter can be evaluated while every symbol costs the
+same. The table is `data/universe/egx_spread_table.csv`, built by
+`scripts/research/build_spread_table.py`; symbols absent from it fall back to the
+configured flat `spread_percent` rather than being guessed at.
 """
 
+import csv
+from pathlib import Path
+
 from backtesting.config import load as load_backtest_config
+
+#: Measured medians, loaded once. `None` until first use; `{}` if the table is
+#: missing, which is a fallback rather than an error -- a run without the table
+#: charges the flat rate and is merely less precise, not wrong.
+_SPREAD_TABLE = None
+SPREAD_TABLE_PATH = (
+    Path(__file__).resolve().parents[1] / "data" / "universe" / "egx_spread_table.csv"
+)
+
+
+def spread_table():
+    global _SPREAD_TABLE
+    if _SPREAD_TABLE is None:
+        table = {}
+        try:
+            with SPREAD_TABLE_PATH.open(encoding="utf-8") as handle:
+                rows = [line for line in handle if not line.startswith("#")]
+            for row in csv.DictReader(rows):
+                try:
+                    table[row["ticker"].strip().upper()] = float(
+                        row["median_spread_percent"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+        except OSError:
+            table = {}
+        _SPREAD_TABLE = table
+    return _SPREAD_TABLE
+
+
+def reset_spread_table():
+    """Drop the cache so a rebuilt table is picked up without a restart."""
+    global _SPREAD_TABLE
+    _SPREAD_TABLE = None
 
 
 class TradingCosts:
@@ -45,7 +83,8 @@ class TradingCosts:
         self,
         commission=None,
         slippage=None,
-        spread_percent=None
+        spread_percent=None,
+        symbol=None
     ):
 
         """
@@ -53,13 +92,19 @@ class TradingCosts:
 
         commission     = 0.001819 -> 0.1819% per side (broker contract note)
         slippage       = 0.0005   -> 0.05% per side
-        spread_percent = 0.50     -> 0.50% full width, charged once per round trip
+        spread_percent = 0.50     -> flat fallback, full width once per round trip
+        symbol         = "COMI.CA" -> charge this symbol's measured spread instead
+
+        An explicit `spread_percent` always wins, so a caller asking for zero
+        costs gets zero costs. Otherwise a measured spread is used when the
+        symbol has one, and the flat rate when it does not.
 
         لو محددتش القيم صراحة، بيتقروا Live من settings.json وقت إنشاء
         الكلاس (مش وقت استيراد الملف).
         """
 
         cfg = load_backtest_config()
+        self.symbol = symbol
 
         self.commission = (
             commission
@@ -73,14 +118,25 @@ class TradingCosts:
             else cfg.SLIPPAGE
         )
 
-        spread = (
-            spread_percent
-            if spread_percent is not None
-            else getattr(cfg, "SPREAD_PERCENT", 0.0)
-        )
+        if spread_percent is not None:
+            spread = spread_percent
+            self.spread_source = "explicit"
+        else:
+            measured = None
+            if symbol:
+                key = str(symbol).strip().upper()
+                measured = spread_table().get(key)
+                if measured is None and key.endswith(".CA"):
+                    measured = spread_table().get(key[:-3])
+            if measured is not None:
+                spread, self.spread_source = measured, "measured"
+            else:
+                spread = getattr(cfg, "SPREAD_PERCENT", 0.0)
+                self.spread_source = "flat_default"
 
+        self.spread_percent = float(spread)
         # Half a width on each fill, so the round trip pays one full width.
-        self.half_spread = float(spread) / 100.0 / 2.0
+        self.half_spread = self.spread_percent / 100.0 / 2.0
 
     # ==================================
     # Round Trip Cost (for reporting and tests)

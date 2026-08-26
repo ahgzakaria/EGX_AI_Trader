@@ -7,7 +7,7 @@
   "strategy/quality_filter.py": "4ca0ace2c1a80c3bbaa4c95fbec173e7387169948d8b11776581ca4ce151b4e5",
   "strategy/trading_decision.py": "367efa0c3dc1404c35a6c7b22c976010e6c60c285167a00027bf698ca265fd03",
   "indicators/technical.py": "74686311656b40fba819359618c40db98412c3ac2622b7d2f95fa51aee16b01c",
-  "backtesting/engine.py": "e748f8a426fcac96a7a806a9f3212ae7afc7b5f089fe341324a607bb986aee92",
+  "backtesting/engine.py": "2565c2d4f7ae711cc0faee927fc9ceddb6a1a4cd9d4f51f0afdebd1faf424147",
   "portfolio/portfolio_simulator.py": "6d25a6904e615a9e1765a756f42821c7ba5992edcb5920c942db3badf42e5212",
   "strategy_breakout/breakout_strategy.py": "6d3976fd25fcb78918761c6dfebbb25ed8ec6ad5d72d53a261f6e778370a4921",
   "strategy_breakout/breakout_entry.py": "c14f33ad39e1057ca12f099f892f56e94b4d86c7e86cdb74de9688e83f453ab3",

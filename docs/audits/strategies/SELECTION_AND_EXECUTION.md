@@ -9,8 +9,20 @@ execution destroy value?
 Read-only.
 
 **Short answer:** selection carries no information (t = +0.65). Execution is
-neutral (t = -0.02). The strategy's gross drift and its trading costs are the
-same number to three decimal places, and everything else is noise around that.
+neutral (t = -0.02).
+
+> **AMENDED 2026-08-26.** This document originally concluded that gross drift
+> and trading costs were "the same number to three decimal places", from a drift
+> of +0.9630% against a cost of 0.9638%. That cost was a **flat 0.500% spread
+> charged to every symbol**. The cost model now charges each symbol its measured
+> spread, and the trades actually taken average **0.433%** — the flat rate was
+> over-charging by 0.067% per round trip. Real friction on this book is
+> **0.797%**, so the margin is **+0.166%**, not -0.0008%.
+>
+> The equality was an artifact of a conservative cost estimate, not a property of
+> the market. §3 is corrected below. The two findings this document exists for —
+> that selection carries no information and execution is neutral — are unaffected,
+> because both are differences in which cost appears on both sides and cancels.
 
 ---
 
@@ -85,19 +97,22 @@ There is nothing to fix here. The earlier claim that there was is withdrawn.
 
 ## 3. Where the money actually goes
 
-| | |
-|---|--:|
-| Gross drift over the realised holding period | **+0.9630%** |
-| Corrected round-trip cost | **0.9638%** |
+| | Flat 0.500% spread | Measured per symbol |
+|---|--:|--:|
+| Gross drift over the realised holding period | +0.9630% | +0.9630% |
+| Round-trip cost | 0.9638% | **0.7968%** |
+| **Margin** | **-0.0008%** | **+0.1662%** |
 
-**A difference of eight ten-thousandths of a percent.** The strategy operates
-exactly at its own break-even with transaction costs, and every effect measured
-in this investigation — selection, exits, throttles, score components — is noise
-around that equality.
+The strategy is **not** at break-even. It clears its costs by about a sixth of a
+percent per round trip. The earlier claim of an exact equality came from charging
+every symbol the universe median while the strategy trades names tighter than
+the median: 479 of 485 trades now price at a measured spread, averaging 0.433%.
 
-That reframes the whole problem. It is not that the strategy is badly executed or
-badly filtered. It is that it captures a drift equal to what it pays to capture
-it, and nothing in it improves on that.
+The correction cuts both ways and is worth saying plainly. A margin of +0.166%
+per round trip is real but thin — it is a sixth of the cost itself, so a
+modest worsening in spreads or a modest increase in trading frequency erases it.
+And it still does not come from selection, which measures at t = +0.65. It comes
+from the drift of names the gates already filtered for being in an uptrend.
 
 ## 4. What follows
 
@@ -107,11 +122,11 @@ it, and nothing in it improves on that.
   ([SCORE_DIAGNOSIS.md](SCORE_DIAGNOSIS.md)).
 - **Throttles reduce how often the cost is paid.** That is real but bounded: it
   moves the result toward zero, never above it.
-- **The only lever with headroom is cost.** At 0.9638% against 0.9630% of drift,
-  a materially cheaper round trip is the one change that would move the strategy
-  from break-even to positive without needing a signal it does not have. Whether
-  EGX brokerage at retail scale allows that is a commercial question, not an
-  engineering one.
+- **Cost is still the lever with the most headroom.** The margin is +0.166% of a
+  0.797% cost. Restricting the universe to symbols quoting 0.3% or tighter would
+  take friction to roughly 0.55%, roughly tripling the margin — at the price of
+  removing about 70% of the trades. That trade-off is step 3 of
+  [WORK_PLAN.md](WORK_PLAN.md).
 - **Or find a real signal.** Nothing measured here is one. The strongest reading
   in the entire project remains the overnight gap at t = +15.7
   ([OVERNIGHT_GAP_PROBE.md](OVERNIGHT_GAP_PROBE.md)) — seven times any effect

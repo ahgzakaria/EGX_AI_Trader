@@ -100,7 +100,12 @@ class BacktestEngine:
 
         self.load()
 
-        costs = TradingCosts()
+        # Per symbol, not flat. EGX spreads run from 0.036% on COMI to 4.4% on
+        # the thinnest names, so one rate for all of them is too harsh on the
+        # liquid and too generous on the illiquid -- and no universe filter can
+        # be judged while every symbol costs the same to trade. Symbols with no
+        # measured spread fall back to the configured flat rate.
+        costs = TradingCosts(symbol=self.symbol)
 
         entry_manager = EntryManager(
             costs, execution_delay_bars=self.execution_delay_bars
