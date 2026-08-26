@@ -217,7 +217,7 @@ Authorised after steps 2 and 4. The result is 229 of 241 active symbols loading,
 up from 198 of 232 when this audit began — but the route there found a defect in
 the audit itself.
 
-### The rerun manufactured discrepancies
+### The rerun manufactured discrepancies — and the first explanation was wrong
 
 Re-running `audit_eodhd_full_universe` moved `MANUAL_REVIEW` from 15 symbols to
 43, and regenerating the tiers on that evidence demoted **34 working symbols** to
@@ -233,14 +233,51 @@ The cause is visible in the audit's own columns:
 | SWDY `eodhd_rows` | 253 | 255 |
 | SWDY `max_close_pct_diff` | 1.01% | **12.43%** |
 
-Yahoo did not advance by a single session, because it is a **frozen seed** — the
-project's own policy is that Yahoo is never an operational source. EODHD moved
-on. The audit compares the two and reads a month of accumulated staleness as a
-data discrepancy.
+The first reading of this was that Yahoo is a frozen seed that had stopped
+advancing. **That was wrong.** `_yahoo_cached()` fetches live Yahoo on a
+two-day cache; the row counts stayed level only because the window is a rolling
+year. The real cause was found by comparing the two series print by print.
 
-**This audit is only valid run close to the seed's freeze date.** Re-run later
-it does not measure EODHD's quality; it measures how long ago the seed was
-frozen, and it converts that into `MANUAL_REVIEW`.
+### The actual cause: the reference carries its last close forward
+
+Over 38 sessions of SWDY, EODHD and Yahoo agree to **six decimal places on 35 of
+them**. Three do not:
+
+| Session | EODHD | Yahoo |
+| --- | --- | --- |
+| 2026-08-09 | 110.00 | 107.00 — 2026-08-06's close, repeated |
+| 2026-08-10 | 108.00 | 107.00 — repeated again |
+| 2026-08-16 | 120.90 | 107.53 — 2026-08-13's close, repeated |
+
+Yahoo has no print for those sessions and carries the previous close forward.
+EODHD is the one that is right: 107.53 on the 13th to 122.12 on the 17th passes
+through EODHD's 120.90, not through a flat 107.53.
+
+The categoriser keys on `max_close_pct_diff` — a maximum over the window, which
+is maximally sensitive to a single bad print in the yardstick. In July SWDY was
+flat around 90 and a carried-forward close cost 1%; by August it had rallied
+30% and the same defect cost 12.4%. Nothing about EODHD changed. The audit was
+blaming the subject for a gap in the reference.
+
+**The fix**: a session where the reference repeats its own previous close *while
+the subject moves* is not a measurement — an unchanged stock leaves both series
+unchanged — so it is excluded from the percentage metrics and counted in a new
+`reference_carry_forward_sessions` column. The comparison window is also
+anchored to the end of the overlap rather than to the clock, and a window with
+too few usable sessions now returns `INSUFFICIENT_OVERLAP` instead of a verdict.
+
+Verified: SWDY, ARCC and PHAR go from `MINOR_ROUNDING_DIFFERENCE` to
+`CLEAN_MATCH` with a **maximum difference of 0.00%** once 3 carried-forward
+sessions are excluded from 32. Across the universe, `CLEAN_MATCH` rises from 20
+to 165 and `MANUAL_REVIEW` falls from 43 to 13 — and the 13 survive scrutiny:
+
+* `JUFO` differs by exactly **25.000%** for seven consecutive sessions, then
+  stops — a 1.25 ratio, a corporate action one provider applied before the other.
+* `LUTS` differs by exactly **21.05%** for eight consecutive sessions.
+* `ARVA` has only 13 overlapping sessions as a newly renamed ticker and is
+  correctly held as `INSUFFICIENT_OVERLAP`.
+
+The filter removes the noise and leaves the signal.
 
 ### What was kept
 

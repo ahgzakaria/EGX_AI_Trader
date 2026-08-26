@@ -104,6 +104,14 @@ def main():
                      price_series="SPLIT_ADJUSTED", volume_policy="EVENT_SPECIFIC",
                      evidence_status="rubix_confirmed", risk_level="medium",
                      approval_reason="EODHD==Rubix; Yahoo proven bad — no Yahoo fallback ever")
+        elif c == "INSUFFICIENT_OVERLAP":
+            # The audit could not compare the two series over enough recent
+            # sessions to judge them. That is an absence of measurement, not a
+            # clean result, and it must not reach the forward-safe branch.
+            e.update(tier="TIER_D_UNSUPPORTED_OR_MANUAL", forward_primary=None,
+                     evidence_status="insufficient_overlap", risk_level="hold",
+                     approval_reason="too few overlapping recent sessions to judge "
+                     "agreement — refresh the comparison baseline and re-audit")
         elif c == "PRICE_SCALE_ANOMALY" and not q:
             # A scale anomaly is precisely what must not be called forward-safe.
             # Normally resolve_eodhd_manual_queue supplies a classification for

@@ -115,3 +115,43 @@ def test_categorize_adjustment_convention():
     m = {"eodhd_rows": 5, "yahoo_rows": 5, "common_sessions": 5, "mean_close_pct_diff": 1.2,
          "max_close_pct_diff": 3.0, "close_scale_ratio": 1.0, "max_adj_ratio_gap": 0.5}
     assert categorize_agreement(m) == "ADJUSTMENT_CONVENTION_DIFFERENCE"
+
+
+def test_a_thin_recent_window_is_not_called_a_disagreement():
+    """A frozen comparison baseline must not manufacture MANUAL_REVIEW.
+
+    When one series stops advancing and the other does not, the recent window
+    shrinks to a few sessions at the stale series' edge, where one odd print
+    dominates. That is an absence of measurement, not a provider difference.
+    """
+
+    from providers.eodhd_reconciliation import INSUFFICIENT_OVERLAP, MIN_RECENT_SESSIONS
+
+    thin = {"eodhd_rows": 255, "yahoo_rows": 248, "common_sessions": 243,
+            "recent_sessions_compared": MIN_RECENT_SESSIONS - 1,
+            "mean_close_pct_diff": 5.5, "max_close_pct_diff": 25.0,
+            "close_scale_ratio": 1.0}
+    assert categorize_agreement(thin) == INSUFFICIENT_OVERLAP
+
+    wide = dict(thin, recent_sessions_compared=MIN_RECENT_SESSIONS)
+    assert categorize_agreement(wide) == "MANUAL_REVIEW"
+
+
+def test_a_scale_anomaly_still_outranks_a_thin_window():
+    """Scale is measured over the whole overlap, so it stays judgeable."""
+
+    from providers.eodhd_reconciliation import MIN_RECENT_SESSIONS
+
+    assert categorize_agreement({
+        "eodhd_rows": 250, "yahoo_rows": 250, "common_sessions": 240,
+        "recent_sessions_compared": MIN_RECENT_SESSIONS - 1,
+        "mean_close_pct_diff": 0.0, "max_close_pct_diff": 0.0,
+        "close_scale_ratio": 100.0}) == "PRICE_SCALE_ANOMALY"
+
+
+def test_metrics_without_the_new_key_still_categorise():
+    """Evidence CSVs written before the column existed must remain readable."""
+
+    assert categorize_agreement({"eodhd_rows": 5, "yahoo_rows": 5, "common_sessions": 5,
+                                 "mean_close_pct_diff": 0.05, "max_close_pct_diff": 0.2,
+                                 "close_scale_ratio": 1.0}) == "CLEAN_MATCH"

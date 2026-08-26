@@ -23,6 +23,13 @@ MANUAL_REVIEW = "MANUAL_REVIEW"
 # audit agreement categories
 CLEAN_MATCH = "CLEAN_MATCH"
 MINOR_ROUNDING_DIFFERENCE = "MINOR_ROUNDING_DIFFERENCE"
+#: The two series overlap too thinly in the compared window to judge agreement.
+#: Distinct from a real disagreement: it says the measurement could not be made,
+#: not that the providers differ.
+INSUFFICIENT_OVERLAP = "INSUFFICIENT_OVERLAP"
+#: Fewer recent sessions than this and no agreement verdict is defensible. Ten
+#: is roughly two trading weeks; below it a single odd print dominates the max.
+MIN_RECENT_SESSIONS = 10
 ADJUSTMENT_CONVENTION_DIFFERENCE = "ADJUSTMENT_CONVENTION_DIFFERENCE"
 HISTORY_COVERAGE_DIFFERENCE = "HISTORY_COVERAGE_DIFFERENCE"
 VOLUME_DIFFERENCE = "VOLUME_DIFFERENCE"
@@ -143,8 +150,17 @@ def categorize_agreement(m):
         return DATA_UNAVAILABLE
     if m.get("common_sessions", 0) == 0:
         return DATA_UNAVAILABLE
+    # A scale anomaly is measured over the whole overlap, so it stays judgeable
+    # even when the recent window is thin.
     if is_scale_anomaly(m.get("close_scale_ratio")):
         return PRICE_SCALE_ANOMALY
+    # The percentage metrics below are computed over a recent window only. If
+    # that window contains almost nothing -- which happens when one series has
+    # stopped advancing and the other has not -- the numbers describe the edge
+    # of the stale series, not a disagreement between providers.
+    recent = m.get("recent_sessions_compared")
+    if recent is not None and int(recent) < MIN_RECENT_SESSIONS:
+        return INSUFFICIENT_OVERLAP
     mean_pct = float(m.get("mean_close_pct_diff") or 0.0)
     max_pct = float(m.get("max_close_pct_diff") or 0.0)
     if mean_pct <= 0.10 and max_pct <= 0.50:

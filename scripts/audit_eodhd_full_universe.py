@@ -92,29 +92,67 @@ def _rubix_close(base):
         return (None, None)
 
 
+def _carried_forward(em, ym, common, position):
+    """True when the reference repeated its previous close and the subject did not.
+
+    That combination means the reference has no genuine print for the session:
+    an unchanged stock leaves *both* series unchanged.
+    """
+
+    previous = common[position - 1]
+    try:
+        reference_flat = float(ym.loc[common[position]]["Close"]) == float(ym.loc[previous]["Close"])
+        subject_moved = float(em.loc[common[position]]["Close"]) != float(em.loc[previous]["Close"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return reference_flat and subject_moved
+
+
 def _metrics(base, e, y, holidays):
-    recent_cut = date.today() - timedelta(days=45)
     ed, yd = (set(e["Date"]) if not e.empty else set()), (set(y["Date"]) if not y.empty else set())
     common = sorted(ed & yd)
+    # The recent window is anchored to the end of the OVERLAP, never to the
+    # clock. Yahoo here is a frozen seed that never advances, so an anchor on
+    # today's date walks past the end of it: run this audit a month after the
+    # freeze and the window shrinks to a handful of sessions at the seed's edge,
+    # where the comparison measures staleness rather than provider agreement.
+    recent_cut = (common[-1] - timedelta(days=45)) if common else date.today()
     em, ym = (e.set_index("Date"), y.set_index("Date")) if common else (e, y)
     close_ratios, pct, adjgap, volpct, ohlc_abs = [], [], [], [], []
-    for dd in common:
+    carried = 0
+    for position, dd in enumerate(common):
         er, yr = em.loc[dd], ym.loc[dd]
         if yr["Close"] > _ABS:
             close_ratios.append(er["Close"] / yr["Close"])
             if dd >= recent_cut:
+                # A reference that repeated its own previous close while the
+                # subject moved did not print that session -- Yahoo carries the
+                # last close forward across sessions it is missing. Measured on
+                # SWDY, three such days out of thirty-eight produced a 12.43%
+                # max difference while the other thirty-five agreed to six
+                # decimal places. Scoring them as disagreement blames the
+                # subject for a gap in the yardstick.
+                if position and _carried_forward(em, ym, common, position):
+                    carried += 1
+                    continue
                 pct.append(abs(er["Close"] - yr["Close"]) / abs(yr["Close"]) * 100)
                 ohlc_abs.append(max(abs(er[c] - yr[c]) for c in ("Open", "High", "Low", "Close")))
                 adjgap.append(abs(_r(er["Adj Close"], er["Close"]) - _r(yr["Adj Close"], yr["Close"])))
                 if yr["Volume"] > 0:
                     volpct.append(abs(er["Volume"] - yr["Volume"]) / yr["Volume"] * 100)
     scale = _median(close_ratios)
+    recent_common = [d for d in common if d >= recent_cut]
+    compared = max(len(recent_common) - carried, 0)
     # holiday-aware coverage gap in the overlap window
     only_e = [d for d in (ed - yd) if is_regular_trading_day(d, holidays)]
     only_y = [d for d in (yd - ed) if is_regular_trading_day(d, holidays)]
     return {
         "symbol": base, "eodhd_symbol": f"{base}.EGX", "yahoo_symbol": f"{base}.CA",
         "eodhd_rows": int(len(e)), "yahoo_rows": int(len(y)), "common_sessions": len(common),
+        "recent_sessions_compared": compared,
+        "reference_carry_forward_sessions": carried,
+        "comparison_window_start": recent_cut.isoformat() if common else None,
+        "comparison_window_end": common[-1].isoformat() if common else None,
         "eodhd_first": e["Date"].min().isoformat() if not e.empty else None,
         "yahoo_first": y["Date"].min().isoformat() if not y.empty else None,
         "eodhd_latest": e["Date"].max().isoformat() if not e.empty else None,

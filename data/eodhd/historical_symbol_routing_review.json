@@ -2,7 +2,7 @@
   "schema_version": 1,
   "active": false,
   "description": "PROPOSED four-tier EODHD routing review — INACTIVE. Every entry approved:false. Historical/frozen backtests remain on their current provider in every tier. Nothing is switched.",
-  "generated_at": "2026-08-26",
+  "generated_at": "2026-08-27",
   "symbols": [
     {
       "symbol": "AALR",
@@ -16,7 +16,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ABUK",
@@ -30,7 +30,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ACAMD",
@@ -44,7 +44,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ACAP",
@@ -58,21 +58,21 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ACGC",
-      "tier": "TIER_C_HISTORICAL_REVIEW",
-      "forward_primary": "eodhd_shadow",
+      "tier": "TIER_D_UNSUPPORTED_OR_MANUAL",
+      "forward_primary": null,
       "historical_backtest_provider": "yahoo",
-      "fallback_provider": "yahoo",
-      "price_series": "SPLIT_ADJUSTED",
-      "volume_policy": "EVENT_SPECIFIC",
-      "evidence_status": "corp_action_or_deep_history_diff",
-      "risk_level": "high",
+      "fallback_provider": null,
+      "price_series": "PROJECT_CURRENT",
+      "volume_policy": "PROJECT_CURRENT",
+      "evidence_status": "insufficient",
+      "risk_level": "hold",
       "approved": false,
-      "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "approval_reason": "illiquid/unresolved — manual review",
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ACTF",
@@ -86,7 +86,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ADCI",
@@ -100,7 +100,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ADIB",
@@ -114,7 +114,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ADPC",
@@ -128,7 +128,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "AFDI",
@@ -142,7 +142,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "AFMC",
@@ -156,7 +156,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "AGIG",
@@ -170,7 +170,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "AIDC",
@@ -184,7 +184,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "AIND",
@@ -198,7 +198,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "AJWA",
@@ -212,7 +212,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ALCN",
@@ -226,7 +226,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ALRA",
@@ -240,7 +240,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ALUM",
@@ -254,7 +254,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "AMER",
@@ -268,7 +268,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "AMES",
@@ -282,7 +282,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "AMIA",
@@ -296,7 +296,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "AMII",
@@ -310,7 +310,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "AMOC",
@@ -324,7 +324,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "APSW",
@@ -338,7 +338,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ARAB",
@@ -352,7 +352,7 @@
       "risk_level": "hold",
       "approved": false,
       "approval_reason": "illiquid/unresolved — manual review",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ARCC",
@@ -366,7 +366,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "AREH",
@@ -380,21 +380,21 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ARVA",
-      "tier": "TIER_A_FORWARD_SAFE",
-      "forward_primary": "eodhd",
+      "tier": "TIER_D_UNSUPPORTED_OR_MANUAL",
+      "forward_primary": null,
       "historical_backtest_provider": "yahoo",
-      "fallback_provider": "yahoo",
-      "price_series": "SPLIT_ADJUSTED",
-      "volume_policy": "EVENT_SPECIFIC",
-      "evidence_status": "recent_validated_not_backtested",
-      "risk_level": "low",
+      "fallback_provider": null,
+      "price_series": "PROJECT_CURRENT",
+      "volume_policy": "PROJECT_CURRENT",
+      "evidence_status": "insufficient_overlap",
+      "risk_level": "hold",
       "approved": false,
-      "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "approval_reason": "too few overlapping recent sessions to judge agreement — refresh the comparison baseline and re-audit",
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ASCM",
@@ -408,21 +408,21 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ASPI",
-      "tier": "TIER_D_UNSUPPORTED_OR_MANUAL",
-      "forward_primary": null,
+      "tier": "TIER_C_HISTORICAL_REVIEW",
+      "forward_primary": "eodhd_shadow",
       "historical_backtest_provider": "yahoo",
-      "fallback_provider": null,
-      "price_series": "PROJECT_CURRENT",
-      "volume_policy": "PROJECT_CURRENT",
-      "evidence_status": "insufficient",
-      "risk_level": "hold",
+      "fallback_provider": "yahoo",
+      "price_series": "SPLIT_ADJUSTED",
+      "volume_policy": "EVENT_SPECIFIC",
+      "evidence_status": "corp_action_or_deep_history_diff",
+      "risk_level": "high",
       "approved": false,
-      "approval_reason": "illiquid/unresolved — manual review",
-      "last_reviewed": "2026-08-26"
+      "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ATLC",
@@ -436,7 +436,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ATQA",
@@ -450,7 +450,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "AUTO",
@@ -464,7 +464,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "AXPH",
@@ -478,7 +478,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "BINV",
@@ -492,7 +492,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "BIOC",
@@ -506,7 +506,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "BONY",
@@ -520,7 +520,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "BTFH",
@@ -534,7 +534,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "CAED",
@@ -548,7 +548,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "CANA",
@@ -562,7 +562,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "CCAP",
@@ -576,7 +576,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "CCRS",
@@ -590,7 +590,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "CEFM",
@@ -604,7 +604,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "CERA",
@@ -618,7 +618,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "CFGH",
@@ -632,7 +632,7 @@
       "risk_level": "hold",
       "approved": false,
       "approval_reason": "illiquid/unresolved — manual review",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "CICH",
@@ -646,7 +646,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "CIEB",
@@ -660,7 +660,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "CIRA",
@@ -674,7 +674,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "CLHO",
@@ -688,7 +688,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "CNFN",
@@ -702,7 +702,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "COMI",
@@ -716,21 +716,21 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "COPR",
-      "tier": "TIER_D_UNSUPPORTED_OR_MANUAL",
-      "forward_primary": null,
+      "tier": "TIER_C_HISTORICAL_REVIEW",
+      "forward_primary": "eodhd_shadow",
       "historical_backtest_provider": "yahoo",
-      "fallback_provider": null,
-      "price_series": "PROJECT_CURRENT",
-      "volume_policy": "PROJECT_CURRENT",
-      "evidence_status": "insufficient",
-      "risk_level": "hold",
+      "fallback_provider": "yahoo",
+      "price_series": "SPLIT_ADJUSTED",
+      "volume_policy": "EVENT_SPECIFIC",
+      "evidence_status": "corp_action_or_deep_history_diff",
+      "risk_level": "high",
       "approved": false,
-      "approval_reason": "illiquid/unresolved — manual review",
-      "last_reviewed": "2026-08-26"
+      "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "COSG",
@@ -744,7 +744,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "CPCI",
@@ -758,7 +758,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "CPME",
@@ -772,7 +772,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "CRST",
@@ -786,7 +786,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "CSAG",
@@ -800,7 +800,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "DAPH",
@@ -814,7 +814,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "DEIN",
@@ -828,7 +828,7 @@
       "risk_level": "hold",
       "approved": false,
       "approval_reason": "illiquid/unresolved — manual review",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "DGTZ",
@@ -842,7 +842,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "DOMT",
@@ -856,7 +856,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "DSCW",
@@ -870,7 +870,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "DTPP",
@@ -884,7 +884,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EALR",
@@ -898,21 +898,21 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EASB",
-      "tier": "TIER_D_UNSUPPORTED_OR_MANUAL",
-      "forward_primary": null,
+      "tier": "TIER_C_HISTORICAL_REVIEW",
+      "forward_primary": "eodhd_shadow",
       "historical_backtest_provider": "yahoo",
-      "fallback_provider": null,
-      "price_series": "PROJECT_CURRENT",
-      "volume_policy": "PROJECT_CURRENT",
-      "evidence_status": "insufficient",
-      "risk_level": "hold",
+      "fallback_provider": "yahoo",
+      "price_series": "SPLIT_ADJUSTED",
+      "volume_policy": "EVENT_SPECIFIC",
+      "evidence_status": "corp_action_or_deep_history_diff",
+      "risk_level": "high",
       "approved": false,
-      "approval_reason": "illiquid/unresolved — manual review",
-      "last_reviewed": "2026-08-26"
+      "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EAST",
@@ -926,7 +926,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EBSC",
@@ -940,7 +940,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ECAP",
@@ -954,7 +954,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EDBM",
@@ -968,7 +968,7 @@
       "risk_level": "hold",
       "approved": false,
       "approval_reason": "illiquid/unresolved — manual review",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EDFM",
@@ -982,7 +982,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EEII",
@@ -996,7 +996,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EFIC",
@@ -1010,7 +1010,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EFID",
@@ -1024,7 +1024,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EFIH",
@@ -1038,7 +1038,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EGAL",
@@ -1052,7 +1052,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EGAS",
@@ -1066,7 +1066,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EGBE",
@@ -1080,7 +1080,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EGCH",
@@ -1094,7 +1094,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EGREF",
@@ -1108,7 +1108,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EGSA",
@@ -1122,7 +1122,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EGTS",
@@ -1136,7 +1136,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EHDR",
@@ -1150,7 +1150,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ELEC",
@@ -1164,7 +1164,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ELKA",
@@ -1178,7 +1178,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ELNA",
@@ -1192,7 +1192,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ELSH",
@@ -1206,7 +1206,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EMFD",
@@ -1220,7 +1220,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ENGC",
@@ -1234,7 +1234,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EOSB",
@@ -1248,7 +1248,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EPCO",
@@ -1262,7 +1262,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EPPK",
@@ -1276,7 +1276,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ETEL",
@@ -1290,7 +1290,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ETRS",
@@ -1304,7 +1304,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "EXPA",
@@ -1318,7 +1318,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "FAIT",
@@ -1332,7 +1332,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "FAITA",
@@ -1346,7 +1346,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "FERC",
@@ -1360,7 +1360,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "FTNS",
@@ -1374,7 +1374,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "FWRY",
@@ -1388,7 +1388,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "GBCO",
@@ -1402,7 +1402,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "GDWA",
@@ -1416,7 +1416,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "GGCC",
@@ -1430,7 +1430,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "GGRN",
@@ -1444,7 +1444,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "GIHD",
@@ -1458,7 +1458,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "GMCI",
@@ -1472,7 +1472,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "GOUR",
@@ -1486,7 +1486,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "GPIM",
@@ -1500,7 +1500,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "GPPL",
@@ -1514,7 +1514,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "GRCA",
@@ -1528,7 +1528,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "GSSC",
@@ -1542,7 +1542,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "GTEX",
@@ -1556,21 +1556,21 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "GTWL",
-      "tier": "TIER_A_FORWARD_SAFE",
+      "tier": "TIER_B_FORWARD_EODHD_NO_FALLBACK",
       "forward_primary": "eodhd",
-      "historical_backtest_provider": "yahoo",
-      "fallback_provider": "yahoo",
+      "historical_backtest_provider": "eodhd",
+      "fallback_provider": null,
       "price_series": "SPLIT_ADJUSTED",
       "volume_policy": "EVENT_SPECIFIC",
-      "evidence_status": "recent_validated_not_backtested",
-      "risk_level": "low",
+      "evidence_status": "eodhd_only",
+      "risk_level": "medium",
       "approved": false,
-      "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "HBCO",
@@ -1584,21 +1584,21 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "HDBK",
-      "tier": "TIER_D_UNSUPPORTED_OR_MANUAL",
-      "forward_primary": null,
+      "tier": "TIER_C_HISTORICAL_REVIEW",
+      "forward_primary": "eodhd_shadow",
       "historical_backtest_provider": "yahoo",
-      "fallback_provider": null,
-      "price_series": "PROJECT_CURRENT",
-      "volume_policy": "PROJECT_CURRENT",
-      "evidence_status": "insufficient",
-      "risk_level": "hold",
+      "fallback_provider": "yahoo",
+      "price_series": "SPLIT_ADJUSTED",
+      "volume_policy": "EVENT_SPECIFIC",
+      "evidence_status": "corp_action_or_deep_history_diff",
+      "risk_level": "high",
       "approved": false,
-      "approval_reason": "illiquid/unresolved — manual review",
-      "last_reviewed": "2026-08-26"
+      "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "HELI",
@@ -1612,7 +1612,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "HRHO",
@@ -1626,7 +1626,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ICFC",
@@ -1640,7 +1640,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ICID",
@@ -1654,7 +1654,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ICLE",
@@ -1668,7 +1668,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "IDRE",
@@ -1682,21 +1682,21 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "IEEC",
-      "tier": "TIER_D_UNSUPPORTED_OR_MANUAL",
-      "forward_primary": null,
-      "historical_backtest_provider": "yahoo",
+      "tier": "TIER_B_FORWARD_EODHD_NO_FALLBACK",
+      "forward_primary": "eodhd",
+      "historical_backtest_provider": "eodhd",
       "fallback_provider": null,
-      "price_series": "PROJECT_CURRENT",
-      "volume_policy": "PROJECT_CURRENT",
-      "evidence_status": "insufficient",
-      "risk_level": "hold",
+      "price_series": "SPLIT_ADJUSTED",
+      "volume_policy": "EVENT_SPECIFIC",
+      "evidence_status": "eodhd_only",
+      "risk_level": "medium",
       "approved": false,
-      "approval_reason": "illiquid/unresolved — manual review",
-      "last_reviewed": "2026-08-26"
+      "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "IFAP",
@@ -1710,7 +1710,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "INFI",
@@ -1724,7 +1724,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "IRON",
@@ -1738,7 +1738,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ISMA",
@@ -1752,7 +1752,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ISMQ",
@@ -1766,7 +1766,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ISPH",
@@ -1780,21 +1780,21 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "JUFO",
-      "tier": "TIER_C_HISTORICAL_REVIEW",
-      "forward_primary": "eodhd_shadow",
+      "tier": "TIER_D_UNSUPPORTED_OR_MANUAL",
+      "forward_primary": null,
       "historical_backtest_provider": "yahoo",
-      "fallback_provider": "yahoo",
-      "price_series": "SPLIT_ADJUSTED",
-      "volume_policy": "EVENT_SPECIFIC",
-      "evidence_status": "corp_action_or_deep_history_diff",
-      "risk_level": "high",
+      "fallback_provider": null,
+      "price_series": "PROJECT_CURRENT",
+      "volume_policy": "PROJECT_CURRENT",
+      "evidence_status": "insufficient",
+      "risk_level": "hold",
       "approved": false,
-      "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "approval_reason": "illiquid/unresolved — manual review",
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "KABO",
@@ -1808,7 +1808,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "KASABF",
@@ -1822,7 +1822,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "KORA",
@@ -1836,7 +1836,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "KRDI",
@@ -1850,7 +1850,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "KWIN",
@@ -1864,21 +1864,21 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "KZPC",
-      "tier": "TIER_D_UNSUPPORTED_OR_MANUAL",
-      "forward_primary": null,
+      "tier": "TIER_C_HISTORICAL_REVIEW",
+      "forward_primary": "eodhd_shadow",
       "historical_backtest_provider": "yahoo",
-      "fallback_provider": null,
-      "price_series": "PROJECT_CURRENT",
-      "volume_policy": "PROJECT_CURRENT",
-      "evidence_status": "insufficient",
-      "risk_level": "hold",
+      "fallback_provider": "yahoo",
+      "price_series": "SPLIT_ADJUSTED",
+      "volume_policy": "EVENT_SPECIFIC",
+      "evidence_status": "corp_action_or_deep_history_diff",
+      "risk_level": "high",
       "approved": false,
-      "approval_reason": "illiquid/unresolved — manual review",
-      "last_reviewed": "2026-08-26"
+      "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "LCSW",
@@ -1892,21 +1892,21 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "LUTS",
-      "tier": "TIER_A_FORWARD_SAFE",
-      "forward_primary": "eodhd",
+      "tier": "TIER_D_UNSUPPORTED_OR_MANUAL",
+      "forward_primary": null,
       "historical_backtest_provider": "yahoo",
-      "fallback_provider": "yahoo",
-      "price_series": "SPLIT_ADJUSTED",
-      "volume_policy": "EVENT_SPECIFIC",
-      "evidence_status": "recent_validated_not_backtested",
-      "risk_level": "low",
+      "fallback_provider": null,
+      "price_series": "PROJECT_CURRENT",
+      "volume_policy": "PROJECT_CURRENT",
+      "evidence_status": "insufficient",
+      "risk_level": "hold",
       "approved": false,
-      "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "approval_reason": "illiquid/unresolved — manual review",
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MAAL",
@@ -1920,7 +1920,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MASR",
@@ -1934,7 +1934,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MATD",
@@ -1948,7 +1948,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MBEG",
@@ -1962,7 +1962,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MBSC",
@@ -1976,7 +1976,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MCQE",
@@ -1990,7 +1990,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MCRO",
@@ -2004,7 +2004,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MEDP",
@@ -2018,7 +2018,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MEGM",
@@ -2032,7 +2032,7 @@
       "risk_level": "hold",
       "approved": false,
       "approval_reason": "illiquid/unresolved — manual review",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MENA",
@@ -2046,7 +2046,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MEPA",
@@ -2060,7 +2060,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MFPC",
@@ -2074,7 +2074,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MFSC",
@@ -2088,21 +2088,21 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MHOT",
-      "tier": "TIER_D_UNSUPPORTED_OR_MANUAL",
-      "forward_primary": null,
+      "tier": "TIER_C_HISTORICAL_REVIEW",
+      "forward_primary": "eodhd_shadow",
       "historical_backtest_provider": "yahoo",
-      "fallback_provider": null,
-      "price_series": "PROJECT_CURRENT",
-      "volume_policy": "PROJECT_CURRENT",
-      "evidence_status": "insufficient",
-      "risk_level": "hold",
+      "fallback_provider": "yahoo",
+      "price_series": "SPLIT_ADJUSTED",
+      "volume_policy": "EVENT_SPECIFIC",
+      "evidence_status": "corp_action_or_deep_history_diff",
+      "risk_level": "high",
       "approved": false,
-      "approval_reason": "illiquid/unresolved — manual review",
-      "last_reviewed": "2026-08-26"
+      "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MICH",
@@ -2116,7 +2116,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MILS",
@@ -2130,7 +2130,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MIPH",
@@ -2144,7 +2144,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MOED",
@@ -2158,7 +2158,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MOIL",
@@ -2172,7 +2172,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MOIN",
@@ -2186,7 +2186,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MOSC",
@@ -2200,7 +2200,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MPCI",
@@ -2214,7 +2214,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MPCO",
@@ -2228,7 +2228,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MPRC",
@@ -2242,21 +2242,21 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "MTIE",
-      "tier": "TIER_C_HISTORICAL_REVIEW",
-      "forward_primary": "eodhd_shadow",
+      "tier": "TIER_D_UNSUPPORTED_OR_MANUAL",
+      "forward_primary": null,
       "historical_backtest_provider": "yahoo",
-      "fallback_provider": "yahoo",
-      "price_series": "SPLIT_ADJUSTED",
-      "volume_policy": "EVENT_SPECIFIC",
-      "evidence_status": "corp_action_or_deep_history_diff",
-      "risk_level": "high",
+      "fallback_provider": null,
+      "price_series": "PROJECT_CURRENT",
+      "volume_policy": "PROJECT_CURRENT",
+      "evidence_status": "insufficient",
+      "risk_level": "hold",
       "approved": false,
-      "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "approval_reason": "illiquid/unresolved — manual review",
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "NAHO",
@@ -2270,7 +2270,7 @@
       "risk_level": "hold",
       "approved": false,
       "approval_reason": "illiquid/unresolved — manual review",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "NAPR",
@@ -2284,7 +2284,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "NARE",
@@ -2298,21 +2298,21 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "NCCW",
-      "tier": "TIER_C_HISTORICAL_REVIEW",
-      "forward_primary": "eodhd_shadow",
+      "tier": "TIER_D_UNSUPPORTED_OR_MANUAL",
+      "forward_primary": null,
       "historical_backtest_provider": "yahoo",
-      "fallback_provider": "yahoo",
-      "price_series": "SPLIT_ADJUSTED",
-      "volume_policy": "EVENT_SPECIFIC",
-      "evidence_status": "corp_action_or_deep_history_diff",
-      "risk_level": "high",
+      "fallback_provider": null,
+      "price_series": "PROJECT_CURRENT",
+      "volume_policy": "PROJECT_CURRENT",
+      "evidence_status": "insufficient",
+      "risk_level": "hold",
       "approved": false,
-      "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "approval_reason": "illiquid/unresolved — manual review",
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "NDRL",
@@ -2326,7 +2326,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "NEDA",
@@ -2340,7 +2340,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "NHPS",
@@ -2354,7 +2354,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "NINH",
@@ -2368,7 +2368,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "NIPH",
@@ -2382,7 +2382,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "NULL",
@@ -2396,7 +2396,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "OBRI",
@@ -2410,7 +2410,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "OCDI",
@@ -2424,21 +2424,21 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "OCPH",
-      "tier": "TIER_C_HISTORICAL_REVIEW",
-      "forward_primary": "eodhd_shadow",
+      "tier": "TIER_D_UNSUPPORTED_OR_MANUAL",
+      "forward_primary": null,
       "historical_backtest_provider": "yahoo",
-      "fallback_provider": "yahoo",
-      "price_series": "SPLIT_ADJUSTED",
-      "volume_policy": "EVENT_SPECIFIC",
-      "evidence_status": "corp_action_or_deep_history_diff",
-      "risk_level": "high",
+      "fallback_provider": null,
+      "price_series": "PROJECT_CURRENT",
+      "volume_policy": "PROJECT_CURRENT",
+      "evidence_status": "insufficient",
+      "risk_level": "hold",
       "approved": false,
-      "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "approval_reason": "illiquid/unresolved — manual review",
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ODIN",
@@ -2452,7 +2452,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "OFH",
@@ -2466,7 +2466,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "OIH",
@@ -2480,7 +2480,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "OLFI",
@@ -2494,7 +2494,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ORAS",
@@ -2508,7 +2508,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "EODHD==Rubix; Yahoo proven bad — no Yahoo fallback ever",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ORHD",
@@ -2522,7 +2522,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ORMT",
@@ -2536,7 +2536,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ORWE",
@@ -2550,7 +2550,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "PHAR",
@@ -2564,7 +2564,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "PHDC",
@@ -2578,7 +2578,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "PHGC",
@@ -2592,7 +2592,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "PHTV",
@@ -2606,7 +2606,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "PIOH",
@@ -2620,7 +2620,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "POUL",
@@ -2634,7 +2634,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "PRCL",
@@ -2648,21 +2648,21 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "PRDC",
-      "tier": "TIER_D_UNSUPPORTED_OR_MANUAL",
-      "forward_primary": null,
+      "tier": "TIER_A_FORWARD_SAFE",
+      "forward_primary": "eodhd",
       "historical_backtest_provider": "yahoo",
-      "fallback_provider": null,
-      "price_series": "PROJECT_CURRENT",
-      "volume_policy": "PROJECT_CURRENT",
-      "evidence_status": "insufficient",
-      "risk_level": "hold",
+      "fallback_provider": "yahoo",
+      "price_series": "SPLIT_ADJUSTED",
+      "volume_policy": "EVENT_SPECIFIC",
+      "evidence_status": "recent_validated_not_backtested",
+      "risk_level": "low",
       "approved": false,
-      "approval_reason": "illiquid/unresolved — manual review",
-      "last_reviewed": "2026-08-26"
+      "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "PRMH",
@@ -2676,7 +2676,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "QNBA",
@@ -2690,7 +2690,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "QNBE",
@@ -2704,7 +2704,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "RACC",
@@ -2718,7 +2718,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "RAKT",
@@ -2732,7 +2732,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "RAYA",
@@ -2746,7 +2746,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "RMDA",
@@ -2760,7 +2760,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ROTO",
@@ -2774,7 +2774,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "RREI",
@@ -2788,7 +2788,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "RTVC",
@@ -2802,7 +2802,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "RUBX",
@@ -2816,7 +2816,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SAIB",
@@ -2830,7 +2830,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SAUD",
@@ -2844,7 +2844,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SCEM",
@@ -2858,7 +2858,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SCFM",
@@ -2872,7 +2872,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SCTS",
@@ -2886,7 +2886,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SDTI",
@@ -2900,7 +2900,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SEIG",
@@ -2914,7 +2914,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SEIGA",
@@ -2924,25 +2924,25 @@
       "fallback_provider": null,
       "price_series": "PROJECT_CURRENT",
       "volume_policy": "PROJECT_CURRENT",
-      "evidence_status": "scale_anomaly_unresolved",
+      "evidence_status": "insufficient",
       "risk_level": "hold",
       "approved": false,
-      "approval_reason": "price-scale anomaly with no manual-queue resolution — hold until resolved",
-      "last_reviewed": "2026-08-26"
+      "approval_reason": "illiquid/unresolved — manual review",
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SIMO",
-      "tier": "TIER_A_FORWARD_SAFE",
+      "tier": "TIER_B_FORWARD_EODHD_NO_FALLBACK",
       "forward_primary": "eodhd",
-      "historical_backtest_provider": "yahoo",
-      "fallback_provider": "yahoo",
+      "historical_backtest_provider": "eodhd",
+      "fallback_provider": null,
       "price_series": "SPLIT_ADJUSTED",
       "volume_policy": "EVENT_SPECIFIC",
-      "evidence_status": "recent_validated_not_backtested",
-      "risk_level": "low",
+      "evidence_status": "eodhd_only",
+      "risk_level": "medium",
       "approved": false,
-      "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SIPC",
@@ -2956,7 +2956,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SKPC",
@@ -2970,7 +2970,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SMFR",
@@ -2984,7 +2984,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SNFC",
@@ -2998,7 +2998,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SPHT",
@@ -3012,7 +3012,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SPIN",
@@ -3026,21 +3026,21 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SPMD",
-      "tier": "TIER_D_UNSUPPORTED_OR_MANUAL",
-      "forward_primary": null,
+      "tier": "TIER_C_HISTORICAL_REVIEW",
+      "forward_primary": "eodhd_shadow",
       "historical_backtest_provider": "yahoo",
-      "fallback_provider": null,
-      "price_series": "PROJECT_CURRENT",
-      "volume_policy": "PROJECT_CURRENT",
-      "evidence_status": "insufficient",
-      "risk_level": "hold",
+      "fallback_provider": "yahoo",
+      "price_series": "SPLIT_ADJUSTED",
+      "volume_policy": "EVENT_SPECIFIC",
+      "evidence_status": "corp_action_or_deep_history_diff",
+      "risk_level": "high",
       "approved": false,
-      "approval_reason": "illiquid/unresolved — manual review",
-      "last_reviewed": "2026-08-26"
+      "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SRWA",
@@ -3054,7 +3054,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SUGR",
@@ -3068,7 +3068,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SVCE",
@@ -3082,7 +3082,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "SWDY",
@@ -3096,7 +3096,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "TALM",
@@ -3110,7 +3110,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "TANM",
@@ -3124,7 +3124,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "TAQA",
@@ -3138,7 +3138,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "TMGH",
@@ -3152,7 +3152,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "TRTO",
@@ -3166,7 +3166,7 @@
       "risk_level": "hold",
       "approved": false,
       "approval_reason": "illiquid/unresolved — manual review",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "TWSA",
@@ -3180,7 +3180,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "TYCN",
@@ -3194,7 +3194,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "UBEE",
@@ -3208,7 +3208,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "UEFM",
@@ -3222,7 +3222,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "UEGC",
@@ -3236,7 +3236,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "UNIP",
@@ -3250,7 +3250,7 @@
       "risk_level": "hold",
       "approved": false,
       "approval_reason": "illiquid/unresolved — manual review",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "UNIT",
@@ -3264,7 +3264,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "UTOP",
@@ -3278,7 +3278,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "VALU",
@@ -3292,7 +3292,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "VLMR",
@@ -3306,7 +3306,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "VLMRA",
@@ -3320,7 +3320,7 @@
       "risk_level": "medium",
       "approved": false,
       "approval_reason": "Yahoo has no usable data; EODHD only — DATA_UNAVAILABLE on failure",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "WCDF",
@@ -3334,7 +3334,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "WKOL",
@@ -3348,7 +3348,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ZEOT",
@@ -3362,7 +3362,7 @@
       "risk_level": "low",
       "approved": false,
       "approval_reason": "recent prices validated, no scale issue, no recent split; forward-safe candidate (backtests still stay on Yahoo)",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     },
     {
       "symbol": "ZMID",
@@ -3376,7 +3376,7 @@
       "risk_level": "high",
       "approved": false,
       "approval_reason": "corp-action/deep-history/bar-coverage differences — forward-only maybe; must NOT replace frozen backtest history",
-      "last_reviewed": "2026-08-26"
+      "last_reviewed": "2026-08-27"
     }
   ]
 }
