@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "at": "2026-08-27T16:55:10+03:00",
+      "action": "CONFIRM",
+      "actor": "MANUAL",
+      "reason": "Operator reported the market did not trade on 2026-08-27. The official sync could not be used to confirm it (both EGX sources returned ConnectionResetError) and the local feed had no heartbeat that day, so the closure rests on the operator's observation, not on measurement.",
+      "date": "2026-08-27",
+      "old": null,
+      "new": {
+        "date": "2026-08-27",
+        "name_en": "EGX closed — operator-declared",
+        "name_ar": "",
+        "exchange": "EGX",
+        "closure_type": "FULL_DAY",
+        "status": "CONFIRMED",
+        "source_type": "MANUAL_OVERRIDE",
+        "source_url": "",
+        "source_title": "",
+        "confirmed_at": "2026-08-27T16:55:10+03:00",
+        "confirmed_by": "MANUAL",
+        "confidence": 1.0,
+        "notes": "Operator reported the market did not trade on 2026-08-27. The official sync could not be used to confirm it (both EGX sources returned ConnectionResetError) and the local feed had no heartbeat that day, so the closure rests on the operator's observation, not on measurement.",
+        "source_hash": "",
+        "version": 1
+      }
+    }
+  ]
+}
