@@ -10,7 +10,7 @@ missing symbol shifts every sector's share of market turnover.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import logging
 import sqlite3
@@ -23,6 +23,7 @@ from core.universe import UNIVERSE_SOURCE, active_engine_symbols
 from decision_support.sector_analysis import load_sector_map
 from sector_flow.history import (
     DEFAULT_BASELINE_WINDOW,
+    DEFAULT_MIN_COVERAGE,
     DEFAULT_MIN_COVERAGE,
     DEFAULT_SHARE_LOOKBACK,
     complete_sessions,
@@ -136,6 +137,11 @@ def build(universe_path=None, sector_file="data/sectors.csv",
         "providers": loaded["Provider"].value_counts().to_dict() if not loaded.empty else {},
         "sectors": int(history["Sector"].nunique()) if not history.empty else 0,
         "sessions": int(history["SessionDate"].nunique()) if not history.empty else 0,
+        # Which completed session this build was reaching for. EODHD publishes a
+        # session a day late and sometimes two, so a build can be correct and
+        # still not advance. Recording the target lets a scheduled refresh tell
+        # "the provider has not published yet" from "nobody has rebuilt".
+        "attempted_for_session": str(_expected_session() or ""),
         "first_session": str(history["SessionDate"].min().date()) if not history.empty else None,
         "last_session": str(history["SessionDate"].max().date()) if not history.empty else None,
     }
@@ -166,6 +172,57 @@ def save(history, metadata, database_path=DEFAULT_DATABASE):
             (metadata["built_at"], json.dumps(metadata, sort_keys=True)),
         )
     return database_path
+
+
+def _expected_session():
+    from core.research_router import _expected_completed_session
+    return _expected_completed_session()
+
+
+def stored_latest_session(database_path=DEFAULT_DATABASE, min_coverage=DEFAULT_MIN_COVERAGE):
+    """Return the newest complete session in the store, or ``None``.
+
+    Reads one row rather than the whole history: a scheduled refresh asks this
+    on every run, including the many runs where the answer is "nothing to do".
+    """
+
+    query = (
+        f"SELECT MAX(SessionDate) FROM {HISTORY_TABLE} "
+        f"WHERE COALESCE(SessionCoverage, 1) >= ?"
+    )
+    try:
+        with sqlite3.connect(f"file:{database_path}?mode=ro", uri=True) as connection:
+            row = connection.execute(query, (min_coverage,)).fetchone()
+    except sqlite3.Error:
+        return None
+    return pd.Timestamp(row[0]).date() if row and row[0] else None
+
+
+def sessions_behind(database_path=DEFAULT_DATABASE):
+    """How many completed EGX sessions the store is missing.
+
+    Zero means a rebuild would re-derive what is already there. The daily
+    refresh uses this to skip a twenty-minute rebuild on the many days -- every
+    weekend and holiday among them -- when nothing has completed since the last
+    one.
+    """
+
+    from core.egx_calendar import effective_holidays
+    from core.egx_session import is_regular_trading_day
+
+    stored = stored_latest_session(database_path)
+    expected = _expected_session()
+    if expected is None:
+        return 0
+    if stored is None:
+        return None                      # nothing stored: a full build is required
+    holidays = effective_holidays()
+    missing, cursor = 0, stored + timedelta(days=1)
+    while cursor <= expected:
+        if is_regular_trading_day(cursor, holidays):
+            missing += 1
+        cursor += timedelta(days=1)
+    return missing
 
 
 def load_saved(database_path=DEFAULT_DATABASE):

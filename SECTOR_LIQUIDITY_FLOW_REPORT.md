@@ -207,3 +207,60 @@ repeating yesterday.
 
 Nothing here is investment advice. `TurnoverShare` describes where trading
 activity was, not where price is going.
+
+---
+
+## Keeping it current
+
+`scripts/build_sector_flow.py` is a manual full rebuild, and nothing ran it. A
+feature that needs a manual rebuild to stay current goes stale silently: the
+coverage guard refuses to rank a half-observed session, but it has nothing to
+say about a build that is itself days old.
+
+`scripts/refresh_sector_flow.py` is the scheduled entry point, built on the same
+Task-Scheduler pattern as `scripts/refresh_yahoo_cache.py`.
+
+### What makes a daily run affordable is not running
+
+The rebuild is deliberately whole rather than incremental. Every sector's share
+is a fraction of that session's market total, and RVOL scores a session against
+its own trailing median — so appending sessions measured on a different source
+basis than the ones before them would put a discontinuity inside the very
+comparison those numbers exist to make. The saving comes from skipping the work,
+not from splitting it.
+
+Two guards decide:
+
+| Status | When | Cost |
+| --- | --- | --- |
+| `UP_TO_DATE` | No EGX session has completed since the last build — every weekend, every holiday, every run after the day's first | **< 1s** |
+| `WAITING_ON_PROVIDER` | A session is missing, but a build already reached for it and it did not advance | **< 2s** |
+| `OK` | A genuinely new completed session | ~7 min |
+
+The second guard is the subtler one. EODHD publishes a session a day late and
+sometimes two, so a build can be entirely correct and still not advance.
+Measured: after rebuilding for 2026-08-27, the next run took **1.8 seconds
+instead of seven minutes** and reported `WAITING_ON_PROVIDER`. Without it every
+scheduled run would pay a full rebuild until the provider caught up.
+
+Each build records `attempted_for_session` — the session it was reaching for —
+which is what lets "the provider has not published yet" be told apart from
+"nobody has rebuilt".
+
+### The page says when it is behind
+
+`sessions_behind()` reads one row, and the dashboard warns when the history is
+behind the most recent EGX close, naming the refresh command. A page that looks
+current while describing last week is the failure mode worth naming out loud.
+
+### Scheduling it
+
+Run after the EGX close, Sunday to Thursday:
+
+```bash
+venv/Scripts/python.exe scripts/refresh_sector_flow.py
+```
+
+It appends to `logs/sector_flow_refresh.log`, prints a JSON result, and exits 0
+for `OK`, `UP_TO_DATE` and `WAITING_ON_PROVIDER`, non-zero only for a real
+failure — so a scheduled task reports a status rather than a traceback.

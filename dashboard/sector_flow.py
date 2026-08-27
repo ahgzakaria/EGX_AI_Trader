@@ -28,7 +28,12 @@ import streamlit as st
 from config.settings_manager import settings
 from dashboard.ui import empty_state, metric_card, page_header, section_header, status_bar
 from decision_support.sector_analysis import load_sector_map
-from sector_flow.builder import DEFAULT_DATABASE, latest_build_metadata, load_saved
+from sector_flow.builder import (
+    DEFAULT_DATABASE,
+    latest_build_metadata,
+    load_saved,
+    sessions_behind,
+)
 from sector_flow.forecast import baseline_forecast, forecast_next_session
 from sector_flow.history import complete_sessions, latest_snapshot, rotation_matrix
 from sector_flow.strength import FULL_STRENGTH_RVOL, strength_frame
@@ -42,6 +47,7 @@ from sector_flow.intraday import (
 
 HEATMAP_SESSIONS = 60
 BUILD_COMMAND = "venv/Scripts/python.exe scripts/build_sector_flow.py"
+REFRESH_COMMAND = "venv/Scripts/python.exe scripts/refresh_sector_flow.py"
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -110,6 +116,16 @@ def show_sector_flow():
         ("Complete sessions", f"{usable['SessionDate'].nunique():,}", "gray"),
         ("Built", str(metadata.get("built_at", "—"))[:16], "gray"),
     ])
+    # The coverage guard refuses to rank a half-observed session, but it has
+    # nothing to say about a build that is itself days old. A page that looks
+    # current while describing last week is the failure mode worth naming.
+    behind = sessions_behind(database_path)
+    if behind:
+        st.warning(
+            f"This history is **{behind} completed session(s) behind**. Everything below "
+            f"describes {session}, which is not the most recent EGX close. "
+            f"Refresh with: {REFRESH_COMMAND}"
+        )
     if stored_latest != session:
         st.info(
             f"The most recent stored session ({stored_latest}) did not have enough of the "
