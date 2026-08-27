@@ -37,6 +37,28 @@ OFFICIAL_SOURCES = (
 )
 OFFICIAL_DOMAINS = ("egx.com.eg",)
 
+# Discovery-only sources. These can raise a candidate for an operator to look at
+# and can never confirm one: `classify_confirmation` requires an OFFICIAL_DOMAINS
+# url AND an official source_type, and a row from here satisfies neither. The
+# separation is structural rather than a rule to remember.
+#
+# They exist because EGX's own hosts refuse an identified client. Measured on
+# 2026-08-27: www.egx.com.eg and egx.com.eg reset the connection for
+# `EGX-Trader-CalendarSync/1.0`, and beta.egx.com.eg answers 200 with a WAF
+# "Request Rejected" body. All three serve normally to a browser user-agent.
+# Presenting a browser string to defeat that is not something this project does,
+# so the official tier stays wired to EGX and simply reports itself unreachable,
+# while discovery runs against a source that accepts an honest client.
+#
+# This matters more in Egypt than the split might suggest: a public holiday
+# falling mid-week is moved by decree to a Thursday or a Sunday, so the date the
+# exchange actually closes is not derivable from a published list in advance --
+# it has to be picked up from the announcement.
+DISCOVERY_SOURCES = (
+    {"name": "Mubasher — EGX news", "source_type": "THIRD_PARTY_DISCOVERY",
+     "url": "https://www.mubasher.info/news/eg/now/latest"},
+)
+
 # Explicit closure language — Arabic + English. Presence is necessary but NOT
 # sufficient for auto-confirmation (date + EGX-trading scope must also be explicit).
 CLOSURE_PATTERNS_AR = (
@@ -204,7 +226,7 @@ def run_sync(*, commit=False, svc=None, html_by_source=None, offline=False,
     checked, failures, discovered, confirmed = [], [], 0, 0
     ingested = []
 
-    for source in OFFICIAL_SOURCES:
+    for source in OFFICIAL_SOURCES + DISCOVERY_SOURCES:
         url = source["url"]
         checked.append(source["name"])
         try:
@@ -230,10 +252,21 @@ def run_sync(*, commit=False, svc=None, html_by_source=None, offline=False,
                     discovered += 1
             ingested.append({**record, "auto_verdict": verdict})
 
-    verdict = _overall_verdict(checked, failures, svc)
+    official_names = {source["name"] for source in OFFICIAL_SOURCES}
+    official_reachable = sorted(
+        name for name in official_names
+        if not any(f.startswith(f"{name}:") for f in failures))
+    verdict = _overall_verdict(checked, failures, svc,
+                               official_unreachable=not official_reachable)
     summary = {
         "at": now_dt.isoformat(timespec="seconds"), "verdict": verdict,
         "sources_checked": checked, "failures": failures,
+        # Which tier reached its sources, so "nothing found" can be told apart
+        # from "the official tier could not be read at all".
+        "official_sources_reachable": official_reachable,
+        "discovery_sources_reachable": sorted(
+            source["name"] for source in DISCOVERY_SOURCES
+            if not any(f.startswith(f"{source['name']}:") for f in failures)),
         "discovered": discovered, "confirmed": confirmed,
         "candidates": ingested, "commit": commit}
 
@@ -250,9 +283,18 @@ def run_sync(*, commit=False, svc=None, html_by_source=None, offline=False,
     return summary
 
 
-def _overall_verdict(checked, failures, svc):
+def _overall_verdict(checked, failures, svc, official_unreachable=False):
+    """The verdict is about the OFFICIAL tier, not the count of sources.
+
+    A discovery source succeeding must never make the official tier's failure
+    disappear: only EGX can confirm a closure, so an unreachable EGX means the
+    calendar cannot be confirmed from anywhere, however much was discovered.
+    """
+
     if failures and len(failures) >= len(checked):
         return "CALENDAR_SOURCE_UNAVAILABLE"
+    if official_unreachable:
+        return "OFFICIAL_SOURCE_UNAVAILABLE"
     if svc.conflicts():
         return "CONFLICTING_OFFICIAL_RECORDS"
     return "OK"

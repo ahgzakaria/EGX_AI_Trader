@@ -39,6 +39,24 @@ def write_history(path, sessions=SESSIONS, coverage=1.0, metadata=None):
     return str(path)
 
 
+@pytest.fixture(autouse=True)
+def fixed_calendar(monkeypatch):
+    """Pin the trading calendar.
+
+    These tests are about counting sessions between two dates. Left reading the
+    live calendar they change verdict whenever an operator records a closure --
+    which is exactly what happened when 2026-08-27 was declared a holiday.
+    """
+
+    from core import egx_calendar, egx_session
+
+    monkeypatch.setattr(egx_calendar, "effective_holidays", lambda *a, **k: set())
+    monkeypatch.setattr(
+        egx_session, "is_regular_trading_day",
+        lambda day, holidays=None: day.weekday() in (6, 0, 1, 2, 3),  # Sun-Thu
+    )
+
+
 @pytest.fixture
 def database(tmp_path):
     return str(tmp_path / "sector_flow.db")
