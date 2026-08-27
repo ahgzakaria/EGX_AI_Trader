@@ -67,6 +67,11 @@ def load_universe_frames(symbols, sector_map, purpose=DEFAULT_PURPOSE,
                 frame = load_history(
                     symbol, period=period, interval=interval, purpose=purpose,
                     min_bars=min_bars,
+                    # This history describes where turnover went; it places no
+                    # order and feeds no automatic entry. A symbol held for
+                    # manual review still traded real value, and omitting it
+                    # understates its sector's share of the market.
+                    allow_held=True,
                 )
             except Exception as error:  # provider faults must not abort the batch
                 logger.warning("sector flow: %s unavailable (%s)", symbol, error)
@@ -81,7 +86,8 @@ def load_universe_frames(symbols, sector_map, purpose=DEFAULT_PURPOSE,
             outcomes.append({
                 "Ticker": symbol,
                 "Sector": sector,
-                "Status": "LOADED",
+                "Status": "LOADED_HELD" if not metadata.get(
+                    "automatic_use_permitted", True) else "LOADED",
                 "Provider": metadata.get("effective_provider"),
                 "Bars": len(frame),
                 "Detail": metadata.get("freshness_status") or "",
@@ -108,7 +114,7 @@ def build(universe_path=None, sector_file="data/sectors.csv",
     history = sector_history(
         frames, sector_map, method=method, window=window, share_lookback=share_lookback,
     )
-    loaded = outcomes[outcomes["Status"] == "LOADED"]
+    loaded = outcomes[outcomes["Status"].isin(["LOADED", "LOADED_HELD"])]
     metadata = {
         "built_at": datetime.now(timezone.utc).astimezone().isoformat(),
         "purpose": purpose,
@@ -121,6 +127,11 @@ def build(universe_path=None, sector_file="data/sectors.csv",
         "classified_symbols": int((outcomes["Status"] != "UNCLASSIFIED").sum()),
         "loaded_symbols": len(loaded),
         "unavailable_symbols": int((outcomes["Status"] == "UNAVAILABLE").sum()),
+        # Symbols whose tier holds them for manual review but whose turnover is
+        # real and belongs in the market total. Counted separately so a reader
+        # can always see how much of a sector's share rests on held data.
+        "held_symbols": int((outcomes["Status"] == "LOADED_HELD").sum()),
+        "held_tickers": sorted(outcomes.loc[outcomes["Status"] == "LOADED_HELD", "Ticker"]),
         "unclassified_symbols": int((outcomes["Status"] == "UNCLASSIFIED").sum()),
         "providers": loaded["Provider"].value_counts().to_dict() if not loaded.empty else {},
         "sectors": int(history["Sector"].nunique()) if not history.empty else 0,

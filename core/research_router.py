@@ -39,6 +39,9 @@ BRIDGE_CONFLICT = "BRIDGE_CONFLICT"
 VOLUME_POLICY_UNRESOLVED = "VOLUME_POLICY_UNRESOLVED"
 DATA_INSUFFICIENT = "DATA_INSUFFICIENT"
 DATA_UNAVAILABLE = "DATA_UNAVAILABLE"
+#: A TIER_D symbol served from EODHD for display and analysis only, because the
+#: local-seed path cannot advance for it. Never approved for automatic use.
+TIER_D_HELD_FOR_REVIEW = "TIER_D_HELD_FOR_REVIEW"
 EXCLUDED_NON_EQUITY = "EXCLUDED_NON_EQUITY"
 
 _TIER_CACHE = {"mtime": None, "map": {}}
@@ -514,12 +517,24 @@ def clean_window_status(symbol, *, min_bars=250):
 
 
 def get_current_research_history(symbol, *, period="10y", interval="1d", min_bars=250,
-                                 scan_context=None):
+                                 scan_context=None, allow_held=False):
     """CURRENT_RESEARCH_V2 history. Never a Yahoo network call. Raises when unusable.
 
     A stale local seed does NOT masquerade as fresh: it raises ResearchDataUnavailable
     with a LOCAL_*_STALE / DATA_INSUFFICIENT / BRIDGE_CONFLICT status so the caller (and
     the manifest) sees an explicit block instead of a silently-current symbol.
+
+    ``allow_held`` opts a caller in to TIER_D symbols whose local-seed path cannot
+    advance but for which EODHD holds a current series. It is **off by default**, so
+    no existing caller changes behaviour: a symbol held for review stays blocked for
+    everything that has not asked for it. When a caller does ask, the frame is served
+    with ``automatic_use_permitted: False`` and a ``held_reason``, and is intended for
+    display and analysis only -- never for an automatic trading decision.
+
+    The two meanings were previously identical. A thinly traded stock is exactly the
+    one whose sessions the daily finalizer rejects as partial, so its seed can never
+    advance; routing it to that path alone meant "held for review" and "no obtainable
+    data" produced the same nothing, while a complete current series sat unused.
     """
     base = _base(symbol)
     tier = symbol_tier(base)
@@ -590,15 +605,32 @@ def get_current_research_history(symbol, *, period="10y", interval="1d", min_bar
         seed_present, price_policy = False, "SPLIT_ADJUSTED_ALL_EVENTS"
     else:
         # EODHD-unsupported / manual: frozen Yahoo seed + REAL Rubix Daily Bridge.
-        frame, state, local_md = local_plus_rubix_history(
-            base, period=period, interval=interval, min_bars=min_bars,
-            not_after=expected)
+        # A symbol with no seed at all raises here rather than returning a state,
+        # so the held fallback has to cover both exits, not just the stale one.
+        try:
+            frame, state, local_md = local_plus_rubix_history(
+                base, period=period, interval=interval, min_bars=min_bars,
+                not_after=expected)
+        except ResearchDataUnavailable as missing:
+            if not allow_held:
+                raise
+            held = _held_eodhd_history(base, min_bars=min_bars, scan_context=scan_context)
+            if held is None:
+                raise
+            return _held_frame(held, base, tier, expected, min_bars)
         provider, series = "local_plus_rubix", "PROJECT_LOCAL_SEED_PLUS_RUBIX"
         effective = pd.Timestamp(frame.index[-1]).date()
         fresh = {"status": local_md.get("freshness_status"), "lag": local_md.get("session_lag")}
         seed_present, price_policy = True, "FROZEN_YAHOO_SEED_NATIVE"
         if state not in (LOCAL_PLUS_RUBIX_READY,):
-            raise ResearchDataUnavailable(base, state, _local_block_detail(local_md, expected))
+            blocked = ResearchDataUnavailable(
+                base, state, _local_block_detail(local_md, expected))
+            if not allow_held:
+                raise blocked
+            held = _held_eodhd_history(base, min_bars=min_bars, scan_context=scan_context)
+            if held is None:
+                raise blocked
+            return _held_frame(held, base, tier, expected, min_bars)
 
     md = dict(frame.attrs.get("market_data", {}))
     md.update({
@@ -614,6 +646,15 @@ def get_current_research_history(symbol, *, period="10y", interval="1d", min_bar
         "volume_safe_for_lookback": volume_meta.get("volume_safe_for_lookback", True),
         "latest_action_in_lookback": volume_meta.get("latest_action_in_lookback"),
         "routing_tier": tier, "fallback_used": False,
+        # Default True. Only a held TIER_D frame flips it, and only for a caller
+        # that asked for one. Anything making an automatic decision must refuse a
+        # frame whose value here is False.
+        "automatic_use_permitted": state != TIER_D_HELD_FOR_REVIEW,
+        "held_reason": (
+            "TIER_D held for manual review; the local-seed path cannot advance for "
+            "this symbol, so EODHD is served for display and analysis only"
+            if state == TIER_D_HELD_FOR_REVIEW else None
+        ),
         "yahoo_network_used": False, "yahoo_seed_present": seed_present,
         "latest_completed_session": effective.isoformat(),
         "expected_completed_session": expected.isoformat() if expected else None,
@@ -628,6 +669,64 @@ def get_current_research_history(symbol, *, period="10y", interval="1d", min_bar
                    for k, v in bridge_md.items()})
     frame.attrs["market_data"] = md
     return frame
+
+
+def _held_frame(held, base, tier, expected, min_bars):
+    """Attach the held-symbol metadata contract to an EODHD frame."""
+
+    frame, volume_meta = held
+    effective = pd.Timestamp(frame.index[-1]).date()
+    fresh = _freshness(effective, expected)
+    md = dict(frame.attrs.get("market_data", {}))
+    md.update({
+        "data_domain": CURRENT_RESEARCH_V2, "provider": "eodhd",
+        "effective_provider": "eodhd", "requested_provider": "eodhd",
+        "provider_symbol": f"{base}.EGX",
+        "price_series": "SPLIT_ADJUSTED",
+        "price_adjustment_policy": "SPLIT_ADJUSTED_ALL_EVENTS",
+        "corporate_action_policy_version": volume_meta.get(
+            "corporate_action_policy_version", "n/a"),
+        "volume_series": volume_meta.get("volume_series", "RAW_EODHD"),
+        "volume_adjustment_policy": volume_meta.get("volume_adjustment_policy", "NONE"),
+        "volume_safe_for_lookback": volume_meta.get("volume_safe_for_lookback", True),
+        "latest_action_in_lookback": volume_meta.get("latest_action_in_lookback"),
+        "routing_tier": tier, "fallback_used": False,
+        "yahoo_network_used": False, "yahoo_seed_present": False,
+        "latest_completed_session": effective.isoformat(),
+        "expected_completed_session": expected.isoformat() if expected else None,
+        "freshness_status": fresh.get("status"), "session_lag": fresh.get("lag"),
+        "history_sufficient": len(frame) >= min_bars,
+        "data_quality_status": TIER_D_HELD_FOR_REVIEW,
+        # Anything making an automatic decision must refuse a frame whose value
+        # here is False.
+        "automatic_use_permitted": False,
+        "held_reason": (
+            "TIER_D held for manual review; the local-seed path cannot advance for "
+            "this symbol, so EODHD is served for display and analysis only"),
+    })
+    frame.attrs["market_data"] = md
+    return frame
+
+
+def _held_eodhd_history(base, *, min_bars, scan_context):
+    """Return (frame, volume_meta) when EODHD can serve a held symbol, else None.
+
+    The volume-policy gate still applies: an unresolved corporate action makes the
+    volume unusable regardless of who is looking at it.
+    """
+
+    try:
+        frame = eodhd_history(
+            base, min_bars=min_bars,
+            client=getattr(scan_context, "eodhd_client", None),
+            scan_budget=(scan_context.request_budget()
+                         if scan_context is not None else None))
+    except Exception:
+        return None
+    volume_meta = dict(frame.attrs.get("volume_meta", {}))
+    if not volume_meta.get("volume_safe_for_lookback", True):
+        return None
+    return frame, volume_meta
 
 
 def _local_block_detail(local_md, expected):

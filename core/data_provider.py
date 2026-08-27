@@ -122,6 +122,7 @@ def provider_name_for(purpose):
 def load_history(
     symbol, period=None, interval=None, purpose=None,
     require_positive_volume=True, min_bars=None, scan_context=None,
+    allow_held=False,
 ):
     """Load validated candles using configured routing and transparent fallback."""
 
@@ -176,7 +177,7 @@ def load_history(
         finalized = _load_swing_daily_history(
             symbol, period, interval, min_bars, require_positive_volume,
             cache, providers["yahoo"], providers["rubix"], purpose,
-            scan_context=scan_context,
+            scan_context=scan_context, allow_held=allow_held,
         )
         capture_active(symbol, finalized, "normalized")
         return finalized
@@ -208,7 +209,7 @@ def load_history(
 
 def _load_swing_daily_history(
     symbol, period, interval, min_bars, require_positive_volume,
-    cache, yahoo, rubix, purpose, scan_context=None,
+    cache, yahoo, rubix, purpose, scan_context=None, allow_held=False,
 ):
     """Load completed daily history first, then attach a non-candle quote overlay.
 
@@ -228,7 +229,7 @@ def _load_swing_daily_history(
     try:
         history = get_current_research_history(
             symbol, period=period, interval=interval, min_bars=min_bars,
-            scan_context=scan_context,
+            scan_context=scan_context, allow_held=allow_held,
         )
     except ResearchDataUnavailable as error:
         # Blocked symbols fail loudly (never silently omitted, never Yahoo-substituted).

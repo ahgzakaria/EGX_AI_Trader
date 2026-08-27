@@ -372,4 +372,43 @@ for manual review and a symbol with no obtainable data are routed identically,
 even when a complete, current series is available.
 
 Whether to separate those two meanings is an operator's decision about the
-routing policy, not a defect to be fixed in place, and it is left open here.
+routing policy, not a defect to be fixed in place.
+
+### The separation, once authorised
+
+`TIER_D` now distinguishes "held for manual review" from "no obtainable data",
+under a **default-deny** design: `get_current_research_history(..., allow_held)`
+is `False` unless a caller asks, so **no existing caller changes behaviour**. A
+symbol held for review stays blocked for everything that has not opted in. That
+is deliberately safer than serving held data everywhere and trusting each
+consumer to check a flag.
+
+A frame served under the opt-in carries its own warning:
+
+```
+"automatic_use_permitted": False,
+"held_reason": "TIER_D held for manual review; the local-seed path cannot
+                advance for this symbol, so EODHD is served for display
+                and analysis only"
+```
+
+The flag is `True` on every normally-routed frame rather than merely absent, so
+a consumer can test it without having to know which paths set it.
+
+The sector history opts in, because it describes where turnover went and places
+no order. Its coverage report marks those rows `LOADED_HELD` and the build
+records `held_symbols` and `held_tickers`, which the dashboard's provenance
+panel names on screen.
+
+**Result: 222 of 228 classified symbols now contribute, up from 218.** Six are
+held for display: ARVA, CFGH, DEIN, LUTS, NAHO, TRTO.
+
+Six remain unavailable, and deliberately so:
+
+| Symbols | Why the opt-in does not reach them |
+| --- | --- |
+| ACGC, JUFO, MTIE, NCCW, OCPH | The volume-policy gate still applies. An unresolved corporate action makes the volume untrustworthy, and turnover is price × volume — admitting them would corrupt the very numbers this history exists to report. |
+| MEGM | Fewer bars than the minimum once zero-volume sessions are dropped. It is genuinely inactive. |
+
+The volume gate was kept on the held path on purpose. Loosening the tier does
+not loosen the measurements a tier was never about.

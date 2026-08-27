@@ -311,6 +311,7 @@ def _provenance(metadata, history, usable):
                 "symbols_loaded": metadata.get("loaded_symbols"),
                 "symbols_classified": metadata.get("classified_symbols"),
                 "symbols_unavailable": metadata.get("unavailable_symbols"),
+                "symbols_held_for_review": metadata.get("held_symbols"),
                 "providers": metadata.get("providers"),
                 "sessions_stored": int(sessions),
                 "sessions_complete": int(complete),
@@ -325,4 +326,12 @@ def _provenance(metadata, history, usable):
             "bars for roughly 40% of EGX symbols before 2026. See "
             "SECTOR_LIQUIDITY_FLOW_REPORT.md."
         )
+        held = metadata.get("held_tickers") or []
+        if held:
+            st.caption(
+                f"{len(held)} symbol(s) contribute turnover under a TIER_D hold: "
+                f"{', '.join(held)}. Their routing tier keeps them out of automatic "
+                "strategy use, but the value they traded is real and belongs in the "
+                "market total — excluding it would understate their sectors."
+            )
         st.caption(f"Rebuild with: {BUILD_COMMAND}")
