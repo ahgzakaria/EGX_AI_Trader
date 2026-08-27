@@ -322,3 +322,54 @@ of 228 classified symbols** across 5,864 sessions.
 
 Step 1 — the 16 Rubix feed mappings — remains open, and is still the operator's.
 Those symbols now have daily history but no live quote overlay.
+
+---
+
+## The stale local seeds are not a bridge fault
+
+Five symbols — CFGH, DEIN, MEGM, TRTO, NAHO — sat on a local seed frozen at
+2026-07-22 with `bridge_appended=0`, while the collector was actively recording
+all five (`VERIFIED_FEED_OBSERVED`, present in the last week's minute candles).
+That looked like a bridge defect. It is not.
+
+The chain, traced end to end:
+
+1. `RubixDailyBuilder.build_session()` covers the universe exactly — 241 raw bars
+   for 241 active symbols on 2026-08-26, with no symbol missing and none extra.
+2. All five **are** processed, and all five are **rejected**, with specific
+   reasons recorded in `reports/daily_bridge/<session>/rejected_bars.csv`:
+
+   | Symbol | Rejection |
+   | --- | --- |
+   | DEIN, MEGM | `SYMBOL_INACTIVE` — "only 0 continuous prints (naturally inactive)" |
+   | CFGH | `DATA_GAP` — continuous gap 54min against a 45min limit, no auction events |
+   | NAHO | `DATA_GAP` — gap 78min |
+   | TRTO | `PARTIAL_LATE_START` — first print 10:41:23 against a 10:15 limit |
+
+3. The finalizer is refusing to write a `FINAL` daily bar from a session it did
+   not fully observe. That is the safety design working, not failing.
+4. Because these symbols are `TIER_D`, the router sends them down the local-seed
+   + Rubix-bridge path **exclusively** — and for a thinly traded stock that path
+   can never advance, because thin sessions are exactly the ones the finalizer
+   rejects.
+
+### The real finding
+
+Every one of the 14 symbols that still fails to load is `TIER_D`, and **13 of
+them have current EODHD data, to 2026-08-26, sitting unused**:
+
+| Symbol | EODHD rows | EODHD latest |
+| --- | --- | --- |
+| ACGC, CFGH, DEIN, EDBM, JUFO, LUTS, MEGM, MTIE, NCCW, OCPH, SEIGA | ~396 | 2026-08-26 |
+| NAHO | 343 | 2026-08-26 |
+| TRTO | 285 | 2026-08-26 |
+| ARVA | 328 | 2026-08-04 (newly renamed ticker) |
+
+So there is no bridge bug to fix. There is one policy question, and it accounts
+for every remaining failure: **`TIER_D` currently means "no data at all", when it
+was meant to mean "not yet approved for automatic forward use".** A symbol held
+for manual review and a symbol with no obtainable data are routed identically,
+even when a complete, current series is available.
+
+Whether to separate those two meanings is an operator's decision about the
+routing policy, not a defect to be fixed in place, and it is left open here.
