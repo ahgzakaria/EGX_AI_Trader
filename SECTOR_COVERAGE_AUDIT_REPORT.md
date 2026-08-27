@@ -412,3 +412,49 @@ Six remain unavailable, and deliberately so:
 
 The volume gate was kept on the held path on purpose. Loosening the tier does
 not loosen the measurements a tier was never about.
+
+
+---
+
+## The routing tiers reached production without a gate
+
+An earlier note in this session claimed two consumers read the same routing file
+under different rules. **That was wrong.** They read different files:
+`providers/eodhd_routing.py` reads `historical_symbol_routing.json` and is
+consulted only by the dry-run simulator, while
+`core/research_router.py::symbol_tier()` reads
+`historical_symbol_routing_review.json` and decides live routing.
+
+The real contradiction sat inside the live file. Its own header says:
+
+```json
+"active": false,
+"description": "PROPOSED four-tier EODHD routing review — INACTIVE.
+                Every entry approved:false. ... Nothing is switched."
+```
+
+All 241 entries carried `approved: false`. It was nevertheless the only file the
+router consulted, so **every regeneration went straight to production** — three
+times in this session, each changing which symbols load.
+
+### The gate that was described and never built
+
+`core.research_router` now prefers `historical_symbol_routing_active.json` when
+it exists and falls back to the review file when it does not, so a project that
+has never promoted behaves exactly as before rather than losing its routing. The
+file actually in use is disclosed on every frame as `routing_tiers_source`.
+
+`scripts/promote_eodhd_routing_tiers.py` is the promotion step. Run without
+arguments it prints the diff and writes nothing; `--confirm` writes the approved
+file, marking every entry `approved: true` with the date and who approved it.
+Promotion records approval and never re-decides a tier — a test pins that.
+
+The currently live tiers were promoted as they stood. That changed **no
+behaviour**: the tier of every symbol is byte-identical before and after,
+because what was promoted is exactly what was already running and what the
+3,660-test suite had verified. The gain is entirely about what happens next.
+
+Verified against the real files: rewriting **every** entry in the review to
+`TIER_D` and re-reading left `COMI`, `QNBA` and `SWDY` on their promoted tiers
+and the source still reported as the approved file. Before today that edit would
+have demoted the entire universe.

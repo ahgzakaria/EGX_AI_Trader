@@ -26,6 +26,9 @@ LEGACY_BACKTEST_V1 = "LEGACY_BACKTEST_V1"
 FROZEN_YAHOO_SNAPSHOT = "FROZEN_YAHOO_SNAPSHOT"
 
 REVIEW_PATH = Path("data/eodhd/historical_symbol_routing_review.json")
+#: The promoted, operator-approved tiers. When this exists it is the routing
+#: authority and regenerating the review no longer touches production.
+ACTIVE_PATH = Path("data/eodhd/historical_symbol_routing_active.json")
 RECON_PATH = Path("reports/eodhd/corporate_action_reconciliation.csv")
 
 # current-research states
@@ -62,17 +65,35 @@ def _base(symbol):
     return str(symbol).strip().upper().split(".")[0]
 
 
+def tier_source():
+    """Which file the tiers are actually being read from.
+
+    The review file describes itself as PROPOSED and INACTIVE with every entry
+    ``approved: false``, yet it decided live routing because it was the only
+    file consulted -- regenerating it changed production with no gate in
+    between. The promoted file is preferred when it exists, so a rebuilt review
+    is a proposal again, as its own description always claimed.
+
+    The review file remains the fallback so that a project with nothing promoted
+    yet behaves exactly as before rather than losing its routing entirely.
+    """
+
+    return ACTIVE_PATH if ACTIVE_PATH.is_file() else REVIEW_PATH
+
+
 def tier_map():
-    """symbol -> tier entry from the routing review (hot-reloaded on file change)."""
+    """symbol -> tier entry from the active tiers (hot-reloaded on file change)."""
+    path = tier_source()
     try:
-        mtime = REVIEW_PATH.stat().st_mtime
+        mtime = path.stat().st_mtime
     except OSError:
         return {}
-    if _TIER_CACHE["mtime"] != mtime:
+    key = (str(path), mtime)
+    if _TIER_CACHE["mtime"] != key:
         try:
-            data = json.loads(REVIEW_PATH.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8"))
             _TIER_CACHE["map"] = {str(e["symbol"]).upper(): e for e in data.get("symbols", [])}
-            _TIER_CACHE["mtime"] = mtime
+            _TIER_CACHE["mtime"] = key
         except (OSError, json.JSONDecodeError):
             return _TIER_CACHE["map"]
     return _TIER_CACHE["map"]
@@ -645,7 +666,8 @@ def get_current_research_history(symbol, *, period="10y", interval="1d", min_bar
         "volume_adjustment_policy": volume_meta.get("volume_adjustment_policy", "NONE"),
         "volume_safe_for_lookback": volume_meta.get("volume_safe_for_lookback", True),
         "latest_action_in_lookback": volume_meta.get("latest_action_in_lookback"),
-        "routing_tier": tier, "fallback_used": False,
+        "routing_tier": tier, "routing_tiers_source": tier_source().name,
+        "fallback_used": False,
         # Default True. Only a held TIER_D frame flips it, and only for a caller
         # that asked for one. Anything making an automatic decision must refuse a
         # frame whose value here is False.
@@ -690,7 +712,8 @@ def _held_frame(held, base, tier, expected, min_bars):
         "volume_adjustment_policy": volume_meta.get("volume_adjustment_policy", "NONE"),
         "volume_safe_for_lookback": volume_meta.get("volume_safe_for_lookback", True),
         "latest_action_in_lookback": volume_meta.get("latest_action_in_lookback"),
-        "routing_tier": tier, "fallback_used": False,
+        "routing_tier": tier, "routing_tiers_source": tier_source().name,
+        "fallback_used": False,
         "yahoo_network_used": False, "yahoo_seed_present": False,
         "latest_completed_session": effective.isoformat(),
         "expected_completed_session": expected.isoformat() if expected else None,
