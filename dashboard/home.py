@@ -980,6 +980,16 @@ def show_dashboard():
     df["_AIProbabilitySort"] = pd.to_numeric(
         df["AIProbability"], errors="coerce"
     ).fillna(-1.0)
+    # A stable order for the table, and NOT a ranking by quality. Measured
+    # within the population that reaches it -- the bars passing every other
+    # gate -- the score's rank correlation with the outcome is +0.151 in
+    # 2016-2022 and **+0.012 (p = 0.76)** in 2023-2026, and no reweighting of
+    # its components recovers that: weights fitted on the first era rank the
+    # second at +0.032, p = 0.43.
+    #
+    # The sort stays because a table needs an order and this one is at least
+    # deterministic. What changed is that the page no longer implies the top
+    # row is the best candidate. See SCORE_CANNOT_BE_REBUILT.md.
     df = df.sort_values(
         ["_AIProbabilitySort", "Confidence", "Score"], ascending=False
     ).reset_index(drop=True)
@@ -997,6 +1007,14 @@ def show_dashboard():
     st.caption(
         f"آخر شمعة يومية مكتملة: {latest_date} · "
         f"مرجع الفحص: {run_id or 'غير متاح'}"
+    )
+    st.caption(
+        "الترتيب ثابت وليس تقييمًا للجودة · **The order is stable, not a "
+        "quality ranking.** Measured among the candidates that reach it, the "
+        "score's rank correlation with the outcome is +0.15 in 2016–2022 and "
+        "**+0.01 (p = 0.76)** in 2023–2026, and no reweighting of its "
+        "components recovers that. Read the gates, not the position in the "
+        "table."
     )
 
     primary = st.columns(3)
@@ -1206,10 +1224,23 @@ def _market_column_config():
         "Regime": st.column_config.TextColumn("Regime", width="small"),
         "AIProbability": st.column_config.TextColumn("AI Advisory", width="medium"),
         "Confidence": st.column_config.ProgressColumn(
-            "Confidence", min_value=0, max_value=100, format="%d%%"
+            "Confidence", min_value=0, max_value=100, format="%d%%",
+            help="Computed from the same inputs as the score, so it is a "
+                 "second opinion from the same witness rather than an "
+                 "independent one. Not a probability of anything.",
         ),
+        # The reachable maximum is 118, not 100: trend 30 + volume 20 +
+        # support 15 + entry 28 + momentum 25, after `candle_score` and
+        # `breakout_score` were removed from the total. Drawing the bar
+        # against 100 clipped every score above it at a full bar, so the
+        # strongest rows and the merely-strong ones looked identical.
         "Score": st.column_config.ProgressColumn(
-            "Score", min_value=0, max_value=100, format="%d"
+            "Score", min_value=0, max_value=118, format="%d",
+            help="Out of 118, not 100. It does not rank: within the "
+                 "candidates that reach it, its correlation with the outcome "
+                 "is +0.15 in 2016-2022 and +0.01 (p = 0.76) in 2023-2026. "
+                 "Reported because it drives the BUY threshold, not because a "
+                 "higher one has been shown to be better.",
         ),
         "RR": st.column_config.NumberColumn("R/R", format="%.2f"),
         "ClassicDecision": st.column_config.TextColumn("Classic", width="small"),
