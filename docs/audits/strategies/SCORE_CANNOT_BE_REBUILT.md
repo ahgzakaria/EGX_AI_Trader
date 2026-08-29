@@ -119,9 +119,10 @@ and not because this table establishes it.
 
 ## 5. What shipped, and what did not
 
-**Not shipped: any change to the score.** There is nothing to reweight, removing
-it is a different and much larger decision about what the strategy is, and this
-document is not the place to take it.
+**Not shipped: any change to the score.** There is nothing to reweight. Removing
+it was put separately, measured at one trade, and **declined on 2026-08-29** —
+[COST_OF_DROPPING_THE_SCORE.md §6](COST_OF_DROPPING_THE_SCORE.md). The score
+stays; only the interface stopped overclaiming for it.
 
 **Shipped: the page stops implying a ranking it does not have.**
 

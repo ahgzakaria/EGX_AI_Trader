@@ -5,8 +5,11 @@ weighting of the score's components ranks out of sample. So what would it cost
 to drop `score >= min_score` and `confidence >= min_confidence` from the BUY
 condition and keep only the gates?
 
-**Status:** measured. **Nothing is converted** — this is the cost, not the
-change. `strategy/` and `config/settings.json` are untouched.
+**Status:** measured, and **the decision is not to convert** (2026-08-29, the
+owner's call — see §6). `strategy/` and `config/settings.json` are untouched and
+stay that way. The score keeps its BUY threshold, its WATCH/AVOID tiers and its
+star ladder; what changed is only that the interface stopped overclaiming for
+it.
 
 **Short answer:** the conversion costs one trade. 457 → 456, +53.99% → +51.70%,
 Sharpe 0.57 → 0.54 — noise in every direction. And the reason is not that the
@@ -117,10 +120,45 @@ The second row is the real decision, and it is a decision about the product
 rather than about the data. A four-tier star rating carries a promise the
 underlying number cannot keep — that a 5-star row is better than a 3-star row —
 and that promise is measured at ρ = +0.012, p = 0.76 in validation. Whether to
-keep an ordering that reads well and means nothing is a judgement, and it is not
-mine to make.
+keep an ordering that reads well and means nothing is a judgement, and it was not
+mine to make. It was made — §6.
 
-## 6. What this does not say
+## 6. The decision: keep it — 2026-08-29
+
+Put to the owner with the measurement above, the answer was to leave the strategy
+as it is. Nothing was converted.
+
+That is a defensible reading of these numbers rather than a reluctant one. The
+conversion was measured at one trade, so there was never a return to be gained
+by it; what it would have bought is a simpler decision, and what it would have
+cost is the whole WATCH/AVOID tiering and the star ladder that the dashboard,
+the watchlist and the archived scans are all built around. Removing a working
+interface to delete an inert threshold is a poor trade, and "inert" is exactly
+what §1 established.
+
+So what stands is:
+
+* `min_score: 50` and `min_confidence: 65` stay in the BUY condition, now known
+  to refuse 1% and 2% of what reaches them;
+* the WATCH/AVOID tiers and the 5/4/3/2-star ladder stay;
+* the capacity tie-break stays, now documented as arbitrary rather than as
+  quality;
+* and the correction lives **entirely in the interface**: the table's order is
+  labelled stable rather than ranked, the score bar is drawn against its real
+  maximum of 118, and both columns carry the measurement in their help text
+  ([SCORE_CANNOT_BE_REBUILT.md §5](SCORE_CANNOT_BE_REBUILT.md)).
+
+The thing to avoid now is the failure this whole line of work was about: a
+number that reads like quality and is not. It is still on the page. It is no
+longer presented as something it has been measured not to be, and the numbers
+that say so are one hover away from it.
+
+**What would reopen this.** If `min_score` is ever raised — to 65 it would refuse
+a quarter of candidates, to 72 half — it stops being inert and starts removing
+trades at random, which §2 measures as losing more total edge than it
+concentrates. The setting is safe where it is and only where it is.
+
+## 7. What this does not say
 
 It does not say the strategy would be *fine* without the score. The strategy has
 no out-of-sample selection edge with or without it
