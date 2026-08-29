@@ -115,6 +115,53 @@ def add_components(panel: pd.DataFrame) -> pd.DataFrame:
     )
 
     data["score"] = data[list(COMPONENTS)].sum(axis=1)
+
+    # ------------------------------------------------------------------
+    # Confidence, which the BUY decision gates on separately
+    # ------------------------------------------------------------------
+    # Built from the same inputs as the score -- a second opinion from the same
+    # witness -- but with different weights and two caps, so it is not a
+    # monotone function of the score and has to be computed rather than
+    # inferred.
+    strength = (data["EMA20"] - data["EMA50"]) / data["EMA50"] * 100
+    trend_confidence = np.minimum(
+        np.where((data["EMA20"] > data["EMA50"])
+                 & (data["EMA50"] > data["EMA200"]), 20,
+                 np.where(data["EMA20"] > data["EMA50"], 12, 0))
+        + np.where(close > data["EMA20"], 5, 0)
+        + np.where(close > data["EMA50"], 5, 0)
+        + np.where(close > data["EMA200"], 10, 0)
+        + np.where(strength >= 3, 10, np.where(strength >= 1, 5, 0)),
+        60,
+    )
+    volume_confidence = (
+        np.where(data["Volume"] > data["avg_volume"] * 1.5, 10,
+                 np.where(data["Volume"] > data["avg_volume"], 5, 0))
+        + np.where(data["OBV"] > data["obv_5"], 10, 0)
+    )
+    momentum_confidence = (
+        np.where(rsi.between(45, 65), 5, np.where(rsi.between(35, 45, "left"), 3, 0))
+        + np.where((data["MACD"] > macd) & (data["MACD"] > 0), 10,
+                   np.where(data["MACD"] > macd, 5, 0))
+        + np.where(adx >= 30, 10, np.where(adx >= 25, 5, 0))
+        + np.where((close > data["BB_MIDDLE"]) & (close < data["BB_UPPER"]), 5,
+                   np.where(close <= data["BB_LOWER"], 3, 0))
+    )
+    entry_confidence = np.where(
+        valid,
+        np.where(breakout, 10, 0)
+        + np.where((close - data["sup"]).abs() <= atr, 8, 0)
+        + np.where(close_position >= 0.80, 5, 0)
+        + np.where(rr >= 3, 10, np.where(rr >= 2, 8, np.where(rr >= 1.5, 5, 0))),
+        0,
+    )
+    support_confidence = (np.where(to_support <= 3, 10, 0)
+                          + np.where(to_resistance >= 5, 5, 0))
+    data["confidence"] = np.minimum(
+        trend_confidence + volume_confidence + momentum_confidence
+        + entry_confidence + support_confidence,
+        100,
+    )
     return data
 
 
@@ -145,11 +192,21 @@ def verify(data: pd.DataFrame, samples: int = 400, seed: int = 20260829) -> dict
         if i >= len(frame):
             continue
         checked += 1
+        entry = entry_signal(frame, i)
+        support = support_resistance(frame, i)
+        confidence = min(
+            trend_score(frame, i)["confidence"]
+            + volume_score(frame, i)["confidence"]
+            + momentum_score(frame, i)["confidence"]
+            + entry["confidence"] + support["confidence"],
+            100,
+        )
         actual = {
+            "confidence": confidence,
             "trend": trend_score(frame, i)["score"],
             "volume": volume_score(frame, i)["score"],
-            "support": support_resistance(frame, i)["score"],
-            "entry": entry_signal(frame, i)["score"],
+            "support": support["score"],
+            "entry": entry["score"],
             "momentum": momentum_score(frame, i)["score"],
         }
         for name, value in actual.items():

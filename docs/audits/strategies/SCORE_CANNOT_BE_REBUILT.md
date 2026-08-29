@@ -151,6 +151,13 @@ points it scored. That is
 [CONFIRMED_VOLUME_BREAKOUT.md](CONFIRMED_VOLUME_BREAKOUT.md), and its validation
 lift of +1.92% is the comparison this document exists to make possible.
 
+**What converting would cost is measured separately** in
+[COST_OF_DROPPING_THE_SCORE.md](COST_OF_DROPPING_THE_SCORE.md), and the answer
+is one trade — for a reason more unflattering than anything above. The shipped
+`min_score: 50` sits at the **first percentile** of the population it judges,
+refusing 1% of what reaches it. The threshold is not a weak filter; it is barely
+connected to the decision.
+
 ## Limits
 
 - One dataset, one universe. 436 training and 604 validation observations is
