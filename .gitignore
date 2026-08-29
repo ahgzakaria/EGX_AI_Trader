@@ -100,3 +100,7 @@ data/local/
 # Daily microstructure rollup. Machine-local evidence that accumulates from
 # this host's own Rubix feed; a checkout should not carry another machine's.
 data/daily_microstructure.db
+
+# The research panel cache: 93 MB, rebuilt in ~90s by scripts/research/panel.py
+# from the same provider the backtest reads. Derived data, not a source.
+data/research/backtest_panel.parquet
