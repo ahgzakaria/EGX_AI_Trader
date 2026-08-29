@@ -28,6 +28,10 @@ class BacktestStatistics:
 
         self.profit_field = profit_field
 
+        #: Daily closes double as the benchmark source: `prices` is what makes
+        #: `BenchmarkReturn` computable at all. Without it that field reports
+        #: `None`, never zero -- an unmeasured benchmark is not a flat market.
+        #:
         #: Daily closes for the traded symbols, from `backtesting/prices.py`.
         #: With them, `MaxDrawdown` marks open positions to market. Without
         #: them it is the realised, closed-trade figure this project reported
@@ -152,6 +156,8 @@ class BacktestStatistics:
                 else 0
             )
 
+        benchmark = self._benchmark(total_days)
+
         recovery_factor = (
             round(net_profit / max_drawdown_amount, 2)
             if max_drawdown_amount > 0
@@ -218,7 +224,25 @@ class BacktestStatistics:
             "ExposurePercent": exposure_percent,
 
             "TradesPerYear": trades_per_year,
-            "BacktestDays": total_days
+            "BacktestDays": total_days,
+
+            # ==================================
+            # What not trading was worth
+            # ==================================
+            # No summary this project produced had one. The Daily Dashboard
+            # strategy reports profit factor 1.29 and CAGR 5.43% over a window
+            # in which the median EGX name returned 17.51% a year simply held,
+            # and nothing on the page said so.
+            #
+            # `None` where it could not be computed, never 0.
+
+            "BenchmarkReturn": benchmark.get("TotalReturn"),
+            "BenchmarkCAGR": benchmark.get("CAGR"),
+            "BenchmarkSymbols": benchmark.get("Symbols"),
+            "ExcessReturn": (
+                round(total_return - benchmark["TotalReturn"], 2)
+                if benchmark.get("TotalReturn") is not None else None
+            ),
 
         }
 
@@ -240,6 +264,8 @@ class BacktestStatistics:
             "FinalCapital": self.initial_capital, "TotalReturn": 0,
             "MaxDrawdown": 0, "MaxDrawdownAmount": 0,
             "MaxDrawdownClosedTrades": 0, "DrawdownBasis": CLOSED_TRADE,
+            "BenchmarkReturn": None, "BenchmarkCAGR": None,
+            "BenchmarkSymbols": None, "ExcessReturn": None,
             "MaxConsecutiveWins": 0, "MaxConsecutiveLosses": 0,
             "SharpeRatio": 0, "SortinoRatio": 0, "CalmarRatio": 0,
             "CAGR": 0, "RecoveryFactor": 0, "KellyPercent": 0,
@@ -290,6 +316,57 @@ class BacktestStatistics:
     # إجمالي عدد الأيام اللي غطاها الباك تيست
     # (من أول دخول لآخر خروج)
     # ==================================
+
+    def _benchmark(self, total_days):
+        """Buy and hold the median traded name over the same window.
+
+        The median rather than the mean, and a single held position rather than
+        a rebalanced basket: that is what an investor actually does, and it is a
+        geometric return on one decision. A daily-rebalanced equal-weighted
+        index over this universe returns several times more and nobody could
+        trade it.
+
+        Measured only over symbols this run actually traded, between the first
+        entry and the last exit, so it answers "what would holding these names
+        have paid" rather than "what did some other universe do".
+
+        Returns empty when there are no prices. An unmeasured benchmark reports
+        as unknown, not as a flat market -- the same rule the annualised
+        statistics follow when the span cannot be determined.
+        """
+        if self.prices is None or not len(self.prices) or not self.trades:
+            return {}
+        try:
+            start = min(datetime.strptime(t.entry_date, "%Y-%m-%d")
+                        for t in self.trades)
+            end = max(datetime.strptime(t.exit_date, "%Y-%m-%d")
+                      for t in self.trades)
+        except (AttributeError, TypeError, ValueError):
+            return {}
+
+        window = self.prices.loc[
+            (self.prices.index >= start) & (self.prices.index <= end)]
+        if len(window) < 2:
+            return {}
+
+        returns = []
+        for symbol in window.columns:
+            series = window[symbol].dropna()
+            if len(series) < 2 or series.iloc[0] <= 0:
+                continue
+            returns.append((series.iloc[-1] / series.iloc[0] - 1) * 100)
+        if not returns:
+            return {}
+
+        returns.sort()
+        middle = len(returns) // 2
+        median = (returns[middle] if len(returns) % 2
+                  else (returns[middle - 1] + returns[middle]) / 2)
+        years = (total_days / 365.25) if total_days else 0
+        cagr = (round(((1 + median / 100) ** (1 / years) - 1) * 100, 2)
+                if years > 0 and median > -100 else None)
+        return {"TotalReturn": round(median, 2), "CAGR": cagr,
+                "Symbols": len(returns)}
 
     def _total_days(self):
         """Days from the first entry to the last exit, or ``None``.

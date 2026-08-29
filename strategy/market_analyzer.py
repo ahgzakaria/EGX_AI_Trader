@@ -120,12 +120,25 @@ def analyze(date, cfg):
 
         # لو فشل تحميل المؤشر لأي سبب (مشكلة شبكة مثلاً)،
         # منمنعش كل الصفقات بسبب كده - نسمح افتراضيًا.
+        #
+        # Failing open on a network error is right. Failing open *silently* is
+        # not, and that is what this was doing: `^CASE30` has one bar in the
+        # backtest cache and is served by neither live provider, so this branch
+        # is taken on EVERY bar in EVERY mode -- while `require_market_analyzer`
+        # reads true in the settings UI and the decision trace reports
+        # `MarketAnalyzer: PASS`. A gate that cannot fire and says PASS is worse
+        # than no gate, because a reader believes it.
+        #
+        # `Available` is what the caller needs to tell "the index says go" from
+        # "there is no index". See DAILY_STRATEGY_DIAGNOSIS.md section 7.
 
         return {
 
             "Passed": True,
 
-            "Regime": "SIDEWAYS",
+            "Available": False,
+
+            "Regime": "UNKNOWN",
 
             "Reasons": [
 
@@ -144,11 +157,17 @@ def analyze(date, cfg):
 
     if position < 200:
 
+        # Same distinction as the exception branch above: not enough index
+        # history is not the index saying "sideways", and reporting it as such
+        # is how a gate with one bar of data came to read PASS for years.
+
         return {
 
             "Passed": True,
 
-            "Regime": "SIDEWAYS",
+            "Available": False,
+
+            "Regime": "UNKNOWN",
 
             "Reasons": [
 
@@ -168,6 +187,8 @@ def analyze(date, cfg):
 
             "Passed": True,
 
+            "Available": True,
+
             "Regime": "BULL",
 
             "Reasons": [
@@ -183,6 +204,8 @@ def analyze(date, cfg):
         return {
 
             "Passed": False,
+
+            "Available": True,
 
             "Regime": "BEAR",
 
@@ -200,6 +223,8 @@ def analyze(date, cfg):
         return {
 
             "Passed": True,
+
+            "Available": True,
 
             "Regime": "SIDEWAYS",
 

@@ -5,7 +5,11 @@ a dead scoring component removed, candle patterns removed, a negative-reward
 guard added. What is still wrong with it, measured rather than read off the
 code?
 
-**Status:** diagnosis. Nothing in `strategy/` was changed. Every figure below is
+**Status:** diagnosis, and then four of its findings were fixed — see
+§10, added 2026-08-29. The measurements below are as first taken, against the
+shipped strategy before those fixes.
+
+Originally: nothing in `strategy/` was changed. Every figure below is
 computed over the engine's own inputs — `load_history(purpose="backtest")` plus
 `calculate_indicators`, 191 symbols, 382,646 bars, 2016-07-19 to 2026-07-22 — or
 over the shipped backtest's own trade file
@@ -210,17 +214,97 @@ is still true of the shipped run.
 
 1. **The score cannot be repaired by reweighting.** It has no out-of-sample
    signal at the gate level (§1), and its components are saturated, dead or
-   inverted ([SCORE_DIAGNOSIS.md](SCORE_DIAGNOSIS.md)).
+   inverted ([SCORE_DIAGNOSIS.md](SCORE_DIAGNOSIS.md)). Still true, still not
+   attempted.
 2. **Three defects are cheap to fix and independent of that**: the two
    resistance definitions (§3), the two-decimal rounding (§8), and the dead
    market gate (§7). None of them is why the strategy underperforms; all three
-   make it harder to reason about.
+   make it harder to reason about. **Done — §10.**
 3. **A benchmark belongs in `BacktestStatistics`.** A strategy returning 5.43%
    a year in a market that returned 17.5% should not be reportable as a profit
-   factor of 1.29 without that line beside it.
+   factor of 1.29 without that line beside it. **Done — §10.**
 4. **The one thing that measured as real in this data is a twenty-day breakout
    confirmed by volume** (§1). That is what
    [CONFIRMED_VOLUME_BREAKOUT.md](CONFIRMED_VOLUME_BREAKOUT.md) builds on.
+
+## 10. What was fixed, and what each fix cost — 2026-08-29
+
+Four of the findings above are now repaired. Each was measured on its own
+against the shipped baseline, and the cost is reported whether or not it
+flatters the change.
+
+### The gate that could not fire (§7) — provably neutral
+
+`analyze` now returns `Available`, and the decision trace reports
+**`UNAVAILABLE`** instead of `PASS` when there is no index to ask. The
+explanation it had been producing all along — and which was discarded unless
+the gate failed, the case that never happens — now reaches the row.
+
+The verdict changes; the decision does not. A missing index still allows the
+trade, because refusing every trade over a data outage is worse than allowing
+them. An isolated run gives **484 trades, every column except `reasons`
+identical and every summary field identical** to the baseline.
+
+### Two definitions of resistance (§3) — free
+
+`support.py` now excludes today, matching `entry.py`, so one level is computed
+once and used by the targets, by the quality gate's room test, and by the
+reported figure.
+
+Cost: **nothing**. An isolated run is identical to one without it, trade for
+trade and reason for reason. Bars where the two definitions disagree are bars
+where today made a new high, so the close sits near the top of its range and
+the 3% room gate refuses them either way. The contradiction was real and free
+to remove, which is the cheapest kind of fix and the easiest to keep putting
+off.
+
+### Two-decimal prices (§8) — the one that cost something
+
+`PRICE_PRECISION = 3` in `entry.py`. `RR` stays at two decimals, being a ratio
+rather than a quote.
+
+This one is **not** neutral, and the headline gets worse:
+
+| | shipped | 3-decimal prices |
+|---|--:|--:|
+| Trades | 484 | **457** |
+| Total return | +60.08% | **+53.99%** |
+| Profit factor | 1.29 | 1.28 |
+| Max drawdown | 18.27% | 18.56% |
+| Sharpe | 0.55 | **0.57** |
+| Average per trade | +0.38% | **+0.41%** |
+| Years positive | 7 of 10 | **6 of 10** |
+
+Sixty-six trades leave and thirty-nine arrive; forty-three of the sixty-six had
+an entry under 5 EGP, which is where the rounding did its damage.
+
+**It ships anyway, and the argument is not the numbers.** Two decimals invents
+prices this exchange does not quote for the names it most affects: across the
+universe's own history only **24%** of closes under 1 EGP sit exactly on two
+decimals against **71%** on three. The six points came from sixty-six trades
+entered, stopped and targeted at levels that were not real. That is a bug
+removed, not an edge — and the same figures are equally consistent with noise,
+since profit factor, Sharpe and per-trade expectancy move in the other
+direction.
+
+What would make this a mistake is if the 3-decimal run were worse out of
+sample too. Nothing here can answer that, and nothing here claims to.
+
+### No benchmark in the summary — additive
+
+`BacktestStatistics` now reports `BenchmarkReturn`, `BenchmarkCAGR`,
+`BenchmarkSymbols` and `ExcessReturn`: buy and hold the median name this run
+actually traded, over the same window. `None` where it cannot be computed,
+never `0` — an unmeasured benchmark is not a flat market, the same rule the
+annualised statistics already follow.
+
+### The seal
+
+`strategy/decision_engine.py` and `strategy/market_analyzer.py` are in
+`strategy_selector/frozen_strategy_manifest.json`, and the manifest was re-cut
+for those two. The cut covers the analyzer change only, which is the provably
+neutral one; `entry.py` and `support.py` are not sealed. Eleven tests pin all
+four fixes.
 
 ## Limits
 

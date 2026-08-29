@@ -13,6 +13,23 @@ from strategy.breakout import breakout_score
 from strategy import quality_filter
 
 
+def _market_analyzer_verdict(index_state):
+    """PASS, FAIL, or UNAVAILABLE -- never PASS for an index nobody could read.
+
+    `^CASE30` has one bar in the backtest cache and is served by neither live
+    provider, so `analyze` takes its fail-open branch on every bar in every
+    mode. Reporting that as PASS is what let `require_market_analyzer: true`
+    sit in the settings for years looking like a working safety gate.
+
+    The verdict changes; the decision does not. A missing index still allows
+    the trade, because refusing every trade over a data outage is worse. What
+    changes is that the trace, and the reasons, now say so.
+    """
+    if not index_state.get("Available", True):
+        return "UNAVAILABLE"
+    return "PASS" if index_state["Passed"] else "FAIL"
+
+
 def evaluate(df, i):
 
     cfg = config.load()
@@ -136,9 +153,7 @@ def evaluate(df, i):
 
             "DecisionTrace": {
 
-                "MarketAnalyzer": (
-                    "PASS" if index_state["Passed"] else "FAIL"
-                ),
+                "MarketAnalyzer": _market_analyzer_verdict(index_state),
                 "MarketRegime": "FAIL",
                 "Trend": "N/A",
                 "Momentum": "N/A",
@@ -240,6 +255,8 @@ def evaluate(df, i):
     reasons = (
 
         market["Reasons"]
+        + (index_state["Reasons"]
+           if not index_state.get("Available", True) else [])
         + trend["reasons"]
         + volume["reasons"]
         + support["reasons"]
@@ -400,9 +417,7 @@ def evaluate(df, i):
 
     decision_trace = {
 
-        "MarketAnalyzer": (
-            "PASS" if index_state["Passed"] else "FAIL"
-        ),
+        "MarketAnalyzer": _market_analyzer_verdict(index_state),
 
         "MarketRegime": "PASS",
 

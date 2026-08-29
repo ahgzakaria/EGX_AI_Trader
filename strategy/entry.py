@@ -1,3 +1,19 @@
+#: Decimals every quoted price in this module is rounded to.
+#:
+#: Was 2 until 2026-08-29, which is wrong for this exchange. EGX quotes
+#: low-priced stocks in thousandths: across the universe's own history only
+#: **24%** of closes under 1 EGP sit exactly on two decimals against **71%** on
+#: three. Rounding those to two moves the price by up to half a piastre, which
+#: on the sixteen universe names under 1 EGP is a mean distortion of **2.31%**
+#: of price -- and `RR` is a quotient of two rounded differences, so the error
+#: compounds rather than cancelling.
+#:
+#: `strategy_breakout/settings.json` has used 3 since it was written. This
+#: brings the classic path to the same precision. Measured in
+#: DAILY_STRATEGY_DIAGNOSIS.md section 8.
+PRICE_PRECISION = 3
+
+
 def entry_signal(df, i):
 
     last = df.iloc[i]
@@ -91,17 +107,17 @@ def entry_signal(df, i):
 
         ),
 
-        2
+        PRICE_PRECISION
 
     )
 
-    buy_high = round(price, 2)
+    buy_high = round(price, PRICE_PRECISION)
 
     stop_loss = round(
 
         support - atr * 0.30,
 
-        2
+        PRICE_PRECISION
 
     )
 
@@ -135,7 +151,7 @@ def entry_signal(df, i):
 
         resistance,
 
-        2
+        PRICE_PRECISION
 
     )
 
@@ -143,7 +159,7 @@ def entry_signal(df, i):
 
         resistance + atr * 2,
 
-        2
+        PRICE_PRECISION
 
     )
 
