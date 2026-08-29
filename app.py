@@ -30,6 +30,7 @@ from dashboard.backtest_state import (
     recover_interrupted_backtest,
 )
 from dashboard.ai_stock_analysis import show_ai_stock_analysis
+from dashboard.confirmed_breakout import show_confirmed_breakout
 from dashboard.home import show_dashboard, show_stock_details_page
 from dashboard.orb_signals import show_orb_signals
 from dashboard.sector_flow import show_sector_flow
@@ -65,6 +66,20 @@ navigation = st.navigation({
             title="Swing Breakout",
             icon="📈",
             url_path="swing-breakout",
+        ),
+        # A close relative of Swing Breakout, not a rival to it: two
+        # independent passes over this market landed on the same trigger, which
+        # is the strongest thing either of them has going. It sits beside
+        # rather than inside because what differs is measured -- a
+        # close-position gate, a calm gate, a stop, and a price-limit guard --
+        # and because it is scored through the portfolio simulator, so its
+        # numbers are comparable to the Daily Dashboard strategy's line for
+        # line. See docs/audits/strategies/CONFIRMED_VOLUME_BREAKOUT.md.
+        st.Page(
+            show_confirmed_breakout,
+            title="Confirmed Breakout",
+            icon="🚀",
+            url_path="confirmed-breakout",
         ),
         st.Page(
             show_sector_flow,

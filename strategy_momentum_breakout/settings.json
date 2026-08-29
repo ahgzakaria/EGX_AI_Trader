@@ -1,0 +1,37 @@
+{
+  "strategy_name": "CONFIRMED_VOLUME_BREAKOUT",
+  "enabled_by_default": false,
+  "decision_support_only": true,
+
+  "minimum_turnover_egp": 2000000,
+  "turnover_window": 20,
+
+  "trend_reference": "EMA200",
+  "trend_warmup_bars": 200,
+
+  "calm_window": 250,
+
+  "breakout_window": 20,
+  "minimum_volume_ratio": 2.5,
+  "minimum_close_position": 0.70,
+
+  "entry_mode": "NEXT_CLOSE",
+
+  "stop_window": 20,
+  "stop_atr_buffer": 0.3,
+
+  "holding_bars": 20,
+
+  "maximum_session_move_percent": 30.0,
+
+  "initial_capital": 100000,
+  "risk_percent": 1.0,
+  "max_open_positions": 15,
+  "max_portfolio_risk_percent": 15.0,
+  "allow_overlapping_trades": true,
+
+  "price_precision": 3,
+
+  "commission": 0.001819,
+  "slippage": 0.0005
+}

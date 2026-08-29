@@ -115,11 +115,21 @@ def test_the_retired_orb_page_is_still_reachable_from_system_health():
 
 
 def test_every_page_is_reachable_exactly_once():
+    """The whole navigation, listed. Adding a page is a decision, not a drift.
+
+    "Confirmed Breakout" joined on 2026-08-29. It sits beside Swing Breakout
+    rather than inside it because the two are close relatives with measured
+    differences -- a close-position gate, a calm gate, a stop, and a price-limit
+    guard -- and because it is scored through the portfolio simulator, so its
+    numbers are comparable to the Daily Dashboard strategy's line for line.
+    See docs/audits/strategies/CONFIRMED_VOLUME_BREAKOUT.md.
+    """
     titles = _page_titles()
     assert len(titles) == len(set(titles)), f"a page is listed twice: {titles}"
     assert set(titles) == {
-        "Daily Dashboard", "Swing Breakout", "Sector Liquidity", "Watchlist",
-        "Stock Details", "AI Analysis", "System Health", "Settings",
+        "Daily Dashboard", "Swing Breakout", "Confirmed Breakout",
+        "Sector Liquidity", "Watchlist", "Stock Details", "AI Analysis",
+        "System Health", "Settings",
     }
 
 
