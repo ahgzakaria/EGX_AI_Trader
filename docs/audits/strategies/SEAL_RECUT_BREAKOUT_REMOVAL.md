@@ -1,5 +1,13 @@
 # Release Seal Re-cut — `strategy/decision_engine.py`
 
+> **Drawdown note (2026-08-29).** Every `MaxDrawdown` in this document was
+> measured before `backtesting/equity.py` marked open positions to market,
+> so each is a *closed-trade* drawdown and understates the real figure by
+> 0.3-2.6 percentage points. The numbers are left as measured; the
+> conversion table for every archived run is in
+> [DRAWDOWN_WAS_UNDERSTATED.md](DRAWDOWN_WAS_UNDERSTATED.md).
+
+
 **What changed:** `breakout_score` no longer contributes to the score, the
 confidence or the reasons. It is still computed and still reported as
 `"Breakout"` in the decision output.

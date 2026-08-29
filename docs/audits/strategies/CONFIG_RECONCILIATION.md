@@ -1,5 +1,13 @@
 # The Two Strategies, Reconciled
 
+> **Drawdown note (2026-08-29).** Every `MaxDrawdown` in this document was
+> measured before `backtesting/equity.py` marked open positions to market,
+> so each is a *closed-trade* drawdown and understates the real figure by
+> 0.3-2.6 percentage points. The numbers are left as measured; the
+> conversion table for every archived run is in
+> [DRAWDOWN_WAS_UNDERSTATED.md](DRAWDOWN_WAS_UNDERSTATED.md).
+
+
 **Question:** `DEFAULT_SETTINGS` and the running `config/settings.json` disagreed
 on eleven settings — not a drifted parameter but two different strategies. Which
 one is the strategy?

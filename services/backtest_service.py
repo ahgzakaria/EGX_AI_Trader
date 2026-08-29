@@ -9,6 +9,7 @@ from ai.dataset import DatasetBuilder
 from ai.walk_forward import WalkForwardValidator
 from backtesting.config import load as load_backtest_config
 from backtesting.engine import BacktestEngine
+from backtesting.prices import closes_for_trades
 from backtesting.report import BacktestReport
 from backtesting.statistics import BacktestStatistics
 from config.settings_manager import settings
@@ -46,13 +47,20 @@ def _portfolio_result(trades, cfg, mode):
         max_portfolio_risk_percent=cfg.MAX_PORTFOLIO_RISK_PERCENT,
     ).run()
     executed = simulation["executed_trades"]
+    # Daily closes for the traded symbols, so `MaxDrawdown` values open
+    # positions instead of pretending a losing trade is worth its entry price
+    # until it closes. Read from the same provider the engine ran on, and
+    # tolerant: symbols it cannot load are carried at cost and `DrawdownBasis`
+    # in the summary says which curve the number came from.
+    prices = closes_for_trades(executed)
     return {
         "mode": mode,
         "trades": trades,
         "executed": executed,
         "simulation": simulation,
+        "prices": prices,
         "summary": BacktestStatistics(
-            executed, initial_capital=cfg.INITIAL_CAPITAL
+            executed, initial_capital=cfg.INITIAL_CAPITAL, prices=prices
         ).summary(),
     }
 
@@ -288,7 +296,7 @@ def run_backtest(scope=FULL_HISTORY):
                     "type": "stage", "phase": "Saving experiment",
                     "message": "Writing immutable reports and final metrics...",
                 }
-                BacktestReport(result["executed"]).save_all()
+                BacktestReport(result["executed"], prices=result.get("prices")).save_all()
                 _complete_experiment(
                     experiment, result, symbols, context, scope=scope
                 )
@@ -318,7 +326,7 @@ def run_backtest(scope=FULL_HISTORY):
                 "type": "stage", "phase": "Saving experiment",
                 "message": "Writing immutable reports and final metrics...",
             }
-            BacktestReport(result["executed"]).save_all()
+            BacktestReport(result["executed"], prices=result.get("prices")).save_all()
             _complete_experiment(
                 experiment, result, symbols, scope=FULL_HISTORY
             )
@@ -377,7 +385,7 @@ def run_backtest(scope=FULL_HISTORY):
             "type": "stage", "phase": "Saving experiment",
             "message": "Writing immutable reports and final metrics...",
         }
-        BacktestReport(result["executed"]).save_all()
+        BacktestReport(result["executed"], prices=result.get("prices")).save_all()
         _complete_experiment(
             experiment, result, symbols, context, scope=VALIDATED_OOS
         )

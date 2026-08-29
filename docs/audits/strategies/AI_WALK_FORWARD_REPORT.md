@@ -1,5 +1,13 @@
 # AI Walk-Forward Validation Report
 
+> **Drawdown note (2026-08-29).** Every `MaxDrawdown` in this document was
+> measured before `backtesting/equity.py` marked open positions to market,
+> so each is a *closed-trade* drawdown and understates the real figure by
+> 0.3-2.6 percentage points. The numbers are left as measured; the
+> conversion table for every archived run is in
+> [DRAWDOWN_WAS_UNDERSTATED.md](DRAWDOWN_WAS_UNDERSTATED.md).
+
+
 ## Status
 
 The historical AI pipeline now uses chronological Walk-Forward validation.
@@ -67,7 +75,9 @@ single globally trained model could have been applied to dates before that
 model could have existed. Strategy-only results remain useful only when they
 were produced without the global AI filter.
 
-The figures in this report are leakage-safe.  Phase 3 subsequently regenerated+the Strategy Only and Walk-Forward AI passes end-to-end from the unified+pipeline; its comparative results are recorded below.
+The figures in this report are leakage-safe.  Phase 3 subsequently regenerated
+the Strategy Only and Walk-Forward AI passes end-to-end from the unified
+pipeline; its comparative results are recorded below.
 
 ## Phase 3 — Out-of-sample strategy comparison
 

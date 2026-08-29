@@ -1,7 +1,7 @@
 import math
 from datetime import datetime
 
-from backtesting.equity import EquityCurve
+from backtesting.equity import CLOSED_TRADE, EquityCurve
 
 
 class BacktestStatistics:
@@ -10,7 +10,8 @@ class BacktestStatistics:
         self,
         trades,
         initial_capital=100000,
-        profit_field="portfolio_profit"
+        profit_field="portfolio_profit",
+        prices=None,
     ):
 
         # ==================================
@@ -26,6 +27,13 @@ class BacktestStatistics:
         self.initial_capital = initial_capital
 
         self.profit_field = profit_field
+
+        #: Daily closes for the traded symbols, from `backtesting/prices.py`.
+        #: With them, `MaxDrawdown` marks open positions to market. Without
+        #: them it is the realised, closed-trade figure this project reported
+        #: until 2026-08-29 -- which is not wrong, but is a different quantity,
+        #: so `DrawdownBasis` in the summary always says which one it is.
+        self.prices = prices
 
         #: Why the backtest's span could not be measured, when it could not.
         #: Empty on a normal run. Read it rather than guessing why six of the
@@ -93,11 +101,19 @@ class BacktestStatistics:
         equity = EquityCurve(
             self.trades,
             self.initial_capital,
-            self.profit_field
+            self.profit_field,
+            prices=self.prices,
         )
 
+        # `max_drawdown` marks open positions to market when prices are
+        # available. The closed-trade figure is reported beside it rather than
+        # replaced by it, because every number this project has published so
+        # far is that one, and a metric that silently changed meaning between
+        # two runs of the same code would be worse than the defect.
         max_drawdown = equity.max_drawdown()
         max_drawdown_amount = equity.max_drawdown_amount()
+        closed_trade_drawdown = equity.closed_trade_max_drawdown()
+        drawdown_basis = equity.basis()
 
         final_capital = equity.final_capital()
         total_return = equity.total_return()
@@ -182,6 +198,8 @@ class BacktestStatistics:
             "TotalReturn": total_return,
             "MaxDrawdown": max_drawdown,
             "MaxDrawdownAmount": max_drawdown_amount,
+            "MaxDrawdownClosedTrades": closed_trade_drawdown,
+            "DrawdownBasis": drawdown_basis,
 
             # ==================================
             # Professional Metrics
@@ -221,6 +239,7 @@ class BacktestStatistics:
             "InitialCapital": self.initial_capital,
             "FinalCapital": self.initial_capital, "TotalReturn": 0,
             "MaxDrawdown": 0, "MaxDrawdownAmount": 0,
+            "MaxDrawdownClosedTrades": 0, "DrawdownBasis": CLOSED_TRADE,
             "MaxConsecutiveWins": 0, "MaxConsecutiveLosses": 0,
             "SharpeRatio": 0, "SortinoRatio": 0, "CalmarRatio": 0,
             "CAGR": 0, "RecoveryFactor": 0, "KellyPercent": 0,

@@ -10,7 +10,8 @@ class BacktestReport:
     def __init__(
         self,
         trades,
-        profit_field="portfolio_profit"
+        profit_field="portfolio_profit",
+        prices=None,
     ):
 
         # هنا برضه بنستبعد أي صفقة اترفضت (executed=False)
@@ -22,6 +23,11 @@ class BacktestReport:
         ]
 
         self.profit_field = profit_field
+
+        #: Daily closes, so the saved statistics and the saved equity curve
+        #: both mark open positions to market. `None` reproduces the
+        #: pre-2026-08-29 closed-trade curve exactly.
+        self.prices = prices
 
     # ==================================
     # Trades
@@ -41,7 +47,8 @@ class BacktestReport:
 
         stats = BacktestStatistics(
             self.trades,
-            profit_field=self.profit_field
+            profit_field=self.profit_field,
+            prices=self.prices,
         ).summary()
 
         return pd.DataFrame([stats])
@@ -51,12 +58,30 @@ class BacktestReport:
     # ==================================
 
     def equity_curve(self):
+        """The saved curve, daily and marked to market where prices allow.
 
-        equity = EquityCurve(
+        The `Equity` column keeps its name and meaning, so the dashboard chart
+        that reads it is unaffected. What changes is the row: one per session
+        rather than one per exit, with a `Date` to plot against, and a value
+        that includes open positions. Without prices this returns the original
+        per-trade curve unchanged.
+        """
+
+        curve = EquityCurve(
             self.trades,
-            profit_field=self.profit_field
-        ).curve()
+            profit_field=self.profit_field,
+            prices=self.prices,
+        )
 
+        daily = curve.daily_curve()
+        if len(daily):
+            return pd.DataFrame({
+                "Date": [str(day.date()) for day in daily.index],
+                "Trade": list(range(len(daily))),
+                "Equity": [round(float(value), 2) for value in daily],
+            })
+
+        equity = curve.curve()
         return pd.DataFrame({
             "Trade": list(range(len(equity))),
             "Equity": equity

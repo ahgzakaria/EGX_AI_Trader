@@ -1,5 +1,13 @@
 # What Can Actually Be Improved
 
+> **Drawdown note (2026-08-29).** Every `MaxDrawdown` in this document was
+> measured before `backtesting/equity.py` marked open positions to market,
+> so each is a *closed-trade* drawdown and understates the real figure by
+> 0.3-2.6 percentage points. The numbers are left as measured; the
+> conversion table for every archived run is in
+> [DRAWDOWN_WAS_UNDERSTATED.md](DRAWDOWN_WAS_UNDERSTATED.md).
+
+
 > **WITHDRAWN — see [TRAILING_STOP_VERDICT.md](TRAILING_STOP_VERDICT.md).**
 >
 > The headline recommendation below — disable the trailing stop — was measured
