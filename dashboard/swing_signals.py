@@ -22,6 +22,7 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
+from dashboard.scan_memory import recall, remember, scan_caption
 from dashboard.ui import page_header
 
 from services.swing_breakout import (
@@ -37,6 +38,10 @@ from services.swing_breakout import (
 
 #: How long the measurement held for. Shown, never acted on.
 MEASURED_HOLD = SwingConfig().measured_holding_days
+
+#: Names this page's entry in the per-browser-session scan memory. A scan reads
+#: bars that are already final, so it survives navigating away and back.
+SCAN_KEY = "swing_breakout"
 
 
 def _candidate_frame(scan_result) -> pd.DataFrame:
@@ -101,7 +106,33 @@ def show_swing_signals() -> None:
             "judgement. It never places an order and never reports a fill.",
             icon="📈")
     config = SwingConfig()
-    if not st.button("افحص السوق · Scan the market", type="primary"):
+    rescan = st.button("افحص السوق · Scan the market", type="primary")
+    remembered = None if rescan else recall(SCAN_KEY, config)
+
+    if rescan:
+        failures = {}
+        with st.spinner("Reading daily history for the universe…"):
+            histories = load_universe_histories(
+                on_error=lambda symbol, reason: failures.setdefault(symbol, reason)
+            )
+        if not histories:
+            st.error("No history could be read for any symbol.")
+            return
+
+        universe = most_traded(histories)
+        session = max(
+            (str(frame.index[-1])[:10] for frame in universe.values()),
+            default=date.today().isoformat(),
+        )
+        result = scan(universe, session_date=session, config=config)
+        # The unreadable symbols are part of the answer, not a side effect of
+        # having just run it: a page recalled without them would under-report
+        # how much of the universe the scan could not see.
+        remember(SCAN_KEY, (result, failures), config, session_date=session)
+        remembered = recall(SCAN_KEY, config)
+    elif remembered is not None:
+        result, failures = remembered.result
+    else:
         st.info(
             "The scan reads a year of daily history for every name in the "
             "universe, so it takes a couple of minutes. Run it after the "
@@ -111,21 +142,8 @@ def show_swing_signals() -> None:
         _show_basis(config)
         return
 
-    failures = {}
-    with st.spinner("Reading daily history for the universe…"):
-        histories = load_universe_histories(
-            on_error=lambda symbol, reason: failures.setdefault(symbol, reason)
-        )
-    if not histories:
-        st.error("No history could be read for any symbol.")
-        return
-
-    universe = most_traded(histories)
-    session = max(
-        (str(frame.index[-1])[:10] for frame in universe.values()),
-        default=date.today().isoformat(),
-    )
-    result = scan(universe, session_date=session, config=config)
+    if remembered is not None:
+        st.caption(scan_caption(remembered))
 
     columns = st.columns(4)
     columns[0].metric("Candidates", result.candidate_count)

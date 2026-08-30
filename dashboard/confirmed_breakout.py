@@ -27,9 +27,14 @@ import pandas as pd
 import streamlit as st
 
 from dashboard.formatting import company_name
+from dashboard.scan_memory import recall, remember, scan_caption
 from dashboard.ui import empty_state, page_header, section_header
 from strategy_momentum_breakout.config import load as load_config
 from strategy_momentum_breakout.scan import scan
+
+#: Names this page's entry in the per-browser-session scan memory. A scan reads
+#: bars that are already final, so it survives navigating away and back.
+SCAN_KEY = "confirmed_breakout"
 
 #: Read from the measured record in `docs/audits/strategies/`. Shown so the page
 #: never quotes a number that no longer has a run behind it.
@@ -75,7 +80,20 @@ def show_confirmed_breakout() -> None:
         icon="🚀",
     )
 
-    if not st.button("افحص السوق · Scan the market", type="primary"):
+    rescan = st.button("افحص السوق · Scan the market", type="primary")
+    remembered = None if rescan else recall(SCAN_KEY, cfg)
+
+    if rescan:
+        with st.spinner("Reading daily history for the universe…"):
+            result = scan(cfg=cfg)
+        if not result.considered:
+            st.error("No history could be read for any symbol.")
+            return
+        remember(SCAN_KEY, result, cfg)
+        remembered = recall(SCAN_KEY, cfg)
+    elif remembered is not None:
+        result = remembered.result
+    else:
         # Shown before the scan as well as after it. Running a two-minute scan
         # should not be the price of seeing which of these numbers are
         # in-sample and which are not.
@@ -84,12 +102,8 @@ def show_confirmed_breakout() -> None:
         _show_basis(cfg)
         return
 
-    with st.spinner("Reading daily history for the universe…"):
-        result = scan(cfg=cfg)
-
-    if not result.considered:
-        st.error("No history could be read for any symbol.")
-        return
+    if remembered is not None:
+        st.caption(scan_caption(remembered))
 
     columns = st.columns(4)
     columns[0].metric("إشارات · Signals", result.count)
