@@ -22,13 +22,29 @@
     produce nothing. A record assembled when somebody remembers is a record of
     the days somebody remembered.
 
-    Fires Sunday-Thursday, the EGX trading week, at 16:30 Cairo -- two hours
-    after the 14:30 close. The generous clock is not the safety. The recorder
-    refuses any session the exchange has not authoritatively completed
-    (closing auction plus the configured settlement grace) and writes nothing,
-    because a recorded signal is immutable: one computed from a half-formed
-    daily bar would be wrong permanently. The clock is late so that the normal
-    case is a clean write, not so that a wrong write is avoided.
+    Fires Sunday-Thursday, the EGX trading week, TWICE: 15:30 and 17:30 Cairo.
+
+    WHY 15:30 AND NOT 14:40. The 14:30 figure everyone quotes is when trading
+    closes, not when the session is complete. In this project's own calendar
+    (core/egx_session.py) continuous trading ends 14:15, the closing auction
+    ends 14:25, and `egx_settlement_grace_minutes` is 60 -- so a session only
+    becomes authoritatively complete at 15:25. Checked rather than assumed:
+    `authoritative_completed_session` asked at 14:40 still names the PREVIOUS
+    session.
+
+    That matters because the recorder refuses any session the exchange has not
+    completed and writes nothing. A run at 14:40 would therefore record
+    NOTHING, every day, silently -- and the count of sessions scanned is half
+    the evidence this whole exercise produces. 15:30 is five minutes of slack
+    past the grace, not a guess.
+
+    WHY A SECOND RUN AT 17:30. One failure mode loses a session permanently:
+    the provider has not published the completed bar by 15:30, so the scan sees
+    an older session, finds it already recorded, and today never enters the
+    record. `StartWhenAvailable` does not help -- the task ran, it just found
+    nothing new. Both halves are idempotent and a run with nothing to do exits
+    in about a second, so a catch-up costs nothing and covers the only gap that
+    cannot be repaired later.
 
     Nothing is registered unless the Python executable and the script exist.
 
@@ -44,11 +60,12 @@ param(
     [Parameter(Mandatory = $true)][string]$ProjectRoot,
     [string]$PythonExe,
     [string]$TaskName = "EGX Confirmed Breakout Forward Test",
-    # 16:30 Cairo. The close is 14:30; the scan reads roughly 216 symbols and
-    # takes about two minutes, and the daily bar has to be finalized upstream
-    # first. Two hours is slack, not protection -- the recorder's own refusal
-    # is the protection.
-    [string]$StartTime = "16:30",
+    # 15:25 is when a session becomes authoritatively complete (auction ends
+    # 14:25 + 60 minutes of settlement grace). Five minutes past that.
+    [string]$StartTime = "15:30",
+    # Catch-up, for the day the provider publishes late. Idempotent, so a run
+    # with nothing to do costs a second.
+    [string]$CatchUpTime = "17:30",
     [switch]$WhatIfOnly
 )
 
@@ -64,7 +81,7 @@ if (-not $PythonExe) {
 }
 $script = Join-Path $root "scripts\record_confirmed_breakout_forward.py"
 
-# Checked before registering rather than discovered at 16:30 on a Sunday. A
+# Checked before registering rather than discovered at 15:30 on a Sunday. A
 # task that fails silently every evening is worse than no task, because a
 # missing session looks exactly like a market with no signals -- which is the
 # normal outcome for this strategy.
@@ -98,8 +115,11 @@ $action = New-ScheduledTaskAction `
     -Argument "-NoProfile -NonInteractive -EncodedCommand $encoded" `
     -WorkingDirectory $root
 
-$trigger = New-ScheduledTaskTrigger -Weekly `
-    -DaysOfWeek Sunday, Monday, Tuesday, Wednesday, Thursday -At $StartTime
+$days = @("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday")
+$triggers = @(
+    New-ScheduledTaskTrigger -Weekly -DaysOfWeek $days -At $StartTime
+    New-ScheduledTaskTrigger -Weekly -DaysOfWeek $days -At $CatchUpTime
+)
 
 $principal = New-ScheduledTaskPrincipal `
     -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) `
@@ -117,7 +137,8 @@ $settings = New-ScheduledTaskSettingsSet `
     -RestartCount 2 -RestartInterval (New-TimeSpan -Minutes 10)
 
 Write-Host "Task        : $TaskName"
-Write-Host "Runs        : Sunday-Thursday at $StartTime (EGX trading week)"
+Write-Host "Runs        : Sunday-Thursday at $StartTime, again at $CatchUpTime"
+Write-Host "              (session completes 15:25: auction 14:25 + 60m grace)"
 Write-Host "Command     : $PythonExe $script"
 Write-Host "Working dir : $root"
 Write-Host "Log         : $(Join-Path $logDir 'confirmed_breakout_forward.log') (appended)"
@@ -130,7 +151,7 @@ if ($WhatIfOnly) {
     return
 }
 
-Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
+Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $triggers `
     -Principal $principal -Settings $settings -Force `
     -Description ("Records CONFIRMED_VOLUME_BREAKOUT signals before their " +
                   "outcome is known and resolves matured ones. Read-only over " +
@@ -139,6 +160,6 @@ Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
 Write-Host ""
 Write-Host "Registered '$TaskName'." -ForegroundColor Green
 Write-Host "  Needs a logged-in interactive session; no password is stored."
-Write-Host "  Idempotent: a double fire or a catch-up run is safe, and an"
-Write-Host "  unfinished session is refused rather than recorded."
+Write-Host "  Idempotent: the second fire is a no-op when the first one worked,"
+Write-Host "  and an unfinished session is refused rather than recorded."
 Write-Host "  Remove with: .\remove_confirmed_breakout_forward_task.ps1"

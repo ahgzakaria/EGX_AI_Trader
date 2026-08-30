@@ -5,9 +5,10 @@ would make that stop being true, and what does it take to start?
 
 **Status:** **running and scheduled.** `data/confirmed_breakout_forward.db`
 holds its first session, 2026-08-26. The Windows task
-`EGX Confirmed Breakout Forward Test` fires Sunday–Thursday at 16:30 Cairo and
-has been executed once through the scheduler to prove the chain (exit code 0,
-log and status file written). 15 new tests; suite 3,749 passing.
+`EGX Confirmed Breakout Forward Test` fires Sunday–Thursday at **15:30** Cairo,
+again at 17:30, and has been executed through the scheduler to prove the chain
+(exit code 0, log and status file written). The times come from the exchange
+calendar rather than from padding — §5. 15 new tests; suite 3,749 passing.
 
 **Short answer:** signals are now written down before anyone knows the answer,
 resolved weeks later by the same code that backtested them, and scored against
@@ -82,15 +83,46 @@ watching in the real record, not worth re-tuning on.
 ## 5. The schedule, and where the safety actually is
 
 Registered 2026-08-29 as **`EGX Confirmed Breakout Forward Test`**, firing
-**Sunday–Thursday at 16:30 Cairo**, two hours after the 14:30 close. Installed
-by `scripts/windows/install_confirmed_breakout_forward_task.ps1`, following the
-same shape as the gap recorder's task; removed by the matching `remove_…ps1`,
-which deliberately leaves the database, the log and the status files alone.
+**Sunday–Thursday at 15:30 Cairo, and again at 17:30**. Installed by
+`scripts/windows/install_confirmed_breakout_forward_task.ps1`; removed by the
+matching `remove_…ps1`, which deliberately leaves the database, the log and the
+status files alone.
+
+### The times are the calendar's, not a guess — corrected 2026-08-30
+
+It was first set to 16:30 on the reasoning that the market closes at 14:30 and
+two hours is comfortable slack. Asked to justify the gap, the honest answer was
+that I could not: it was padding, not a number.
+
+The number the calendar actually gives is **15:25**. In `core/egx_session.py`
+continuous trading ends **14:15**, the closing auction ends **14:25**, and
+`egx_settlement_grace_minutes` is **60**. So:
+
+| asked at | `authoritative_completed_session` returns |
+|---|---|
+| 14:25 | the **previous** session |
+| 14:40 | the **previous** session |
+| **15:25** | **today** |
+
+14:30 is when trading stops, not when the session is complete. That distinction
+is load-bearing here, because the recorder refuses any session the exchange has
+not completed and writes **nothing**. A run at 14:40 — the time the gap
+recorder uses, and the obvious choice to copy — would have recorded nothing
+every single day, silently, while the count of sessions scanned is half the
+evidence this file exists to produce.
+
+**15:30** is five minutes past the grace. **17:30** is a catch-up, and it covers
+the one failure that cannot be repaired later: the provider has not published
+the completed bar by 15:30, so the scan sees an older session, finds it already
+recorded, and today never enters the record at all. `StartWhenAvailable` does
+not help — the task ran, it just found nothing new. Both halves are idempotent
+and a run with nothing to do exits in about a second, so the second firing is
+close to free.
 
 It runs as the logged-in user with no stored password, `StartWhenAvailable` so a
 session missed because the machine was off is caught up, and
-`MultipleInstances IgnoreNew` so a slow run is never overlapped. Output is
-appended to `logs/confirmed_breakout_forward.log` as UTF-8, and each run writes
+`MultipleInstances IgnoreNew` so the 17:30 firing can never overlap a slow 15:30
+one. Output is appended to `logs/confirmed_breakout_forward.log` as UTF-8, and each run writes
 `data/automation_status/confirmed_breakout_forward_<date>.json`.
 
 The script is idempotent in both halves: a session already recorded exits in
@@ -98,13 +130,13 @@ under a second, so weekends, holidays and repeat runs cost nothing, and
 `resolve` runs every time regardless, because a signal recorded five weeks ago
 matures on a day when nothing new is scanned.
 
-**The generous clock is not the safety.** A recorded signal is immutable, so one
-computed from a half-formed daily bar would be wrong permanently. The recorder
-therefore refuses any session the exchange has not authoritatively completed —
-`core.egx_session.authoritative_completed_session`, the closing auction plus the
-configured settlement grace — and writes nothing at all rather than writing
-something it would have to live with. 16:30 exists so the normal case is a clean
-write, not so that a wrong write is avoided. A test pins the refusal.
+**The clock is not the safety.** A recorded signal is immutable, so one computed
+from a half-formed daily bar would be wrong permanently. The recorder therefore
+refuses any session the exchange has not authoritatively completed —
+`core.egx_session.authoritative_completed_session` — and writes nothing at all
+rather than writing something it would have to live with. A test pins the
+refusal. The schedule decides whether the normal case is a clean write; the
+refusal decides whether a wrong one is possible.
 
 **The absence of today's status file is the alarm**, and that matters more here
 than usual: for this strategy a session with no signals is the *normal* outcome,
