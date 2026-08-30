@@ -24,18 +24,31 @@
 
     Polls HOURLY, Sunday-Thursday, from 15:00 to 22:00 Cairo.
 
-    WHY POLLING AND NOT A TIME. Nobody knows when the completed daily bar
-    appears. EODHD publishes on no stated schedule, and the Rubix daily bridge
-    -- which would build the candle locally at the close -- is currently
-    `enabled: false`. Two fixed times were tried and both were wrong: 16:30 was
-    arbitrary padding, and 15:30 was derived from
+    WHY POLLING AND NOT A TIME. Two fixed times were tried and both were wrong:
+    16:30 was arbitrary padding, and 15:30 was derived from
     `egx_settlement_grace_minutes`, whose own comment in core/egx_session.py
     calls it "a data-availability allowance", i.e. somebody else's padding. On
     2026-08-30 the 15:30 run fired into a router whose newest bar was still
     2026-08-26, four days old.
 
-    A schedule cannot be derived from a publication time that does not exist.
-    So this stops guessing and asks, once an hour, until the answer changes.
+    The reason first given here for replacing them was wrong too, and is
+    corrected rather than quietly deleted: this said EODHD publishes on no
+    stated schedule and that the Rubix daily bridge is `enabled: false`. Both
+    name the wrong systems. `rubix_daily_bridge` is the SUPERSEDED bridge,
+    disabled on 2026-07-20 by whoever built it after measuring that Rubix
+    covered <=100 of 270 session minutes; EODHD is not idle either, and serves
+    the settled body of every covered symbol.
+
+    What actually builds the candle is core/daily_bridge/, run by the EGX Rubix
+    Daily Finalizer task at 15:45 Cairo. On 2026-08-30 the router's newest bar
+    was 2026-08-26 at 15:32 and 2026-08-30 at 16:10 -- the 15:30 run missed it
+    by thirteen minutes, racing a LOCAL job rather than waiting on a provider.
+
+    So there is no publication time to derive a schedule from, because there is
+    no publisher to wait for. The finalizer's duration varies and it can fail,
+    and chaining one task to another's completion would make the record depend
+    on that chain holding. Polling does not care: it asks once an hour until
+    the answer changes.
 
     WHY THAT IS AFFORDABLE. The recorder has a fast path: a cheap probe of a
     few symbols answers "is there a session newer than the ones already
@@ -103,7 +116,12 @@ if (-not (Test-Path -LiteralPath $logDir -PathType Container)) {
 # runs that worked -- and written as UTF-8, because PowerShell's default
 # redirection produces UTF-16 that ordinary tools render as spaced-out
 # gibberish. A log nobody can read is not a log.
-$command = ('& "{0}" "{1}" 2>&1 | ' +
+#
+# PYTHONIOENCODING is the other half of the same problem. A Python process
+# launched by Task Scheduler gets no console, so its stdout falls back to the
+# ANSI code page and any non-ASCII character it prints is mangled on the way
+# out. Pinning the interpreter's output encoding fixes it at the source.
+$command = ('$env:PYTHONIOENCODING = "utf-8"; & "{0}" "{1}" 2>&1 | ' +
             'Out-File -FilePath "{2}" -Append -Encoding utf8') -f
            $PythonExe, $script,
            (Join-Path $logDir "confirmed_breakout_forward.log")

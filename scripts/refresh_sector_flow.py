@@ -69,7 +69,7 @@ def refresh(*, force=False, database=DEFAULT_DATABASE, coverage_report=COVERAGE_
         _log(handle, f"stored latest complete session: {stored}; sessions behind: {behind}")
 
         if behind == 0 and not force:
-            _log(handle, "UP_TO_DATE — no completed session since the last build")
+            _log(handle, "UP_TO_DATE -- no completed session since the last build")
             return {"status": "UP_TO_DATE", "stored_latest_session": str(stored),
                     "sessions_behind": 0, "rebuilt": False}
 
@@ -79,7 +79,7 @@ def refresh(*, force=False, database=DEFAULT_DATABASE, coverage_report=COVERAGE_
         expected = _expected_session()
         attempted = (latest_build_metadata(database) or {}).get("attempted_for_session")
         if not force and expected is not None and attempted == str(expected):
-            _log(handle, f"WAITING_ON_PROVIDER — already rebuilt for {expected}; "
+            _log(handle, f"WAITING_ON_PROVIDER -- already rebuilt for {expected}; "
                          f"the provider has not published it yet")
             return {"status": "WAITING_ON_PROVIDER", "stored_latest_session": str(stored),
                     "expected_session": str(expected), "sessions_behind": behind,
@@ -92,19 +92,19 @@ def refresh(*, force=False, database=DEFAULT_DATABASE, coverage_report=COVERAGE_
         try:
             history, outcomes, metadata = build()
         except Exception as error:
-            _log(handle, f"FAILED — {type(error).__name__}: {error}")
+            _log(handle, f"FAILED -- {type(error).__name__}: {error}")
             return {"status": "FAILED", "error": f"{type(error).__name__}: {error}",
                     "rebuilt": False}
 
         Path(coverage_report).parent.mkdir(parents=True, exist_ok=True)
         outcomes.to_csv(coverage_report, index=False)
         if history.empty:
-            _log(handle, f"EMPTY — no sector history produced; see {coverage_report}")
+            _log(handle, f"EMPTY -- no sector history produced; see {coverage_report}")
             return {"status": "EMPTY", "rebuilt": False}
 
         save(history, metadata, database)
         _log(handle,
-             f"OK — {metadata['loaded_symbols']}/{metadata['classified_symbols']} symbols, "
+             f"OK -- {metadata['loaded_symbols']}/{metadata['classified_symbols']} symbols, "
              f"{metadata['held_symbols']} held, latest complete "
              f"{metadata['last_complete_session']}")
         return {
