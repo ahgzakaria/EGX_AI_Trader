@@ -286,10 +286,22 @@ def reset_research_caches():
 
 
 def _expected_completed_session():
-    """The expected completed EGX session, resolved once per scan."""
+    """The expected completed EGX session, resolved once per scan.
+
+    A failure is not an answer, and is not cached. ``_compute_...`` returns None
+    only when the calendar lookup raised, so caching that turned one transient
+    failure into a permanent one: every later caller in the process was told
+    there is no completed session, and the callers that treat "unknown" as
+    "nothing is missing" then reported a store that was days behind as current.
+
+    Only a resolved session is remembered. Retrying a failure costs a calendar
+    lookup; not retrying it costs the rest of the process.
+    """
     if _EXPECTED_SESSION_CACHE["set"]:
         return _EXPECTED_SESSION_CACHE["value"]
     value = _compute_expected_completed_session()
+    if value is None:
+        return None
     _EXPECTED_SESSION_CACHE.update({"value": value, "set": True})
     return value
 

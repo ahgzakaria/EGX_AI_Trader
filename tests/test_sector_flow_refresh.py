@@ -101,6 +101,28 @@ def test_only_trading_days_count_as_missing(database, monkeypatch):
     assert sessions_behind(database) == 2
 
 
+def test_an_empty_store_still_needs_a_build_when_the_session_is_unknown(tmp_path, monkeypatch):
+    """The two questions are asked in the order that cannot lie.
+
+    An unresolvable expected session used to be answered before the store was
+    looked at, so "nothing is stored" came back as zero sessions behind: a full
+    build required, reported as nothing to do. It is reachable in a plain
+    process -- the router caches the expected session, and a lookup that failed
+    once used to stay failed.
+    """
+
+    monkeypatch.setattr(builder, "_expected_session", lambda: None)
+    assert sessions_behind(str(tmp_path / "absent.db")) is None
+
+
+def test_an_unknown_session_over_a_populated_store_is_not_a_rebuild(database, monkeypatch):
+    """Still zero here: something is stored, and nothing is known to be missing."""
+
+    write_history(database)
+    monkeypatch.setattr(builder, "_expected_session", lambda: None)
+    assert sessions_behind(database) == 0
+
+
 # --------------------------------------------------------------------------- #
 # What the refresh decides
 # --------------------------------------------------------------------------- #

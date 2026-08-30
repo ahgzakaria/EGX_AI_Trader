@@ -369,3 +369,49 @@ def test_production_still_disabled():
     cfg = ExpectedRangeConfig.load()
     assert cfg.paper_enabled is True and cfg.production_enabled is False
     assert cfg.automatic_execution is False and cfg.broker_orders_enabled is False
+
+
+# --------------------------------------------------------------------------- #
+# the expected-session cache
+# --------------------------------------------------------------------------- #
+
+def test_a_failed_session_lookup_is_not_remembered(monkeypatch):
+    """A failure is not an answer.
+
+    ``_compute_expected_completed_session`` returns None only when the calendar
+    lookup raised. Caching that made one transient failure permanent for the
+    life of the process: every later caller was told there is no completed
+    session, and the callers that read "unknown" as "nothing is missing" then
+    reported stores that were days behind as current.
+    """
+
+    from core import research_router as router
+
+    router.reset_research_caches()
+    monkeypatch.setattr(router, "_compute_expected_completed_session", lambda: None)
+    assert router._expected_completed_session() is None
+    assert router._EXPECTED_SESSION_CACHE["set"] is False
+
+    resolved = pd.Timestamp("2026-08-30").date()
+    monkeypatch.setattr(router, "_compute_expected_completed_session", lambda: resolved)
+    assert router._expected_completed_session() == resolved
+
+
+def test_a_resolved_session_is_resolved_once(monkeypatch):
+    """The caching this exists for still happens: one lookup per scan, not per symbol."""
+
+    from core import research_router as router
+
+    router.reset_research_caches()
+    calls = []
+    resolved = pd.Timestamp("2026-08-30").date()
+
+    def _once():
+        calls.append(1)
+        return resolved
+
+    monkeypatch.setattr(router, "_compute_expected_completed_session", _once)
+    assert router._expected_completed_session() == resolved
+    assert router._expected_completed_session() == resolved
+    assert len(calls) == 1
+    router.reset_research_caches()

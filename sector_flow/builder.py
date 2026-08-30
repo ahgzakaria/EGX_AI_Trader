@@ -205,17 +205,23 @@ def sessions_behind(database_path=DEFAULT_DATABASE):
     refresh uses this to skip a twenty-minute rebuild on the many days -- every
     weekend and holiday among them -- when nothing has completed since the last
     one.
+
+    The empty store is checked first, and the order is the whole point. "I could
+    not work out which session is expected" and "there is nothing stored" are
+    different answers, and asking them the other way round reported an empty
+    store as zero sessions behind whenever the expected session was unavailable
+    -- a full build required, announced as nothing to do.
     """
 
     from core.egx_calendar import effective_holidays
     from core.egx_session import is_regular_trading_day
 
     stored = stored_latest_session(database_path)
-    expected = _expected_session()
-    if expected is None:
-        return 0
     if stored is None:
         return None                      # nothing stored: a full build is required
+    expected = _expected_session()
+    if expected is None:
+        return 0                         # nothing known to be missing
     holidays = effective_holidays()
     missing, cursor = 0, stored + timedelta(days=1)
     while cursor <= expected:
