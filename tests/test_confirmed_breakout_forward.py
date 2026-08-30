@@ -360,3 +360,120 @@ def test_a_completed_session_is_recorded(store, monkeypatch):
 
     assert outcome["session"] == "2026-08-26"
     assert len(store.rows("SELECT * FROM sessions")) == 1
+
+
+# ---------------------------------------------------------------------------
+# The fast path, which is what makes hourly polling affordable
+# ---------------------------------------------------------------------------
+
+def test_a_poll_with_nothing_new_skips_the_scan(store, monkeypatch):
+    """Most polls find nothing, and must not pay for a 214-symbol scan.
+
+    No provider here publishes the completed daily bar on a stated schedule, so
+    the recorder polls instead of firing at a guessed time. That is only viable
+    if "nothing new" is cheap to establish.
+    """
+    store.record_session(session(date="2026-08-26"), [])
+    test = ForwardTest(store=store)
+    monkeypatch.setattr(ForwardTest, "probe_latest_session",
+                        lambda self, **kw: "2026-08-26")
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("the full scan ran when the probe said nothing new")
+
+    monkeypatch.setattr("strategy_momentum_breakout.scan.scan", refuse)
+
+    outcome = test.record()
+
+    assert outcome["skipped"] is True
+    assert outcome["session"] == "2026-08-26"
+    assert outcome["written"] == 0
+
+
+def test_a_poll_that_finds_a_newer_session_does_the_full_scan(store, monkeypatch):
+    store.record_session(session(date="2026-08-26"), [])
+    test = ForwardTest(store=store)
+    monkeypatch.setattr(ForwardTest, "probe_latest_session",
+                        lambda self, **kw: "2026-08-30")
+
+    class Result:
+        session_date = "2026-08-30"
+        considered = 214
+        unreadable = {}
+        funnel = {"Calm": 100}
+        signals = []
+        count = 0
+
+    monkeypatch.setattr("strategy_momentum_breakout.scan.scan",
+                        lambda histories=None, cfg=None: Result())
+    import datetime as _datetime
+    monkeypatch.setattr("core.egx_session.authoritative_completed_session",
+                        lambda now=None: _datetime.date(2026, 8, 30))
+
+    outcome = test.record()
+
+    assert not outcome.get("skipped")
+    assert outcome["session"] == "2026-08-30"
+    assert len(store.rows("SELECT * FROM sessions")) == 2
+
+
+def test_an_unreadable_probe_falls_back_to_the_full_scan(store, monkeypatch):
+    """The probe may be approximate, but only in one direction.
+
+    Saying "nothing new" when there is something new merely delays a poll.
+    Saying it on bad information would skip a session permanently, so too few
+    answering symbols returns None and the caller scans properly.
+    """
+    store.record_session(session(date="2026-08-26"), [])
+    test = ForwardTest(store=store)
+    monkeypatch.setattr(ForwardTest, "probe_latest_session",
+                        lambda self, **kw: None)
+
+    scanned = []
+
+    class Result:
+        session_date = "2026-08-26"
+        considered = 214
+        unreadable = {}
+        funnel = {}
+        signals = []
+        count = 0
+
+    def record_call(histories=None, cfg=None):
+        scanned.append(True)
+        return Result()
+
+    monkeypatch.setattr("strategy_momentum_breakout.scan.scan", record_call)
+    import datetime as _datetime
+    monkeypatch.setattr("core.egx_session.authoritative_completed_session",
+                        lambda now=None: _datetime.date(2026, 8, 30))
+
+    test.record()
+
+    assert scanned, "an unreadable probe must not be treated as 'nothing new'"
+
+
+def test_the_probe_needs_enough_symbols_to_answer(store, monkeypatch):
+    test = ForwardTest(store=store)
+    monkeypatch.setattr("core.universe.active_symbols", lambda: ["A.CA", "B.CA"])
+    monkeypatch.setattr(
+        "core.research_router.get_current_research_history",
+        lambda ticker: pd.DataFrame(
+            {"Close": [1.0]}, index=pd.to_datetime(["2026-08-30"])))
+
+    # Two symbols answered against a minimum of three.
+    assert test.probe_latest_session(sample=8, minimum=3) is None
+    assert test.probe_latest_session(sample=8, minimum=2) == "2026-08-30"
+
+
+def test_the_probe_takes_the_newest_date_it_sees(store, monkeypatch):
+    """One lagging symbol must not hold the whole record back."""
+    test = ForwardTest(store=store)
+    dates = {"A.CA": "2026-08-26", "B.CA": "2026-08-30", "C.CA": "2026-08-26"}
+    monkeypatch.setattr("core.universe.active_symbols", lambda: list(dates))
+    monkeypatch.setattr(
+        "core.research_router.get_current_research_history",
+        lambda ticker: pd.DataFrame(
+            {"Close": [1.0]}, index=pd.to_datetime([dates[ticker]])))
+
+    assert test.probe_latest_session(sample=8, minimum=3) == "2026-08-30"

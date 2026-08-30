@@ -256,6 +256,45 @@ class ForwardTest:
 
     # -- writing down what the rule says, before anyone knows -------------
 
+    def recorded_sessions(self):
+        return {row["session_date"] for row in
+                self.store.rows("SELECT session_date FROM sessions")}
+
+    def probe_latest_session(self, sample=8, minimum=3):
+        """The newest session the data actually carries, read from a few symbols.
+
+        The whole point of polling instead of scheduling is not needing to know
+        when the provider publishes. That only works if checking is cheap: a
+        full scan reads 214 symbols and takes about a hundred seconds, which is
+        not something to do hourly for an answer that is usually "nothing new".
+
+        So this reads a handful and takes the newest date among them. It is
+        allowed to be approximate in one direction only -- if it says there is
+        nothing new when there is, the next poll catches it; if it says there is
+        something new, the full scan runs and decides for itself. `None` means
+        too few symbols answered to trust the reading, and the caller then does
+        the full scan rather than skipping on bad information.
+        """
+        from core.research_router import get_current_research_history
+        from core.universe import active_symbols
+
+        latest, answered = None, 0
+        for symbol in sorted(active_symbols())[:sample * 3]:
+            if answered >= sample:
+                break
+            try:
+                frame = get_current_research_history(symbol)
+                frame = frame[0] if isinstance(frame, tuple) else frame
+            except Exception:                            # noqa: BLE001 - skipped
+                continue
+            if frame is None or not len(frame):
+                continue
+            answered += 1
+            day = str(pd.Timestamp(frame.index[-1]).date())
+            if latest is None or day > latest:
+                latest = day
+        return latest if answered >= minimum else None
+
     def record(self, histories=None, now=None, require_completed=True) -> dict:
         """Scan and write down what the rule says, or refuse and write nothing.
 
@@ -272,6 +311,18 @@ class ForwardTest:
         from strategy_momentum_breakout.scan import scan
 
         timestamp = _now(now)
+
+        # Cheap probe first, so polling is affordable. Skipped when the caller
+        # supplied its own histories (the replay harness) because then there is
+        # no provider to ask.
+        if histories is None:
+            latest = self.probe_latest_session()
+            if latest is not None and latest in self.recorded_sessions():
+                return {"session": latest, "written": 0, "signals": 0,
+                        "skipped": True,
+                        "note": f"{latest} is the newest session the data "
+                                f"carries and it is already recorded"}
+
         result = scan(histories=histories, cfg=self.cfg)
         if not result.session_date:
             return {"session": None, "written": 0, "signals": 0,

@@ -22,29 +22,30 @@
     produce nothing. A record assembled when somebody remembers is a record of
     the days somebody remembered.
 
-    Fires Sunday-Thursday, the EGX trading week, TWICE: 15:30 and 17:30 Cairo.
+    Polls HOURLY, Sunday-Thursday, from 15:00 to 22:00 Cairo.
 
-    WHY 15:30 AND NOT 14:40. The 14:30 figure everyone quotes is when trading
-    closes, not when the session is complete. In this project's own calendar
-    (core/egx_session.py) continuous trading ends 14:15, the closing auction
-    ends 14:25, and `egx_settlement_grace_minutes` is 60 -- so a session only
-    becomes authoritatively complete at 15:25. Checked rather than assumed:
-    `authoritative_completed_session` asked at 14:40 still names the PREVIOUS
-    session.
+    WHY POLLING AND NOT A TIME. Nobody knows when the completed daily bar
+    appears. EODHD publishes on no stated schedule, and the Rubix daily bridge
+    -- which would build the candle locally at the close -- is currently
+    `enabled: false`. Two fixed times were tried and both were wrong: 16:30 was
+    arbitrary padding, and 15:30 was derived from
+    `egx_settlement_grace_minutes`, whose own comment in core/egx_session.py
+    calls it "a data-availability allowance", i.e. somebody else's padding. On
+    2026-08-30 the 15:30 run fired into a router whose newest bar was still
+    2026-08-26, four days old.
 
-    That matters because the recorder refuses any session the exchange has not
-    completed and writes nothing. A run at 14:40 would therefore record
-    NOTHING, every day, silently -- and the count of sessions scanned is half
-    the evidence this whole exercise produces. 15:30 is five minutes of slack
-    past the grace, not a guess.
+    A schedule cannot be derived from a publication time that does not exist.
+    So this stops guessing and asks, once an hour, until the answer changes.
 
-    WHY A SECOND RUN AT 17:30. One failure mode loses a session permanently:
-    the provider has not published the completed bar by 15:30, so the scan sees
-    an older session, finds it already recorded, and today never enters the
-    record. `StartWhenAvailable` does not help -- the task ran, it just found
-    nothing new. Both halves are idempotent and a run with nothing to do exits
-    in about a second, so a catch-up costs nothing and covers the only gap that
-    cannot be repaired later.
+    WHY THAT IS AFFORDABLE. The recorder has a fast path: a cheap probe of a
+    few symbols answers "is there a session newer than the ones already
+    recorded". When the answer is no -- which is most polls -- the run exits in
+    about eight seconds without scanning 214 symbols, which is the hundred-
+    second part. Only the first poll that sees a new session does real work.
+
+    The window ends at 22:00 rather than running all night because a bar that
+    has not appeared seven hours after the close is a collection problem, and
+    the missing status file is the signal to go and look at it.
 
     Nothing is registered unless the Python executable and the script exist.
 
@@ -60,12 +61,11 @@ param(
     [Parameter(Mandatory = $true)][string]$ProjectRoot,
     [string]$PythonExe,
     [string]$TaskName = "EGX Confirmed Breakout Forward Test",
-    # 15:25 is when a session becomes authoritatively complete (auction ends
-    # 14:25 + 60 minutes of settlement grace). Five minutes past that.
-    [string]$StartTime = "15:30",
-    # Catch-up, for the day the provider publishes late. Idempotent, so a run
-    # with nothing to do costs a second.
-    [string]$CatchUpTime = "17:30",
+    # 15:00 is after the closing auction (14:25) by enough that a poll is not
+    # wasted, and it is a starting point rather than a prediction: the
+    # repetition below is what actually finds the bar.
+    [string]$StartTime = "15:00",
+    [int]$PollHours = 7,
     [switch]$WhatIfOnly
 )
 
@@ -81,7 +81,7 @@ if (-not $PythonExe) {
 }
 $script = Join-Path $root "scripts\record_confirmed_breakout_forward.py"
 
-# Checked before registering rather than discovered at 15:30 on a Sunday. A
+# Checked before registering rather than discovered at 15:00 on a Sunday. A
 # task that fails silently every evening is worse than no task, because a
 # missing session looks exactly like a market with no signals -- which is the
 # normal outcome for this strategy.
@@ -116,10 +116,14 @@ $action = New-ScheduledTaskAction `
     -WorkingDirectory $root
 
 $days = @("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday")
-$triggers = @(
-    New-ScheduledTaskTrigger -Weekly -DaysOfWeek $days -At $StartTime
-    New-ScheduledTaskTrigger -Weekly -DaysOfWeek $days -At $CatchUpTime
-)
+$trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $days -At $StartTime
+# A weekly trigger has no repetition of its own, so one is borrowed from a
+# throwaway -Once trigger. This is the documented idiom and the only way to get
+# "every hour, but only on trading days" out of one trigger.
+$trigger.Repetition = (New-ScheduledTaskTrigger -Once -At $StartTime `
+    -RepetitionInterval (New-TimeSpan -Hours 1) `
+    -RepetitionDuration (New-TimeSpan -Hours $PollHours)).Repetition
+$triggers = @($trigger)
 
 $principal = New-ScheduledTaskPrincipal `
     -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) `
@@ -128,7 +132,9 @@ $principal = New-ScheduledTaskPrincipal `
 # Twenty minutes: the scan itself is about two, and the resolve pass reads
 # history for every unresolved signal. StartWhenAvailable catches up a session
 # missed because the machine was off, which matters because the denominator --
-# how many sessions were scanned -- is part of the evidence.
+# how many sessions were scanned -- is part of the evidence. IgnoreNew matters
+# more now that polls are hourly: a slow scan must never be overlapped by the
+# next poll.
 $settings = New-ScheduledTaskSettingsSet `
     -MultipleInstances IgnoreNew `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 20) `
@@ -137,8 +143,8 @@ $settings = New-ScheduledTaskSettingsSet `
     -RestartCount 2 -RestartInterval (New-TimeSpan -Minutes 10)
 
 Write-Host "Task        : $TaskName"
-Write-Host "Runs        : Sunday-Thursday at $StartTime, again at $CatchUpTime"
-Write-Host "              (session completes 15:25: auction 14:25 + 60m grace)"
+Write-Host "Runs        : Sunday-Thursday, hourly from $StartTime for $PollHours hours"
+Write-Host "              (polls because no provider publication time is known)"
 Write-Host "Command     : $PythonExe $script"
 Write-Host "Working dir : $root"
 Write-Host "Log         : $(Join-Path $logDir 'confirmed_breakout_forward.log') (appended)"
@@ -160,6 +166,6 @@ Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $triggers `
 Write-Host ""
 Write-Host "Registered '$TaskName'." -ForegroundColor Green
 Write-Host "  Needs a logged-in interactive session; no password is stored."
-Write-Host "  Idempotent: the second fire is a no-op when the first one worked,"
+Write-Host "  Idempotent: a poll with nothing new exits in ~8s without scanning,"
 Write-Host "  and an unfinished session is refused rather than recorded."
 Write-Host "  Remove with: .\remove_confirmed_breakout_forward_task.ps1"

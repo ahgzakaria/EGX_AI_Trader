@@ -5,10 +5,11 @@ would make that stop being true, and what does it take to start?
 
 **Status:** **running and scheduled.** `data/confirmed_breakout_forward.db`
 holds its first session, 2026-08-26. The Windows task
-`EGX Confirmed Breakout Forward Test` fires Sunday–Thursday at **15:30** Cairo,
-again at 17:30, and has been executed through the scheduler to prove the chain
-(exit code 0, log and status file written). The times come from the exchange
-calendar rather than from padding — §5. 15 new tests; suite 3,749 passing.
+`EGX Confirmed Breakout Forward Test` **polls hourly**, Sunday–Thursday from
+15:00 to 22:00 Cairo, and has been executed through the scheduler to prove the
+chain (exit code 0, log and status file written). It polls because no provider
+here publishes on a stated schedule — §5, which is the second correction to this
+section and explains why the first one was also wrong. 20 forward tests.
 
 **Short answer:** signals are now written down before anyone knows the answer,
 resolved weeks later by the same code that backtested them, and scored against
@@ -88,41 +89,85 @@ Registered 2026-08-29 as **`EGX Confirmed Breakout Forward Test`**, firing
 matching `remove_…ps1`, which deliberately leaves the database, the log and the
 status files alone.
 
-### The times are the calendar's, not a guess — corrected 2026-08-30
+### It polls, because there is no publication time to schedule against
 
-It was first set to 16:30 on the reasoning that the market closes at 14:30 and
-two hours is comfortable slack. Asked to justify the gap, the honest answer was
-that I could not: it was padding, not a number.
+This section was wrong twice, and the second time is the more instructive.
 
-The number the calendar actually gives is **15:25**. In `core/egx_session.py`
-continuous trading ends **14:15**, the closing auction ends **14:25**, and
-`egx_settlement_grace_minutes` is **60**. So:
+**First it was 16:30**, on the reasoning that the market closes at 14:30 and two
+hours is comfortable slack. Asked to justify the gap, I could not. It was
+padding.
 
-| asked at | `authoritative_completed_session` returns |
+**Then it was 15:30**, from the closing auction at 14:25 plus
+`egx_settlement_grace_minutes` of 60, and I described that as coming from the
+exchange calendar rather than from padding. **That was also wrong**, and the
+code says so itself:
+
+> Minutes after the closing auction before today's session is treated as the
+> authoritative completed session. It covers settlement and **the provider's
+> normal publication delay**; it is a **data-availability allowance**, not a
+> strategy parameter.
+> — `core/egx_session.py`
+
+The only exchange fact in there is the auction ending at **14:25**. The 60
+minutes is a guess about data, living in a config file — somebody else's
+padding, which I adopted and relabelled as a calendar.
+
+**And the evidence says both were wrong.** At **15:32 Cairo on 2026-08-30** —
+an hour after the close, past the grace, after the 15:30 run had already fired —
+the router's newest bar for COMI.CA, HRHO.CA and ABUK.CA was still
+**2026-08-26**. The run recorded `already_recorded: true` against a four-day-old
+session, and 2026-08-30 was not in the record.
+
+**The reason I first gave for that was wrong too**, and it is worth writing down
+because it was wrong in a way that sounded researched. I said EODHD publishes on
+no stated schedule and that `rubix_daily_bridge` — which would build the candle
+locally — is `enabled: false`. Both statements are about the wrong systems.
+`rubix_daily_bridge` is the **superseded** bridge, disabled by whoever built it
+on 2026-07-20 after measuring that Rubix's per-minute capture covered ≤100 of
+270 session minutes and that 0 of 265 symbols passed its coverage gate. And
+EODHD is not idle: `historical_symbol_routing_active.json` is `active: true`
+with 241 symbols approved, and it serves the body of every covered symbol's
+history.
+
+**What actually happens** is neither. `core/daily_bridge/` builds the candle
+from captured Rubix events, and it does so when the scheduled task
+`EGX Rubix Daily Finalizer` runs it — **15:45 Cairo, Sun–Thu**. On 2026-08-30:
+
+| Cairo time | Newest bar the router had |
 |---|---|
-| 14:25 | the **previous** session |
-| 14:40 | the **previous** session |
-| **15:25** | **today** |
+| 15:32 | 2026-08-26 |
+| **15:45** | *the finalizer runs* |
+| 16:10 | **2026-08-30** |
 
-14:30 is when trading stops, not when the session is complete. That distinction
-is load-bearing here, because the recorder refuses any session the exchange has
-not completed and writes **nothing**. A run at 14:40 — the time the gap
-recorder uses, and the obvious choice to copy — would have recorded nothing
-every single day, silently, while the count of sessions scanned is half the
-evidence this file exists to produce.
+The 15:30 run missed the candle by **thirteen minutes**, and it missed it
+because it was racing a *local* job, not waiting on a provider.
 
-**15:30** is five minutes past the grace. **17:30** is a catch-up, and it covers
-the one failure that cannot be repaired later: the provider has not published
-the completed bar by 15:30, so the scan sees an older session, finds it already
-recorded, and today never enters the record at all. `StartWhenAvailable` does
-not help — the task ran, it just found nothing new. Both halves are idempotent
-and a run with nothing to do exits in about a second, so the second firing is
-close to free.
+**So the schedule was never derivable from a publication time — there is no
+publisher to wait for.** The candle appears when our own finalizer finishes, and
+how long that takes varies with the universe and can fail outright. Chaining one
+task to another's completion would make the record depend on that chain holding.
+Polling does not care: it asks hourly from 15:00 for seven hours and takes the
+candle whenever it appears.
+
+What makes that affordable is a fast path in the recorder: a probe of a few
+symbols answers "is there a session newer than the ones recorded", and when the
+answer is no the run exits in about **eight seconds** instead of the ~110 a
+214-symbol scan takes. Only the first poll that sees a new session does real
+work.
+
+The probe is allowed to be approximate in one direction only. Saying "nothing
+new" when there is delays a poll by an hour; saying it on bad information would
+skip a session permanently, so too few answering symbols returns `None` and the
+caller scans properly. A test pins that.
+
+The window ends at 22:00 rather than running all night because a bar that has
+not appeared seven hours after the close is a collection problem, and the
+missing status file is the signal to go and look at it.
 
 It runs as the logged-in user with no stored password, `StartWhenAvailable` so a
 session missed because the machine was off is caught up, and
-`MultipleInstances IgnoreNew` so the 17:30 firing can never overlap a slow 15:30
-one. Output is appended to `logs/confirmed_breakout_forward.log` as UTF-8, and each run writes
+`MultipleInstances IgnoreNew` so a slow scan is never overlapped by the next
+poll. Output is appended to `logs/confirmed_breakout_forward.log` as UTF-8, and each run writes
 `data/automation_status/confirmed_breakout_forward_<date>.json`.
 
 The script is idempotent in both halves: a session already recorded exits in
