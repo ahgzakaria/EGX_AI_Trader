@@ -52,6 +52,12 @@ $root   = Split-Path -Parent $PSScriptRoot
 $python = Join-Path $root 'venv\Scripts\python.exe'
 Set-Location $root
 
+# Log appenders that write UTF-8 under Windows PowerShell 5.1, which is what
+# the scheduled task runs. This log was the worst of the three: `Say` wrote
+# BOM'd UTF-8 lines while the piped Python output arrived as UTF-16, in the
+# same file.
+. (Join-Path $PSScriptRoot 'lib\utf8_log.ps1')
+
 # The readiness gate and the orchestrator must look at the same feed, or the
 # gate is checking something the session will not use.
 if (-not $RubixDbPath) { $RubixDbPath = Join-Path $root 'data\rubix_live_market.db' }
@@ -99,7 +105,7 @@ function Write-Status {
 function Say($message) {
     $line = "{0}  {1}" -f (Get-Date -Format 'HH:mm:ss'), $message
     Write-Host $line
-    Add-Content -Path $log -Value $line -Encoding utf8
+    Add-Utf8LogLine -Path $log -Value $line
 }
 
 function Refuse {
@@ -180,7 +186,7 @@ if ($SkipReadiness) {
         Start-Sleep -Seconds 20
     }
 
-    Add-Content -Path $log -Value $readiness -Encoding utf8
+    Add-Utf8LogLine -Path $log -Value $readiness
     Write-Host $readiness
 
     if (-not $passed) {
@@ -204,7 +210,7 @@ $argList = @(
     '--no-network'
 )
 Say "starting orchestrator"
-& $python @argList *>&1 | Tee-Object -FilePath $log -Append
+& $python @argList *>&1 | Write-Utf8Log -Path $log
 $code = $LASTEXITCODE
 
 if ($code -eq 0) {
@@ -231,7 +237,7 @@ if ($code -eq 0) {
 Say "banking microstructure for $SessionDate"
 & $python -u (Join-Path $root 'scripts\bank_daily_microstructure.py') `
     --session $SessionDate --rubix-db-path $RubixDbPath *>&1 |
-    Tee-Object -FilePath $log -Append
+    Write-Utf8Log -Path $log
 $bankCode = $LASTEXITCODE
 
 if ($bankCode -eq 0) {

@@ -1,15 +1,15 @@
 <#
-    EGX Scalping Session Validator — scheduled launcher.
+    EGX Scalping Session Validator -- scheduled launcher.
 
     Runs the automated post-session value-progression validator once, after the
     EGX continuous session + closing auction have completed. Designed for Windows
     Task Scheduler at 14:40 Africa/Cairo, Sun-Thu.
 
     Guarantees:
-      * Single instance (named mutex) — never overlaps a prior still-running run.
+      * Single instance (named mutex) -- never overlaps a prior still-running run.
       * Activates the project venv.
       * Verifies the Rubix collector DB is readable BEFORE running.
-      * Skips weekends (Fri/Sat) — the validator itself also refuses non-trading dates.
+      * Skips weekends (Fri/Sat) -- the validator itself also refuses non-trading dates.
       * Dated log file under logs/session_validation/.
       * Non-zero exit on failure so the scheduler records it.
       * Never prints or logs any credential/token.
@@ -32,6 +32,10 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root      = Split-Path -Parent $ScriptDir
 Set-Location $Root
 
+# Log appenders that write UTF-8 under Windows PowerShell 5.1, which is what
+# the scheduled task runs. See the file for why Tee-Object is not usable here.
+. (Join-Path $ScriptDir 'lib\utf8_log.ps1')
+
 # --- dated log ---------------------------------------------------------------
 $LogDir = Join-Path $Root "logs\session_validation"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
@@ -40,7 +44,7 @@ $LogFile = Join-Path $LogDir "validation_$stamp.log"
 
 function Log([string]$msg) {
     $line = "{0}  {1}" -f (Get-Date -Format "yyyy-MM-ddTHH:mm:ssK"), $msg
-    $line | Tee-Object -FilePath $LogFile -Append | Out-Null
+    Add-Utf8LogLine -Path $LogFile -Value $line
     Write-Host $line
 }
 
@@ -70,7 +74,7 @@ try {
 
     # --- DB readable check (read-only; no credentials involved) --------------
     Log "Checking Rubix collector DB readability..."
-    & $Py "scripts\run_scalping_session_validation.py" --check-db 2>&1 | Tee-Object -FilePath $LogFile -Append
+    & $Py "scripts\run_scalping_session_validation.py" --check-db 2>&1 | Write-Utf8Log -Path $LogFile
     if ($LASTEXITCODE -ne 0) {
         Log "Rubix collector DB is not readable -> exit 3"
         exit 3
@@ -82,7 +86,7 @@ try {
     if ($Force) { $vargs += "--force-rebuild" }
 
     Log ("Running validator: python {0}" -f ($vargs -join ' '))
-    & $Py @vargs 2>&1 | Tee-Object -FilePath $LogFile -Append
+    & $Py @vargs 2>&1 | Write-Utf8Log -Path $LogFile
     $rc = $LASTEXITCODE
     if ($rc -ne 0) {
         Log "Validator failed with exit code $rc -> exit 5"

@@ -28,11 +28,24 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-#: Only the scripts a scheduled task invokes. Scripts a human runs from pwsh 7
+#: Only the scripts a scheduled task loads. Scripts a human runs from pwsh 7
 #: are free to use whatever characters they like.
+#:
+#: "Loads", not "invokes": a dot-sourced file is parsed by the same 5.1 host
+#: under the same code page, so it inherits the rule from the script that
+#: sources it rather than from how it is launched.
+#:
+#: The list was two entries while five scheduled tasks ran run_ers_stage.ps1
+#: and a sixth ran run_scalping_session_validation.ps1. Both carried em dashes,
+#: unnoticed because they sat in comment blocks, which the parser tolerates --
+#: the failure only appears when a mis-decoded character lands inside a string.
+#: They are covered now so that stays luck-free.
 SCHEDULED_SCRIPTS = (
     "scripts/run_daily_orb_automation.ps1",
     "scripts/enable_orb_clock_selfheal.ps1",
+    "scripts/run_ers_stage.ps1",
+    "scripts/run_scalping_session_validation.ps1",
+    "scripts/lib/utf8_log.ps1",
 )
 
 
