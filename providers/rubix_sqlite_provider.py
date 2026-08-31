@@ -26,6 +26,16 @@ from providers.base_provider import (
 )
 from providers.symbol_mapping import to_rubix_symbol
 
+#: Per-ticker reads for the batched overlay load. Each one is answered through
+#: ``idx_quotes_ticker_time (ticker, market_timestamp)``; the whole-table
+#: ``GROUP BY ticker`` aggregates these replaced could not be, and hung a scan.
+_LATEST_QUOTE = (
+    "SELECT last_price, bid, ask, volume, market_timestamp, received_at "
+    "FROM quotes WHERE ticker=? ORDER BY market_timestamp DESC LIMIT 1"
+)
+_QUOTE_COUNT = "SELECT COUNT(*) FROM quotes WHERE ticker=?"
+_MINUTE_SUMMARY = "SELECT MAX(minute), COUNT(*) FROM candles_1m WHERE ticker=?"
+
 
 class RubixSQLiteProvider(MarketDataProvider):
     """Consume adapter-generated quotes/candles without touching its schema."""
@@ -223,9 +233,34 @@ class RubixSQLiteProvider(MarketDataProvider):
         and performs no write of any kind — no schema change, no index creation, no
         checkpoint, no vacuum, no WAL operation.
 
-        Every value matches :meth:`quote_overlay` exactly: the counts and timestamps are
-        the same aggregates, not approximations. A symbol with no quote yields a typed
-        missing overlay so one absent ticker can never fail the universe.
+        **Every read here goes through ``idx_quotes_ticker_time``.** It once did
+        not, and the cost was not a performance complaint. The three aggregates
+        it used to run -- ``MAX(market_timestamp)``, ``MAX(received_at)`` and
+        ``COUNT(*)``, each ``GROUP BY ticker`` -- scanned the whole table, and
+        this table now holds 22 million rows across 7.3 GB. On 2026-08-31 a
+        Daily Dashboard scan sat in ``PREPARING_RUBIX`` at 0/241 for a quarter
+        of an hour before it was killed.
+
+        ``received_at`` is the column that cannot be rescued. It is not in any
+        index, so even narrowed to a single ticker ``MAX(received_at)`` measured
+        **8.7 seconds per symbol** -- 35 minutes for a 241-name universe --
+        because it must fetch that column from every one of the ticker's rows.
+        Measured, not assumed.
+
+        So the receipt time is taken **from the newest row by exchange time**
+        rather than as an independent maximum, which is the one substantive
+        difference from :meth:`quote_overlay` and is the same trade-off
+        ``holdings/quotes.py`` documents. It can only err toward calling a quote
+        *stale*: if a row had arrived later out of order, this makes the feed
+        look older than it is, never fresher. A quote wrongly called stale
+        withholds a recommendation; the opposite error would act on a price that
+        no longer exists.
+
+        Everything else is unchanged and exact -- the counts are real counts,
+        and every judgement is still made by this provider's own composers.
+
+        A symbol with no quote yields a typed missing overlay so one absent
+        ticker can never fail the universe.
         """
         requested = [str(symbol) for symbol in symbols or ()]
         mapped_by_symbol = {symbol: self.map_symbol(symbol) for symbol in requested}
@@ -242,28 +277,29 @@ class RubixSQLiteProvider(MarketDataProvider):
             # observes the same consistent snapshot of the collector's database.
             connection.execute("BEGIN")
             try:
-                quote_times = {
-                    str(row[0]): row[1] for row in connection.execute(
-                        "SELECT ticker, MAX(market_timestamp) FROM quotes GROUP BY ticker")
-                }
-                received = {
-                    str(row[0]): (row[1], row[2]) for row in connection.execute(
-                        "SELECT ticker, MAX(received_at), COUNT(*) FROM quotes "
-                        "GROUP BY ticker")
-                }
-                candles = {
-                    str(row[0]): (row[1], row[2]) for row in connection.execute(
-                        "SELECT ticker, MAX(minute), COUNT(*) FROM candles_1m "
-                        "GROUP BY ticker")
-                }
-                latest = {}
+                # Every ticker the collector has ever written, for the
+                # normalization check below. `GROUP BY ticker` selecting only
+                # `ticker` is answered from the covering index in about three
+                # seconds; `SELECT DISTINCT ticker` takes twenty-five, for the
+                # same 265 rows.
+                all_tickers = [str(row[0]) for row in connection.execute(
+                    "SELECT ticker FROM quotes GROUP BY ticker")]
+                quote_times, received, candles, latest = {}, {}, {}, {}
                 for ticker in wanted:
-                    latest[ticker] = connection.execute(
-                        "SELECT last_price, bid, ask, volume, market_timestamp, "
-                        "received_at FROM quotes WHERE ticker=? "
-                        "ORDER BY market_timestamp DESC LIMIT 1",
-                        (ticker,),
-                    ).fetchone()
+                    row = connection.execute(_LATEST_QUOTE, (ticker,)).fetchone()
+                    if row is None:
+                        continue
+                    latest[ticker] = row
+                    # Both taken from the row the index just found: the exchange
+                    # time is its own, and the receipt time is that row's rather
+                    # than a separate maximum. See the docstring.
+                    quote_times[ticker] = row[4]
+                    quote_count = connection.execute(
+                        _QUOTE_COUNT, (ticker,)).fetchone()[0]
+                    received[ticker] = (row[5], quote_count)
+                    candles[ticker] = (
+                        connection.execute(_MINUTE_SUMMARY, (ticker,)).fetchone()
+                        or (None, 0))
             finally:
                 connection.rollback()          # read-only: never leave a write intent
         except sqlite3.Error as error:
@@ -273,8 +309,12 @@ class RubixSQLiteProvider(MarketDataProvider):
             connection.close()
 
         # Defensive contract check — surfaced, never worked around silently.
+        # Read from every ticker the collector wrote, not only the ones asked
+        # for: the requested tickers were upper-cased on the way in, so checking
+        # those would be checking our own normalization rather than the
+        # collector's.
         unnormalized = sorted(
-            key for key in quote_times if key != key.upper())[:5]
+            key for key in all_tickers if key != key.upper())[:5]
 
         overlays = {}
         for symbol, mapped in mapped_by_symbol.items():
