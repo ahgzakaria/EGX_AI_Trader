@@ -102,6 +102,9 @@
         "max_spread_percent": null,
         "unmeasured_spread_percent": 0.927
     },
+    "portfolio": {
+        "database_path": "data/portfolio.db"
+    },
     "decision_support": {
         "enabled": true,
         "rvol_lookback": 20,

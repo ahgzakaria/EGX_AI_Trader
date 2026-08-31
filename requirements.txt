@@ -10,3 +10,9 @@ xgboost>=3.1.0
 
 # Environment / secrets loading
 python-dotenv>=1.0
+
+# Portfolio bulk entry. Broker e-invoices are PDFs carrying real embedded text,
+# so they are read rather than recognised: pure Python, offline, no OCR and no
+# model. openpyxl is only for the first-time positions spreadsheet.
+pypdf>=5.0
+openpyxl>=3.1

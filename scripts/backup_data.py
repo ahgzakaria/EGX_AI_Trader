@@ -18,11 +18,13 @@ def main():
     parser.add_argument("--backup-root", default=str(PROJECT_ROOT / "backups"))
     parser.add_argument("--rubix-db", default=str(PROJECT_ROOT / "data" / "rubix_live_market.db"))
     parser.add_argument("--forward-db", default=str(PROJECT_ROOT / "data" / "forward_testing.db"))
+    parser.add_argument("--portfolio-db", default=str(PROJECT_ROOT / "data" / "portfolio.db"))
     parser.add_argument("--prune", action="store_true")
     parser.add_argument("--confirm-prune", action="store_true")
     parser.add_argument("--keep", type=int, default=10)
     args = parser.parse_args()
-    backup = create_backup(args.backup_root, args.rubix_db, args.forward_db)
+    backup = create_backup(args.backup_root, args.rubix_db, args.forward_db,
+                           args.portfolio_db)
     print(f"Backup created: {backup}")
     if args.prune:
         deleted = prune_backups(args.backup_root, args.keep, args.confirm_prune)

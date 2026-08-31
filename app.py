@@ -33,6 +33,7 @@ from dashboard.ai_stock_analysis import show_ai_stock_analysis
 from dashboard.confirmed_breakout import show_confirmed_breakout
 from dashboard.home import show_dashboard, show_stock_details_page
 from dashboard.orb_signals import show_orb_signals
+from dashboard.portfolio import show_portfolio
 from dashboard.sector_flow import show_sector_flow
 from dashboard.settings import show_settings
 from dashboard.swing_signals import show_swing_signals
@@ -57,6 +58,15 @@ initialize_backtest_state(st.session_state)
 recover_interrupted_backtest(st.session_state, RunRepository)
 
 navigation = st.navigation({
+    # Not a fourth way of trading, and not a tool either: the positions the
+    # user actually holds. Every other workspace answers "what should I buy?".
+    # This one answers what happens to the money that was already committed,
+    # which is where the result of all the others is actually decided. It sits
+    # first because it is the page with real money on it.
+    "المحفظة · PORTFOLIO": [
+        st.Page(show_portfolio, title="My Portfolio", icon="💼",
+                url_path="portfolio"),
+    ],
     # Days to weeks, on daily bars. The timeframe where the cost of trading
     # stops being the dominant term.
     "سوينج · SWING": [

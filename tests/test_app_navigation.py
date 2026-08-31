@@ -66,27 +66,36 @@ def _section_titles():
     return {}
 
 
-def test_navigation_is_three_workspaces_plus_tools():
-    """One section per way of trading, and system tools kept apart from them.
+def test_navigation_is_the_portfolio_two_workspaces_and_tools():
+    """One section per way of trading, the account itself above them, and system
+    tools kept apart from all of it.
 
-    The three are different timeframes with different economics -- a swing
-    hold pays the round trip once over weeks, a scalp pays it against an
+    The trading workspaces are different timeframes with different economics --
+    a swing hold pays the round trip once over weeks, a scalp pays it against an
     average intraday drift ten times smaller than the cost itself. Filing them
     together invites reading a number from one as if it came from the other.
+
+    PORTFOLIO joined on 2026-08-31 and is deliberately not one of them. It is
+    not a way of trading and not a diagnostic: it is the positions actually
+    held, where the result of every other page is finally decided. It sits
+    first because it is the only page with real money on it.
     """
 
     sections = _section_titles()
     headings = list(sections)
 
-    assert len(headings) == 3, headings
-    assert "SWING" in headings[0]
-    assert "AI ANALYSIS" in headings[1]
-    assert "SYSTEM" in headings[2]
+    assert len(headings) == 4, headings
+    assert "PORTFOLIO" in headings[0]
+    assert "SWING" in headings[1]
+    assert "AI ANALYSIS" in headings[2]
+    assert "SYSTEM" in headings[3]
 
+    # The portfolio is one page, not a workspace that grew a second view.
+    assert sections[headings[0]] == ["My Portfolio"]
     # AI Analysis is its own workspace, not filed with the diagnostics.
-    assert sections[headings[1]] == ["AI Analysis"]
+    assert sections[headings[2]] == ["AI Analysis"]
     # System holds tools only; nothing that produces a trading signal.
-    assert sections[headings[2]] == ["System Health", "Settings"]
+    assert sections[headings[3]] == ["System Health", "Settings"]
 
 
 def test_there_is_no_scalping_workspace_left():
@@ -127,6 +136,7 @@ def test_every_page_is_reachable_exactly_once():
     titles = _page_titles()
     assert len(titles) == len(set(titles)), f"a page is listed twice: {titles}"
     assert set(titles) == {
+        "My Portfolio",
         "Daily Dashboard", "Swing Breakout", "Confirmed Breakout",
         "Sector Liquidity", "Watchlist", "Stock Details", "AI Analysis",
         "System Health", "Settings",

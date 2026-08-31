@@ -68,6 +68,11 @@ def create_backup(
     backup_root=DEFAULT_BACKUP_ROOT,
     rubix_db=PROJECT_ROOT / "data" / "rubix_live_market.db",
     forward_db=PROJECT_ROOT / "data" / "forward_testing.db",
+    # The portfolio is the one database here that no provider can rebuild. A
+    # quote, a candle or a scan result can all be fetched again; what the user
+    # bought and at what price exists nowhere else. A missing file is reported
+    # as MISSING, so backing it up before it exists is not an error.
+    portfolio_db=PROJECT_ROOT / "data" / "portfolio.db",
 ) -> Path:
     timestamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d_%H%M%S")
     root = Path(backup_root)
@@ -81,6 +86,7 @@ def create_backup(
         databases = [
             _backup_sqlite(Path(rubix_db), staging / "rubix_live_market.db"),
             _backup_sqlite(Path(forward_db), staging / "forward_testing.db"),
+            _backup_sqlite(Path(portfolio_db), staging / "portfolio.db"),
         ]
         metadata_zip = staging / "experiment_metadata.zip"
         with zipfile.ZipFile(metadata_zip, "w", zipfile.ZIP_DEFLATED) as archive:
