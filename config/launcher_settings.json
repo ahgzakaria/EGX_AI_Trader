@@ -1,6 +1,6 @@
 {
     "adapter_path": "C:\\Users\\ahgza\\OneDrive\\Documents\\Scrapping\\tickerchart_adapter",
-    "database_path": "D:\\EGX_AI_Trader\\data\\tickerchart_quotes.sqlite3",
+    "database_path": "F:\\EGX_AI_Trader\\data\\tickerchart_quotes.sqlite3",
     "streamer_url": "wss://delayedkse2.tickerchart.net/streamhubws/",
     "streamlit_port": 8501,
     "browser_auto_open": true
