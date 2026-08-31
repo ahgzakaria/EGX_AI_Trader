@@ -1208,6 +1208,25 @@ def _rubix_path():
 
 
 def _rubix_latest_event():
+    """When the collector last wrote anything, read through the rowid index.
+
+    This was ``SELECT MAX(received_at) FROM quotes``. ``received_at`` is in no
+    index -- the only one is ``(ticker, market_timestamp)`` -- so that scanned
+    the whole table, which now holds 22 million rows across 7.3 GB. Measured
+    cold: **17 seconds**, and this page calls it twice per render, so a page
+    that renders a one-line freshness badge spent half a minute in it.
+
+    The newest row by ``id`` answers the same question through the primary key,
+    instantly. ``id`` is ``INTEGER PRIMARY KEY AUTOINCREMENT`` and the collector
+    inserts as it receives, so the highest id is the most recently received row.
+    Verified against the real database: both return
+    ``2026-08-31T12:25:34.084244+00:00``, in 4.37s and 0.00s respectively.
+
+    Where they could differ -- a row inserted out of receipt order -- this
+    reports the feed as slightly older than it is, never fresher, which is the
+    safe direction for a badge that says whether the feed is alive.
+    """
+
     p = _rubix_path()
     if not p.is_file():
         return None
@@ -1215,7 +1234,8 @@ def _rubix_latest_event():
     try:
         conn = sqlite3.connect(f"file:{p.resolve().as_posix()}?mode=ro", uri=True, timeout=5)
         try:
-            row = conn.execute("SELECT MAX(received_at) FROM quotes").fetchone()
+            row = conn.execute(
+                "SELECT received_at FROM quotes ORDER BY id DESC LIMIT 1").fetchone()
         finally:
             conn.close()
         return row[0] if row and row[0] else None

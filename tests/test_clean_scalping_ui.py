@@ -188,3 +188,82 @@ render_uptrend_pullback_tab(
     assert "لا توجد قائمة اتجاه صاعد ثابتة جاهزة" in rendered
     assert "Research Only" in rendered
     assert len(app.dataframe) == 0
+
+
+# --- the collector freshness badge -------------------------------------------
+#
+# `_rubix_latest_event` backs the "Last event" badge and the "Value:
+# Progressing" verdict, and the page calls it twice per render. It asked for
+# MAX(received_at) over the whole quotes table -- a column no index covers --
+# which on the live 22-million-row database measured 17 seconds cold, so a
+# one-line badge cost the page about half a minute.
+
+def _quotes_db(path, rows):
+    """rows: (id, ticker, market_timestamp, received_at)."""
+    import sqlite3
+
+    connection = sqlite3.connect(path)
+    connection.executescript("""
+    CREATE TABLE quotes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, ticker TEXT NOT NULL,
+      last_price REAL, bid REAL, ask REAL, volume REAL,
+      market_timestamp TEXT NOT NULL, received_at TEXT NOT NULL
+    );
+    CREATE INDEX idx_quotes_ticker_time ON quotes (ticker, market_timestamp);
+    """)
+    for identifier, ticker, market, received in rows:
+        connection.execute(
+            "INSERT INTO quotes (id, ticker, last_price, bid, ask, volume, "
+            "market_timestamp, received_at) VALUES (?,?,?,?,?,?,?,?)",
+            (identifier, ticker, 1.0, 0.9, 1.1, 10.0, market, received))
+    connection.commit()
+    connection.close()
+    return path
+
+
+def test_latest_event_is_the_newest_written_row(tmp_path, monkeypatch):
+    import dashboard.scalping as scalping
+
+    db = _quotes_db(tmp_path / "r.db", [
+        (1, "COMI", "2026-08-31T09:00:00+00:00", "2026-08-31T09:00:00+00:00"),
+        (2, "ABUK", "2026-08-31T11:00:00+00:00", "2026-08-31T11:30:00+00:00"),
+    ])
+    monkeypatch.setattr(scalping, "_rubix_path", lambda: db)
+    assert scalping._rubix_latest_event() == "2026-08-31T11:30:00+00:00"
+
+
+def test_an_absent_database_is_not_an_error(tmp_path, monkeypatch):
+    import dashboard.scalping as scalping
+
+    monkeypatch.setattr(scalping, "_rubix_path", lambda: tmp_path / "absent.db")
+    assert scalping._rubix_latest_event() is None
+
+
+def test_an_empty_quotes_table_reports_no_event(tmp_path, monkeypatch):
+    import dashboard.scalping as scalping
+
+    db = _quotes_db(tmp_path / "r.db", [])
+    monkeypatch.setattr(scalping, "_rubix_path", lambda: db)
+    assert scalping._rubix_latest_event() is None
+
+
+def test_the_badge_never_scans_the_whole_table():
+    """A behavioural test cannot catch this: MAX(received_at) returned the right
+    timestamp and only took seventeen seconds to do it."""
+
+    import ast
+    import inspect as _inspect
+    import textwrap
+
+    import dashboard.scalping as scalping
+
+    function = ast.parse(textwrap.dedent(
+        _inspect.getsource(scalping._rubix_latest_event))).body[0]
+    docstring = ast.get_docstring(function, clean=False)
+    queries = [node.value for node in ast.walk(function)
+               if isinstance(node, ast.Constant) and isinstance(node.value, str)
+               and node.value != docstring and "quotes" in node.value]
+    assert queries, "the badge must read the quotes table"
+    for query in queries:
+        assert "MAX(received_at)" not in query
+        assert "ORDER BY id DESC LIMIT 1" in query
