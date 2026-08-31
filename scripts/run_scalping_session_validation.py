@@ -222,7 +222,24 @@ def _write_verdict(patched, state, detail, finalized):
 
 
 def _check_db(db_path):
-    """Read-only probe used by the scheduled launcher before a full run."""
+    """Read-only probe used by the scheduled launcher before a full run.
+
+    The question is only "does this open and can the quotes table be read".
+
+    It used to answer that with ``SELECT COUNT(*) FROM quotes``, which SQLite
+    can only satisfy by scanning the whole table. On 2026-08-31 that took
+    **eleven minutes** -- 22,347,695 rows across 7.3 GB -- out of the task's
+    thirty-minute budget, and the collector adds about a million rows a
+    session, so it was getting worse every day. The task was then killed at its
+    limit while its work was still running.
+
+    Reading the newest id instead uses the primary-key index and returns
+    immediately. It is reported as ``latest_id`` rather than ``quote_rows``
+    because that is what it is: the highest rowid, which equals the row count
+    only if nothing was ever deleted. Naming it honestly costs nothing; calling
+    an approximation a count is how a number outlives the caveat that came with
+    it.
+    """
     import sqlite3
     p = Path(db_path)
     if not p.is_file():
@@ -231,13 +248,13 @@ def _check_db(db_path):
     try:
         c = sqlite3.connect(f"file:{p.as_posix()}?mode=ro", uri=True, timeout=15)
         try:
-            n = c.execute("SELECT COUNT(*) FROM quotes").fetchone()[0]
+            row = c.execute("SELECT id FROM quotes ORDER BY id DESC LIMIT 1").fetchone()
         finally:
             c.close()
     except sqlite3.Error as exc:
         print(json.dumps({"db_ok": False, "reason": f"sqlite error: {exc}"}))
         return 3
-    print(json.dumps({"db_ok": True, "quote_rows": int(n)}))
+    print(json.dumps({"db_ok": True, "latest_id": int(row[0]) if row else 0}))
     return 0
 
 

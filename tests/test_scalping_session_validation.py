@@ -132,3 +132,81 @@ def test_force_rebuild_versions_without_deleting_prior(tmp_path, monkeypatch):
     assert appended is True
     versions = [r["Run Version"] for r in rows if r["Session Date"] == "2026-07-21"]
     assert "1" in [str(v) for v in versions] and "2" in [str(v) for v in versions]  # prior preserved
+
+
+# --- the collector-DB readability probe ---------------------------------------
+#
+# The probe answers one yes/no question before a full run, and it used to answer
+# it with SELECT COUNT(*) FROM quotes -- a full table scan. On 2026-08-31 that
+# cost eleven minutes of a thirty-minute task budget (22,347,695 rows, 7.3 GB),
+# and the task was killed at its limit with its real work still running. The
+# collector adds roughly a million rows a session, so the scan was growing.
+
+def _quotes_db(path, ids):
+    import sqlite3
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "CREATE TABLE quotes (id INTEGER PRIMARY KEY AUTOINCREMENT, ticker TEXT, "
+        "last_price REAL, bid REAL, ask REAL, volume REAL, market_timestamp TEXT, "
+        "received_at TEXT)")
+    for value in ids:
+        connection.execute(
+            "INSERT INTO quotes (id, ticker, received_at) VALUES (?,?,?)",
+            (value, "COMI", "2026-08-31T07:00:00+00:00"))
+    connection.commit()
+    connection.close()
+    return str(path)
+
+
+def test_the_probe_reports_the_newest_id(tmp_path, capsys):
+    import json as _json
+    path = _quotes_db(tmp_path / "q.db", [1, 2, 7])
+    assert run_val._check_db(path) == 0
+    assert _json.loads(capsys.readouterr().out)["latest_id"] == 7
+
+
+def test_an_empty_quotes_table_is_still_readable(tmp_path, capsys):
+    """Readable and empty is not the same as unreadable, and must not be a failure."""
+
+    import json as _json
+    path = _quotes_db(tmp_path / "q.db", [])
+    assert run_val._check_db(path) == 0
+    payload = _json.loads(capsys.readouterr().out)
+    assert payload["db_ok"] is True and payload["latest_id"] == 0
+
+
+def test_a_missing_database_fails_the_probe(tmp_path, capsys):
+    import json as _json
+    assert run_val._check_db(str(tmp_path / "absent.db")) == 3
+    assert _json.loads(capsys.readouterr().out)["db_ok"] is False
+
+
+def test_a_file_that_is_not_a_database_fails_the_probe(tmp_path, capsys):
+    import json as _json
+    path = tmp_path / "not.db"
+    path.write_text("this is not sqlite", encoding="utf-8")
+    assert run_val._check_db(str(path)) == 3
+    assert _json.loads(capsys.readouterr().out)["db_ok"] is False
+
+
+def test_the_probe_does_not_count_rows():
+    """A behavioural test cannot catch this: COUNT(*) returns the right answer,
+    it just takes eleven minutes to do it. The cost is the defect, so the query
+    is what gets pinned."""
+
+    import ast
+    import inspect
+    import textwrap
+
+    function = ast.parse(textwrap.dedent(inspect.getsource(run_val._check_db))).body[0]
+    docstring = ast.get_docstring(function, clean=False)
+    # The docstring names the old query to explain why it went, so it is
+    # excluded: what is under test is the SQL actually handed to sqlite.
+    queries = [
+        node.value for node in ast.walk(function)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        and node.value != docstring and "quotes" in node.value.lower()
+    ]
+    assert queries, "the probe must query the quotes table"
+    assert not any("COUNT(*)" in q.upper() for q in queries)
+    assert any("ORDER BY id DESC LIMIT 1" in q for q in queries)
