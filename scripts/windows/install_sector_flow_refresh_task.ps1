@@ -130,15 +130,24 @@ $principal = New-ScheduledTaskPrincipal `
     -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) `
     -LogonType Interactive -RunLevel Limited
 
-# Forty minutes: the rebuild itself is about twenty and reads history for the
-# whole universe, so the limit is generous enough that a slow provider does not
-# truncate a build halfway. IgnoreNew is what makes hourly polling safe -- a
-# rebuild in progress must never be overlapped by the next poll, which would
-# have two processes writing one store. StartWhenAvailable catches up a session
-# missed because the machine was off.
+# Ninety minutes. Forty was the first guess, from a rebuild that took nine
+# minutes on an idle machine, and it was wrong the first day it ran: on
+# 2026-08-31 the 16:00 rebuild was still going at 16:40 because a full test
+# suite was running beside it, so the task was killed -- and the Python child
+# survived and finished the build at 16:48 anyway. The store advanced, the task
+# reported SCHED_S_TASK_TERMINATED, and from outside that is indistinguishable
+# from a build that was actually lost.
+#
+# The limit exists to stop a hung run, not to decide the result of a slow one,
+# so it is set well past any duration this has plausibly needed.
+#
+# IgnoreNew is what makes hourly polling safe -- a rebuild in progress must
+# never be overlapped by the next poll, which would have two processes writing
+# one store. StartWhenAvailable catches up a session missed because the machine
+# was off.
 $settings = New-ScheduledTaskSettingsSet `
     -MultipleInstances IgnoreNew `
-    -ExecutionTimeLimit (New-TimeSpan -Minutes 40) `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 90) `
     -StartWhenAvailable `
     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
     -RestartCount 2 -RestartInterval (New-TimeSpan -Minutes 15)

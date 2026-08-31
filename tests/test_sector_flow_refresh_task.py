@@ -78,10 +78,19 @@ def test_overlapping_runs_are_refused(install_text):
 
 
 def test_the_time_limit_outlasts_a_real_rebuild(install_text):
-    """The rebuild takes about twenty minutes; a limit at or under that would
-    truncate a build halfway and leave a partial store."""
+    """Forty minutes was too tight, measured rather than argued.
 
-    assert "-ExecutionTimeLimit (New-TimeSpan -Minutes 40)" in install_text
+    A rebuild takes about nine minutes on an idle machine, so forty looked
+    generous. On 2026-08-31 the 16:00 run was still going at 16:40 with a test
+    suite running beside it, and was killed -- while its Python child survived
+    and completed the build at 16:48. The store advanced and the task reported
+    SCHED_S_TASK_TERMINATED, which is exactly what a genuinely lost build also
+    reports.
+
+    The limit is there to stop a hung run, not to adjudicate a slow one.
+    """
+
+    assert "-ExecutionTimeLimit (New-TimeSpan -Minutes 90)" in install_text
 
 
 def test_a_missed_day_is_caught_up(install_text):
