@@ -53,7 +53,8 @@ class DecisionSupportService:
         market = calculate_market_health(
             source_rows, int(self.config.get("rvol_lookback", 20))
         )
-        quotes = self._latest_quotes()
+        quotes = self._latest_quotes(
+            row.get("Ticker") for row in source_rows)
         sectors = load_sector_map(self.config.get("sector_file", "data/sectors.csv"))
         historical = self._historical_setup_scores()
         now = self._aware_now()
@@ -257,12 +258,45 @@ class DecisionSupportService:
             "ObservedAt": observed_at,
         }
 
-    def _latest_quotes(self):
-        """Read the adapter database in read-only mode; absence is evidence."""
+    def _latest_quotes(self, symbols=()):
+        """Newest quote per requested symbol, read through the ticker index.
 
-        if not self.rubix_db.is_file():
+        Read-only, as every reader of the collector's database is; absence is
+        evidence and never an exception.
+
+        This used to be ``SELECT ... FROM quotes ORDER BY received_at DESC``
+        followed by ``fetchall()``, keeping the first row seen per ticker. That
+        asks SQLite to sort 22 million rows by a column no index covers and then
+        materialises every one of them as a Python dict, to keep about 240.
+
+        It ran inside the Daily Dashboard's post-scan render, so the page could
+        not finish drawing until it did: after a completed scan on 2026-08-31
+        the tab sat on a stale progress panel reading "Unknown -- no dated
+        candle" while this consumed 3.8 GB, and only redrew once it returned.
+        The scan was correct and finished the whole time; the page was blocked
+        behind this.
+
+        Now each requested ticker is fetched through
+        ``idx_quotes_ticker_time (ticker, market_timestamp)`` and only the
+        newest row is read. Ordering by ``market_timestamp`` rather than
+        ``received_at`` is the same substitution made in
+        ``RubixSQLiteProvider.load_latest_quote_overlays``, for the same reason:
+        ``received_at`` is in no index, and it can only make a quote look older
+        than it is, never fresher.
+
+        Asking for nothing returns nothing. There is no whole-table path left --
+        an unbounded read of this table is never the right answer.
+        """
+
+        wanted = {}
+        for symbol in symbols or ():
+            engine = str(symbol or "").strip().upper()
+            if engine:
+                wanted.setdefault(str(to_rubix_symbol(engine)).upper(), engine)
+        if not wanted or not self.rubix_db.is_file():
             return {}
         uri = f"file:{self.rubix_db.resolve().as_posix()}?mode=ro"
+        latest = {}
         try:
             with sqlite3.connect(uri, uri=True, timeout=5) as connection:
                 connection.row_factory = sqlite3.Row
@@ -278,16 +312,19 @@ class DecisionSupportService:
                     return {}
                 optional = [name for name in ("bid_size", "ask_size", "trades") if name in columns]
                 projection = ",".join(sorted(required) + optional)
-                rows = connection.execute(
-                    f"SELECT {projection} FROM quotes ORDER BY received_at DESC"
-                ).fetchall()
+                query = (f"SELECT {projection} FROM quotes WHERE ticker=? "
+                         "ORDER BY market_timestamp DESC LIMIT 1")
+                for ticker in wanted:
+                    raw = connection.execute(query, (ticker,)).fetchone()
+                    if raw is None:
+                        continue
+                    value = dict(raw)
+                    # The key is still derived from the row's own ticker, so the
+                    # mapping back to the engine symbol is unchanged.
+                    latest.setdefault(
+                        to_engine_symbol(value.get("ticker")).upper(), value)
         except (OSError, sqlite3.Error):
             return {}
-        latest = {}
-        for raw in rows:
-            value = dict(raw)
-            ticker = to_engine_symbol(value.get("ticker"))
-            latest.setdefault(ticker.upper(), value)
         return latest
 
     def _historical_setup_scores(self):
