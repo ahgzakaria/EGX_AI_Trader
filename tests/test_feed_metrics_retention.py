@@ -161,3 +161,57 @@ def test_pruning_happens_before_the_truncating_checkpoint():
 
     shutdown = inspect.getsource(CollectorSupervisor.run).split("finally", 1)[1]
     assert shutdown.index("prune_telemetry()") < shutdown.index("truncate=True")
+
+
+# --- the pruner has to actually be called ------------------------------------
+#
+# It never was. Pruning lived only in the shutdown `finally`, and this
+# supervisor is killed rather than asked to stop: the health file has never
+# carried `shutdown: true`, and no log in the project has ever contained a
+# `telemetry_pruned` event. So the module below ran zero times in production
+# while feed_metrics grew from 44,246,339 rows on 2026-08-25 to 55,771,859 on
+# 2026-09-01 -- 1.6 million a day, and larger than the quotes table it
+# describes. Counting it by event, which health() did on every two-second
+# heartbeat, took 150 seconds.
+
+def _run_parts():
+    """The loop body and the exit handler, split on the statement itself.
+
+    Splitting on the bare word would also match prose: a comment explaining why
+    the exit handler is not enough broke three tests that split this way,
+    including one written long before it.
+    """
+
+    import inspect
+
+    from scripts.rubix_collector_supervisor import CollectorSupervisor
+
+    source = inspect.getsource(CollectorSupervisor.run)
+    loop, _, handler = source.partition("\n        finally:")
+    assert handler, "run() no longer has an exit handler"
+    return loop, handler
+
+
+def test_pruning_also_runs_while_the_supervisor_is_alive():
+    """Maintenance that only happens on a clean exit is maintenance that only
+    happens when it was not needed."""
+
+    loop, _ = _run_parts()
+    assert "prune_telemetry()" in loop
+
+
+def test_pruning_is_tied_to_the_maintenance_interval_not_the_heartbeat():
+    """Every heartbeat would be every two seconds. The prune takes a budgeted
+    sixty, so it belongs on the maintenance schedule beside the checkpoint."""
+
+    loop, _ = _run_parts()
+    maintenance = loop.split("self.args.maintenance_seconds", 1)[1]
+    assert "prune_telemetry()" in maintenance
+
+
+def test_the_shutdown_prune_is_still_there():
+    """The periodic call is an addition, not a replacement: a clean exit is
+    still the best moment to reclaim, with the collector already stopped."""
+
+    _, handler = _run_parts()
+    assert "prune_telemetry()" in handler

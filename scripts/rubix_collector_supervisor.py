@@ -390,6 +390,24 @@ class CollectorSupervisor:
                     # at shutdown; running it here consumed most of the session.
                     self.log.emit("database_maintenance",
                                   **database_maintenance(self.database, integrity=False))
+                    # Pruning belongs here as well as in the shutdown path,
+                    # because the shutdown path does not run: it is an exit
+                    # handler, and a killed process never reaches one. This
+                    # supervisor is killed rather than asked to stop -- the
+                    # health file has never carried `shutdown: true`, and no log
+                    # in this project has ever contained a `telemetry_pruned`
+                    # event.
+                    #
+                    # So the pruner written for this table has never executed
+                    # once. feed_metrics went from 44,246,339 rows on
+                    # 2026-08-25 to 55,771,859 on 2026-09-01 -- 1.6 million a
+                    # day, and now larger than the quotes table it describes.
+                    #
+                    # It is safe to call on a schedule: it deletes in bounded
+                    # batches inside a time budget and reports whether it
+                    # finished, and it was designed to resume on the next call
+                    # rather than to complete in one.
+                    self.prune_telemetry()
                     # Taken after the work, not before: on a slow checkpoint the
                     # next one should be a full interval away, not immediate.
                     self.last_maintenance = time.monotonic()
