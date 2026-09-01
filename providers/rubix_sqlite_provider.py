@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 import os
 from pathlib import Path
 import sqlite3
+import threading
+import time
 
 import pandas as pd
 
@@ -35,6 +37,46 @@ _LATEST_QUOTE = (
 )
 _QUOTE_COUNT = "SELECT COUNT(*) FROM quotes WHERE ticker=?"
 _MINUTE_SUMMARY = "SELECT MAX(minute), COUNT(*) FROM candles_1m WHERE ticker=?"
+
+#: The newest row the collector wrote, for either the whole table or one ticker.
+#: ``id`` is the primary key and the collector inserts as it receives, so the
+#: highest id is the most recent arrival. This is deliberately not
+#: ``MAX(received_at)``: that column is TEXT and in no index, so SQLite both
+#: scans the whole table for it AND compares it lexically rather than
+#: chronologically -- measured on 2026-09-01, the lexical maximum disagreed with
+#: the newest actual arrival on 4 of 265 tickers, once by 12.4 hours.
+_NEWEST_ROW = ("SELECT market_timestamp, received_at FROM quotes "
+               "ORDER BY id DESC LIMIT 1")
+_NEWEST_PER_TICKER = "SELECT ticker, MAX(id) FROM quotes GROUP BY ticker"
+_ROW_BY_ID = "SELECT market_timestamp, received_at FROM quotes WHERE id=?"
+_NEWEST_ID_FOR_TICKER = "SELECT MAX(id) FROM quotes WHERE ticker=?"
+
+#: How long a census may be reused. The census is the expensive half of
+#: ``health()`` -- last-seen per ticker plus the row counts -- and it cannot be
+#: made cheap: every exact route has to walk the index for all 23.5 million
+#: rows, and the best measured 59 seconds against 115 for the original.
+#:
+#: The supervisor calls ``health()`` every ``--heartbeat-seconds`` (default 2)
+#: purely to write a telemetry file, so it never actually reached its sleep: on
+#: 2026-09-01 it had burned 8,512 CPU-seconds over 369 minutes, 38% of a core
+#: sustained, scanning 7.3 GB of the database the collector was writing to.
+#:
+#: So the census is read at most once a minute and reused in between. What is
+#: NOT cached is the verdict: staleness is recomputed from the cached last-seen
+#: times against the current clock on every call, so a symbol still goes stale
+#: on time. Only the answer to "when did we last see each ticker" may be up to
+#: this many seconds old.
+CENSUS_TTL_SECONDS = 60.0
+
+_CENSUS_CACHE = {}
+_CENSUS_LOCK = threading.Lock()
+
+
+def reset_census_cache():
+    """Drop every cached census. For tests, and for a forced refresh."""
+
+    with _CENSUS_LOCK:
+        _CENSUS_CACHE.clear()
 
 
 class RubixSQLiteProvider(MarketDataProvider):
@@ -68,6 +110,7 @@ class RubixSQLiteProvider(MarketDataProvider):
         history_loader=None,
         now=None,
         expected_symbols=None,
+        census_ttl_seconds=None,
     ):
         configured = db_path or os.getenv("RUBIX_DB_PATH", "")
         self.db_path = Path(configured).expanduser() if configured else None
@@ -81,6 +124,9 @@ class RubixSQLiteProvider(MarketDataProvider):
         # Bounded wait for the collector's writer lock. A busy database must degrade to a
         # typed read failure, never to an unbounded stall inside a scan.
         self.read_timeout_ms = int(os.getenv("RUBIX_READ_TIMEOUT_MS", "5000") or 5000)
+        # Zero forces every call to re-read; see CENSUS_TTL_SECONDS.
+        self.census_ttl_seconds = (CENSUS_TTL_SECONDS if census_ttl_seconds is None
+                                   else float(census_ttl_seconds))
 
     @staticmethod
     def map_symbol(symbol):
@@ -493,27 +539,92 @@ class RubixSQLiteProvider(MarketDataProvider):
                 "rubix_error": str(error),
             }
 
+    def _read_census(self, connection):
+        """The expensive half: last-seen per ticker, and the row counts.
+
+        Every read here is exact. ``MAX(id) GROUP BY ticker`` is answered from
+        the covering index and gives the most recently written row for each
+        ticker, which is what "when did we last see this symbol" means; the
+        rowid lookups that follow are O(1). Checked against the old lexical
+        ``MAX(received_at)`` on the live database: identical for every ticker,
+        including the four it had been getting wrong.
+        """
+
+        newest_ids = {
+            str(ticker): int(rowid)
+            for ticker, rowid in connection.execute(_NEWEST_PER_TICKER)
+            if ticker and rowid is not None
+        }
+        last_seen = {}
+        for ticker, rowid in newest_ids.items():
+            row = connection.execute(_ROW_BY_ID, (rowid,)).fetchone()
+            if row and row[1]:
+                last_seen[ticker] = _utc_timestamp(row[1])
+        candle = connection.execute(
+            "SELECT MAX(minute), COUNT(*) FROM candles_1m").fetchone()
+        # feed_metrics is the larger table of the two -- 55.7 million rows on
+        # 2026-09-01 against the quotes table's 23.5 -- and this histogram over
+        # it measured 150 seconds, the single largest cost in health(). It
+        # feeds three lifetime counters that nothing branches on.
+        event_counts = {
+            str(event): int(count)
+            for event, count in connection.execute(
+                "SELECT event,COUNT(*) FROM feed_metrics GROUP BY event")
+        }
+        # Also an unindexed scan of quotes, and also a rate rather than a fact:
+        # a figure describing the last minute does not become wrong by being a
+        # minute old.
+        cutoff = (self._utc_now() - pd.Timedelta(minutes=1)).isoformat()
+        updates_last_minute = connection.execute(
+            "SELECT COUNT(*) FROM quotes WHERE received_at>=?", (cutoff,)
+        ).fetchone()[0]
+        return {
+            "last_seen": last_seen,
+            "symbol_count": len(newest_ids),
+            "quote_count": int(connection.execute(
+                "SELECT COUNT(*) FROM quotes").fetchone()[0] or 0),
+            "latest_candle": candle[0] if candle and candle[0] else None,
+            "minute_bar_count": int(candle[1] or 0) if candle else 0,
+            "event_counts": event_counts,
+            "updates_last_minute": int(updates_last_minute or 0),
+        }
+
+    def _census(self, connection):
+        """``_read_census`` behind a TTL. See ``CENSUS_TTL_SECONDS``."""
+
+        key = str(self.db_path)
+        now = time.monotonic()
+        if self.census_ttl_seconds > 0:
+            with _CENSUS_LOCK:
+                cached = _CENSUS_CACHE.get(key)
+                if cached and (now - cached["at"]) < self.census_ttl_seconds:
+                    return cached["value"]
+        value = self._read_census(connection)
+        with _CENSUS_LOCK:
+            _CENSUS_CACHE[key] = {"at": now, "value": value}
+        return value
+
     def _snapshot(self):
         self._validate_database()
         try:
             with self._connect() as connection:
-                row = connection.execute(
-                    """SELECT MAX(market_timestamp), MAX(received_at),
-                              COUNT(DISTINCT ticker), COUNT(*) FROM quotes"""
-                ).fetchone()
-                candle = connection.execute(
-                    "SELECT MAX(minute), COUNT(*) FROM candles_1m"
-                ).fetchone()
-                coverage = self._coverage_snapshot(connection)
-                collector = self._collector_snapshot(connection)
+                # The tip is always read fresh: it is one row through the
+                # primary key, and it is what "is the feed alive right now"
+                # depends on. Only the census below is allowed to be a minute
+                # old.
+                tip = connection.execute(_NEWEST_ROW).fetchone()
+                census = self._census(connection)
+                coverage = self._coverage_snapshot(census["last_seen"])
+                collector = self._collector_snapshot(connection, census)
         except sqlite3.Error as error:
             raise ProviderConnectionError(f"cannot read Rubix SQLite: {error}") from error
-        if not row or not row[0] or not row[1] or not row[3]:
+        if not tip or not tip[0] or not tip[1] or not census["quote_count"]:
             raise ProviderConnectionError("Rubix SQLite contains no quotes")
-        received = _utc_timestamp(row[1])
-        exchange = _utc_timestamp(row[0])
+        received = _utc_timestamp(tip[1])
+        exchange = _utc_timestamp(tip[0])
         age_seconds = max(0.0, (self._utc_now() - received).total_seconds())
-        latest_candle = _utc_timestamp(candle[0]) if candle and candle[0] else None
+        latest_candle = (_utc_timestamp(census["latest_candle"])
+                         if census["latest_candle"] else None)
         bar_age_seconds = (
             max(0.0, (self._utc_now() - latest_candle).total_seconds())
             if latest_candle is not None else None
@@ -525,9 +636,9 @@ class RubixSQLiteProvider(MarketDataProvider):
             "age_seconds": age_seconds,
             "age_minutes": age_seconds / 60,
             "bar_age_seconds": bar_age_seconds,
-            "symbol_count": int(row[2] or 0),
-            "quote_count": int(row[3] or 0),
-            "minute_bar_count": int(candle[1] or 0) if candle else 0,
+            "symbol_count": census["symbol_count"],
+            "quote_count": census["quote_count"],
+            "minute_bar_count": census["minute_bar_count"],
         }
         result.update(coverage)
         result.update(collector)
@@ -537,11 +648,21 @@ class RubixSQLiteProvider(MarketDataProvider):
         self._validate_database()
         try:
             with self._connect() as connection:
-                row = connection.execute(
-                    """SELECT MAX(market_timestamp), MAX(received_at), COUNT(*)
-                       FROM quotes WHERE ticker=?""",
-                    (mapped.upper(),),
-                ).fetchone()
+                # Was MAX(market_timestamp), MAX(received_at), COUNT(*) in one
+                # query. The two maxima cost 8.7 seconds per symbol between
+                # them, because received_at is in no index and the filter only
+                # narrows the scan to that ticker's rows. The newest row by id
+                # is the same answer through the covering index, and the count
+                # is a separate, cheap, index-only read.
+                newest = connection.execute(
+                    _NEWEST_ID_FOR_TICKER, (mapped.upper(),)).fetchone()
+                row = None
+                if newest and newest[0] is not None:
+                    stamps = connection.execute(_ROW_BY_ID, (newest[0],)).fetchone()
+                    count = connection.execute(
+                        _QUOTE_COUNT, (mapped.upper(),)).fetchone()
+                    if stamps:
+                        row = (stamps[0], stamps[1], count[0] if count else 0)
                 candle = connection.execute(
                     "SELECT MAX(minute), COUNT(*) FROM candles_1m WHERE ticker=?",
                     (mapped.upper(),),
@@ -584,13 +705,16 @@ class RubixSQLiteProvider(MarketDataProvider):
                 return self.DELAYED, f"collector is receiving data but exchange timestamp is {exchange_age:.0f}s old"
         return self.FRESH, freshness.reason
 
-    def _coverage_snapshot(self, connection):
-        """Report every omitted/stale symbol instead of silently hiding it."""
+    def _coverage_snapshot(self, latest):
+        """Report every omitted/stale symbol instead of silently hiding it.
 
-        rows = connection.execute(
-            "SELECT ticker, MAX(received_at) FROM quotes GROUP BY ticker"
-        ).fetchall()
-        latest = {str(row[0]): _utc_timestamp(row[1]) for row in rows if row[0] and row[1]}
+        ``latest`` is the census's last-seen map, which may be up to
+        ``CENSUS_TTL_SECONDS`` old. The classification below is not: it is
+        recomputed against the current clock on every call, so a symbol that
+        stops updating still crosses into ``stale`` on time. What ages is only
+        the observation, never the verdict drawn from it.
+        """
+
         expected = tuple(dict.fromkeys(self.expected_symbols))
         universe = expected or tuple(sorted(latest))
         received_symbols = sorted(symbol for symbol in universe if symbol in latest)
@@ -624,18 +748,19 @@ class RubixSQLiteProvider(MarketDataProvider):
             "symbol_coverage_pct": round(len(received_symbols) / requested_count * 100, 2) if requested_count else None,
         }
 
-    def _collector_snapshot(self, connection):
-        """Summarize adapter metrics without reading auth data or network state."""
+    def _collector_snapshot(self, connection, census):
+        """Summarize adapter metrics without reading auth data or network state.
+
+        The recent-events read below is bounded and costs 0.03 seconds, so it
+        stays live: connection state, authentication and heartbeat are what
+        "is the collector working right now" means. The lifetime counters and
+        the update rate come from the census, which may be a minute old.
+        """
 
         events = connection.execute(
             "SELECT observed_at,event,ticker,value,detail FROM feed_metrics ORDER BY id DESC LIMIT 20000"
         ).fetchall()
-        event_counts = {
-            str(row[0]): int(row[1])
-            for row in connection.execute(
-                "SELECT event,COUNT(*) FROM feed_metrics GROUP BY event"
-            ).fetchall()
-        }
+        event_counts = census["event_counts"]
         latest_by_event = {}
         for row in events:
             latest_by_event.setdefault(str(row[1]), row)
@@ -652,10 +777,7 @@ class RubixSQLiteProvider(MarketDataProvider):
         collector_status = "CONNECTED" if connected_at and (
             disconnected_at is None or connected_at > disconnected_at
         ) else "DISCONNECTED"
-        cutoff = (self._utc_now() - pd.Timedelta(minutes=1)).isoformat()
-        updates_last_minute = connection.execute(
-            "SELECT COUNT(*) FROM quotes WHERE received_at>=?", (cutoff,)
-        ).fetchone()[0]
+        updates_last_minute = census["updates_last_minute"]
         heartbeat = latest_by_event.get("heartbeat_received") or latest_by_event.get("heartbeat_sent")
         heartbeat_stamp = _utc_timestamp(heartbeat[0]) if heartbeat else None
         heartbeat_age = (
