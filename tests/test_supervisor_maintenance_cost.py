@@ -155,3 +155,91 @@ def _bare_supervisor(tmp_path, *, health):
     for name in ("previous_run_shut_down_cleanly", "verify_database_in_background"):
         setattr(stub, name, getattr(CollectorSupervisor, name).__get__(stub))
     return stub
+
+
+# --- reclaiming the write-ahead log ------------------------------------------
+#
+# Only TRUNCATE returns the WAL file to zero; the periodic PASSIVE pass flushes
+# its contents and leaves the file at its high-water mark. Truncating lived only
+# in the shutdown path, which a killed supervisor never reaches, so the file only
+# ever grew: 30.73 GB against a 5.85 GB database once, and 43,074 MB against
+# 7,655 MB on 2026-09-01. Readers traverse the WAL, so the whole application
+# slows with it -- one GROUP BY went from 2.9 seconds to over 280.
+
+def _reclaimer(tmp_path, database_path):
+    stub = SimpleNamespace(log=_Log(), database=database_path)
+    for name in ("reclaim_wal", "wal_bytes"):
+        setattr(stub, name, getattr(CollectorSupervisor, name).__get__(stub))
+    return stub
+
+
+def _grow_wal(path):
+    """Leave real frames in the -wal sidecar."""
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA journal_mode=WAL")
+    connection.execute("PRAGMA wal_autocheckpoint=0")   # do not flush behind us
+    connection.executemany("INSERT INTO quotes VALUES (?, ?)",
+                           [(f"W{i}", i * 2.0) for i in range(5000)])
+    connection.commit()
+    return connection            # held open so the WAL survives to be measured
+
+
+def test_the_wal_is_truncated_before_the_collector_starts(database, tmp_path):
+    # The connection stays open across the call. Closing the last one makes
+    # SQLite checkpoint and remove the WAL by itself, which would leave nothing
+    # for this to reclaim and the test asserting on its own cleanup.
+    keep_open = _grow_wal(database)
+    try:
+        supervisor = _reclaimer(tmp_path, database)
+        assert supervisor.wal_bytes() > 0, "the fixture must leave a WAL to reclaim"
+        supervisor.reclaim_wal()
+        assert supervisor.wal_bytes() == 0
+        assert "wal_reclaimed" in supervisor.log.names()
+    finally:
+        keep_open.close()
+
+
+def test_it_reports_what_it_reclaimed(database, tmp_path):
+    keep_open = _grow_wal(database)
+    try:
+        supervisor = _reclaimer(tmp_path, database)
+        before = supervisor.wal_bytes()
+        assert before > 0
+        supervisor.reclaim_wal()
+        event, fields = supervisor.log.events[-1]
+        assert event == "wal_reclaimed"
+        assert fields["wal_bytes_before"] == before
+        assert fields["wal_bytes_after"] == 0
+        assert fields["seconds"] >= 0
+    finally:
+        keep_open.close()
+
+
+def test_a_missing_database_is_not_an_error(tmp_path):
+    supervisor = _reclaimer(tmp_path, tmp_path / "absent.db")
+    supervisor.reclaim_wal()
+    assert supervisor.log.names() == []
+    assert supervisor.wal_bytes() == 0
+
+
+def test_a_failure_to_reclaim_never_stops_the_collector_starting(database, tmp_path, monkeypatch):
+    """Tidying up is not a precondition for collecting the market."""
+
+    import scripts.rubix_collector_supervisor as module
+
+    def _explode(*args, **kwargs):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(module, "database_maintenance", _explode)
+    supervisor = _reclaimer(tmp_path, database)
+    supervisor.reclaim_wal()                      # must not raise
+    assert supervisor.log.names() == ["wal_reclaim_failed"]
+
+
+def test_reclaiming_happens_before_the_child_is_started():
+    """After start_child there is a writer, and TRUNCATE waits for writers --
+    which is the one thing this must never do to the collector."""
+
+    source = inspect.getsource(CollectorSupervisor.run)
+    body = source.partition("\n        finally:")[0]
+    assert body.index("self.reclaim_wal()") < body.index("self.start_child()")

@@ -252,6 +252,63 @@ class CollectorSupervisor:
             self.child.wait(timeout=5)
         self.log.emit("collector_stopped", return_code=self.child.returncode)
 
+    def reclaim_wal(self) -> None:
+        """Truncate the write-ahead log before the collector starts writing.
+
+        Only TRUNCATE returns the WAL file to zero; PASSIVE and RESTART write
+        the frames back and leave the file at its high-water mark. The periodic
+        maintenance runs PASSIVE, so the WAL's *contents* are flushed every five
+        minutes all session -- but the file only ever grows.
+
+        Truncating was therefore put in the shutdown path, and the shutdown path
+        does not run: this supervisor is killed, its health file has never
+        carried `shutdown: true`. The result is on record twice. The comment in
+        database_maintenance describes the WAL reaching 30.73 GB against a
+        5.85 GB database for exactly this reason, and on 2026-09-01 it was
+        **43,074 MB against 7,655 MB** -- six times the database.
+
+        That is not a housekeeping detail. Every reader must traverse the WAL to
+        build a consistent view, so the whole application slows with it:
+        `SELECT ticker FROM quotes GROUP BY ticker` went from 2.9 seconds to
+        over 280, and a Daily Dashboard scan could no longer get past loading
+        its quote overlays.
+
+        Startup is the one moment this is both safe and cheap. TRUNCATE waits
+        for readers, which is why it must never run mid-session -- but here the
+        collector has not been started yet, so there is nothing to wait for.
+        And because the periodic PASSIVE checkpoints already wrote the frames
+        back, there is little left to do beyond resetting the file.
+
+        It is reported, never enforced: a busy result is logged and the
+        collector starts regardless. A supervisor that refused to start because
+        it could not tidy up would be a worse failure than the untidiness.
+        """
+
+        if not self.database.is_file():
+            return
+        before = self.wal_bytes()
+        started = time.monotonic()
+        try:
+            result = database_maintenance(self.database, integrity=False, truncate=True)
+        except Exception as error:                       # noqa: BLE001 - never block the start
+            self.log.emit("wal_reclaim_failed", error=str(error))
+            return
+        self.log.emit(
+            "wal_reclaimed",
+            wal_bytes_before=before,
+            wal_bytes_after=self.wal_bytes(),
+            seconds=round(time.monotonic() - started, 1),
+            checkpoint=result.get("wal_checkpoint"),
+        )
+
+    def wal_bytes(self) -> int:
+        """Size of the -wal sidecar, or 0 when it does not exist."""
+
+        try:
+            return self.database.with_name(self.database.name + "-wal").stat().st_size
+        except OSError:
+            return 0
+
     def prune_telemetry(self) -> None:
         """Age out per-tick telemetry, within a budget, on the way out.
 
@@ -366,6 +423,7 @@ class CollectorSupervisor:
         # Read before the loop starts overwriting the health file.
         previous_was_clean = self.previous_run_shut_down_cleanly()
         try:
+            self.reclaim_wal()
             self.start_child()
             # Only after the collector is up, and only when corruption is
             # actually plausible. Verifying before start_child held the
