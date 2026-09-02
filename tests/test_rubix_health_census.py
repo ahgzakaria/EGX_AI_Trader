@@ -363,7 +363,10 @@ def test_the_newest_candle_is_read_every_call(tmp_path):
     second = provider.health()
     assert second["latest_candle_timestamp"] == later, (
         "a cached candle ages into RUBIX_STALE and turns off live scanning")
-    assert second["minute_bar_count"] == 2
+    # And the split, in the same breath: the count of bars is displayed and
+    # nothing branches on it, so it stays behind the cache with the rest of the
+    # census. Only the newest minute had to be bought back.
+    assert second["minute_bar_count"] == 1
 
 
 def test_no_query_the_verdict_reads_sits_behind_the_cache():
@@ -372,5 +375,105 @@ def test_no_query_the_verdict_reads_sits_behind_the_cache():
     import inspect
 
     census = inspect.getsource(RubixSQLiteProvider._read_census)
-    assert "candles_1m" not in census, (
-        "bar_age_seconds drives _state_from_snapshot; it may not be cached")
+    assert "MAX(minute)" not in census and "_NEWEST_CANDLE" not in census, (
+        "bar_age_seconds drives _state_from_snapshot; the newest minute may not "
+        "be cached. COUNT(*) over the same table is fine -- it is displayed, "
+        "and nothing branches on it.")
+
+
+# --- the newest minute, and what it is allowed to cost -----------------------
+
+def test_the_newest_minute_matches_a_plain_scan(tmp_path):
+    """The skip-scan replaced MAX(minute); it must agree with it exactly."""
+
+    path = _database(str(tmp_path / "r.db"))
+    connection = sqlite3.connect(path)
+    minutes = [(BASE + timedelta(minutes=n)).isoformat() for n in range(5)]
+    for ticker in ("COMI", "ABUK", "ZZZZ"):
+        for minute in minutes:
+            connection.execute(
+                "INSERT INTO candles_1m (ticker, minute, open, high, low, close) "
+                "VALUES (?,?,?,?,?,?)", (ticker, minute, 1, 1, 1, 1))
+    # A ticker whose newest minute is behind everyone else's: the maximum must
+    # come from across the tickers, not from whichever one is walked last.
+    connection.execute(
+        "INSERT INTO candles_1m (ticker, minute, open, high, low, close) "
+        "VALUES (?,?,?,?,?,?)", ("AAAA", minutes[0], 1, 1, 1, 1))
+    connection.commit()
+
+    scan = connection.execute("SELECT MAX(minute) FROM candles_1m").fetchone()[0]
+    skip = connection.execute(module._NEWEST_CANDLE).fetchone()[0]
+    connection.close()
+    assert skip == scan == minutes[-1]
+
+
+def test_the_newest_minute_is_found_by_seeking_not_scanning():
+    """The reason this query is shaped the way it is."""
+
+    path = ":memory:"
+    connection = sqlite3.connect(path)
+    connection.executescript(SCHEMA)
+    plan = [row[3] for row in
+            connection.execute("EXPLAIN QUERY PLAN " + module._NEWEST_CANDLE)]
+    connection.close()
+    assert not any("SCAN candles_1m" in step for step in plan), (
+        "MAX(minute) cannot use a (ticker, minute) key and scans 1.4M rows; "
+        f"every step must be a SEARCH. Got: {plan}")
+
+
+def test_an_empty_candle_table_has_no_newest_minute(tmp_path):
+    """The recursive walk must terminate on a table with no tickers at all."""
+
+    path = str(tmp_path / "empty.db")
+    connection = sqlite3.connect(path)
+    connection.executescript(SCHEMA)
+    connection.commit()
+    assert connection.execute(module._NEWEST_CANDLE).fetchone()[0] is None
+    connection.close()
+
+
+# --- one answer per day, not one per symbol ----------------------------------
+#
+# session_lag is trading_session_lag(the timestamp's Cairo date, current), and
+# both are fixed inside a single _coverage_snapshot call. 265 symbols across 3
+# distinct dates were costing 265 calls at 1,065 us each -- 282 ms of pure CPU,
+# 512 us of it re-resolving the holiday calendar to recompute one shared phase.
+
+def test_the_closed_session_verdict_is_computed_once_per_date(tmp_path, monkeypatch):
+    path = _database(str(tmp_path / "r.db"))
+    provider = _provider(path, symbols=tuple(f"S{n}" for n in range(40)))
+
+    calls = []
+    real = module.assess_quote_freshness
+
+    def counted(received, exchange, **kwargs):
+        calls.append(received)
+        return real(received, exchange, **kwargs)
+
+    monkeypatch.setattr(module, "assess_quote_freshness", counted)
+    # 40 symbols, two days between them, market closed.
+    monkeypatch.setattr(module, "egx_session_phase", lambda *a, **k: "POST_CLOSE")
+    latest = {f"S{n}": BASE - timedelta(days=n % 2) for n in range(40)}
+
+    provider._coverage_snapshot(latest)
+    assert len(calls) == 2, f"one call per distinct Cairo date, got {len(calls)}"
+
+
+def test_memoising_does_not_change_who_is_updating(tmp_path, monkeypatch):
+    """The equivalence, stated as a test rather than trusted."""
+
+    path = _database(str(tmp_path / "r.db"))
+    symbols = tuple(f"S{n}" for n in range(30))
+    provider = _provider(path, symbols=symbols)
+    monkeypatch.setattr(module, "egx_session_phase", lambda *a, **k: "POST_CLOSE")
+
+    latest = {f"S{n}": BASE - timedelta(days=n % 4) for n in range(30)}
+
+    from core.egx_session import assess_quote_freshness, cairo_now
+    expected = sorted(
+        symbol for symbol, stamp in latest.items()
+        if assess_quote_freshness(
+            stamp, stamp, value=cairo_now(provider._utc_now()),
+            open_stale_after_minutes=provider.stale_after_minutes).session_lag == 0)
+
+    assert provider._coverage_snapshot(latest)["updating_symbols"] == expected

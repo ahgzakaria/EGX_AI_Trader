@@ -16,7 +16,7 @@ import time
 
 import pandas as pd
 
-from core.egx_session import assess_quote_freshness, egx_session_phase
+from core.egx_session import CAIRO, assess_quote_freshness, egx_session_phase
 from providers.base_provider import (
     MarketDataProvider,
     ProviderError,
@@ -50,7 +50,33 @@ _NEWEST_ROW = ("SELECT market_timestamp, received_at FROM quotes "
 _NEWEST_PER_TICKER = "SELECT ticker, MAX(id) FROM quotes GROUP BY ticker"
 _ROW_BY_ID = "SELECT market_timestamp, received_at FROM quotes WHERE id=?"
 _NEWEST_ID_FOR_TICKER = "SELECT MAX(id) FROM quotes WHERE ticker=?"
-_NEWEST_CANDLE = "SELECT MAX(minute), COUNT(*) FROM candles_1m"
+#: The newest completed minute, without scanning for it.
+#:
+#: ``SELECT MAX(minute) FROM candles_1m`` cannot use the adapter's primary key,
+#: which is ``(ticker, minute)``: minute is the second column, so SQLite walks
+#: all 1,377,726 rows -- 163.7 ms, on the live path, because bar_age_seconds
+#: is what decides RUBIX_STALE.
+#:
+#: The index does order minutes *within* each ticker, so the maximum is the
+#: largest of 265 seeks to the end of a range. This walks the tickers through
+#: that same index rather than being handed a list, so it depends on no cache
+#: and no other table: 0.45 ms, 364x faster, byte-identical on the live
+#: database. Every step of its plan is a SEARCH; the old one was a SCAN.
+#:
+#: The alternative was an index on ``candles_1m(minute)``, which would have
+#: meant writing to a schema this provider opens read-only and does not own.
+#: Nothing needed adding -- the ordering was already there, and the query was
+#: asking in a way that could not reach it.
+_NEWEST_CANDLE = """
+WITH RECURSIVE tickers(ticker) AS (
+    SELECT MIN(ticker) FROM candles_1m
+    UNION ALL
+    SELECT (SELECT MIN(ticker) FROM candles_1m WHERE ticker > tickers.ticker)
+    FROM tickers WHERE tickers.ticker IS NOT NULL
+)
+SELECT MAX((SELECT MAX(minute) FROM candles_1m WHERE ticker = tickers.ticker))
+FROM tickers WHERE ticker IS NOT NULL
+"""
 
 #: How long a census may be reused. The census is the expensive half of
 #: ``health()`` -- last-seen per ticker plus the row counts -- and it cannot be
@@ -657,6 +683,11 @@ class RubixSQLiteProvider(MarketDataProvider):
             "symbol_count": len(newest_ids),
             "quote_count": int(connection.execute(
                 "SELECT COUNT(*) FROM quotes").fetchone()[0] or 0),
+            # A displayed total, not an input to any verdict. Counting the
+            # candles costs 74 ms, which is worth caching now that finding the
+            # newest one costs 0.45.
+            "minute_bar_count": int(connection.execute(
+                "SELECT COUNT(*) FROM candles_1m").fetchone()[0] or 0),
             "event_counts": event_counts,
             "updates_last_minute": int(updates_last_minute or 0),
         }
@@ -682,7 +713,7 @@ class RubixSQLiteProvider(MarketDataProvider):
                 # enough to need the cache would age its own candle past
                 # bar_stale_after_minutes and report RUBIX_STALE -- turning off
                 # live scanning as a side effect of protecting the WAL. It reads
-                # in 0.17 seconds against 8 GB; there was never a reason to pay
+                # in under a millisecond; there was never a reason to pay
                 # for it with the verdict.
                 candle = connection.execute(_NEWEST_CANDLE).fetchone()
                 census = self._census(connection)
@@ -710,7 +741,7 @@ class RubixSQLiteProvider(MarketDataProvider):
             "bar_age_seconds": bar_age_seconds,
             "symbol_count": census["symbol_count"],
             "quote_count": census["quote_count"],
-            "minute_bar_count": int(candle[1] or 0) if candle else 0,
+            "minute_bar_count": census["minute_bar_count"],
         }
         result.update(coverage)
         result.update(collector)
@@ -798,13 +829,32 @@ class RubixSQLiteProvider(MarketDataProvider):
             )
             stale = sorted(symbol for symbol in expected if symbol in latest and symbol not in updating)
         else:
-            updating = sorted(
-                symbol for symbol in received_symbols
-                if assess_quote_freshness(
-                    latest[symbol], latest[symbol], value=current,
-                    open_stale_after_minutes=self.stale_after_minutes,
-                ).session_lag == 0
-            )
+            # Once per distinct Cairo date, not once per symbol.
+            #
+            # session_lag is trading_session_lag(the timestamp's Cairo date,
+            # current), and both halves are fixed inside one call -- so two
+            # symbols last seen on the same day cannot get different answers.
+            # The live database holds 265 symbols across 3 such dates, and this
+            # was calling assess_quote_freshness 265 times to learn 3 things.
+            #
+            # It cost 1,065 us a call, or 282 ms: 512 us re-resolving the
+            # holiday calendar to recompute a session phase identical for every
+            # symbol, and 546 us on the lag itself. Pure CPU, no database, and
+            # it only appears outside session hours -- where this supervisor
+            # spends most of its day.
+            lag_by_date = {}
+
+            def _current_session(stamp):
+                key = stamp.astimezone(CAIRO).date()
+                if key not in lag_by_date:
+                    lag_by_date[key] = assess_quote_freshness(
+                        stamp, stamp, value=current,
+                        open_stale_after_minutes=self.stale_after_minutes,
+                    ).session_lag == 0
+                return lag_by_date[key]
+
+            updating = sorted(symbol for symbol in received_symbols
+                              if _current_session(latest[symbol]))
             stale = sorted(symbol for symbol in expected if symbol in latest and symbol not in updating)
         missing = sorted(symbol for symbol in expected if symbol not in latest)
         requested_count = len(expected)
