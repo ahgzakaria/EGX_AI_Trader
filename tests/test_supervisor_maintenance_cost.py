@@ -317,3 +317,41 @@ def test_the_mid_session_attempt_is_bounded_so_it_cannot_stall_the_loop():
     call = maintenance.split("reclaim_wal(", 1)[1].split(")", 1)[0]
     assert "budget_seconds=0" in call
     assert "attempt_timeout=" in call
+
+
+def test_an_empty_wal_costs_nothing(database, tmp_path, monkeypatch):
+    """The retry compared `wal_bytes() < before`, and 0 < 0 is false, so an
+    already-clean WAL burned the whole 120-second budget confirming it. Every
+    collector start paid two minutes -- at 09:45 that is the opening auction."""
+
+    import scripts.rubix_collector_supervisor as module
+
+    supervisor = _reclaimer(tmp_path, database)
+    supervisor.wal_bytes = lambda: 0
+    called = {"n": 0}
+    monkeypatch.setattr(module, "database_maintenance",
+                        lambda path, **kw: called.__setitem__("n", called["n"] + 1))
+
+    supervisor.reclaim_wal(budget_seconds=120.0)
+    assert called["n"] == 0, "an empty WAL must not be checkpointed at all"
+    assert supervisor.log.names() == []
+
+
+def test_a_completed_checkpoint_ends_the_retry(database, tmp_path, monkeypatch):
+    """busy=0 means TRUNCATE finished. Retrying is only for the busy case."""
+
+    import scripts.rubix_collector_supervisor as module
+
+    supervisor = _reclaimer(tmp_path, database)
+    supervisor.wal_bytes = lambda: 5000          # never appears to shrink
+    calls = {"n": 0}
+
+    def _succeeds(path, **kwargs):
+        calls["n"] += 1
+        return {"integrity": "NOT_CHECKED", "wal_checkpoint": [0, 0, 0], "bytes": 0}
+
+    monkeypatch.setattr(module, "database_maintenance", _succeeds)
+    monkeypatch.setattr(module.time, "sleep", lambda _s: None)
+
+    supervisor.reclaim_wal(budget_seconds=120.0)
+    assert calls["n"] == 1, "a successful checkpoint must not be retried"

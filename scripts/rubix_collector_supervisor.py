@@ -303,6 +303,14 @@ class CollectorSupervisor:
         if not self.database.is_file():
             return
         before = self.wal_bytes()
+        if before == 0:
+            # Nothing to reclaim, and nothing to wait for. Without this the
+            # retry below compared `wal_bytes() < before` -- 0 < 0 is false --
+            # and spent its whole budget confirming an empty file, delaying
+            # every collector start by two minutes. At 09:45 that is the
+            # opening auction, which is the exact cost this was written to
+            # avoid.
+            return
         started = time.monotonic()
         deadline = started + max(0.0, float(budget_seconds))
         attempts, result = 0, {}
@@ -316,7 +324,12 @@ class CollectorSupervisor:
                 self.log.emit("wal_reclaim_failed", error=str(error),
                               attempts=attempts)
                 return
-            if self.wal_bytes() < before or time.monotonic() >= deadline:
+            # A checkpoint that reports busy=0 completed; that is the success
+            # signal, not the file size. Retrying is only for the busy case,
+            # which is a reader still holding a snapshot.
+            checkpoint = result.get("wal_checkpoint")
+            succeeded = bool(checkpoint) and checkpoint[0] == 0
+            if succeeded or self.wal_bytes() < before or time.monotonic() >= deadline:
                 break
             # A reader still holds a snapshot. On 2026-09-02 that reader was the
             # launcher, which polls health() on a timer and had one call open
