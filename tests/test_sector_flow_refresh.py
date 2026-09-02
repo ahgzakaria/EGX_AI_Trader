@@ -225,3 +225,72 @@ def test_a_build_failure_is_reported_not_raised(database, monkeypatch, tmp_path)
     assert result["status"] == "FAILED"
     assert "provider down" in result["error"]
     assert refresh_sector_flow.main(["--database", database]) == 1
+
+
+# --- a failed run has to say so ----------------------------------------------
+#
+# On 2026-09-02 the 16:00 scheduled run logged "rebuilding" and then nothing,
+# exited 1, and left the store two sessions behind. Only build() was inside the
+# try; writing the coverage CSV and saving to SQLite -- the steps that contend
+# with a reader -- were not. The failure escaped as a traceback into a log that
+# did not capture it, and the only evidence was a missing line.
+
+def test_a_failure_after_the_build_is_reported_not_raised(tmp_path, monkeypatch):
+    """Saving is the step that contends with a reader, and it was unguarded."""
+
+    import pandas as pd
+
+    from scripts import refresh_sector_flow as module
+
+    monkeypatch.setattr(module, "LOG_DIR", tmp_path)
+    monkeypatch.setattr(module, "stored_latest_session", lambda *a, **k: None)
+    monkeypatch.setattr(module, "sessions_behind", lambda *a, **k: 2)
+    monkeypatch.setattr(module, "_expected_session", lambda: None)
+    monkeypatch.setattr(module, "load_project_environment", lambda: None)
+    monkeypatch.setattr(module, "build", lambda: (
+        pd.DataFrame([{"SessionDate": "2026-09-02", "Sector": "Banks"}]),
+        pd.DataFrame([{"symbol": "COMI"}]),
+        {"loaded_symbols": 1, "classified_symbols": 1, "held_symbols": 0,
+         "unavailable_symbols": 0, "last_complete_session": "2026-09-02"},
+    ))
+
+    def _locked(*args, **kwargs):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(module, "save", _locked)
+
+    result = module.refresh(database=str(tmp_path / "sector.db"),
+                            coverage_report=str(tmp_path / "coverage.csv"))
+
+    assert result["status"] == "FAILED"
+    assert "database is locked" in result["error"]
+    written = (tmp_path / module.LOG_NAME).read_text(encoding="utf-8")
+    assert "FAILED" in written, "the run must record its own failure"
+
+
+def test_a_failure_writing_the_coverage_report_is_also_reported(tmp_path, monkeypatch):
+    import pandas as pd
+
+    from scripts import refresh_sector_flow as module
+
+    monkeypatch.setattr(module, "LOG_DIR", tmp_path)
+    monkeypatch.setattr(module, "stored_latest_session", lambda *a, **k: None)
+    monkeypatch.setattr(module, "sessions_behind", lambda *a, **k: 1)
+    monkeypatch.setattr(module, "_expected_session", lambda: None)
+    monkeypatch.setattr(module, "load_project_environment", lambda: None)
+
+    class _Unwritable(pd.DataFrame):
+        def to_csv(self, *args, **kwargs):
+            raise OSError("no space left on device")
+
+    monkeypatch.setattr(module, "build", lambda: (
+        pd.DataFrame([{"SessionDate": "2026-09-02"}]),
+        _Unwritable([{"symbol": "COMI"}]),
+        {"loaded_symbols": 1, "classified_symbols": 1, "held_symbols": 0,
+         "unavailable_symbols": 0, "last_complete_session": "2026-09-02"},
+    ))
+
+    result = module.refresh(database=str(tmp_path / "sector.db"),
+                            coverage_report=str(tmp_path / "coverage.csv"))
+    assert result["status"] == "FAILED"
+    assert "no space left" in result["error"]

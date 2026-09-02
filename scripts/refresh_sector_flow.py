@@ -89,20 +89,32 @@ def refresh(*, force=False, database=DEFAULT_DATABASE, coverage_report=COVERAGE_
             "no history stored" if behind is None else f"{behind} session(s) missing")
         _log(handle, f"rebuilding ({reason})")
         load_project_environment()
+        # Everything through the save is inside this, not just the build. On
+        # 2026-09-02 the 16:00 run logged "rebuilding" and then nothing at all,
+        # exited 1, and left the store two sessions behind. The build is the
+        # part that takes eight minutes, so it is the part that looks worth
+        # guarding -- but writing the coverage CSV and saving to SQLite are the
+        # steps that contend with a reader, and they sat outside. A failure
+        # there escaped as a traceback into a log that did not capture it, and
+        # the only evidence left was a missing line.
+        #
+        # A run that fails must say so in its own log, which is the one place
+        # that is written and flushed as it goes.
         try:
             history, outcomes, metadata = build()
+
+            Path(coverage_report).parent.mkdir(parents=True, exist_ok=True)
+            outcomes.to_csv(coverage_report, index=False)
+            if history.empty:
+                _log(handle, f"EMPTY -- no sector history produced; see {coverage_report}")
+                return {"status": "EMPTY", "rebuilt": False}
+
+            save(history, metadata, database)
         except Exception as error:
             _log(handle, f"FAILED -- {type(error).__name__}: {error}")
             return {"status": "FAILED", "error": f"{type(error).__name__}: {error}",
                     "rebuilt": False}
 
-        Path(coverage_report).parent.mkdir(parents=True, exist_ok=True)
-        outcomes.to_csv(coverage_report, index=False)
-        if history.empty:
-            _log(handle, f"EMPTY -- no sector history produced; see {coverage_report}")
-            return {"status": "EMPTY", "rebuilt": False}
-
-        save(history, metadata, database)
         _log(handle,
              f"OK -- {metadata['loaded_symbols']}/{metadata['classified_symbols']} symbols, "
              f"{metadata['held_symbols']} held, latest complete "
