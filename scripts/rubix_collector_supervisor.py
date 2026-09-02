@@ -103,8 +103,15 @@ def validate_adapter(path: Path) -> Path:
     return path
 
 
+#: A WAL past this size is not a busy session, it is one that never reset. A
+#: full EGX day writes on the order of a gigabyte; 45 GB is what accumulated
+#: while a health() poll held a read snapshot almost continuously, because
+#: SQLite cannot reuse the file while any reader still needs the old frames.
+WAL_RECLAIM_THRESHOLD_BYTES = 4 * 1024 ** 3
+
+
 def database_maintenance(path: Path, *, integrity: bool = True,
-                         truncate: bool = False) -> dict:
+                         truncate: bool = False, timeout: float = 15.0) -> dict:
     """Checkpoint the WAL, and optionally verify every page.
 
     The two halves cost wildly different amounts. ``wal_checkpoint(PASSIVE)``
@@ -129,7 +136,7 @@ def database_maintenance(path: Path, *, integrity: bool = True,
     if not path.is_file():
         return {"integrity": "MISSING", "wal_checkpoint": None, "bytes": 0}
     try:
-        with sqlite3.connect(path, timeout=15) as connection:
+        with sqlite3.connect(path, timeout=timeout) as connection:
             verdict = (
                 connection.execute("PRAGMA integrity_check").fetchone()[0]
                 if integrity else "NOT_CHECKED"
@@ -252,7 +259,8 @@ class CollectorSupervisor:
             self.child.wait(timeout=5)
         self.log.emit("collector_stopped", return_code=self.child.returncode)
 
-    def reclaim_wal(self) -> None:
+    def reclaim_wal(self, *, budget_seconds: float = 120.0,
+                    attempt_timeout: float = 15.0) -> None:
         """Truncate the write-ahead log before the collector starts writing.
 
         Only TRUNCATE returns the WAL file to zero; PASSIVE and RESTART write
@@ -282,22 +290,45 @@ class CollectorSupervisor:
         It is reported, never enforced: a busy result is logged and the
         collector starts regardless. A supervisor that refused to start because
         it could not tidy up would be a worse failure than the untidiness.
+
+        One attempt is not enough, which the first live run proved. "Nothing to
+        wait for before start_child" was wrong: the *launcher* reads this
+        database too, on a health() timer, and one of its calls spanned the
+        whole attempt. The truncate found the file locked, gave up after its
+        15-second timeout, and logged 45,165,903,792 bytes before and after. So
+        it now retries within a budget rather than taking one refusal as the
+        answer.
         """
 
         if not self.database.is_file():
             return
         before = self.wal_bytes()
         started = time.monotonic()
-        try:
-            result = database_maintenance(self.database, integrity=False, truncate=True)
-        except Exception as error:                       # noqa: BLE001 - never block the start
-            self.log.emit("wal_reclaim_failed", error=str(error))
-            return
+        deadline = started + max(0.0, float(budget_seconds))
+        attempts, result = 0, {}
+        while True:
+            attempts += 1
+            try:
+                result = database_maintenance(
+                    self.database, integrity=False, truncate=True,
+                    timeout=max(1.0, float(attempt_timeout)))
+            except Exception as error:                   # noqa: BLE001 - never block the start
+                self.log.emit("wal_reclaim_failed", error=str(error),
+                              attempts=attempts)
+                return
+            if self.wal_bytes() < before or time.monotonic() >= deadline:
+                break
+            # A reader still holds a snapshot. On 2026-09-02 that reader was the
+            # launcher, which polls health() on a timer and had one call open
+            # across the whole first attempt -- so a single 15-second try found
+            # the database locked and gave up with the WAL untouched at 45 GB.
+            time.sleep(1.0)
         self.log.emit(
             "wal_reclaimed",
             wal_bytes_before=before,
             wal_bytes_after=self.wal_bytes(),
             seconds=round(time.monotonic() - started, 1),
+            attempts=attempts,
             checkpoint=result.get("wal_checkpoint"),
         )
 
@@ -466,6 +497,15 @@ class CollectorSupervisor:
                     # finished, and it was designed to resume on the next call
                     # rather than to complete in one.
                     self.prune_telemetry()
+                    # A WAL this far past a normal session's size is not going
+                    # to come back on its own, and waiting for the next startup
+                    # means carrying it for the rest of the day -- which is what
+                    # made every read on 2026-09-02 slow. One short attempt: it
+                    # either succeeds because nothing is reading right now, or
+                    # it reports busy and the loop moves on. The timeout is what
+                    # keeps the promise never to stall the supervisor here.
+                    if self.wal_bytes() > WAL_RECLAIM_THRESHOLD_BYTES:
+                        self.reclaim_wal(budget_seconds=0.0, attempt_timeout=5.0)
                     # Taken after the work, not before: on a slow checkpoint the
                     # next one should be a full interval away, not immediate.
                     self.last_maintenance = time.monotonic()

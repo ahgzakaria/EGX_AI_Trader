@@ -243,3 +243,77 @@ def test_reclaiming_happens_before_the_child_is_started():
     source = inspect.getsource(CollectorSupervisor.run)
     body = source.partition("\n        finally:")[0]
     assert body.index("self.reclaim_wal()") < body.index("self.start_child()")
+
+
+# --- one refusal is not the answer -------------------------------------------
+#
+# The first live run proved the "nothing to wait for before start_child"
+# assumption wrong: the launcher reads this database too, on a health() timer,
+# and one of its calls spanned the whole attempt. The truncate found the file
+# locked, gave up after 15 seconds, and logged 45,165,903,792 bytes before and
+# after -- honest, and useless.
+
+def test_it_retries_while_a_reader_still_holds_the_file(database, tmp_path, monkeypatch):
+    import scripts.rubix_collector_supervisor as module
+
+    supervisor = _reclaimer(tmp_path, database)
+    calls = {"n": 0}
+
+    def _busy_then_free(path, **kwargs):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            return {"integrity": "ERROR", "error": "database is locked", "bytes": 0}
+        return {"integrity": "NOT_CHECKED", "wal_checkpoint": [0, 0, 0], "bytes": 0}
+
+    # The WAL stays at its size until the third attempt succeeds. Bound to the
+    # instance, not the type: SimpleNamespace attributes are per-object.
+    sizes = iter([5000, 5000, 5000, 0, 0, 0])
+    supervisor.wal_bytes = lambda: next(sizes)
+    monkeypatch.setattr(module, "database_maintenance", _busy_then_free)
+    monkeypatch.setattr(module.time, "sleep", lambda _s: None)
+
+    supervisor.reclaim_wal(budget_seconds=60.0)
+    assert calls["n"] >= 3
+    event, fields = supervisor.log.events[-1]
+    assert event == "wal_reclaimed" and fields["attempts"] >= 3
+
+
+def test_the_budget_stops_it_retrying_forever(database, tmp_path, monkeypatch):
+    """A supervisor that will not start because it cannot tidy up is worse than
+    the untidiness."""
+
+    import scripts.rubix_collector_supervisor as module
+
+    supervisor = _reclaimer(tmp_path, database)
+    monkeypatch.setattr(module, "database_maintenance",
+                        lambda path, **kw: {"integrity": "ERROR",
+                                            "error": "database is locked", "bytes": 0})
+    monkeypatch.setattr(module.time, "sleep", lambda _s: None)
+
+    supervisor.reclaim_wal(budget_seconds=0.0)     # one attempt, then give up
+    event, fields = supervisor.log.events[-1]
+    assert event == "wal_reclaimed"
+    assert fields["wal_bytes_after"] == fields["wal_bytes_before"]
+
+
+def test_an_oversized_wal_is_also_attempted_mid_session():
+    """Waiting for the next startup means carrying it for the rest of the day,
+    which is exactly what made every read slow on 2026-09-02."""
+
+    source = inspect.getsource(CollectorSupervisor.run)
+    loop = source.partition("\n        finally:")[0]
+    maintenance = loop.split("self.args.maintenance_seconds", 1)[1]
+    assert "WAL_RECLAIM_THRESHOLD_BYTES" in maintenance
+    assert "reclaim_wal(" in maintenance
+
+
+def test_the_mid_session_attempt_is_bounded_so_it_cannot_stall_the_loop():
+    """TRUNCATE waits for readers. Mid-session that wait must be a short refusal,
+    never a stall in the one process that must not stall."""
+
+    source = inspect.getsource(CollectorSupervisor.run)
+    maintenance = source.partition("\n        finally:")[0].split(
+        "self.args.maintenance_seconds", 1)[1]
+    call = maintenance.split("reclaim_wal(", 1)[1].split(")", 1)[0]
+    assert "budget_seconds=0" in call
+    assert "attempt_timeout=" in call
