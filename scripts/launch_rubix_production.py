@@ -33,6 +33,20 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 PRODUCTION_DB = PROJECT_ROOT / "data" / "rubix_live_market.db"
 DEFAULT_ADAPTER = Path.home() / "OneDrive" / "Documents" / "Scrapping" / "rubix_feed"
+
+#: How often either window asks the provider how the feed is doing.
+#:
+#: Both windows show the same handful of fields -- status, collector state,
+#: symbols updating, quote age -- and both used to choose their own interval.
+#: One picked fifteen seconds and ran the call on a worker; the other picked
+#: two and ran it on the Tk main thread, where a warm health() costs 220 ms
+#: during a session and 520 ms outside one. That is a window that stops
+#: repainting for a quarter of every two seconds, and a second process reading
+#: the collector's database on its own timer for a status line nobody is
+#: watching that closely.
+#:
+#: One number for both, so they cannot drift apart again.
+HEALTH_POLL_SECONDS = 15
 FEED_URL = "wss://eg-feed3.mubashertrade.com/websocket/price"
 AUTH_MAX_AGE_MINUTES = 15
 # Tracked application defaults, READ-ONLY at runtime. Local settings and volatile runtime
@@ -769,11 +783,16 @@ class LauncherUI:
             self.log.insert("end", message + "\n")
             self.log.see("end")
         now = time.monotonic()
-        if now - self._last_health_check >= 2 and self.supervisor.collector is not None:
-            self._last_health_check = now
+        if self.supervisor.collector is not None:
+            # Asking the process whether it is alive is free, so it stays on
+            # the 500 ms refresh: putting it behind the health timer would have
+            # made a stopped collector take fifteen seconds to appear on screen,
+            # which is the one thing here worth seeing immediately. Only the
+            # provider call -- the half-second one -- waits for the timer.
             if self.supervisor.collector.poll() is not None:
                 self.status_var.set("Collector stopped unexpectedly — live intraday unavailable (EODHD research still available)")
-            else:
+            elif now - self._last_health_check >= HEALTH_POLL_SECONDS:
+                self._last_health_check = now
                 health = self.supervisor.health()
                 self.status_var.set(
                     f"{health.get('status', 'STARTING')} · collector {health.get('collector_status')} · "
@@ -2199,7 +2218,7 @@ class RubixAuthenticationAssistantUI(LauncherUI):
             self.status_values["app_health"].set("Live intraday unavailable")
         elif (
             collector is not None
-            and now - self._last_health_check >= 15
+            and now - self._last_health_check >= HEALTH_POLL_SECONDS
             and not self.jobs.is_active("rubix_health")
         ):
             self._last_health_check = now

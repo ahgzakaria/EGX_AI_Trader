@@ -187,6 +187,10 @@ class CollectorSupervisor:
         self.stop_file = Path(getattr(args, "stop_file", None)
                               or PROJECT_ROOT / "data" / "runtime" / "stop_requested.flag")
         self.last_maintenance = 0.0
+        # Zero, so the first pass through the loop always publishes: a
+        # supervisor that has just started is exactly when someone is looking.
+        self.last_health_write = 0.0
+        self.health_seconds = float(getattr(args, "health_seconds", None) or 30)
         plan = build_rubix_subscription_plan(args.symbols, args.batch_size)
         if plan.invalid:
             raise ValueError(f"Invalid Rubix symbol mappings: {len(plan.invalid)}")
@@ -247,6 +251,16 @@ class CollectorSupervisor:
             "auth_contents_logged": False,
         })
         return health
+
+    def publish_health(self, **extra):
+        """Write the health file and reset its timer. See the run loop."""
+
+        record = self.health()
+        if extra:
+            record.update(extra)
+        atomic_json(self.health_file, record)
+        self.last_health_write = time.monotonic()
+        return record
 
     def stop_child(self):
         if self.child is None or self.child.poll() is not None:
@@ -476,16 +490,37 @@ class CollectorSupervisor:
             # than learning about corruption two minutes later.
             self.verify_database_in_background(skip=previous_was_clean)
             while not STOP_REQUESTED and not self.stop_requested_on_disk():
-                health = self.health()
-                atomic_json(self.health_file, health)
+                # The heartbeat is two seconds because a dead collector should
+                # be restarted quickly and a stop should take effect quickly.
+                # Neither of those needs health(): the restart branch below
+                # asks the process, not the database, and nothing in this loop
+                # reads the dictionary it publishes.
+                #
+                # health() costs about 220 ms warm during a session -- mostly
+                # the newest-candle read -- and about 520 ms outside one, and
+                # this supervisor runs all day. Paying it every two seconds
+                # meant holding a read snapshot roughly a tenth of the time for
+                # a file that is display evidence: System Health embeds it,
+                # nothing branches on it, and nothing anywhere measures its age.
+                #
+                # So it is published on its own timer. State changes do not wait
+                # for that timer -- a collector exit publishes immediately below
+                # -- so the file is never late about anything that happened,
+                # only about how things have stayed.
+                if time.monotonic() - self.last_health_write >= self.health_seconds:
+                    self.publish_health()
                 if self.child.poll() is not None:
                     self.log.emit("collector_exit", return_code=self.child.returncode)
                     if self.restarts >= self.args.max_restarts:
                         self.log.emit("supervisor_failed", reason="restart limit reached")
+                        self.publish_health()
                         return 2
                     self.restarts += 1
                     time.sleep(min(backoff * self.restarts, 60))
                     self.start_child()
+                    # The restart is the event worth recording, and the next
+                    # scheduled write could be half a minute away.
+                    self.publish_health()
                 now = time.monotonic()
                 if now - self.last_maintenance >= self.args.maintenance_seconds:
                     # Checkpoint only. The full verification runs at startup and
@@ -535,7 +570,7 @@ class CollectorSupervisor:
             self.prune_telemetry()
             maintenance = database_maintenance(self.database, truncate=True)
             self.log.emit("supervisor_shutdown", **maintenance)
-            atomic_json(self.health_file, {**self.health(), "shutdown": True, "database": maintenance})
+            self.publish_health(shutdown=True, database=maintenance)
             if self.lock is not None:
                 self.lock.release()                      # OS lock + metadata file
 
@@ -551,6 +586,8 @@ def build_parser():
     parser.add_argument("--bar-stale-seconds", type=int, default=120)
     parser.add_argument("--auth-max-age-minutes", type=int, default=15)
     parser.add_argument("--heartbeat-seconds", type=float, default=2)
+    # Deliberately not the heartbeat: see the run loop.
+    parser.add_argument("--health-seconds", type=float, default=30)
     parser.add_argument("--maintenance-seconds", type=float, default=300)
     parser.add_argument("--max-restarts", type=int, default=20)
     parser.add_argument("--restart-backoff-seconds", type=float, default=2)
