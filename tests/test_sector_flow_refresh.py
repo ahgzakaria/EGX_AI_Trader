@@ -57,6 +57,19 @@ def fixed_calendar(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def isolated_lock(tmp_path, monkeypatch):
+    """Never reach for the real lock file.
+
+    Not hypothetical: the first run of the guard's own tests came back BUSY
+    across the board because a genuine rebuild was in flight on this machine and
+    holding it. A test must not depend on whether the scheduler happens to be
+    working right now.
+    """
+
+    monkeypatch.setattr(refresh_sector_flow, "LOCK_FILE", tmp_path / "refresh.lock")
+
+
 @pytest.fixture
 def database(tmp_path):
     return str(tmp_path / "sector_flow.db")
@@ -294,3 +307,88 @@ def test_a_failure_writing_the_coverage_report_is_also_reported(tmp_path, monkey
                             coverage_report=str(tmp_path / "coverage.csv"))
     assert result["status"] == "FAILED"
     assert "no space left" in result["error"]
+
+
+# --- one rebuild at a time ---------------------------------------------------
+#
+# save() replaces the whole table, so two builds finishing together do not
+# produce a winner. On 2026-09-02 two finished 74 ms apart and the store kept
+# *both*: every (SessionDate, Sector) twice, 143,870 rows against 71,935
+# distinct pairs. The per-sector numbers in each pair were identical and only
+# the market totals differed -- 190 symbols against 187 -- because the two runs
+# had loaded 222 and 219 symbols. Nothing failed. Nothing was logged. The page
+# just showed every row twice.
+#
+# Task Scheduler's MultipleInstances=IgnoreNew did not cover it: it stops the
+# scheduler starting a second copy of its own task and says nothing about a
+# hand-run rebuild landing on top of one. A full build takes minutes and the
+# schedule repeats hourly, so the overlap needs no unusual timing at all.
+
+def test_a_second_run_refuses_while_one_is_in_flight(tmp_path, monkeypatch):
+    from scripts import refresh_sector_flow as module
+    from scripts.launcher_process_utils import SingleInstanceLock
+
+    monkeypatch.setattr(module, "LOG_DIR", tmp_path)
+    lock_file = tmp_path / "refresh.lock"
+    held = SingleInstanceLock(lock_file, label="Sector flow refresh").acquire()
+
+    def never(*args, **kwargs):
+        raise AssertionError("a second rebuild started while one was running")
+    monkeypatch.setattr(module, "build", never)
+
+    try:
+        result = module.refresh(database=str(tmp_path / "s.db"), lock_file=lock_file)
+    finally:
+        held.release()
+
+    assert result["status"] == "BUSY"
+    assert result["rebuilt"] is False
+
+
+def test_being_busy_is_not_a_failure_exit(tmp_path, monkeypatch):
+    """The scheduler must not report a red run because it was already working."""
+
+    from scripts import refresh_sector_flow as module
+
+    monkeypatch.setattr(module, "refresh",
+                        lambda **kwargs: {"status": "BUSY", "rebuilt": False})
+    assert module.main([]) == 0
+
+
+def test_the_lock_is_released_so_the_next_scheduled_run_can_work(tmp_path, monkeypatch):
+    from scripts import refresh_sector_flow as module
+    from scripts.launcher_process_utils import SingleInstanceLock
+
+    monkeypatch.setattr(module, "LOG_DIR", tmp_path)
+    monkeypatch.setattr(module, "stored_latest_session", lambda *a, **k: None)
+    monkeypatch.setattr(module, "sessions_behind", lambda *a, **k: 0)
+    lock_file = tmp_path / "refresh.lock"
+
+    first = module.refresh(database=str(tmp_path / "s.db"), lock_file=lock_file)
+    assert first["status"] == "UP_TO_DATE"
+
+    # If the lock survived the run, this would raise instead of acquiring.
+    SingleInstanceLock(lock_file, label="probe").acquire().release()
+
+
+def test_the_lock_is_released_even_when_the_build_raises(tmp_path, monkeypatch):
+    """A crashed rebuild must not wedge every later run into BUSY forever."""
+
+    from scripts import refresh_sector_flow as module
+    from scripts.launcher_process_utils import SingleInstanceLock
+
+    monkeypatch.setattr(module, "LOG_DIR", tmp_path)
+    monkeypatch.setattr(module, "stored_latest_session", lambda *a, **k: None)
+    monkeypatch.setattr(module, "sessions_behind", lambda *a, **k: 2)
+    monkeypatch.setattr(module, "_expected_session", lambda: None)
+    monkeypatch.setattr(module, "load_project_environment", lambda: None)
+
+    def explode():
+        raise MemoryError("out of memory mid-build")
+    monkeypatch.setattr(module, "build", explode)
+
+    lock_file = tmp_path / "refresh.lock"
+    result = module.refresh(database=str(tmp_path / "s.db"), lock_file=lock_file)
+    assert result["status"] == "FAILED"
+
+    SingleInstanceLock(lock_file, label="probe").acquire().release()

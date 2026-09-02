@@ -39,6 +39,10 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 from core.environment import load_project_environment  # noqa: E402
+from scripts.launcher_process_utils import (  # noqa: E402
+    InstanceAlreadyRunning,
+    SingleInstanceLock,
+)
 from sector_flow.builder import (  # noqa: E402
     DEFAULT_DATABASE,
     _expected_session,
@@ -52,6 +56,7 @@ from sector_flow.builder import (  # noqa: E402
 LOG_DIR = ROOT / "logs"
 LOG_NAME = "sector_flow_refresh.log"
 COVERAGE_REPORT = "reports/sector_flow_coverage.csv"
+LOCK_FILE = ROOT / "data" / "runtime" / "sector_flow_refresh.lock"
 
 
 def _log(handle, message):
@@ -61,8 +66,44 @@ def _log(handle, message):
     handle.flush()
 
 
-def refresh(*, force=False, database=DEFAULT_DATABASE, coverage_report=COVERAGE_REPORT):
+def refresh(*, force=False, database=DEFAULT_DATABASE, coverage_report=COVERAGE_REPORT,
+            lock_file=None):
+    """Rebuild the sector history when a completed session is missing.
+
+    One run at a time, always. ``save()`` replaces the whole table, so two
+    builds finishing together do not produce one winner -- on 2026-09-02 two
+    finished 74 ms apart and the store ended up holding *both*, every sector
+    twice, with two different market totals (190 symbols and 187) because the
+    two runs had loaded different numbers of symbols. Nothing failed and nothing
+    said anything; the page simply showed every row twice.
+
+    Task Scheduler's own MultipleInstances=IgnoreNew never covered this. It
+    stops the scheduler starting a second copy of its own task, and says nothing
+    about a hand-run rebuild landing on top of one -- which is exactly what
+    happened, because a full build takes minutes and the schedule repeats hourly.
+    The guard has to live in the script, where it applies to every caller.
+    """
+
     LOG_DIR.mkdir(exist_ok=True)
+    lock = SingleInstanceLock(
+        Path(lock_file) if lock_file else LOCK_FILE,
+        label="Sector flow refresh",
+        extra_meta={"database": str(database)},
+    )
+    try:
+        lock.acquire()
+    except InstanceAlreadyRunning as error:
+        LOG_DIR.mkdir(exist_ok=True)
+        with (LOG_DIR / LOG_NAME).open("a", encoding="utf-8") as handle:
+            _log(handle, f"BUSY -- {error}")
+        return {"status": "BUSY", "error": str(error), "rebuilt": False}
+    try:
+        return _refresh(force=force, database=database, coverage_report=coverage_report)
+    finally:
+        lock.release()
+
+
+def _refresh(*, force, database, coverage_report):
     with (LOG_DIR / LOG_NAME).open("a", encoding="utf-8") as handle:
         stored = stored_latest_session(database)
         behind = sessions_behind(database)
@@ -138,7 +179,7 @@ def main(argv=None):
 
     result = refresh(force=args.force, database=args.database)
     print(json.dumps(result, indent=2, default=str))
-    return 0 if result["status"] in ("OK", "UP_TO_DATE", "WAITING_ON_PROVIDER") else 1
+    return 0 if result["status"] in ("OK", "UP_TO_DATE", "WAITING_ON_PROVIDER", "BUSY") else 1
 
 
 if __name__ == "__main__":
