@@ -77,6 +77,19 @@ def reset_census_cache():
 
     with _CENSUS_LOCK:
         _CENSUS_CACHE.clear()
+        _TICKER_CACHE.clear()
+
+
+#: Every ticker the collector has written, cached on the same terms as the
+#: census. It backs one thing: the check that the adapter is writing upper-case
+#: tickers. That is a contract on the writer, it changes about never, and
+#: reading it costs a covering-index scan of the whole table -- 3.3 seconds
+#: today and growing.
+#:
+#: Paid once per overlay load that was fine while only the daily scan called it.
+#: The portfolio page then began refreshing every 45 seconds through the same
+#: method, which turned a once-a-day scan into a permanent one.
+_TICKER_CACHE = {}
 
 
 class RubixSQLiteProvider(MarketDataProvider):
@@ -323,13 +336,7 @@ class RubixSQLiteProvider(MarketDataProvider):
             # observes the same consistent snapshot of the collector's database.
             connection.execute("BEGIN")
             try:
-                # Every ticker the collector has ever written, for the
-                # normalization check below. `GROUP BY ticker` selecting only
-                # `ticker` is answered from the covering index in about three
-                # seconds; `SELECT DISTINCT ticker` takes twenty-five, for the
-                # same 265 rows.
-                all_tickers = [str(row[0]) for row in connection.execute(
-                    "SELECT ticker FROM quotes GROUP BY ticker")]
+                all_tickers = self._known_tickers(connection)
                 quote_times, received, candles, latest = {}, {}, {}, {}
                 for ticker in wanted:
                     row = connection.execute(_LATEST_QUOTE, (ticker,)).fetchone()
@@ -538,6 +545,31 @@ class RubixSQLiteProvider(MarketDataProvider):
                 "rubix_status": self.UNAVAILABLE,
                 "rubix_error": str(error),
             }
+
+    def _known_tickers(self, connection):
+        """Every ticker the collector has written, behind the census TTL.
+
+        `GROUP BY ticker` selecting only `ticker` is answered from the covering
+        index in about three seconds; `SELECT DISTINCT ticker` takes
+        twenty-five, for the same 265 rows. Neither is cheap enough to run on
+        every call once a page refreshes every 45 seconds through this method.
+
+        What it feeds is a contract check on the adapter -- are the tickers it
+        writes upper-case -- which is not a per-call question.
+        """
+
+        key = str(self.db_path)
+        now = time.monotonic()
+        if self.census_ttl_seconds > 0:
+            with _CENSUS_LOCK:
+                cached = _TICKER_CACHE.get(key)
+                if cached and (now - cached["at"]) < self.census_ttl_seconds:
+                    return cached["value"]
+        value = [str(row[0]) for row in connection.execute(
+            "SELECT ticker FROM quotes GROUP BY ticker") if row[0]]
+        with _CENSUS_LOCK:
+            _TICKER_CACHE[key] = {"at": now, "value": value}
+        return value
 
     def _read_census(self, connection):
         """The expensive half: last-seen per ticker, and the row counts.

@@ -169,8 +169,15 @@ def test_the_whole_table_aggregates_are_gone(tmp_path):
     source = inspect.getsource(RubixSQLiteProvider.load_latest_quote_overlays)
     code = source[source.index('"""', source.index('"""') + 3):]
     assert "MAX(received_at)" not in code
-    assert "GROUP BY ticker" in code, "the normalization check still needs one"
     assert "MAX(received_at), COUNT(*) FROM quotes" not in code
+
+    # The normalization check still runs, but from _known_tickers, which holds
+    # its whole-table GROUP BY behind the census TTL. Inline it was paid on
+    # every call -- 3.3 seconds, once a day for the scan and every 45 seconds
+    # once the portfolio page began refreshing through the same method.
+    helper = inspect.getsource(RubixSQLiteProvider._known_tickers)
+    assert "GROUP BY ticker" in helper
+    assert "_TICKER_CACHE" in helper, "it must not be re-read on every call"
 
 
 def test_every_quote_read_is_narrowed_to_one_ticker(tmp_path):
@@ -218,3 +225,57 @@ def test_a_clean_collector_raises_no_warning(tmp_path):
     overlay = _provider(path, now_offset=1).load_latest_quote_overlays(
         ["COMI.CA"])["COMI.CA"]
     assert "data_quality_warning" not in overlay
+
+
+def test_the_ticker_list_is_cached_between_calls(tmp_path):
+    """The portfolio page refreshes every 45 seconds through this method. A
+    whole-table GROUP BY per call is a permanent scan of a growing table.
+
+    Proved by what the cache hides: a ticker written after the first call is
+    not seen by the second, because the second never re-reads.
+    """
+
+    from providers import rubix_sqlite_provider as module
+
+    module.reset_census_cache()
+    path = _database(tmp_path / "r.db", [("COMI", 0, 0, 100.0)])
+    provider = _provider(path, now_offset=2)
+
+    connection = sqlite3.connect(path)
+    try:
+        first = provider._known_tickers(connection)
+        connection.execute(
+            "INSERT INTO quotes (id, ticker, last_price, bid, ask, volume, "
+            "market_timestamp, received_at) VALUES (99,'NEWT',1,1,1,1,?,?)",
+            (BASE.isoformat(), BASE.isoformat()))
+        connection.commit()
+        second = provider._known_tickers(connection)
+    finally:
+        connection.close()
+
+    assert "NEWT" not in first
+    assert second == first, "the second call must not have re-read the table"
+
+
+def test_a_zero_ttl_still_re_reads(tmp_path):
+    """Tests and forced refreshes must be able to bypass the cache."""
+
+    from providers import rubix_sqlite_provider as module
+
+    module.reset_census_cache()
+    path = _database(tmp_path / "r.db", [("COMI", 0, 0, 100.0)])
+    provider = RubixSQLiteProvider(
+        db_path=path, census_ttl_seconds=0,
+        now=lambda: BASE + timedelta(minutes=2))
+    connection = sqlite3.connect(path)
+    try:
+        first = provider._known_tickers(connection)
+        connection.execute(
+            "INSERT INTO quotes (id, ticker, last_price, bid, ask, volume, "
+            "market_timestamp, received_at) VALUES (99,'NEWT',1,1,1,1,?,?)",
+            (BASE.isoformat(), BASE.isoformat()))
+        connection.commit()
+        second = provider._known_tickers(connection)
+    finally:
+        connection.close()
+    assert "NEWT" not in first and "NEWT" in second
