@@ -50,6 +50,7 @@ _NEWEST_ROW = ("SELECT market_timestamp, received_at FROM quotes "
 _NEWEST_PER_TICKER = "SELECT ticker, MAX(id) FROM quotes GROUP BY ticker"
 _ROW_BY_ID = "SELECT market_timestamp, received_at FROM quotes WHERE id=?"
 _NEWEST_ID_FOR_TICKER = "SELECT MAX(id) FROM quotes WHERE ticker=?"
+_NEWEST_CANDLE = "SELECT MAX(minute), COUNT(*) FROM candles_1m"
 
 #: How long a census may be reused. The census is the expensive half of
 #: ``health()`` -- last-seen per ticker plus the row counts -- and it cannot be
@@ -68,8 +69,58 @@ _NEWEST_ID_FOR_TICKER = "SELECT MAX(id) FROM quotes WHERE ticker=?"
 #: this many seconds old.
 CENSUS_TTL_SECONDS = 60.0
 
+#: A ceiling on how much of the clock the census is allowed to occupy.
+#:
+#: The TTL above bounds how old an observation may be. It does not bound how
+#: often the database is read, and those come apart precisely when it matters:
+#: a census that takes longer than its own TTL produces an entry that is
+#: already expired when it is stored, so the next call re-reads immediately and
+#: the cache stops serving anything at all. Measured: with a 3-second read
+#: behind a 2-second TTL, four calls performed four reads.
+#:
+#: That is the failure loop this cache exists to prevent, arriving through the
+#: cache. A slow database makes health() a continuous reader; a continuous
+#: reader stops SQLite reusing the WAL; the growing WAL is what made the
+#: database slow. Each turn tightens the next.
+#:
+#: So an entry lives for at least as long as the read that produced it cost,
+#: times this factor: the slower the database, the less often it is asked. At
+#: four, health() can never spend more than a quarter of the clock reading, and
+#: on a healthy database (a 16-second census against a 60-second TTL) the TTL
+#: still governs and nothing changes.
+CENSUS_DUTY_FACTOR = 4.0
+
 _CENSUS_CACHE = {}
 _CENSUS_LOCK = threading.Lock()
+
+
+def _cached_read(store, key, ttl, read):
+    """Serve ``read`` from ``store`` behind a self-limiting TTL.
+
+    Shared by the census and the ticker list because they had the same bug
+    written out twice, and the second copy was two seconds from the same
+    disengagement the first one already suffered.
+
+    The entry is stamped when the value became available, not when the read
+    began. Stamping at the start charges the entry for its own retrieval, which
+    is what makes a slow read expire before it is ever stored.
+    """
+
+    if ttl > 0:
+        with _CENSUS_LOCK:
+            entry = store.get(key)
+            if entry and (time.monotonic() - entry["at"]) < entry["ttl"]:
+                return entry["value"]
+    started = time.monotonic()
+    value = read()
+    finished = time.monotonic()
+    with _CENSUS_LOCK:
+        store[key] = {
+            "at": finished,
+            "ttl": max(ttl, (finished - started) * CENSUS_DUTY_FACTOR),
+            "value": value,
+        }
+    return value
 
 
 def reset_census_cache():
@@ -558,18 +609,11 @@ class RubixSQLiteProvider(MarketDataProvider):
         writes upper-case -- which is not a per-call question.
         """
 
-        key = str(self.db_path)
-        now = time.monotonic()
-        if self.census_ttl_seconds > 0:
-            with _CENSUS_LOCK:
-                cached = _TICKER_CACHE.get(key)
-                if cached and (now - cached["at"]) < self.census_ttl_seconds:
-                    return cached["value"]
-        value = [str(row[0]) for row in connection.execute(
-            "SELECT ticker FROM quotes GROUP BY ticker") if row[0]]
-        with _CENSUS_LOCK:
-            _TICKER_CACHE[key] = {"at": now, "value": value}
-        return value
+        return _cached_read(
+            _TICKER_CACHE, str(self.db_path), self.census_ttl_seconds,
+            lambda: [str(row[0]) for row in connection.execute(
+                "SELECT ticker FROM quotes GROUP BY ticker") if row[0]],
+        )
 
     def _read_census(self, connection):
         """The expensive half: last-seen per ticker, and the row counts.
@@ -592,8 +636,6 @@ class RubixSQLiteProvider(MarketDataProvider):
             row = connection.execute(_ROW_BY_ID, (rowid,)).fetchone()
             if row and row[1]:
                 last_seen[ticker] = _utc_timestamp(row[1])
-        candle = connection.execute(
-            "SELECT MAX(minute), COUNT(*) FROM candles_1m").fetchone()
         # feed_metrics is the larger table of the two -- 55.7 million rows on
         # 2026-09-01 against the quotes table's 23.5 -- and this histogram over
         # it measured 150 seconds, the single largest cost in health(). It
@@ -615,8 +657,6 @@ class RubixSQLiteProvider(MarketDataProvider):
             "symbol_count": len(newest_ids),
             "quote_count": int(connection.execute(
                 "SELECT COUNT(*) FROM quotes").fetchone()[0] or 0),
-            "latest_candle": candle[0] if candle and candle[0] else None,
-            "minute_bar_count": int(candle[1] or 0) if candle else 0,
             "event_counts": event_counts,
             "updates_last_minute": int(updates_last_minute or 0),
         }
@@ -624,17 +664,8 @@ class RubixSQLiteProvider(MarketDataProvider):
     def _census(self, connection):
         """``_read_census`` behind a TTL. See ``CENSUS_TTL_SECONDS``."""
 
-        key = str(self.db_path)
-        now = time.monotonic()
-        if self.census_ttl_seconds > 0:
-            with _CENSUS_LOCK:
-                cached = _CENSUS_CACHE.get(key)
-                if cached and (now - cached["at"]) < self.census_ttl_seconds:
-                    return cached["value"]
-        value = self._read_census(connection)
-        with _CENSUS_LOCK:
-            _CENSUS_CACHE[key] = {"at": now, "value": value}
-        return value
+        return _cached_read(_CENSUS_CACHE, str(self.db_path), self.census_ttl_seconds,
+                            lambda: self._read_census(connection))
 
     def _snapshot(self):
         self._validate_database()
@@ -645,6 +676,15 @@ class RubixSQLiteProvider(MarketDataProvider):
                 # depends on. Only the census below is allowed to be a minute
                 # old.
                 tip = connection.execute(_NEWEST_ROW).fetchone()
+                # So is the newest completed minute, and for the same reason:
+                # bar_age_seconds is the only cached number _state_from_snapshot
+                # branches on, so leaving it in the census meant a database slow
+                # enough to need the cache would age its own candle past
+                # bar_stale_after_minutes and report RUBIX_STALE -- turning off
+                # live scanning as a side effect of protecting the WAL. It reads
+                # in 0.17 seconds against 8 GB; there was never a reason to pay
+                # for it with the verdict.
+                candle = connection.execute(_NEWEST_CANDLE).fetchone()
                 census = self._census(connection)
                 coverage = self._coverage_snapshot(census["last_seen"])
                 collector = self._collector_snapshot(connection, census)
@@ -655,8 +695,8 @@ class RubixSQLiteProvider(MarketDataProvider):
         received = _utc_timestamp(tip[1])
         exchange = _utc_timestamp(tip[0])
         age_seconds = max(0.0, (self._utc_now() - received).total_seconds())
-        latest_candle = (_utc_timestamp(census["latest_candle"])
-                         if census["latest_candle"] else None)
+        latest_candle = (_utc_timestamp(candle[0])
+                         if candle and candle[0] else None)
         bar_age_seconds = (
             max(0.0, (self._utc_now() - latest_candle).total_seconds())
             if latest_candle is not None else None
@@ -670,7 +710,7 @@ class RubixSQLiteProvider(MarketDataProvider):
             "bar_age_seconds": bar_age_seconds,
             "symbol_count": census["symbol_count"],
             "quote_count": census["quote_count"],
-            "minute_bar_count": census["minute_bar_count"],
+            "minute_bar_count": int(candle[1] or 0) if candle else 0,
         }
         result.update(coverage)
         result.update(collector)

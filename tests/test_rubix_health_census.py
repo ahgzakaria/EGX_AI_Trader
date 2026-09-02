@@ -255,3 +255,122 @@ def test_no_whole_table_received_at_aggregate_survives():
             if (isinstance(node, ast.Constant) and isinstance(node.value, str)
                     and node.value != docstring):
                 assert "MAX(received_at)" not in node.value, name
+
+
+# --- the cache must not disengage under the load it exists for ---------------
+#
+# The TTL bounds how old an observation may be. It does not bound how often the
+# database is read, and the two come apart exactly when it matters: a census
+# costing more than its own TTL was stamped with the time the read *started*,
+# so the entry was already expired when it was stored and the next call re-read
+# at once. The protection vanished precisely on the slow database it was added
+# for, and a permanent reader is what stops SQLite reusing the WAL, which is
+# what made the database slow.
+
+def _slow_census(monkeypatch, seconds, reads):
+    def read(self, connection):
+        reads.append(seconds)
+        module.time.sleep(seconds)
+        return {"last_seen": {}, "symbol_count": 0, "quote_count": 1,
+                "event_counts": {}, "updates_last_minute": 0}
+    monkeypatch.setattr(RubixSQLiteProvider, "_read_census", read)
+
+
+def test_a_census_slower_than_its_ttl_is_still_reused(tmp_path, monkeypatch):
+    """Four calls used to mean four reads. The entry expired before it existed."""
+
+    reads = []
+    _slow_census(monkeypatch, 0.05, reads)
+    provider = _provider(_database(str(tmp_path / "r.db")), ttl=0.01)
+
+    for _ in range(4):
+        provider._census(None)
+
+    assert len(reads) == 1, "the cache disengaged on the slow read it exists for"
+
+
+def test_a_slow_database_is_read_less_often_not_more(tmp_path, monkeypatch):
+    """The entry's life scales with what the read cost, so the duty cycle holds."""
+
+    reads = []
+    _slow_census(monkeypatch, 0.05, reads)
+    provider = _provider(_database(str(tmp_path / "r.db")), ttl=0.01)
+    provider._census(None)
+
+    entry = module._CENSUS_CACHE[str(provider.db_path)]
+    assert entry["ttl"] >= 0.05 * module.CENSUS_DUTY_FACTOR
+    # And it is stamped when the value arrived, not when the read began.
+    assert module.time.monotonic() - entry["at"] < 0.05
+
+
+def test_a_fast_database_is_still_governed_by_the_ttl(tmp_path, monkeypatch):
+    """The floor must not quietly lengthen the window on a healthy database."""
+
+    reads = []
+    _slow_census(monkeypatch, 0.0, reads)
+    provider = _provider(_database(str(tmp_path / "r.db")), ttl=30.0)
+    provider._census(None)
+
+    assert module._CENSUS_CACHE[str(provider.db_path)]["ttl"] == 30.0
+
+
+def test_the_ticker_list_is_protected_the_same_way(tmp_path, monkeypatch):
+    """It is the same cache written twice; it had the same defect twice."""
+
+    path = _database(str(tmp_path / "r.db"))
+    provider = _provider(path, ttl=0.01)
+    connection = sqlite3.connect(path)
+    calls = []
+
+    class Slow:
+        def execute(self, sql, *args):
+            calls.append(sql)
+            module.time.sleep(0.05)
+            return connection.execute(sql, *args)
+
+    for _ in range(4):
+        provider._known_tickers(Slow())
+    assert len(calls) == 1
+
+
+# --- what the verdict is allowed to depend on --------------------------------
+#
+# bar_age_seconds is the one number _state_from_snapshot branches on that came
+# out of the census. Left there, a database slow enough to need the cache would
+# age its own newest candle past bar_stale_after_minutes and report RUBIX_STALE
+# -- switching off live scanning as a side effect of protecting the WAL. It
+# costs 0.17 seconds against 8 GB.
+
+def test_the_newest_candle_is_read_every_call(tmp_path):
+    path = _database(str(tmp_path / "r.db"))
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "INSERT INTO candles_1m (ticker, minute, open, high, low, close) "
+        "VALUES (?,?,?,?,?,?)", ("COMI", BASE.isoformat(), 1, 1, 1, 1))
+    connection.commit()
+
+    provider = _provider(path, at_minutes=1, ttl=600.0)
+    first = provider.health()
+    assert first["latest_candle_timestamp"] == BASE.isoformat()
+
+    later = (BASE + timedelta(minutes=1)).isoformat()
+    connection.execute(
+        "INSERT INTO candles_1m (ticker, minute, open, high, low, close) "
+        "VALUES (?,?,?,?,?,?)", ("COMI", later, 1, 1, 1, 1))
+    connection.commit()
+    connection.close()
+
+    second = provider.health()
+    assert second["latest_candle_timestamp"] == later, (
+        "a cached candle ages into RUBIX_STALE and turns off live scanning")
+    assert second["minute_bar_count"] == 2
+
+
+def test_no_query_the_verdict_reads_sits_behind_the_cache():
+    """A guard on where the line is, not on how it is currently drawn."""
+
+    import inspect
+
+    census = inspect.getsource(RubixSQLiteProvider._read_census)
+    assert "candles_1m" not in census, (
+        "bar_age_seconds drives _state_from_snapshot; it may not be cached")
