@@ -305,3 +305,49 @@ def test_a_holiday_run_still_backfills(monkeypatch):
     result = rdf.main([])
     assert result["status"] == "NON_TRADING_DAY"
     assert result["backfill"]["status"] == "OK"
+
+
+# --- the schedule has to land after the boundary -----------------------------
+#
+# The task fired at 14:42 against a 14:45 boundary -- the 14:30 close plus
+# CLOSE_SAFETY_MINUTES -- once a day, with no repetition. So every session it
+# exited SESSION_NOT_COMPLETED, returned 0, and the candle was built the next
+# day by the backfill instead of the same afternoon. Three minutes, reported as
+# a successful run, for days.
+#
+# The trigger time is not in this repository, so no test can hold it. What a
+# test can hold is that a run landing inside the window says how far inside,
+# which is the whole diagnosis.
+
+def test_a_run_inside_the_safety_window_reports_how_early_it_is(tmp_path):
+    close = dt.datetime(2026, 9, 3, 14, 30, tzinfo=dt.timezone(dt.timedelta(hours=3)))
+    result = rdf.finalize_session(
+        "2026-09-03", now=close + dt.timedelta(minutes=12),   # 14:42
+        db_path=_capture(tmp_path / "r.db", "2026-09-03", 60),
+        holidays=None, dry_run=True)
+
+    assert result["status"] == "SESSION_NOT_COMPLETED"
+    assert result["too_early_by_minutes"] == 3.0
+    assert result["ready_at"].startswith("2026-09-03T14:45")
+
+
+def test_a_run_after_the_boundary_carries_no_early_marker(tmp_path):
+    close = dt.datetime(2026, 9, 3, 14, 30, tzinfo=dt.timezone(dt.timedelta(hours=3)))
+    result = rdf.finalize_session(
+        "2026-09-03", now=close + dt.timedelta(minutes=20),   # 14:50
+        db_path=_capture(tmp_path / "r.db", "2026-09-03", 60),
+        holidays=None, dry_run=True)
+
+    assert result["session_completed"] is True
+    assert "too_early_by_minutes" not in result
+
+
+def test_the_boundary_is_named_once_not_carried_in_two_places(tmp_path):
+    """The constant the schedule has to clear, and the one the check uses."""
+
+    import inspect
+
+    source = inspect.getsource(rdf.finalize_session)
+    assert "close_safety_minutes=CLOSE_SAFETY_MINUTES" in source, (
+        "a literal here and a literal in the early-exit is how they drift")
+    assert rdf.CLOSE_SAFETY_MINUTES == 15

@@ -31,10 +31,18 @@ from core.daily_bridge.schema import CSV_FIELDS, FINAL  # noqa: E402
 from core.egx_session import (  # noqa: E402
     cairo_now,
     is_regular_trading_day,
+    session_close_datetime,
     session_is_completed,
 )
 
 REPORT_DIR = Path("reports/daily_bridge")
+
+#: How long after the 14:30 close a session is treated as safely finished, so
+#: no further legitimate write for that date is expected. Named once because
+#: the scheduled task's trigger time has to sit after it, and two places that
+#: each carried their own 15 is how a task came to fire at 14:42 against a
+#: 14:45 boundary and do nothing, every session, reporting success.
+CLOSE_SAFETY_MINUTES = 15
 
 #: How far back a scheduled run looks for a session it never finalized.
 #: Long enough to cover a machine left off for a working week, short enough
@@ -301,7 +309,9 @@ def finalize_session(session_date, *, db_path, holidays, now,
     import datetime as _dt
     d = _dt.date.fromisoformat(session_date)
     trading = is_regular_trading_day(d, holidays)
-    completed = session_is_completed(d, value=now, close_safety_minutes=15, holidays=holidays)
+    completed = session_is_completed(d, value=now,
+                                     close_safety_minutes=CLOSE_SAFETY_MINUTES,
+                                     holidays=holidays)
 
     out = {"session_date": session_date, "trading_day": trading,
            "session_completed": completed, "dry_run": dry_run,
@@ -312,6 +322,25 @@ def finalize_session(session_date, *, db_path, holidays, now,
     if not completed and not force_rebuild:
         out["status"] = "SESSION_NOT_COMPLETED"
         out["cache_sessions_behind"] = _sessions_behind(db_path, d, holidays)
+        # Say how early, not just that it was early.
+        #
+        # The scheduled task fired at 14:42 against a 14:45 boundary -- close
+        # 14:30 plus close_safety_minutes -- and it fired once a day with no
+        # repetition. So it exited here every session, returned 0, and the
+        # candle was only ever built the next day by the backfill. Three
+        # minutes, and the run reported success while doing nothing.
+        #
+        # A run that lands inside the safety window is a schedule set against a
+        # boundary it does not know about, and the number of minutes is the
+        # whole diagnosis. Reading it off the status line is the difference
+        # between one line and an afternoon.
+        ready_at = session_close_datetime(d) + _dt.timedelta(
+            minutes=CLOSE_SAFETY_MINUTES)
+        current = cairo_now(now)
+        if current < ready_at:
+            out["ready_at"] = ready_at.isoformat()
+            out["too_early_by_minutes"] = round(
+                (ready_at - current).total_seconds() / 60, 1)
         return out
 
     builder = RubixDailyBuilder(db_path)

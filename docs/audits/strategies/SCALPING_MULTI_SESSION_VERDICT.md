@@ -2,7 +2,7 @@
 
 **Status: FINAL**
 
-**Acceptance state: PAPER_RECORDING_ELIGIBLE** — 25 sessions, 25 qualifying (>=2 of 3)
+**Acceptance state: PAPER_RECORDING_ELIGIBLE** — 26 sessions, 26 qualifying (>=2 of 3)
 
 Dual-model per patched session (legacy market_timestamp vs shadow value-progression);
 300 s threshold unchanged; all gates disabled (`event_gate_enabled` / 
@@ -35,13 +35,14 @@ Dual-model per patched session (legacy market_timestamp vs shadow value-progress
 | 2026-08-30 | 100.0 | 0.0s | 4.6s | 0 | 0 | 0 | 143 | 143 | 143 | True |
 | 2026-08-31 | 100.0 | 0.0s | 17.5s | 0 | 0 | 0 | 122 | 122 | 122 | True |
 | 2026-09-01 | 100.0 | 0.0s | 4.9s | 0 | 0 | 0 | 146 | 146 | 146 | True |
+| 2026-09-02 | 100.0 | 0.0s | 7.9s | 0 | 0 | 0 | 144 | 144 | 144 | True |
 
 ## Answers
-1. Valid patched sessions: **25**.
+1. Valid patched sessions: **26**.
 2/3/4. Freeze semantics are per-session above (timestamp-only vs full-state).
 5. Material-value gaps are per-session (max column).
 6. RANGE_CONFIRMED per model: Legacy vs Value-Progression columns above.
-7/8. Sessions with value RANGE_CONFIRMED > 0: **25** (need >=2 of 3).
+7/8. Sessions with value RANGE_CONFIRMED > 0: **26** (need >=2 of 3).
 9. Paper recording eligible: **YES** (still locked — eligibility is not activation).
 10. Paper signals recorded: **0** (recording stays locked; eligibility only).
 11. Replace production timestamp gate? Only if state is PAPER_RECORDING_ELIGIBLE across sessions AND a human approves; this workflow never replaces it automatically.
