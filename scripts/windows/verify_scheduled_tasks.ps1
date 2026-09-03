@@ -167,9 +167,50 @@ if ($stray) {
     Write-Host ""
 }
 
+# --- can a failure even be investigated afterwards? -------------------------
+#
+# On 2026-09-02 three consecutive fires of two different tasks produced no
+# output at all and returned 3221225786 (STATUS_CONTROL_C_EXIT -- killed). Run
+# by hand twenty minutes later the same task succeeded. Why they died is
+# permanently unknown: this log was disabled at the time, so LastTaskResult --
+# one number, with no context -- was the only evidence there was, and reading a
+# single number that way is what produced a wrong diagnosis the same week.
+#
+# It is enabled now, and what it records is the part that was missing: the
+# launch reason (event 107), the process id (129), the action started (200) and
+# the return code (201), each with a timestamp. That was enough to confirm the
+# finalizer's own fix from the outside -- a 14:42 fire returning 0 in ten
+# seconds having built nothing, then 15:50, 16:20 and 16:50 each taking thirty
+# to fifty seconds of real work.
+#
+# So the check stays: a machine where it is off again is a machine where the
+# next such failure is unexplainable.
+#
+# Reported here rather than fixed here: enabling a Windows log channel needs
+# elevation, and this script deliberately changes nothing.
+$logEnabled = $null
+try {
+    $logEnabled = (Get-WinEvent -ListLog 'Microsoft-Windows-TaskScheduler/Operational' `
+                   -ErrorAction Stop).IsEnabled
+} catch { }
+
+if ($logEnabled -eq $false) {
+    Write-Host "Task Scheduler operational log is DISABLED." -ForegroundColor Yellow
+    Write-Host "  A task that dies leaves only LastTaskResult, with no reason attached."
+    Write-Host "  Enable it once, from an elevated PowerShell:"
+    Write-Host "    wevtutil set-log Microsoft-Windows-TaskScheduler/Operational /enabled:true /maxsize:20971520"
+    Write-Host ""
+} elseif ($null -eq $logEnabled) {
+    Write-Host "Could not read whether the Task Scheduler operational log is enabled." -ForegroundColor Yellow
+    Write-Host ""
+}
+
 # Report each finding as itself. A summary that says "0 drifted" while exiting
 # non-zero is the same kind of lie as a run that says "completed ok" while
 # building nothing.
+#
+# The log being off does not fail the run: nothing has drifted, and a check that
+# cries wolf about a machine setting every day is a check people stop reading.
 $problems = $drift + $strayLive.Count
 if ($problems -eq 0) {
     Write-Host "Every declared task matches what is registered." -ForegroundColor Green
