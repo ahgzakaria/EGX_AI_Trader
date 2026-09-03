@@ -416,3 +416,28 @@ def test_the_installer_reads_the_boundary_rather_than_naming_a_time():
 
     # And it must refuse a trigger that does not clear the boundary.
     assert "does not clear the boundary" in text
+
+
+def test_every_task_the_verifier_declares_has_an_installer():
+    """The verifier names installer files; a rename must not silently unhook one."""
+
+    import re
+    from pathlib import Path
+
+    windows = Path("scripts/windows")
+    text = (windows / "verify_scheduled_tasks.ps1").read_text(encoding="utf-8")
+    declared = re.findall(r'Installer = "([^"]+)"', text)
+
+    assert len(declared) >= 6, f"expected the full task set, found {declared}"
+    missing = [name for name in declared if not (windows / name).is_file()]
+    assert not missing, f"verifier points at installers that do not exist: {missing}"
+
+
+def test_the_verifier_never_reports_an_undetermined_check_as_a_pass():
+    """A check that quietly succeeds when it failed to look is the defect itself."""
+
+    from pathlib import Path
+
+    text = Path("scripts/windows/verify_scheduled_tasks.ps1").read_text(encoding="utf-8")
+    assert '$expect = "UNKNOWN"' in text
+    assert '"UNKNOWN" }' in text, "UNKNOWN must be its own verdict, not folded into OK"

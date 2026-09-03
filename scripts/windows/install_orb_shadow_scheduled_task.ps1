@@ -3,6 +3,22 @@
     Install the ORB Shadow orchestrator as a Windows scheduled task. Research Only.
 
 .DESCRIPTION
+    SUPERSEDED. What actually runs on the production machine is the task
+    'EGX ORB Full Shadow Automation', which invokes
+    scripts\run_daily_orb_automation.ps1 -- a wrapper that performs the feed
+    readiness gate, hands off to this same orchestrator, and then banks the
+    session's microstructure. Install that one with
+    install_orb_full_shadow_task.ps1.
+
+    This script registers only the middle step, under a different task name
+    ('ORB_Shadow_Orchestrator'), and no such task is registered. Running it
+    would leave two ORB automations on one machine racing the same session and
+    the same repository, which is worse than either alone. It refuses to
+    register while the wrapper's task exists.
+
+    Kept because the orchestrator is still runnable on its own for a bare
+    research session with no readiness gate and no banking.
+
     Registers a weekday task that starts the orchestrator shortly before the
     Cairo continuous session. The task starts NOTHING except the orchestrator:
     it never launches Rubix, never touches the collector, and carries no
@@ -46,6 +62,9 @@ param(
     # untouched. Used to enable WakeToRun on a task installed before that
     # setting was added, without re-registering and risking a changed action.
     [switch]$UpdateSettingsOnly,
+    # Register even though 'EGX ORB Full Shadow Automation' already runs this
+    # orchestrator. Deliberate double-running only; see the gate below.
+    [switch]$AllowAlongsideFullShadow,
     [switch]$WhatIfOnly
 )
 
@@ -188,6 +207,18 @@ if ($WhatIfOnly) {
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($existing) {
     throw "Task '$TaskName' already exists. Run remove_orb_shadow_scheduled_task.ps1 first."
+}
+
+# Two ORB automations on one machine would run the same session through the
+# same repository at the same time. This registers the orchestrator alone;
+# 'EGX ORB Full Shadow Automation' registers the wrapper that already calls it.
+$wrapper = Get-ScheduledTask -TaskName "EGX ORB Full Shadow Automation" -ErrorAction SilentlyContinue
+if ($wrapper -and -not $AllowAlongsideFullShadow) {
+    throw ("'EGX ORB Full Shadow Automation' is registered, and it already runs " +
+           "this orchestrator through scripts\run_daily_orb_automation.ps1. " +
+           "Registering '$TaskName' as well would run the session twice. " +
+           "Use install_orb_full_shadow_task.ps1 to manage that task, or pass " +
+           "-AllowAlongsideFullShadow if you genuinely want both.")
 }
 
 $action = New-ScheduledTaskAction `

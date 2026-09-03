@@ -31,6 +31,16 @@ param(
     [Parameter(Mandatory = $true)][string]$RuntimeRoot,
 
     [string]$TaskName = "EGX Rubix Assisted Start",
+    # 09:10 is the start of a timed human procedure, not a slot that can be
+    # slid. RUBIX_ASSISTED_START_RUNBOOK.md: the window opens at 09:10, the
+    # export happens 09:10-09:25, validation lands ~09:15, and the window has
+    # confirmed the feed is advancing before ~09:30 -- half an hour of margin
+    # on the 10:00 open, because what it is waiting for is a person.
+    #
+    # The registered task had been moved to 09:45, leaving fifteen minutes for
+    # a twenty-minute procedure, and nothing compared the two until
+    # verify_scheduled_tasks.ps1 did. The declared value wins here: it is the
+    # one with a documented reason and a test behind it.
     [string]$CairoStartTime = "09:10",
     [string]$LocalStartTimeOverride = "",
     # The user's existing export target, read in place. Overridable for testing
