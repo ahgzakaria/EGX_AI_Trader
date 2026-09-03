@@ -263,6 +263,8 @@ def _backfill(session_date, *, db_path, holidays, now, days, dry_run, compare_on
 
 
 def main(argv=None):
+    import datetime as _dt
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--date")
     ap.add_argument("--db-path")
@@ -273,7 +275,21 @@ def main(argv=None):
                     help="trading days a scheduled run looks back for a session "
                          "it never finalized")
     ap.add_argument("--no-backfill", action="store_true")
+    # Read by scripts/windows/install_rubix_daily_finalizer_task.ps1 so the
+    # scheduled trigger is derived from this boundary rather than copied
+    # alongside it. The installer adds its own margin; this prints the earliest
+    # instant at which a run would do any work.
+    ap.add_argument("--print-ready-time", action="store_true",
+                    help="print the Cairo HH:MM at which today's session becomes "
+                         "finalizable, then exit")
     args = ap.parse_args(argv)
+
+    if args.print_ready_time:
+        today = cairo_now().date()
+        ready = session_close_datetime(today) + _dt.timedelta(
+            minutes=CLOSE_SAFETY_MINUTES)
+        print(ready.strftime("%H:%M"))
+        return 0
 
     from config.settings_manager import settings
     db_path = args.db_path or settings.get("market_data").get(

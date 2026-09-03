@@ -351,3 +351,68 @@ def test_the_boundary_is_named_once_not_carried_in_two_places(tmp_path):
     assert "close_safety_minutes=CLOSE_SAFETY_MINUTES" in source, (
         "a literal here and a literal in the early-exit is how they drift")
     assert rdf.CLOSE_SAFETY_MINUTES == 15
+
+
+# --- the schedule is derived, not copied -------------------------------------
+#
+# The trigger lived in Task Scheduler and the boundary lived here, and no file
+# held both, so nothing could catch a task firing three minutes early.
+# scripts/windows/install_rubix_daily_finalizer_task.ps1 now asks for the
+# boundary instead of being told it. These tests hold the contract it depends
+# on: the flag exists, prints a parseable Cairo HH:MM, and agrees with the
+# boundary the finalizer itself enforces.
+
+def test_the_ready_time_flag_prints_a_parseable_cairo_time(capsys):
+    assert rdf.main(["--print-ready-time"]) == 0
+    printed = capsys.readouterr().out.strip().splitlines()[-1]
+    hour, _, minute = printed.partition(":")
+    assert printed.count(":") == 1
+    assert 0 <= int(hour) <= 23 and 0 <= int(minute) <= 59
+
+
+def test_the_printed_time_is_the_boundary_the_finalizer_enforces(capsys):
+    """The installer adds a margin to this. If it drifts, the margin is a lie."""
+
+    from core.egx_session import cairo_now, session_close_datetime
+
+    rdf.main(["--print-ready-time"])
+    printed = capsys.readouterr().out.strip().splitlines()[-1]
+
+    expected = (session_close_datetime(cairo_now().date())
+                + dt.timedelta(minutes=rdf.CLOSE_SAFETY_MINUTES))
+    assert printed == expected.strftime("%H:%M")
+
+
+def test_printing_the_ready_time_does_no_work(monkeypatch, capsys):
+    """It runs from an installer, which must never trigger a build."""
+
+    def never(*args, **kwargs):
+        raise AssertionError("--print-ready-time started a finalization")
+
+    monkeypatch.setattr(rdf, "finalize_session", never)
+    monkeypatch.setattr(rdf, "_backfill", never)
+    assert rdf.main(["--print-ready-time"]) == 0
+    assert capsys.readouterr().out.strip()
+
+
+def test_the_installer_reads_the_boundary_rather_than_naming_a_time():
+    """A start time typed into the installer is the bug coming back."""
+
+    from pathlib import Path
+
+    text = Path(
+        "scripts/windows/install_rubix_daily_finalizer_task.ps1"
+    ).read_text(encoding="utf-8")
+
+    assert "--print-ready-time" in text, "the installer must ask, not assume"
+    assert "$MarginMinutes" in text, "the margin is what makes the derivation safe"
+
+    # It must take no start-time parameter. One would be a second copy of the
+    # boundary, which is the whole defect: a 14:42 typed next to a 14:45.
+    params = text[:text.index("$ErrorActionPreference")]
+    for forbidden in ("StartTime", "StartAt", "CairoStart", "TriggerTime"):
+        assert forbidden not in params, (
+            "-" + forbidden + " lets a caller retype the boundary")
+
+    # And it must refuse a trigger that does not clear the boundary.
+    assert "does not clear the boundary" in text
