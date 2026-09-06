@@ -149,8 +149,14 @@ if ($orchestratorOnly) {
            "or the session would run twice.")
 }
 
+# -WindowStyle Hidden: every fire of this task opened a console window on the
+# desktop, because a scheduled powershell.exe under an Interactive logon gets a
+# visible console. Across the whole task set that was about twenty-three windows
+# a day, several of them stealing focus mid-session. Hidden reduces it to a brief
+# flash; only a non-interactive principal removes it, and setting one needs
+# elevation.
 $action = New-ScheduledTaskAction -Execute "powershell.exe" `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -File ""$wrapper""" `
+    -Argument "-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File ""$wrapper""" `
     -WorkingDirectory $ProjectRoot
 
 $trigger = New-ScheduledTaskTrigger -Weekly `

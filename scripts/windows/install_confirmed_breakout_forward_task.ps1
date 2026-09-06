@@ -128,9 +128,15 @@ $command = ('$env:PYTHONIOENCODING = "utf-8"; & "{0}" "{1}" 2>&1 | ' +
 $encoded = [Convert]::ToBase64String(
     [System.Text.Encoding]::Unicode.GetBytes($command))
 
+# -WindowStyle Hidden: every fire of this task opened a console window on the
+# desktop, because a scheduled powershell.exe under an Interactive logon gets a
+# visible console. Across the whole task set that was about twenty-three windows
+# a day, several of them stealing focus mid-session. Hidden reduces it to a brief
+# flash; only a non-interactive principal removes it, and setting one needs
+# elevation.
 $action = New-ScheduledTaskAction `
     -Execute "powershell.exe" `
-    -Argument "-NoProfile -NonInteractive -EncodedCommand $encoded" `
+    -Argument "-WindowStyle Hidden -NoProfile -NonInteractive -EncodedCommand $encoded" `
     -WorkingDirectory $root
 
 $days = @("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday")

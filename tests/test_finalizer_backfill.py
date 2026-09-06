@@ -487,3 +487,51 @@ def test_the_verifier_stays_read_only():
                      ).read_text(encoding="utf-8")
     assert "no longer a read-only check" in installer, (
         "the installer must refuse a verifier that grew a mutating call")
+
+
+# --- a comment inside a line continuation ----------------------------------
+#
+# PowerShell parses this and then does not run it:
+#
+#     $action = New-ScheduledTaskAction -Execute "powershell.exe" `
+#         # a comment
+#         -Argument "..."
+#
+# The backtick continuation ends at the comment, so -Argument becomes its own
+# statement and the call fails at runtime with "The term '-Argument' is not
+# recognized". Parser::ParseFile reports no error, which is how I convinced
+# myself six installers were fine after breaking all six -- and the one I ran
+# had already unregistered its task before the failure, so it deleted a task
+# and installed nothing.
+
+def test_no_installer_puts_a_comment_inside_a_line_continuation():
+    from pathlib import Path
+
+    offenders = []
+    for script in sorted(Path("scripts/windows").glob("*.ps1")):
+        lines = script.read_text(encoding="utf-8").splitlines()
+        for n, line in enumerate(lines[:-1]):
+            if line.rstrip().endswith("`") and lines[n + 1].lstrip().startswith("#"):
+                offenders.append(f"{script.name}:{n + 1}")
+    assert not offenders, (
+        "a comment after a backtick ends the continuation; these parse but do "
+        f"not run: {offenders}")
+
+
+def test_the_scheduled_powershell_tasks_do_not_open_a_window():
+    """Every fire opened a console on the desktop -- about twenty-three a day."""
+
+    from pathlib import Path
+
+    windows = Path("scripts/windows")
+    for name in ("install_sector_flow_refresh_task.ps1",
+                 "install_confirmed_breakout_forward_task.ps1",
+                 "install_gap_forward_task.ps1",
+                 "install_rubix_daily_finalizer_task.ps1",
+                 "install_scheduled_tasks_verification_task.ps1",
+                 "install_orb_full_shadow_task.ps1"):
+        text = (windows / name).read_text(encoding="utf-8")
+        argument = [row for row in text.splitlines() if "-Argument" in row]
+        assert argument, name
+        assert any("-WindowStyle Hidden" in row for row in argument), (
+            name + " launches powershell.exe with a visible console")
