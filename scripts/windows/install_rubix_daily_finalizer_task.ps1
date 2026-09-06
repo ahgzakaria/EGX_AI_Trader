@@ -111,8 +111,9 @@ Write-Host "  Retries                : every $RetryEveryMinutes min for $RetryFo
 Write-Host "  Days                   : Sunday-Thursday"
 Write-Host ""
 Write-Host "Task command:"
-Write-Host "  Executable       : $PythonExe"
+Write-Host "  Executable       : powershell.exe -> $PythonExe"
 Write-Host "  Arguments        : ""$finalizerRelative"""
+Write-Host "  Task log         : logs/rubix_daily_finalizer_task.log"
 Write-Host "  Working directory: $ProjectRoot"
 Write-Host ""
 
@@ -125,8 +126,14 @@ if ($WhatIfOnly) {
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($existing) {
     $existingAction = $existing.Actions | Select-Object -First 1
-    $isOurs = ($existingAction.Arguments -match [regex]::Escape("run_rubix_daily_finalizer.py")) -or
-              ($existingAction.Arguments -match [regex]::Escape("rubix_daily_finalizer"))
+    $decoded = "$($existingAction.Arguments)"
+    if ($decoded -match '-EncodedCommand\s+(\S+)') {
+        try {
+            $decoded = [Text.Encoding]::Unicode.GetString(
+                [Convert]::FromBase64String($matches[1]))
+        } catch { }
+    }
+    $isOurs = ($decoded -match [regex]::Escape("run_rubix_daily_finalizer.py"))
     if (-not $isOurs) {
         throw ("A task named '$TaskName' already exists and does NOT invoke " +
                "run_rubix_daily_finalizer.py. Refusing to overwrite an unrelated task.")
@@ -135,8 +142,29 @@ if ($existing) {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
 }
 
-$action = New-ScheduledTaskAction -Execute $PythonExe `
-    -Argument """$finalizerRelative""" -WorkingDirectory $ProjectRoot
+# Capture stdout. The first version of this installer invoked python directly,
+# and it worked -- 2026-09-06 built 205 bars unattended -- but the run's own
+# summary went nowhere. reports\daily_bridge\ records a *successful* build; the
+# JSON on stdout is what carries status, ready_at and too_early_by_minutes, and
+# those matter precisely on the runs that build nothing. The old task got this
+# right through run_ers_stage.ps1 and I dropped it.
+#
+# Encoded because a bare pipeline argument is a quoting hazard, -Encoding utf8
+# because PowerShell 5.1's plain redirection writes UTF-16 that ordinary tools
+# render as gibberish, and PYTHONIOENCODING because a Python process launched by
+# Task Scheduler has no console and mangles non-ASCII on the way out.
+$logDir = Join-Path $ProjectRoot "logs"
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$command = ('$env:PYTHONIOENCODING = "utf-8"; & "{0}" "{1}" 2>&1 | ' +
+            'Out-File -FilePath "{2}" -Append -Encoding utf8') -f
+           $PythonExe, $finalizerRelative,
+           (Join-Path $logDir "rubix_daily_finalizer_task.log")
+$encoded = [Convert]::ToBase64String(
+    [System.Text.Encoding]::Unicode.GetBytes($command))
+
+$action = New-ScheduledTaskAction -Execute "powershell.exe" `
+    -Argument "-NoProfile -NonInteractive -EncodedCommand $encoded" `
+    -WorkingDirectory $ProjectRoot
 
 $trigger = New-ScheduledTaskTrigger -Weekly `
     -DaysOfWeek Sunday, Monday, Tuesday, Wednesday, Thursday -At $StartAt
