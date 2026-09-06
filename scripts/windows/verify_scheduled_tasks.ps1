@@ -62,32 +62,32 @@ $declared = @(
        Installer = "install_rubix_daily_finalizer_task.ps1"
        Invokes = "run_rubix_daily_finalizer.py"
        Expect = "derived"; Margin = 5
-       Limit = "PT2H"; Repeat = "PT30M/PT2H" }
+       Limit = "PT2H"; Repeat = "PT30M/PT2H"; Logon = "S4U" }
 
     @{ Task = "EGX Sector Flow Refresh"
        Installer = "install_sector_flow_refresh_task.ps1"
        Invokes = "refresh_sector_flow.py"
-       Expect = "16:00"; Limit = "PT1H30M"; Repeat = "PT1H/PT6H" }
+       Expect = "16:00"; Limit = "PT1H30M"; Repeat = "PT1H/PT6H"; Logon = "S4U" }
 
     @{ Task = "EGX Confirmed Breakout Forward Test"
        Installer = "install_confirmed_breakout_forward_task.ps1"
        Invokes = "record_confirmed_breakout_forward.py"
-       Expect = "15:00"; Limit = "PT20M"; Repeat = "PT1H/PT7H" }
+       Expect = "15:00"; Limit = "PT20M"; Repeat = "PT1H/PT7H"; Logon = "S4U" }
 
     @{ Task = "EGX Gap Forward Recorder"
        Installer = "install_gap_forward_task.ps1"
        Invokes = "record_gap_forward.py"
-       Expect = "14:40"; Limit = "PT20M"; Repeat = "-" }
+       Expect = "14:40"; Limit = "PT20M"; Repeat = "-"; Logon = "S4U" }
 
     @{ Task = "EGX Rubix Assisted Start"
        Installer = "install_rubix_assisted_start_task.ps1"
        Invokes = "run_rubix_assisted_start.py"
-       Expect = "09:10"; Limit = "PT1H"; Repeat = "-" }
+       Expect = "09:10"; Limit = "PT1H"; Repeat = "-"; Logon = "Interactive" }
 
     @{ Task = "EGX ORB Full Shadow Automation"
        Installer = "install_orb_full_shadow_task.ps1"
        Invokes = "run_daily_orb_automation.ps1"
-       Expect = "09:45"; Limit = "PT7H"; Repeat = "-" }
+       Expect = "09:45"; Limit = "PT7H"; Repeat = "-"; Logon = "S4U" }
 
     # This script, run daily at 09:00 ahead of the 09:10 assisted start. It is
     # in its own table for two reasons: an undeclared task is reported, so a
@@ -97,7 +97,7 @@ $declared = @(
     @{ Task = "EGX Scheduled Tasks Verification"
        Installer = "install_scheduled_tasks_verification_task.ps1"
        Invokes = "verify_scheduled_tasks.ps1"
-       Expect = "09:00"; Limit = "PT10M"; Repeat = "-" }
+       Expect = "09:00"; Limit = "PT10M"; Repeat = "-"; Logon = "S4U" }
 )
 
 function Get-TaskAction {
@@ -162,6 +162,15 @@ foreach ($d in $declared) {
         } else { "-" }
         if ($d.Repeat -and $repeat -ne $d.Repeat) {
             $status += "repeats $repeat, declared $($d.Repeat)"
+        }
+
+        # S4U is what keeps these off the desktop. Registering without an
+        # elevated shell silently falls back to Interactive, which is a black
+        # console on every fire -- about twenty-three a day across the set --
+        # and nothing else would report the difference.
+        $logon = "$($task.Principal.LogonType)"
+        if ($d.Logon -and $logon -ne $d.Logon) {
+            $status += "runs as $logon, declared $($d.Logon)"
         }
     }
 

@@ -138,7 +138,6 @@ if ($existing) {
                "run_daily_orb_automation.ps1. Refusing to overwrite an unrelated task.")
     }
     Write-Host "  Existing ORB automation task found; it will be replaced." -ForegroundColor Yellow
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
 }
 
 # --- Gate 5: refuse to stack two ORB automations -----------------------------
@@ -155,6 +154,39 @@ if ($orchestratorOnly) {
 # a day, several of them stealing focus mid-session. Hidden reduces it to a brief
 # flash; only a non-interactive principal removes it, and setting one needs
 # elevation.
+# Register with S4U, and fall back to Interactive if that is refused.
+#
+# The fallback has to wrap *this* call, not New-ScheduledTaskPrincipal: building
+# an S4U principal object always succeeds, and only the registration is denied
+# without elevation. My first attempt caught the wrong one, so a normal run got
+# past the try and failed here.
+#
+# -Force replaces in one step. This script used to Unregister first and then
+# register, which means any failure in between left the task deleted and
+# nothing installed -- exactly what happened when the S4U registration was
+# denied, twice.
+function Register-TaskPreferringS4U {
+    param($TaskName, $Action, $Trigger, $Settings, $Identity, $Description)
+
+    $s4u = New-ScheduledTaskPrincipal -UserId $Identity -LogonType S4U -RunLevel Limited
+    try {
+        # -ErrorAction Stop, or the catch never fires: Register-ScheduledTask
+        # reports "Access is denied" as a non-terminating error, so without this
+        # the fallback is skipped and the S4U path is reported as a success it
+        # did not achieve.
+        Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger `
+            -Principal $s4u -Settings $Settings -Description $Description -Force `
+            -ErrorAction Stop | Out-Null
+        return "S4U (no console window)"
+    } catch {
+        $interactive = New-ScheduledTaskPrincipal -UserId $Identity `
+            -LogonType Interactive -RunLevel Limited
+        Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger `
+            -Principal $interactive -Settings $Settings -Description $Description -Force | Out-Null
+        return "Interactive -- a console flashes on every fire; S4U needs an elevated shell"
+    }
+}
+
 $action = New-ScheduledTaskAction -Execute "powershell.exe" `
     -Argument "-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File ""$wrapper""" `
     -WorkingDirectory $ProjectRoot
@@ -162,9 +194,14 @@ $action = New-ScheduledTaskAction -Execute "powershell.exe" `
 $trigger = New-ScheduledTaskTrigger -Weekly `
     -DaysOfWeek Sunday, Monday, Tuesday, Wednesday, Thursday -At $StartTime
 
-$principal = New-ScheduledTaskPrincipal `
-    -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) `
-    -LogonType Interactive -RunLevel Limited
+# S4U, so this runs without a desktop and opens no console window. Interactive
+# is the fallback, not the intent: every fire under it put a black window on the
+# screen, and across the whole task set that was roughly twenty-three a day.
+#
+# S4U needs elevation to set, so a normal run cannot have it and must say so
+# rather than quietly registering the noisy version. -WindowStyle Hidden on the
+# action keeps that fallback down to a flash.
+$identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 
 # No repetition: this one runs for hours and waits for the open itself, so a
 # second fire would collide with a live session rather than recover a missed
@@ -175,10 +212,12 @@ $settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
     -DontStopOnIdleEnd -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 
-Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
-    -Principal $principal -Settings $settings `
+$principalNote = Register-TaskPreferringS4U `
+    -TaskName $TaskName -Action $action -Trigger $trigger `
+    -Settings $settings -Identity $identity `
     -Description ("ORB full shadow session: readiness gate, orchestrator, " +
-                  "microstructure banking. Research only -- places no order.") | Out-Null
+                  "microstructure banking. Research only -- places no order.")
+Write-Host "  Principal        : $principalNote"
 
 Write-Host "Registered scheduled task '$TaskName'." -ForegroundColor Green
 Write-Host "  Requires a logged-in interactive session; no password is stored."

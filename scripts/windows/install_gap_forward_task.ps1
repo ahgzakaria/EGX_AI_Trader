@@ -96,6 +96,39 @@ $encoded = [Convert]::ToBase64String(
 # a day, several of them stealing focus mid-session. Hidden reduces it to a brief
 # flash; only a non-interactive principal removes it, and setting one needs
 # elevation.
+# Register with S4U, and fall back to Interactive if that is refused.
+#
+# The fallback has to wrap *this* call, not New-ScheduledTaskPrincipal: building
+# an S4U principal object always succeeds, and only the registration is denied
+# without elevation. My first attempt caught the wrong one, so a normal run got
+# past the try and failed here.
+#
+# -Force replaces in one step. This script used to Unregister first and then
+# register, which means any failure in between left the task deleted and
+# nothing installed -- exactly what happened when the S4U registration was
+# denied, twice.
+function Register-TaskPreferringS4U {
+    param($TaskName, $Action, $Trigger, $Settings, $Identity, $Description)
+
+    $s4u = New-ScheduledTaskPrincipal -UserId $Identity -LogonType S4U -RunLevel Limited
+    try {
+        # -ErrorAction Stop, or the catch never fires: Register-ScheduledTask
+        # reports "Access is denied" as a non-terminating error, so without this
+        # the fallback is skipped and the S4U path is reported as a success it
+        # did not achieve.
+        Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger `
+            -Principal $s4u -Settings $Settings -Description $Description -Force `
+            -ErrorAction Stop | Out-Null
+        return "S4U (no console window)"
+    } catch {
+        $interactive = New-ScheduledTaskPrincipal -UserId $Identity `
+            -LogonType Interactive -RunLevel Limited
+        Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger `
+            -Principal $interactive -Settings $Settings -Description $Description -Force | Out-Null
+        return "Interactive -- a console flashes on every fire; S4U needs an elevated shell"
+    }
+}
+
 $action = New-ScheduledTaskAction `
     -Execute "powershell.exe" `
     -Argument "-WindowStyle Hidden -NoProfile -NonInteractive -EncodedCommand $encoded" `
@@ -104,9 +137,14 @@ $action = New-ScheduledTaskAction `
 $trigger = New-ScheduledTaskTrigger -Weekly `
     -DaysOfWeek Sunday, Monday, Tuesday, Wednesday, Thursday -At $StartTime
 
-$principal = New-ScheduledTaskPrincipal `
-    -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) `
-    -LogonType Interactive -RunLevel Limited
+# S4U, so this runs without a desktop and opens no console window. Interactive
+# is the fallback, not the intent: every fire under it put a black window on the
+# screen, and across the whole task set that was roughly twenty-three a day.
+#
+# S4U needs elevation to set, so a normal run cannot have it and must say so
+# rather than quietly registering the noisy version. -WindowStyle Hidden on the
+# action keeps that fallback down to a flash.
+$identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 
 $settings = New-ScheduledTaskSettingsSet `
     -MultipleInstances IgnoreNew `
@@ -128,11 +166,13 @@ if ($WhatIfOnly) {
     return
 }
 
-Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
-    -Principal $principal -Settings $settings -Force `
+$principalNote = Register-TaskPreferringS4U `
+    -TaskName $TaskName -Action $action -Trigger $trigger `
+    -Settings $settings -Identity $identity `
     -Description ("Records the daily EGX overnight-gap prediction and grades " +
                   "the previous session. Read-only over market data; appends " +
-                  "to a research store. Places no orders.") | Out-Null
+                  "to a research store. Places no orders.")
+Write-Host "  Principal        : $principalNote"
 
 Write-Host ""
 Write-Host "Registered '$TaskName'." -ForegroundColor Green
