@@ -143,6 +143,13 @@ $encoded = [Convert]::ToBase64String(
 # elevation.
 # Register with S4U, and fall back to Interactive if that is refused.
 #
+# Changing a principal terminates a running instance. On 2026-09-06 the elevated
+# one-liner that moved six tasks to S4U was run while the sector refresh was
+# fifty minutes into a full rebuild; Task Scheduler logged the update at 16:30:55
+# and the kill at 16:32:53, return code 3221225786. The run left no OK and no
+# FAILED, because nothing failed -- it was shot. Check State before changing a
+# principal, or do it outside the schedule.
+#
 # The fallback has to wrap *this* call, not New-ScheduledTaskPrincipal: building
 # an S4U principal object always succeeds, and only the registration is denied
 # without elevation. My first attempt caught the wrong one, so a normal run got
