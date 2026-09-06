@@ -50,36 +50,44 @@ if (-not $PythonExe) { $PythonExe = Join-Path $ProjectRoot "venv\Scripts\python.
 # What this repository claims should exist. `Expect` is the Cairo start time;
 # 'derived' means the owning script is asked for it, the way the finalizer's
 # installer does, so this table cannot become a second copy of that boundary.
+# `Limit` is ExecutionTimeLimit and `Repeat` is Interval/Duration, both as Task
+# Scheduler writes them. They are here because the trigger time is not the only
+# setting a fix can depend on: the finalizer's PT30M/PT2H repetition is half of
+# why its candle now gets built the same day, and losing it would restore the
+# one-shot failure while the start time still read 14:50 and looked correct.
+# The assisted start's limit was two hours and is now one, which is exactly the
+# kind of edit that lands on the machine and never reaches the repository.
 $declared = @(
     @{ Task = "EGX Rubix Daily Finalizer"
        Installer = "install_rubix_daily_finalizer_task.ps1"
        Invokes = "run_rubix_daily_finalizer.py"
-       Expect = "derived"; Margin = 5 }
+       Expect = "derived"; Margin = 5
+       Limit = "PT2H"; Repeat = "PT30M/PT2H" }
 
     @{ Task = "EGX Sector Flow Refresh"
        Installer = "install_sector_flow_refresh_task.ps1"
        Invokes = "refresh_sector_flow.py"
-       Expect = "16:00" }
+       Expect = "16:00"; Limit = "PT1H30M"; Repeat = "PT1H/PT6H" }
 
     @{ Task = "EGX Confirmed Breakout Forward Test"
        Installer = "install_confirmed_breakout_forward_task.ps1"
        Invokes = "record_confirmed_breakout_forward.py"
-       Expect = "15:00" }
+       Expect = "15:00"; Limit = "PT20M"; Repeat = "PT1H/PT7H" }
 
     @{ Task = "EGX Gap Forward Recorder"
        Installer = "install_gap_forward_task.ps1"
        Invokes = "record_gap_forward.py"
-       Expect = "14:40" }
+       Expect = "14:40"; Limit = "PT20M"; Repeat = "-" }
 
     @{ Task = "EGX Rubix Assisted Start"
        Installer = "install_rubix_assisted_start_task.ps1"
        Invokes = "run_rubix_assisted_start.py"
-       Expect = "09:10" }
+       Expect = "09:10"; Limit = "PT1H"; Repeat = "-" }
 
     @{ Task = "EGX ORB Full Shadow Automation"
        Installer = "install_orb_full_shadow_task.ps1"
        Invokes = "run_daily_orb_automation.ps1"
-       Expect = "09:45" }
+       Expect = "09:45"; Limit = "PT7H"; Repeat = "-" }
 )
 
 function Get-TaskAction {
@@ -132,6 +140,18 @@ foreach ($d in $declared) {
         }
         if ((Get-TaskAction $task) -notmatch [regex]::Escape($d.Invokes)) {
             $status += "does not invoke $($d.Invokes)"
+        }
+
+        $limit = "$($task.Settings.ExecutionTimeLimit)"
+        if ($d.Limit -and $limit -ne $d.Limit) {
+            $status += "time limit $limit, declared $($d.Limit)"
+        }
+
+        $repeat = if ($trigger.Repetition.Interval) {
+            "$($trigger.Repetition.Interval)/$($trigger.Repetition.Duration)"
+        } else { "-" }
+        if ($d.Repeat -and $repeat -ne $d.Repeat) {
+            $status += "repeats $repeat, declared $($d.Repeat)"
         }
     }
 

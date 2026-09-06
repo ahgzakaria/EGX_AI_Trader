@@ -42,7 +42,12 @@ param(
     [string]$CairoStartTime = "09:45",
     [string]$LocalStartTimeOverride = "",
 
-    [int]$MaxRuntimeHours = 8,
+    # 7, which is what the registered task carries. I wrote 8 here when this
+    # installer was new, for no reason beyond it being a round number larger
+    # than the session; the registered value is the one with a history of
+    # working. From a 09:45 start it reaches 16:45, and 2026-09-06's full run
+    # took four and a half hours.
+    [int]$MaxRuntimeHours = 7,
     [switch]$WhatIfOnly
 )
 
