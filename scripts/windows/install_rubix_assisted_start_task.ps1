@@ -46,7 +46,18 @@ param(
     # The user's existing export target, read in place. Overridable for testing
     # or a future relocation; the production default never changes.
     [string]$AuthFramePath = "C:\secure-temp\rubix-price-auth-frame.txt",
-    [int]$MaxRuntimeHours = 2,
+    # One hour, not two. The runbook's procedure is over by ~09:30 -- window
+    # opens 09:10, export by 09:25, feed confirmed before 09:30 -- so from a
+    # 09:10 start this still leaves forty minutes of slack past the end of the
+    # work and ten past the 10:00 open, which is the last moment starting the
+    # collector is any use. Two hours meant an abandoned window sat on the
+    # desktop until 11:30 and then died with 2147943691, an error code for
+    # nothing having gone wrong.
+    #
+    # Safe to shorten: the supervisor is spawned CREATE_NEW_PROCESS_GROUP and
+    # outlives the window. Observed on 2026-09-06 -- the window was killed at
+    # its limit at 11:30 and the collector kept writing quotes until 14:30.
+    [int]$MaxRuntimeHours = 1,
     [switch]$EnableAutoStart,
     [switch]$WhatIfOnly
 )
