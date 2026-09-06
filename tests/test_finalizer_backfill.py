@@ -441,3 +441,49 @@ def test_the_verifier_never_reports_an_undetermined_check_as_a_pass():
     text = Path("scripts/windows/verify_scheduled_tasks.ps1").read_text(encoding="utf-8")
     assert '$expect = "UNKNOWN"' in text
     assert '"UNKNOWN" }' in text, "UNKNOWN must be its own verdict, not folded into OK"
+
+
+# --- the daily check has to log what it found ------------------------------
+#
+# Its first captured run logged the comparison table and nothing else. The
+# header, the undeclared-task block and the closing verdict all go through
+# Write-Host, which does not travel down a 2>&1 pipe -- so the one part that
+# always looks fine survived and every finding was dropped.
+
+def test_the_verification_task_captures_every_stream():
+    from pathlib import Path
+
+    text = Path("scripts/windows/install_scheduled_tasks_verification_task.ps1"
+                ).read_text(encoding="utf-8")
+    command = text.partition("$command = ")[2].partition("$encoded")[0]
+    assert "*>&1" in command, "Write-Host output is lost without *>&1"
+    assert "2>&1" not in command, "2>&1 drops the findings and keeps the table"
+    assert "exit $rc" in command, "the verdict must reach the log and the task result"
+
+
+def test_the_verifier_declares_itself():
+    """An undeclared task is reported, so a checker missing from its own list
+    would flag itself every morning until people stopped reading it."""
+
+    from pathlib import Path
+
+    text = Path("scripts/windows/verify_scheduled_tasks.ps1").read_text(encoding="utf-8")
+    assert "EGX Scheduled Tasks Verification" in text
+    assert "install_scheduled_tasks_verification_task.ps1" in text
+
+
+def test_the_verifier_stays_read_only():
+    """It is scheduled unattended against the whole task set."""
+
+    from pathlib import Path
+
+    verifier = Path("scripts/windows/verify_scheduled_tasks.ps1").read_text(encoding="utf-8")
+    for forbidden in ("Register-ScheduledTask", "Unregister-ScheduledTask",
+                      "Set-ScheduledTask", "Start-ScheduledTask"):
+        assert forbidden not in verifier, (
+            forbidden + " would make the 09:00 check change things unattended")
+
+    installer = Path("scripts/windows/install_scheduled_tasks_verification_task.ps1"
+                     ).read_text(encoding="utf-8")
+    assert "no longer a read-only check" in installer, (
+        "the installer must refuse a verifier that grew a mutating call")

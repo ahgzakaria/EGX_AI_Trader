@@ -88,6 +88,16 @@ $declared = @(
        Installer = "install_orb_full_shadow_task.ps1"
        Invokes = "run_daily_orb_automation.ps1"
        Expect = "09:45"; Limit = "PT7H"; Repeat = "-" }
+
+    # This script, run daily at 09:00 ahead of the 09:10 assisted start. It is
+    # in its own table for two reasons: an undeclared task is reported, so a
+    # checker missing from its own list would flag itself every morning until
+    # people stopped reading it; and a check that silently stops running looks
+    # exactly like a check that keeps passing.
+    @{ Task = "EGX Scheduled Tasks Verification"
+       Installer = "install_scheduled_tasks_verification_task.ps1"
+       Invokes = "verify_scheduled_tasks.ps1"
+       Expect = "09:00"; Limit = "PT10M"; Repeat = "-" }
 )
 
 function Get-TaskAction {
