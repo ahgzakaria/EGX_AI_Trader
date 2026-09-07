@@ -41,12 +41,24 @@ METADATA_TABLE = "measured_turnover_metadata"
 #: than load turnover out of the volume column.
 REQUIRED_COLUMNS = ("Symbol", "Date Range", "Volume", "Turnover")
 
+#: Also imported, for the symbols the daily provider has nothing at all for.
+#: Split-adjusted and not dividend-adjusted, so a return spanning an ex-date
+#: shows a drop that was a payment rather than a loss. Across 1,353 dividends
+#: in 746,434 sessions that is 0.18% of bars, which is acceptable for counting
+#: advancers and decliners and is not acceptable for anything cumulative --
+#: which is why nothing here reaches an indicator or a backtest.
+PRICE_COLUMNS = {"Open": "open", "High": "high", "Low": "low", "Closed": "close"}
+
 SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS {TABLE} (
     ticker TEXT NOT NULL,
     session_date TEXT NOT NULL,
     turnover REAL NOT NULL,
     volume REAL,
+    open REAL,
+    high REAL,
+    low REAL,
+    close REAL,
     PRIMARY KEY (ticker, session_date)
 );
 CREATE TABLE IF NOT EXISTS {METADATA_TABLE} (
@@ -76,12 +88,16 @@ def read_export(path):
     turnover = pd.to_numeric(frame["Turnover"], errors="coerce")
     volume = pd.to_numeric(frame["Volume"], errors="coerce")
 
-    tidy = pd.DataFrame({
+    columns = {
         "ticker": frame["Symbol"].astype(str).str.strip().str.upper(),
         "session_date": session.dt.strftime("%Y-%m-%d"),
         "turnover": turnover,
         "volume": volume,
-    })
+    }
+    for source, stored_as in PRICE_COLUMNS.items():
+        columns[stored_as] = (pd.to_numeric(frame[source], errors="coerce")
+                              if source in frame.columns else float("nan"))
+    tidy = pd.DataFrame(columns)
     tidy = tidy[tidy["session_date"].notna() & (tidy["turnover"] > 0)]
     # One export per symbol, but a terminal that repeats a session would
     # otherwise decide which row wins by insertion order.
@@ -120,8 +136,12 @@ def import_directory(directory, database=DEFAULT_DATABASE, suffix=".CA"):
 
     Path(database).parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(database) as connection:
+        # Dropped, not emptied. CREATE TABLE IF NOT EXISTS leaves an existing
+        # table's columns alone, so a store written before this file carried
+        # prices survives the import and then rejects every row with "no column
+        # named open". The import replaces the contents anyway.
+        connection.execute(f"DROP TABLE IF EXISTS {TABLE}")
         connection.executescript(SCHEMA)
-        connection.execute(f"DELETE FROM {TABLE}")
         stored.to_sql(TABLE, connection, if_exists="append", index=False)
 
     metadata = {
@@ -266,3 +286,62 @@ def foreign_quoted_symbols(directory, tolerance=FX_QUOTE_TOLERANCE,
         if ratio == ratio and abs(ratio - 1.0) > tolerance:
             found[path.stem.upper()] = ratio
     return found
+
+
+def frame_for(ticker, database=DEFAULT_DATABASE):
+    """Return a daily frame for one ticker, or ``None``.
+
+    For the symbols the daily provider returns nothing for. Four of them --
+    ACGC, NCCW, JUFO, EDBM -- are UNAVAILABLE in every coverage report this
+    project has produced, so they contribute nothing to any sector's turnover
+    and appear in no scan, while this export holds 5,527, 4,769, 3,851 and
+    3,811 sessions for them going back to 2003.
+
+    The frame carries a real Turnover column, so nothing downstream needs to
+    estimate one from these prices.
+    """
+
+    if not Path(database).exists():
+        return None
+    try:
+        with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+            rows = pd.read_sql(
+                f"SELECT session_date, open, high, low, close, volume, turnover "
+                f"FROM {TABLE} WHERE ticker=? ORDER BY session_date",
+                connection, params=(str(ticker).upper(),))
+    except Exception:
+        return None
+    if rows.empty or rows["close"].notna().sum() == 0:
+        return None
+
+    frame = pd.DataFrame({
+        "Open": rows["open"], "High": rows["high"], "Low": rows["low"],
+        "Close": rows["close"], "Volume": rows["volume"],
+        "Turnover": rows["turnover"],
+    })
+    frame.index = pd.to_datetime(rows["session_date"])
+    frame.index.name = "Date"
+    frame.attrs["market_data"] = {
+        "effective_provider": "mubasher_export",
+        "automatic_use_permitted": False,   # records only; never an entry
+        "freshness_status": "MEASURED_EXPORT",
+    }
+    return frame.dropna(subset=["Close"])
+
+
+def fill_missing_volume(frame, ticker, database=DEFAULT_DATABASE):
+    """Fill only the volumes the provider left empty. Prices are never touched."""
+
+    if frame is None or getattr(frame, "empty", True) or "Volume" not in frame:
+        return frame
+    supplement = frame_for(ticker, database)
+    if supplement is None:
+        return frame
+    keys = pd.Series(pd.to_datetime(frame.index, errors="coerce")).dt.strftime("%Y-%m-%d")
+    lookup = dict(zip(supplement.index.strftime("%Y-%m-%d"), supplement["Volume"]))
+    filled = frame.copy()
+    missing = pd.to_numeric(filled["Volume"], errors="coerce").isna()
+    if missing.any():
+        values = keys.map(lookup).to_numpy()
+        filled.loc[missing.to_numpy(), "Volume"] = values[missing.to_numpy()]
+    return filled

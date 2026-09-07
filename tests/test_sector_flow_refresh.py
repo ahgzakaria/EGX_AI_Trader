@@ -483,3 +483,73 @@ def test_the_detector_separates_a_currency_from_a_split():
     assert "since" in source, (
         "judged over all history a 25-for-1 split looks foreign too; ASPI sits "
         "at 0.040 before 2021-10-11 and 1.000 after, with the close continuous")
+
+
+# --- symbols the provider has nothing for ------------------------------------
+#
+# ACGC, NCCW, JUFO and EDBM are UNAVAILABLE in every coverage report this
+# project has produced: zero bars, no contribution to any sector's turnover, in
+# no scan. The export holds 5,527, 4,769, 3,851 and 3,811 sessions for them,
+# going back to 2003.
+
+def test_a_symbol_the_provider_cannot_serve_comes_from_the_export(tmp_path):
+    import sqlite3 as sql
+
+    from sector_flow import measured_turnover as store
+
+    database = str(tmp_path / "measured.db")
+    with sql.connect(database) as connection:
+        connection.executescript(store.SCHEMA)
+        connection.executemany(
+            f"INSERT INTO {store.TABLE} "
+            "(ticker, session_date, turnover, volume, open, high, low, close) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            [("ACGC.CA", "2003-11-03", 5000.0, 100.0, 1.0, 1.2, 0.9, 1.1),
+             ("ACGC.CA", "2003-11-04", 6000.0, 120.0, 1.1, 1.3, 1.0, 1.2)])
+
+    frame = store.frame_for("ACGC.CA", database)
+    assert frame is not None and len(frame) == 2
+    assert list(frame.columns) == ["Open", "High", "Low", "Close", "Volume", "Turnover"]
+    assert frame.attrs["market_data"]["effective_provider"] == "mubasher_export"
+    assert frame.attrs["market_data"]["automatic_use_permitted"] is False, (
+        "these prices are not dividend-adjusted; they describe turnover and "
+        "must never become an entry")
+
+
+def test_the_export_is_only_a_fallback_not_a_replacement():
+    """The provider is asked first; this answers when it has nothing at all."""
+
+    import inspect
+
+    from sector_flow import builder
+
+    source = inspect.getsource(builder.load_universe_frames)
+    body = source.partition("except Exception as error:")[2]
+    assert "measured_frame(symbol)" in body, "the fallback belongs on the failure path"
+    assert source.index("load_history") < source.index("measured_frame")
+
+
+def test_volume_is_filled_only_where_the_provider_left_it_empty(tmp_path):
+    """Prices are never touched: they are not dividend-adjusted."""
+
+    import sqlite3 as sql
+
+    from sector_flow import measured_turnover as store
+
+    database = str(tmp_path / "measured.db")
+    with sql.connect(database) as connection:
+        connection.executescript(store.SCHEMA)
+        connection.execute(
+            f"INSERT INTO {store.TABLE} "
+            "(ticker, session_date, turnover, volume, open, high, low, close) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            ("COMI.CA", "2026-09-06", 1.0, 777.0, 9.0, 9.0, 9.0, 9.0))
+
+    frame = pd.DataFrame(
+        {"Close": [50.0, 50.0], "Volume": [float("nan"), 111.0]},
+        index=pd.to_datetime(["2026-09-06", "2026-09-07"]))
+    filled = store.fill_missing_volume(frame, "COMI.CA", database)
+
+    assert filled["Volume"].iloc[0] == 777.0, "the empty one is filled"
+    assert filled["Volume"].iloc[1] == 111.0, "the provider's own value stands"
+    assert list(filled["Close"]) == [50.0, 50.0], "prices are never touched"

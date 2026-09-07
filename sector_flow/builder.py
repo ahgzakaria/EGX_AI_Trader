@@ -32,7 +32,11 @@ from sector_flow.history import (
 
 
 from core.symbols import foreign_quoted_symbols
-from sector_flow.measured_turnover import attach as attach_measured_turnover
+from sector_flow.measured_turnover import (
+    attach as attach_measured_turnover,
+    fill_missing_volume,
+    frame_for as measured_frame,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,18 +82,35 @@ def load_universe_frames(symbols, sector_map, purpose=DEFAULT_PURPOSE,
                     allow_held=True,
                 )
             except Exception as error:  # provider faults must not abort the batch
-                logger.warning("sector flow: %s unavailable (%s)", symbol, error)
-                outcomes.append({
-                    "Ticker": symbol, "Sector": sector, "Status": "UNAVAILABLE",
-                    "Provider": None, "Bars": 0, "Detail": str(error),
-                })
-                continue
+                # Before recording it unavailable, ask the export. Four symbols
+                # -- ACGC, NCCW, JUFO, EDBM -- have been UNAVAILABLE in every
+                # coverage report this project has produced, contributing
+                # nothing to any sector's turnover, while the export holds
+                # 5,527, 4,769, 3,851 and 3,811 sessions for them back to 2003.
+                #
+                # Those frames carry a real Turnover column, so nothing has to
+                # estimate one from prices that are not dividend-adjusted, and
+                # they are marked automatic_use_permitted=False: they describe
+                # where turnover went and must never become an entry.
+                frame = measured_frame(symbol)
+                if frame is None:
+                    logger.warning("sector flow: %s unavailable (%s)", symbol, error)
+                    outcomes.append({
+                        "Ticker": symbol, "Sector": sector, "Status": "UNAVAILABLE",
+                        "Provider": None, "Bars": 0, "MeasuredTurnoverBars": 0,
+                        "Detail": str(error),
+                    })
+                    continue
+                logger.info("sector flow: %s served from the measured export "
+                            "(%s bars)", symbol, len(frame))
 
             metadata = frame.attrs.get("market_data", {})
             # Where the exchange's own turnover is on hand, use it instead of
             # deriving one from price and volume. Enrichment only: a symbol or
             # a session the store does not cover keeps the estimate, and a
             # machine with no store at all builds exactly as before.
+            # Volume only where the provider left it empty; prices untouched.
+            frame = fill_missing_volume(frame, symbol)
             frame = attach_measured_turnover(frame, symbol)
             measured = int(frame["Turnover"].gt(0).sum()) if "Turnover" in frame else 0
             frames[symbol] = frame
