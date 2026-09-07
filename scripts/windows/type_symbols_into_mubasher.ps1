@@ -43,9 +43,15 @@ param(
     [int]$First = 0,
     [int]$Skip  = 0,
 
-    # Between keystrokes. Too fast and the dialog's own lookup drops entries;
-    # this is a search box that queries as you type.
-    [int]$DelayMs = 180,
+    # After typing a symbol, before Enter. This is a live-search combo: it
+    # queries as you type and Enter only commits once a result has resolved.
+    # At 180 ms the first run produced "WDYTALMTANMTAQATMGHTRTOTWSAT" in the box
+    # and "Stocks(0) No Results" in the dropdown -- symbols concatenated because
+    # Enter had nothing to commit and the field was never cleared.
+    [int]$DelayMs = 700,
+
+    # After Enter, before the next symbol.
+    [int]$CommitMs = 350,
 
     # Seconds to focus the "Add symbol to export" field before typing starts.
     [int]$CountdownSeconds = 8,
@@ -94,7 +100,7 @@ Write-Host ""
 Write-Host "  Source   : $SymbolFile"
 Write-Host "  Symbols  : $($symbols.Count)"
 Write-Host "  Commit   : $Commit"
-Write-Host "  Pace     : $DelayMs ms  (about $([math]::Round($symbols.Count * ($DelayMs + 120) / 1000.0)) s total)"
+Write-Host "  Pace     : $DelayMs ms lookup + $CommitMs ms commit  (about $([math]::Round($symbols.Count * ($DelayMs + $CommitMs + 40) / 1000.0)) s total)"
 Write-Host ""
 
 if ($WhatIfOnly) {
@@ -115,14 +121,22 @@ Write-Host "`r  typing.            "
 
 $done = 0
 foreach ($symbol in $symbols) {
+    # Select-all first, so this symbol replaces whatever is in the box rather
+    # than appending to it. Without it one failed commit corrupts every symbol
+    # after it: the field kept accumulating letters until it matched nothing at
+    # all, and the run silently degraded from "some symbols missing" to "no
+    # symbols at all, plus a nonsense string".
+    [System.Windows.Forms.SendKeys]::SendWait("^a")
+    Start-Sleep -Milliseconds 40
+
     [System.Windows.Forms.SendKeys]::SendWait($symbol)
-    Start-Sleep -Milliseconds $DelayMs          # let the lookup catch up
+    Start-Sleep -Milliseconds $DelayMs          # let the lookup resolve
     if ($Commit -eq "TabEnter") {
         [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
         Start-Sleep -Milliseconds 60
     }
     [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
-    Start-Sleep -Milliseconds 120
+    Start-Sleep -Milliseconds $CommitMs
 
     $done++
     if ($done % 20 -eq 0) {
@@ -139,3 +153,5 @@ Write-Host "    - set the output path, then press Export yourself"
 Write-Host ""
 Write-Host "  If entries are missing, re-run with -Skip <count already in> and a" -ForegroundColor Yellow
 Write-Host "  larger -DelayMs. The search field is the bottleneck, not the typing."
+Write-Host "  Each symbol now replaces the box rather than appending, so a failed" -ForegroundColor Yellow
+Write-Host "  one costs that symbol and nothing after it."
