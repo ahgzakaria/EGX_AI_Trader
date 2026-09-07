@@ -631,6 +631,13 @@ def get_current_research_history(symbol, *, period="10y", interval="1d", min_bar
             # either way so nothing downstream reads it as uniformly adjusted.
             series = "SPLIT_ADJUSTED_PLUS_RUBIX_RAW_TAIL"
             provider = "eodhd_plus_rubix"
+            # A tail that came from the measured export says so. It is the
+            # exchange's official auction close rather than one built from
+            # minutes this project captured, and the two differ by 0.15% at the
+            # median. Reporting it as `eodhd_plus_rubix` would make a second
+            # source invisible in the provenance every consumer reads.
+            if bridge_md.get("bridge_supplements"):
+                provider = "eodhd_plus_rubix_plus_export"
 
         effective = pd.Timestamp(frame.index[-1]).date()
         fresh = _freshness(effective, expected)

@@ -31,6 +31,23 @@ from core.daily_bridge.schema import FINAL, FINAL_CONTINUOUS, RUBIX_DERIVED
 
 FROZEN_YAHOO_SEED = "FROZEN_YAHOO_SEED"
 RUBIX_DAILY_BRIDGE = "RUBIX_DAILY_BRIDGE"
+
+#: The second supplier of the same tail, used only where the first has nothing.
+#:
+#: On 2026-09-07 the collector stopped eight minutes into the session, no Rubix
+#: bar could be built from 29 captured minutes, and every symbol fell back to
+#: plain EODHD: `eodhd_plus_rubix` went from 187 of 222 symbols the session
+#: before to zero, and the history stopped a day short of the last completed
+#: session. The tail is not a nicety; on a normal day most symbols depend on it.
+#:
+#: Deliberately second. Rubix's close is built from minutes this project
+#: captured itself; the export's is the exchange's official auction close.
+#: Measured on 2026-09-06, where both exist for 7 comparable symbols, volume
+#: agrees exactly (ratio 1.0000, all within 5%) and the closes differ by 0.15%
+#: at the median and 0.91% at worst. Neither is wrong -- they are different
+#: measurements -- so the one this project can account for end to end goes
+#: first, and this fills only what it leaves empty.
+MUBASHER_EXPORT_BRIDGE = "MUBASHER_EXPORT_BRIDGE"
 CONTRACT_COLUMNS = ["Open", "High", "Low", "Close", "Adj Close", "Volume"]
 
 _PRICE_TOL = 1e-4    # relative tolerance when checking a bridge bar against a seed bar
@@ -110,7 +127,8 @@ def default_bridge_cache():
         return None
 
 
-def append_bridge_bars(frame, symbol, *, cache=None, not_after=None):
+def append_bridge_bars(frame, symbol, *, cache=None, not_after=None,
+                       export_rows=None):
     """Append REAL Rubix bridge sessions after ``frame``'s last date.
 
     Shared by both history paths: the frozen-seed path for EODHD-unsupported
@@ -144,6 +162,7 @@ def append_bridge_bars(frame, symbol, *, cache=None, not_after=None):
     base = _base(symbol)
     provenance = {
         "bridge_provider": RUBIX_DAILY_BRIDGE,
+        "bridge_supplements": (),
         "bridge_available_sessions": 0,
         "bridge_sessions_appended": 0,
         "bridge_first_session": None,
@@ -162,6 +181,27 @@ def append_bridge_bars(frame, symbol, *, cache=None, not_after=None):
 
     last = pd.Timestamp(frame.index[-1])
     rows = _bridge_rows_after(base, last.date().isoformat(), cache)
+
+    # Only the sessions Rubix left empty, and named when it happens.
+    #
+    # Reached only past the `cache is None` return above, so "no cache, no
+    # change" still holds exactly: an absent or broken bridge cache degrades to
+    # no tail rather than quietly to a different source. The case this exists
+    # for is a cache that works and has no bar for today, which is what
+    # 2026-09-07 was.
+    #
+    # Injectable, because without it a unit test with a stub cache still read
+    # the production store and appended real market data to its fixture.
+    lookup = _export_rows_after if export_rows is None else export_rows
+    supplied = {row["session_date"] for row in rows}
+    extra = [row for row in lookup(base, last.date().isoformat())
+             if row["session_date"] not in supplied]
+    if extra:
+        rows = sorted(rows + extra, key=lambda row: row["session_date"])
+        provenance["bridge_supplements"] = tuple(
+            row["session_date"].date().isoformat() for row in extra)
+        provenance["bridge_provider"] = (
+            f"{RUBIX_DAILY_BRIDGE}+{MUBASHER_EXPORT_BRIDGE}")
     if not_after is not None:
         ceiling = pd.Timestamp(not_after)
         withheld = [r for r in rows if r["session_date"] > ceiling]
@@ -274,3 +314,39 @@ def build_local_rubix_history(symbol, *, period="10y", interval="1d",
         "generated_at": datetime.now(timezone.utc).isoformat(), **prov,
     }
     return frame, prov
+
+
+def _export_rows_after(base, after_date):
+    """Measured-export bars strictly after ``after_date``, in the tail's shape.
+
+    Split-adjusted and not dividend-adjusted, which is the same basis the Rubix
+    tail is on and the reason the existing series name already says RAW_TAIL:
+    a corporate action inside the appended window would break either of them,
+    and `bridge_tail_blocked` is what guards that for both.
+    """
+
+    try:
+        from sector_flow.measured_turnover import frame_for
+    except Exception:
+        return []
+
+    frame = frame_for(f"{base}.CA")
+    if frame is None or frame.empty:
+        return []
+
+    ceiling = pd.Timestamp(after_date)
+    rows = []
+    for stamp, bar in frame[frame.index > ceiling].iterrows():
+        close = bar.get("Close")
+        if close is None or pd.isna(close):
+            continue
+        rows.append({
+            "session_date": pd.Timestamp(stamp),
+            "Open": bar.get("Open"), "High": bar.get("High"),
+            "Low": bar.get("Low"), "Close": close,
+            # No dividend adjustment is available for this source, so the
+            # adjusted column must not claim one. The tail is raw either way.
+            "Adj Close": close,
+            "Volume": bar.get("Volume"),
+        })
+    return rows

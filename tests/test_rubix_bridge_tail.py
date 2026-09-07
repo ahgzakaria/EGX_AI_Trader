@@ -56,6 +56,22 @@ def _bar(session_date, *, close, symbol="MFPC", status="FINAL",
     }
 
 
+@pytest.fixture(autouse=True)
+def _rubix_tail_only(monkeypatch):
+    """These tests are about the Rubix tail, so the second source is off.
+
+    Not tidiness: append_bridge_bars now has two suppliers, and without this
+    every test here read the production measured store and appended real market
+    data to its fixture -- the frame identity assertions failed against genuine
+    2026-09-07 bars. A test of one supplier has to say it means one.
+    """
+
+    from core import local_rubix_history
+
+    monkeypatch.setattr(local_rubix_history, "_export_rows_after",
+                        lambda *args, **kwargs: [])
+
+
 def _frame(dates, closes):
     index = pd.DatetimeIndex(pd.to_datetime(dates), name="Date")
     return pd.DataFrame(

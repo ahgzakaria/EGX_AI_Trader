@@ -355,3 +355,82 @@ def test_the_guard_touches_no_provider_cache_or_process():
     for forbidden in ("requests", "urllib", "sqlite3", "subprocess", "open(",
                       "eodhd_client", "rubix_live_market"):
         assert forbidden not in source, f"the guard reaches for {forbidden}"
+
+
+# --- a second supplier for the same tail --------------------------------------
+#
+# On 2026-09-07 the collector stopped eight minutes into the session, no Rubix
+# bar could be built from 29 captured minutes, and every symbol fell back to
+# plain EODHD: eodhd_plus_rubix went from 187 of 222 symbols the session before
+# to zero, and the history stopped a day short of the last completed session.
+#
+# The export holds that session. It is the exchange's official auction close
+# rather than one built from minutes this project captured, and on 2026-09-06
+# where both exist the volumes agree exactly while the closes differ by 0.15%
+# at the median. So it goes second, and it is named when it is used.
+
+def _frame(dates, close=10.0):
+    import pandas as pd
+
+    index = pd.to_datetime(dates)
+    return pd.DataFrame(
+        {"Open": close, "High": close, "Low": close, "Close": close,
+         "Adj Close": close, "Volume": 1000.0},
+        index=index)
+
+
+def test_the_export_fills_only_sessions_rubix_did_not(monkeypatch):
+    import pandas as pd
+
+    from core import local_rubix_history as history
+
+    monkeypatch.setattr(history, "default_bridge_cache", lambda: object())
+    monkeypatch.setattr(history, "_bridge_rows_after", lambda *a, **k: [
+        {"session_date": pd.Timestamp("2026-09-06"), "Open": 1.0, "High": 1.0,
+         "Low": 1.0, "Close": 1.0, "Adj Close": 1.0, "Volume": 5.0}])
+    monkeypatch.setattr(history, "_export_rows_after", lambda *a, **k: [
+        # the same session Rubix already supplied, and one it did not
+        {"session_date": pd.Timestamp("2026-09-06"), "Open": 9.0, "High": 9.0,
+         "Low": 9.0, "Close": 9.0, "Adj Close": 9.0, "Volume": 99.0},
+        {"session_date": pd.Timestamp("2026-09-07"), "Open": 2.0, "High": 2.0,
+         "Low": 2.0, "Close": 2.0, "Adj Close": 2.0, "Volume": 7.0}])
+
+    frame, prov = history.append_bridge_bars(_frame(["2026-09-03"]), "COMI.CA")
+
+    assert prov["bridge_sessions_appended"] == 2
+    assert frame.loc[pd.Timestamp("2026-09-06"), "Close"] == 1.0, (
+        "Rubix owns the session it supplied; the export must not restate it")
+    assert frame.loc[pd.Timestamp("2026-09-07"), "Close"] == 2.0
+    assert prov["bridge_supplements"] == ("2026-09-07",)
+    assert "MUBASHER_EXPORT_BRIDGE" in prov["bridge_provider"]
+
+
+def test_a_tail_rubix_covered_alone_names_only_rubix(monkeypatch):
+    import pandas as pd
+
+    from core import local_rubix_history as history
+
+    monkeypatch.setattr(history, "default_bridge_cache", lambda: object())
+    monkeypatch.setattr(history, "_bridge_rows_after", lambda *a, **k: [
+        {"session_date": pd.Timestamp("2026-09-06"), "Open": 1.0, "High": 1.0,
+         "Low": 1.0, "Close": 1.0, "Adj Close": 1.0, "Volume": 5.0}])
+    monkeypatch.setattr(history, "_export_rows_after", lambda *a, **k: [
+        {"session_date": pd.Timestamp("2026-09-06"), "Open": 9.0, "High": 9.0,
+         "Low": 9.0, "Close": 9.0, "Adj Close": 9.0, "Volume": 99.0}])
+
+    _, prov = history.append_bridge_bars(_frame(["2026-09-03"]), "COMI.CA")
+    assert prov["bridge_supplements"] == ()
+    assert prov["bridge_provider"] == history.RUBIX_DAILY_BRIDGE, (
+        "naming a supplement that supplied nothing hides which source acted")
+
+
+def test_the_router_reports_the_export_in_the_provider_name():
+    """A second source must not be invisible in the provenance."""
+
+    import inspect
+
+    from core import research_router
+
+    source = inspect.getsource(research_router)
+    assert "eodhd_plus_rubix_plus_export" in source
+    assert 'bridge_md.get("bridge_supplements")' in source
