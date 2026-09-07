@@ -35,6 +35,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.launcher_process_utils import supervisor_status
+from core.universe import UNIVERSE_SOURCE  # noqa: E402
 from services.rubix_assisted_start import (
     DEFAULT_AUTH_FRAME_PATH,
     AssistedState,
@@ -423,7 +424,17 @@ def parse_args(argv=None):
     parser.add_argument("--python-exe", default=sys.executable)
     parser.add_argument("--adapter-path", default=os.environ.get("RUBIX_ADAPTER_PATH", ""))
     parser.add_argument("--database", default=str(runtime_root / "data" / "rubix_live_market.db"))
-    parser.add_argument("--symbols", default=str(runtime_root / "data" / "universe.json"))
+    # UNIVERSE_SOURCE, not data/universe.json. That file has never existed:
+    # the project's universe is data/universe/egx_universe.csv, which is what
+    # launch_rubix_production.py and every other entry point passes.
+    #
+    # The supervisor refuses to start without a readable symbols source, so this
+    # default produced supervisor_fatal every time the window was used without
+    # an explicit --symbols. On 2026-09-07 it fired twice at 09:36:36 before
+    # something started the collector correctly at 09:36:59, and two fatal
+    # tracebacks in the log every morning is how a real one stops being read.
+    parser.add_argument("--symbols",
+                        default=str(runtime_root / UNIVERSE_SOURCE))
     parser.add_argument("--pid-file", default=str(runtime_root / "data" / "rubix_supervisor.pid.json"))
     parser.add_argument("--lock-file", default=str(runtime_root / "data" / "rubix_supervisor.lock"))
     parser.add_argument("--log-file", default=str(runtime_root / "logs" / "rubix_supervisor.log"))

@@ -1384,3 +1384,37 @@ def test_the_installer_does_not_require_an_inbox(tmp_path):
     arguments = [line for line in result.stdout.splitlines() if "Arguments" in line]
     assert arguments, result.stdout
     assert "--inbox" not in arguments[0]
+
+
+# --- the symbols default has to be a file that exists ------------------------
+#
+# It defaulted to data/universe.json, which has never existed in this project:
+# the universe is data/universe/egx_universe.csv, and every other entry point
+# passes that. The supervisor refuses to start without a readable symbols
+# source, so the window produced supervisor_fatal whenever it was used without
+# an explicit --symbols -- twice at 09:36:36 on 2026-09-07, before something
+# started the collector correctly twenty-three seconds later.
+
+def test_the_symbols_default_is_the_projects_universe():
+    from pathlib import Path
+
+    from core.universe import UNIVERSE_SOURCE
+
+    text = Path("scripts/run_rubix_assisted_start.py").read_text(encoding="utf-8")
+    assert "UNIVERSE_SOURCE" in text
+    assert '"universe.json"' not in text, (
+        "data/universe.json does not exist; the supervisor dies on it")
+    assert (Path("F:/EGX_AI_Trader") / UNIVERSE_SOURCE).name.endswith(".csv")
+
+
+def test_the_universe_source_this_window_points_at_is_readable():
+    """A default nobody can load is a fatal start dressed as a default."""
+
+    from pathlib import Path
+
+    from core.universe import UNIVERSE_SOURCE
+
+    root = Path(__file__).resolve().parents[1]
+    source = root / UNIVERSE_SOURCE
+    assert source.is_file(), f"{UNIVERSE_SOURCE} is missing"
+    assert source.stat().st_size > 0
