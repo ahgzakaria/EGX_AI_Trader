@@ -161,6 +161,23 @@ def _latest_session(snapshot):
                 tag=_signed_percent(row.get("ShareChange"), 1) + " vs 5 sessions ago",
             )
 
+    # A rank set by one negotiated deal answers a different question from the
+    # one this page is for. On 2026-09-07 a single 5.14 billion transaction in
+    # EFIC -- 502x its own sixty-session median, 27% of the market that day --
+    # put Basic Resources first at 32.21%; without it the sector is not in the
+    # top four. The trade was real and stays in the total. It is marked so a
+    # reader can tell a flow from a deal.
+    flagged = snapshot[snapshot.get("ConcentratedSession", False) == True]  # noqa: E712
+    for _, row in flagged.iterrows():
+        multiple = row.get("TopTickerTurnoverMultiple")
+        st.warning(
+            f"**{row['Sector']}** — {_percent(row['TurnoverShare'], 1)} من دوران السوق، "
+            f"لكن {_percent(row.get('TopTickerShare'), 0)} منها في سهم واحد "
+            f"({row.get('TopTicker')}"
+            + (f"، {multiple:.0f}× وسيطه" if pd.notna(multiple) else "")
+            + "). صفقة مركّزة وليست تدفّقاً — الترتيب هنا لا يصف سيولة يمكن الدخول فيها."
+        )
+
     table = pd.DataFrame({
         "القطاع": snapshot["Sector"],
         "الحصة": snapshot["TurnoverShare"].map(lambda v: _percent(v, 2)),
@@ -170,6 +187,8 @@ def _latest_session(snapshot):
         "الاتساع": snapshot["Breadth"].map(lambda v: "—" if pd.isna(v) else f"{v:+.2f}"),
         "أسهم": snapshot["Symbols"].astype(int),
         "القيمة": snapshot["Turnover"].map(_millions),
+        "مركّز": snapshot.get("ConcentratedSession", pd.Series(False, index=snapshot.index))
+                   .map(lambda v: "⚠" if bool(v) else ""),
     })
     st.dataframe(table, hide_index=True, use_container_width=True)
     st.caption(

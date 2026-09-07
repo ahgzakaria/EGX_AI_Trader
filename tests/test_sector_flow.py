@@ -338,3 +338,104 @@ def test_turnover_aggregation_does_not_inherit_the_indicator_bar_minimum():
 
     assert TURNOVER_MIN_BARS < 250
     assert TURNOVER_MIN_BARS >= 2  # pct_change needs a predecessor
+
+
+# --- a deal is not a flow ----------------------------------------------------
+#
+# On 2026-09-07 a single 5.14 billion transaction in EFIC -- 502x its own
+# sixty-session median and 27% of the whole market's turnover -- put Basic
+# Resources at 32.21% of the market and first. Without it the sector is not in
+# the top four and Real Estate leads at 16.35%. The trade was real and
+# on-market, so the turnover is not wrong. It is simply not liquidity anyone
+# could have joined, and this page exists to answer where to trade.
+
+def _series(ticker, sector, values, start="2020-01-01"):
+    import pandas as pd
+
+    dates = pd.date_range(start, periods=len(values), freq="D")
+    return pd.DataFrame({
+        "SessionDate": dates, "Sector": sector, "Ticker": ticker,
+        "Turnover": values, "Return": 0.0,
+    })
+
+
+def test_one_symbol_dominating_its_sector_is_flagged():
+    import pandas as pd
+
+    from sector_flow.history import _concentration
+
+    quiet = [1_000_000.0] * 60
+    tidy = pd.concat([
+        _series("EFIC", "Basic Resources", quiet + [5_138_710_016.0]),
+        _series("MFPC", "Basic Resources", quiet + [313_287_328.0]),
+    ], ignore_index=True)
+
+    last = _concentration(tidy).sort_values("SessionDate").iloc[-1]
+    assert last["TopTicker"] == "EFIC"
+    assert last["TopTickerTurnoverMultiple"] > 500
+    assert last["TopTickerShare"] > 0.9
+    assert bool(last["ConcentratedSession"]) is True
+
+
+def test_a_busy_but_shared_session_is_not_flagged():
+    """Concentration, not activity. A sector all of which traded is a flow."""
+
+    import pandas as pd
+
+    from sector_flow.history import _concentration
+
+    quiet = [1_000_000.0] * 60
+    busy = 80_000_000.0                      # 80x for every symbol, none dominant
+    tidy = pd.concat([
+        _series("AAAA", "Basic Resources", quiet + [busy]),
+        _series("BBBB", "Basic Resources", quiet + [busy]),
+        _series("CCCC", "Basic Resources", quiet + [busy]),
+    ], ignore_index=True)
+
+    last = _concentration(tidy).sort_values("SessionDate").iloc[-1]
+    assert last["TopTickerTurnoverMultiple"] > 50, "each symbol is well above its own history"
+    assert last["TopTickerShare"] < 0.70
+    assert bool(last["ConcentratedSession"]) is False
+
+
+def test_a_dominant_symbol_at_its_normal_size_is_not_flagged():
+    """A sector that is always one large name is not a deal."""
+
+    import pandas as pd
+
+    from sector_flow.history import _concentration
+
+    tidy = pd.concat([
+        _series("BIG", "Banks", [900_000_000.0] * 61),
+        _series("SMALL", "Banks", [10_000_000.0] * 61),
+    ], ignore_index=True)
+
+    last = _concentration(tidy).sort_values("SessionDate").iloc[-1]
+    assert last["TopTickerShare"] > 0.70, "it does dominate"
+    assert last["TopTickerTurnoverMultiple"] < 2, "but it always has"
+    assert bool(last["ConcentratedSession"]) is False
+
+
+def test_the_flagged_session_is_kept_not_deleted():
+    """Deleting it would make the history claim a day that did not happen."""
+
+    import pandas as pd
+
+    from sector_flow.history import aggregate_sectors
+
+    quiet = [1_000_000.0] * 60
+    frames = {}
+    for ticker, tail in (("EFIC", 5_138_710_016.0), ("MFPC", 313_287_328.0)):
+        dates = pd.date_range("2020-01-01", periods=61, freq="D")
+        values = quiet + [tail]
+        frames[ticker] = pd.DataFrame(
+            {"High": 10.0, "Low": 10.0, "Close": 10.0,
+             "Volume": [v / 10.0 for v in values], "Turnover": values},
+            index=dates)
+
+    result = aggregate_sectors(frames, {"EFIC": "Basic Resources",
+                                        "MFPC": "Basic Resources"})
+    last = result.sort_values("SessionDate").iloc[-1]
+    assert last["Turnover"] == pytest.approx(5_138_710_016.0 + 313_287_328.0), (
+        "the turnover happened and stays in the total")
+    assert bool(last["ConcentratedSession"]) is True

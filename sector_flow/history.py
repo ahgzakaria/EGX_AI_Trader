@@ -77,6 +77,59 @@ def symbol_rows(symbol, sector, frame, method="typical"):
     return rows.dropna(subset=["Turnover"])
 
 
+#: When one symbol's turnover is both far above its own history and most of
+#: its sector's session, the sector's rank describes a deal rather than a flow.
+#:
+#: 2026-09-07: a single 5.14 billion transaction in EFIC -- 502x its own
+#: sixty-session median, 27% of the whole market's turnover that day -- put
+#: Basic Resources at 32.21% and first. Without it the sector is not in the top
+#: four and Real Estate leads at 16.35%. The trade was real and on-market, so
+#: the turnover is not wrong; it is simply not liquidity anyone could have
+#: joined, and this page exists to say where to trade.
+#:
+#: Calibrated on 94,896 sector-sessions of measured turnover rather than
+#: chosen: 50x with 70% concentration fires once in 187, which is rare enough
+#: to mean something and common enough to be seen. 25x/50% fires once in 61,
+#: often enough to become wallpaper.
+CONCENTRATION_MULTIPLE = 50.0
+CONCENTRATION_SHARE = 0.70
+
+#: Sessions of a symbol's own history the multiple is measured against.
+CONCENTRATION_BASELINE = 60
+CONCENTRATION_MIN_BASELINE = 30
+
+
+def _concentration(tidy):
+    """Per (session, sector): the top symbol, its share, and its own multiple.
+
+    Flagged, never removed. Deleting the trade would make the history claim a
+    day that did not happen; hiding it would let a single deal set a ranking
+    somebody acts on.
+    """
+
+    frame = tidy.sort_values(["Ticker", "SessionDate"]).copy()
+    baseline = (frame.groupby("Ticker")["Turnover"]
+                .transform(lambda s: s.shift(1).rolling(
+                    CONCENTRATION_BASELINE,
+                    min_periods=CONCENTRATION_MIN_BASELINE).median()))
+    frame["_multiple"] = frame["Turnover"] / baseline.where(baseline > 0)
+
+    sector_total = frame.groupby(["SessionDate", "Sector"])["Turnover"].transform("sum")
+    frame["_share"] = frame["Turnover"] / sector_total.where(sector_total > 0)
+
+    top = (frame.sort_values("Turnover", ascending=False)
+                .groupby(["SessionDate", "Sector"], sort=False).head(1))
+    top = top.rename(columns={"Ticker": "TopTicker",
+                              "_share": "TopTickerShare",
+                              "_multiple": "TopTickerTurnoverMultiple"})
+    top["ConcentratedSession"] = (
+        (top["TopTickerTurnoverMultiple"] > CONCENTRATION_MULTIPLE)
+        & (top["TopTickerShare"] > CONCENTRATION_SHARE)
+    )
+    return top[["SessionDate", "Sector", "TopTicker", "TopTickerShare",
+                "TopTickerTurnoverMultiple", "ConcentratedSession"]]
+
+
 def aggregate_sectors(symbol_frames, sector_map, method="typical"):
     """Return one tidy row per (SessionDate, Sector) with turnover and breadth.
 
@@ -115,7 +168,7 @@ def aggregate_sectors(symbol_frames, sector_map, method="typical"):
     grouped["TurnoverShare"] = (grouped["Turnover"] / market).where(market > 0)
     moved = grouped["Advancers"] + grouped["Decliners"]
     grouped["Breadth"] = ((grouped["Advancers"] - grouped["Decliners"]) / moved).where(moved > 0)
-    return grouped
+    return grouped.merge(_concentration(tidy), on=["SessionDate", "Sector"], how="left")
 
 
 def add_flow_features(aggregated, window=DEFAULT_BASELINE_WINDOW,
