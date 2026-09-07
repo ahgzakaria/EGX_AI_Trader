@@ -31,6 +31,7 @@ from sector_flow.history import (
 )
 
 
+from core.symbols import foreign_quoted_symbols
 from sector_flow.measured_turnover import attach as attach_measured_turnover
 
 logger = logging.getLogger(__name__)
@@ -116,7 +117,20 @@ def build(universe_path=None, sector_file="data/sectors.csv",
         raise ValueError(
             f"No sector map at {sector_file}. Run scripts/build_sector_map.py first."
         )
-    symbols = list(active_engine_symbols(universe_path))
+    # The tradeable set, not the listed one.
+    #
+    # Twelve symbols are quoted in dollars or euros while their turnover is
+    # reported in pounds, so the estimate this build used to rely on counted a
+    # dollar figure as pounds and understated them by about fifty. The measured
+    # turnover fixes the number -- but a sector ranking exists to answer which
+    # sector to trade, and a rank driven by a symbol this account cannot settle
+    # answers a question nobody asked.
+    #
+    # active_engine_symbols stays what it is: the exchange's listing, held to a
+    # validated snapshot, and what the collector subscribes to.
+    excluded = {str(symbol).upper() for symbol in foreign_quoted_symbols()}
+    symbols = [symbol for symbol in active_engine_symbols(universe_path)
+               if str(symbol).upper() not in excluded]
     frames, outcomes = load_universe_frames(
         symbols, sector_map, purpose=purpose, period=period,
         interval=interval, min_bars=min_bars,
