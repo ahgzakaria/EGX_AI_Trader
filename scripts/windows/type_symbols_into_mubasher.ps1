@@ -37,7 +37,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$SymbolFile = (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) "data\universe\mubasher_export_symbols.txt"),
+    [string]$SymbolFile = "",
 
     # Test with a handful before committing to the whole universe.
     [int]$First = 0,
@@ -56,6 +56,14 @@ param(
 
     [switch]$WhatIfOnly
 )
+
+# $PSScriptRoot is not populated inside a param block under Windows
+# PowerShell 5.1, so a default that used it bound an empty string and the script
+# died on its own first line with "Cannot bind argument to parameter 'Path'".
+# It works under pwsh 7, which is how it passed every time I ran it. Resolved
+# here instead, where both hosts agree.
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $SymbolFile) { $SymbolFile = (Join-Path (Split-Path -Parent (Split-Path -Parent $scriptDir)) "data\universe\mubasher_export_symbols.txt") }
 
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Windows.Forms

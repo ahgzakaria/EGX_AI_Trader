@@ -535,3 +535,27 @@ def test_the_scheduled_powershell_tasks_do_not_open_a_window():
         assert argument, name
         assert any("-WindowStyle Hidden" in row for row in argument), (
             name + " launches powershell.exe with a visible console")
+
+
+# --- a param default cannot use $PSScriptRoot -------------------------------
+#
+# Windows PowerShell 5.1 does not populate $PSScriptRoot while binding the param
+# block, so a default built from it binds an empty string and the script dies on
+# its own first line with "Cannot bind argument to parameter 'Path'". pwsh 7
+# does populate it, which is why every one of these passed each time I ran them
+# and failed the first time someone used powershell -File.
+
+def test_no_script_builds_a_param_default_from_psscriptroot():
+    from pathlib import Path
+
+    offenders = []
+    for script in sorted(Path("scripts/windows").glob("*.ps1")):
+        text = script.read_text(encoding="utf-8")
+        if "param(" not in text:
+            continue
+        block = text.partition("param(")[2].partition("\n)")[0]
+        if "PSScriptRoot" in block:
+            offenders.append(script.name)
+    assert not offenders, (
+        "these bind an empty path under Windows PowerShell 5.1; resolve it in "
+        f"the body instead: {offenders}")
