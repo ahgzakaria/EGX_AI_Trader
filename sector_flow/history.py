@@ -40,7 +40,23 @@ def turnover_series(frame, method="typical"):
         price = (frame["High"] + frame["Low"] + frame["Close"]) / 3.0
     else:
         price = frame["Close"]
-    return (price.astype("float64") * frame["Volume"].astype("float64")).rename("Turnover")
+    estimated = (price.astype("float64")
+                 * frame["Volume"].astype("float64")).rename("Turnover")
+
+    # A measured turnover wins, session by session.
+    #
+    # The estimate above is good on a typical day -- 0.37% median error against
+    # the exchange's own figure -- and worst exactly where a session was not
+    # typical, up to 248%. Sector share is one symbol's turnover over the
+    # market's, so a single large symbol wrong by that much moves every sector's
+    # ranking for that session.
+    #
+    # Per session rather than per symbol, because the export ends on the day it
+    # was taken and every session after it must still fall back to the estimate.
+    if "Turnover" not in frame.columns:
+        return estimated
+    measured = pd.to_numeric(frame["Turnover"], errors="coerce")
+    return measured.where(measured > 0, estimated).rename("Turnover")
 
 
 def symbol_rows(symbol, sector, frame, method="typical"):

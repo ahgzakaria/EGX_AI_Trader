@@ -99,6 +99,7 @@ def _universe_frame_tickers(frame):
             {"1", "true", "yes", "y", "active"}
         )
         rows = frame[active]
+
     column = "engine_symbol" if "engine_symbol" in rows.columns else "canonical_symbol"
     return rows[column].tolist()
 
@@ -340,3 +341,53 @@ def filter_by_spread(symbols, maximum_percent, spreads=None):
         else:
             kept.append(symbol)
     return kept, dropped
+
+
+#: The currency this account settles in.
+SETTLEMENT_CURRENCY = "EGP"
+
+
+def foreign_quoted_symbols(source=SYMBOL_SOURCE):
+    """Return the universe entries priced in something other than EGP.
+
+    Twelve EGX symbols are quoted in dollars and one in euros, and the universe
+    called all thirteen EGP until their own reported turnover gave them away:
+    ``turnover / (volume x close)`` is the price over the price for an EGP
+    symbol -- COMI sits at 1.0004 -- and the exchange rate for these, 5.77 in
+    2005 and 48.36 in 2024, tracking the currency year by year. One of them is
+    named "Faisal Islamic Bank of Egypt - In US Dollars" in that very file.
+    """
+
+    try:
+        frame = read_symbol_frame(source)
+    except (OSError, pd.errors.ParserError):
+        return []
+    if "currency" not in frame.columns or "canonical_symbol" not in frame.columns:
+        return []
+    # fillna before the string methods: .str.upper() propagates NaN rather than
+    # producing "NAN", so a blank currency compared unequal to everything and
+    # eleven rows with no currency at all came back as foreign.
+    currency = frame["currency"].fillna("").astype(str).str.strip().str.upper()
+    foreign = frame[~currency.isin({SETTLEMENT_CURRENCY, "", "NAN", "NONE"})]
+    column = "engine_symbol" if "engine_symbol" in foreign.columns else "canonical_symbol"
+    return [str(value) for value in foreign[column].tolist()]
+
+
+def load_tradeable_symbols(source=SYMBOL_SOURCE):
+    """``load_active_symbols`` minus what an EGP account cannot buy.
+
+    Deliberately a second function rather than a filter inside the first.
+    ``load_active_symbols`` answers what the exchange lists and this project
+    tracks -- 241 symbols, a number a migration validated and several tests
+    pin -- and the collector is right to keep receiving all of it. Whether an
+    order could be placed is a different question, and the answer changes with
+    the account rather than with the exchange.
+
+    Ten of the foreign-quoted symbols had already produced forward-test
+    signals, which is a recommendation to buy something the account cannot
+    settle.
+    """
+
+    excluded = {str(symbol).upper() for symbol in foreign_quoted_symbols(source)}
+    return [symbol for symbol in load_active_symbols(source)
+            if str(symbol).upper() not in excluded]

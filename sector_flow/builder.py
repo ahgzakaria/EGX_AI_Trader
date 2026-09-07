@@ -31,6 +31,8 @@ from sector_flow.history import (
 )
 
 
+from sector_flow.measured_turnover import attach as attach_measured_turnover
+
 logger = logging.getLogger(__name__)
 
 PROGRESS_EVERY = 25
@@ -83,6 +85,12 @@ def load_universe_frames(symbols, sector_map, purpose=DEFAULT_PURPOSE,
                 continue
 
             metadata = frame.attrs.get("market_data", {})
+            # Where the exchange's own turnover is on hand, use it instead of
+            # deriving one from price and volume. Enrichment only: a symbol or
+            # a session the store does not cover keeps the estimate, and a
+            # machine with no store at all builds exactly as before.
+            frame = attach_measured_turnover(frame, symbol)
+            measured = int(frame["Turnover"].gt(0).sum()) if "Turnover" in frame else 0
             frames[symbol] = frame
             outcomes.append({
                 "Ticker": symbol,
@@ -91,6 +99,7 @@ def load_universe_frames(symbols, sector_map, purpose=DEFAULT_PURPOSE,
                     "automatic_use_permitted", True) else "LOADED",
                 "Provider": metadata.get("effective_provider"),
                 "Bars": len(frame),
+                "MeasuredTurnoverBars": measured,
                 "Detail": metadata.get("freshness_status") or "",
             })
     return frames, pd.DataFrame(outcomes)

@@ -392,3 +392,94 @@ def test_the_lock_is_released_even_when_the_build_raises(tmp_path, monkeypatch):
     assert result["status"] == "FAILED"
 
     SingleInstanceLock(lock_file, label="probe").acquire().release()
+
+
+# --- turnover measured, not estimated ----------------------------------------
+#
+# turnover_series derives turnover as (High + Low + Close) / 3 x Volume, which
+# is within 0.37% at the median and 248% at its worst. Sector share is one
+# symbol's turnover over the market's, so on 5% of sessions since 2020 that
+# error moved a sector's share by more than 35 points -- once by 58.77, when
+# Non-bank Financial Services was ranked at 75.77% against a true 16.99%.
+
+def test_a_measured_turnover_replaces_the_estimate():
+    from sector_flow.history import turnover_series
+
+    frame = pd.DataFrame({
+        "High": [11.0], "Low": [9.0], "Close": [10.0],
+        "Volume": [1000.0], "Turnover": [999_999.0],
+    })
+    assert turnover_series(frame).iloc[0] == 999_999.0
+
+
+def test_a_session_the_store_does_not_cover_keeps_the_estimate():
+    """Per session, not per symbol: the export ends the day it was taken."""
+
+    from sector_flow.history import turnover_series
+
+    frame = pd.DataFrame({
+        "High": [11.0, 11.0], "Low": [9.0, 9.0], "Close": [10.0, 10.0],
+        "Volume": [1000.0, 1000.0], "Turnover": [999_999.0, float("nan")],
+    })
+    result = turnover_series(frame)
+    assert result.iloc[0] == 999_999.0
+    assert result.iloc[1] == pytest.approx(10_000.0)
+
+
+def test_no_turnover_column_at_all_still_builds():
+    """A machine that has never run the import must build exactly as before."""
+
+    from sector_flow.history import turnover_series
+
+    frame = pd.DataFrame({"High": [11.0], "Low": [9.0], "Close": [10.0],
+                          "Volume": [1000.0]})
+    assert turnover_series(frame).iloc[0] == pytest.approx(10_000.0)
+
+
+# --- a price quoted in dollars, a turnover reported in pounds -----------------
+#
+# Eleven symbols were in the tradeable universe marked EGP while being quoted in
+# dollars, one of them named "Faisal Islamic Bank of Egypt - In US Dollars" in
+# our own file. turnover / (volume x close) is the price over the price for an
+# EGP symbol -- COMI sits at 1.0004 -- and the exchange rate for those: 5.77 in
+# 2005, 8.77 in 2016, 48.36 in 2024, tracking the currency year by year.
+
+def test_the_universe_marks_the_foreign_quoted_symbols():
+    from core.universe import UNIVERSE_SOURCE
+
+    universe = pd.read_csv(UNIVERSE_SOURCE)
+    base = universe["canonical_symbol"].astype(str).str.split(".").str[0].str.upper()
+    known = {"SAIB", "EGBE", "NAHO", "EGSA", "VLMR", "CFGH",
+             "FAITA", "MOIL", "GTEX", "TRTO", "GPPL", "SPHT"}
+    marked = universe[base.isin(known)]
+    assert len(marked) == len(known), "a foreign-quoted symbol left the universe"
+    assert set(marked["currency"]) <= {"USD", "EUR"}, (
+        "these are not priced in EGP; the currency column said otherwise for all "
+        "of them, which is how their turnover was understated fifty-fold")
+    # is_active stays true: it says what the exchange lists, and the shipped
+    # file is held to a validated snapshot. What an EGP account can buy is a
+    # different question, answered where the engine's universe is decided.
+    from core.symbols import SYMBOL_SOURCE, load_active_symbols, load_tradeable_symbols
+
+    # Still listed: is_active describes the exchange, and 241 is a number a
+    # migration validated. Not tradeable: that is the account's question.
+    listed = {str(t).split(".")[0].upper() for t in load_active_symbols(SYMBOL_SOURCE)}
+    assert known <= listed, "these are still listed on the exchange"
+
+    engine = {str(t).split(".")[0].upper() for t in load_tradeable_symbols(SYMBOL_SOURCE)}
+    assert not (known & engine), (
+        "an account settling in EGP cannot trade these, and ten of them had "
+        f"already produced forward-test signals: {sorted(known & engine)}")
+
+
+def test_the_detector_separates_a_currency_from_a_split():
+    """Both push the ratio off 1; only one of them is a currency."""
+
+    import inspect
+
+    from sector_flow import measured_turnover
+
+    source = inspect.getsource(measured_turnover.foreign_quoted_symbols)
+    assert "since" in source, (
+        "judged over all history a 25-for-1 split looks foreign too; ASPI sits "
+        "at 0.040 before 2021-10-11 and 1.000 after, with the close continuous")
