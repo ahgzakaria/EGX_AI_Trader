@@ -183,6 +183,11 @@ class RubixSQLiteProvider(MarketDataProvider):
     UNAVAILABLE = "RUBIX_UNAVAILABLE"
     SYMBOL_MISSING = "SYMBOL_MISSING"
 
+    #: A heartbeat no older than this means the feed is live now. Shared by
+    #: heartbeat_status and by the connection fallback below it, so the two
+    #: cannot disagree about what "recent" means.
+    HEARTBEAT_FRESH_SECONDS = 60.0
+
     REQUIRED_TABLES = {"quotes", "candles_1m", "feed_metrics"}
     REQUIRED_QUOTE_COLUMNS = {
         "ticker", "last_price", "bid", "ask", "volume",
@@ -707,6 +712,17 @@ class RubixSQLiteProvider(MarketDataProvider):
                 # depends on. Only the census below is allowed to be a minute
                 # old.
                 tip = connection.execute(_NEWEST_ROW).fetchone()
+                # Read once, here, and used for every age below.
+                #
+                # The ages used to be measured against the clock at the *end* of
+                # this method, so a slow call charged the feed for its own
+                # duration. A cold call costs 78 seconds against 7.6 GB, and the
+                # supervisor's stale threshold is 60: a perfectly live feed
+                # reported RUBIX_STALE with age_seconds 248 while quotes were
+                # arriving 0 seconds old, purely because the census in between
+                # took four minutes. An age is how old the data was when it was
+                # read, not how long the reader then took.
+                observed_at = self._utc_now()
                 # So is the newest completed minute, and for the same reason:
                 # bar_age_seconds is the only cached number _state_from_snapshot
                 # branches on, so leaving it in the census meant a database slow
@@ -725,11 +741,11 @@ class RubixSQLiteProvider(MarketDataProvider):
             raise ProviderConnectionError("Rubix SQLite contains no quotes")
         received = _utc_timestamp(tip[1])
         exchange = _utc_timestamp(tip[0])
-        age_seconds = max(0.0, (self._utc_now() - received).total_seconds())
+        age_seconds = max(0.0, (observed_at - received).total_seconds())
         latest_candle = (_utc_timestamp(candle[0])
                          if candle and candle[0] else None)
         bar_age_seconds = (
-            max(0.0, (self._utc_now() - latest_candle).total_seconds())
+            max(0.0, (observed_at - latest_candle).total_seconds())
             if latest_candle is not None else None
         )
         result = {
@@ -896,9 +912,6 @@ class RubixSQLiteProvider(MarketDataProvider):
         disconnected = latest_by_event.get("disconnect")
         connected_at = _utc_timestamp(connected[0]) if connected else None
         disconnected_at = _utc_timestamp(disconnected[0]) if disconnected else None
-        collector_status = "CONNECTED" if connected_at and (
-            disconnected_at is None or connected_at > disconnected_at
-        ) else "DISCONNECTED"
         updates_last_minute = census["updates_last_minute"]
         heartbeat = latest_by_event.get("heartbeat_received") or latest_by_event.get("heartbeat_sent")
         heartbeat_stamp = _utc_timestamp(heartbeat[0]) if heartbeat else None
@@ -907,6 +920,34 @@ class RubixSQLiteProvider(MarketDataProvider):
             if heartbeat_stamp is not None else None
         )
         heartbeat_at = heartbeat_stamp.isoformat() if heartbeat_stamp is not None else None
+
+        # A connect event that has scrolled out of the window is not a
+        # disconnection.
+        #
+        # The 20,000-row window is a fixed size over a table whose write rate is
+        # not: on 2026-09-07 the feed wrote 2,270 events a minute, so the window
+        # spanned under nine minutes. The collector connected at 09:37 Cairo and
+        # by 09:46 its `connected` event had scrolled past the edge -- leaving no
+        # connect and no disconnect -- and this reported DISCONNECTED for the
+        # rest of the day while 224 symbols updated and heartbeats arrived every
+        # thirty seconds.
+        #
+        # Reading the connect events directly costs 1.76 s each against
+        # 14,114,921 unindexed rows, which is not affordable on the live path,
+        # and feed_metrics is the adapter's table to index, not ours.
+        #
+        # So the window stays authoritative when it actually holds the evidence,
+        # and a live heartbeat answers when it does not. Silence about the past
+        # is not a disconnection; a heartbeat thirty seconds old is proof of a
+        # connection now.
+        if connected_at is not None or disconnected_at is not None:
+            collector_status = "CONNECTED" if connected_at and (
+                disconnected_at is None or connected_at > disconnected_at
+            ) else "DISCONNECTED"
+        elif heartbeat_age is not None and heartbeat_age <= self.HEARTBEAT_FRESH_SECONDS:
+            collector_status = "CONNECTED"
+        else:
+            collector_status = "DISCONNECTED"
         rejected = [
             {"ticker": row[2], "reason": row[4]}
             for row in events if row[1] == "subscription_rejected"
@@ -919,7 +960,8 @@ class RubixSQLiteProvider(MarketDataProvider):
             "collector_session": connected_at.isoformat() if connected_at else None,
             "last_heartbeat": heartbeat_at,
             "heartbeat_status": (
-                "HEALTHY" if heartbeat_age is not None and heartbeat_age <= 60
+                "HEALTHY" if heartbeat_age is not None
+                and heartbeat_age <= self.HEARTBEAT_FRESH_SECONDS
                 else "STALE" if heartbeat_age is not None else "NOT_OBSERVED"
             ),
             "heartbeat_age_seconds": heartbeat_age,

@@ -477,3 +477,49 @@ def test_memoising_does_not_change_who_is_updating(tmp_path, monkeypatch):
             open_stale_after_minutes=provider.stale_after_minutes).session_lag == 0)
 
     assert provider._coverage_snapshot(latest)["updating_symbols"] == expected
+
+
+# --- an age is how old the data was, not how long the reader took ------------
+#
+# The ages were measured against the clock at the end of _snapshot, so a slow
+# call charged the feed for its own duration. On 2026-09-07 a cold call took 78
+# seconds against 7.6 GB and reported age_seconds 248 and RUBIX_STALE while
+# quotes were arriving 0 seconds old. The supervisor's stale threshold is 60.
+
+def test_a_slow_read_does_not_age_the_quote_it_read(tmp_path, monkeypatch):
+    path = _database(str(tmp_path / "r.db"))
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "INSERT INTO candles_1m (ticker, minute, open, high, low, close) "
+        "VALUES (?,?,?,?,?,?)", ("COMI", BASE.isoformat(), 1, 1, 1, 1))
+    connection.commit()
+    connection.close()
+
+    # The clock advances by two minutes for every reading taken after the tip.
+    ticks = [BASE + timedelta(seconds=30)]
+
+    def creeping_clock():
+        value = ticks[-1]
+        ticks.append(value + timedelta(minutes=2))
+        return value
+
+    provider = RubixSQLiteProvider(db_path=path, expected_symbols=("COMI", "ABUK"),
+                                   census_ttl_seconds=0, now=creeping_clock)
+    health = provider.health()
+
+    # The newest quote was written at BASE and read 30 seconds later.
+    assert health["age_seconds"] == pytest.approx(30.0, abs=1.0), (
+        "age_seconds must be measured when the tip was read, not after the "
+        "census that followed it")
+
+
+def test_every_age_uses_the_same_instant(tmp_path):
+    """One reading, so bar age and quote age cannot disagree about 'now'."""
+
+    import inspect
+
+    source = inspect.getsource(RubixSQLiteProvider._snapshot)
+    body = source.partition("observed_at = self._utc_now()")[2]
+    assert "self._utc_now()" not in body, (
+        "the snapshot must take one clock reading; a second one lets two ages "
+        "in the same result describe two different moments")
