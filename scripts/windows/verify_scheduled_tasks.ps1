@@ -55,8 +55,9 @@ if (-not $PythonExe) { $PythonExe = Join-Path $ProjectRoot "venv\Scripts\python.
 # setting a fix can depend on: the finalizer's PT30M/PT2H repetition is half of
 # why its candle now gets built the same day, and losing it would restore the
 # one-shot failure while the start time still read 14:50 and looked correct.
-# The assisted start's limit was two hours and is now one, which is exactly the
-# kind of edit that lands on the machine and never reaches the repository.
+# The assisted start's limit went two hours -> one -> two again inside a week,
+# which is exactly the kind of edit that lands on the machine and never reaches
+# the repository.
 $declared = @(
     @{ Task = "EGX Rubix Daily Finalizer"
        Installer = "install_rubix_daily_finalizer_task.ps1"
@@ -82,7 +83,7 @@ $declared = @(
     @{ Task = "EGX Rubix Assisted Start"
        Installer = "install_rubix_assisted_start_task.ps1"
        Invokes = "run_rubix_assisted_start.py"
-       Expect = "09:10"; Limit = "PT1H"; Repeat = "-"; Logon = "Interactive" }
+       Expect = "09:10"; Limit = "PT2H"; Repeat = "-"; Logon = "Interactive" }
 
     @{ Task = "EGX ORB Full Shadow Automation"
        Installer = "install_orb_full_shadow_task.ps1"

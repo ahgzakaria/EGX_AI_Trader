@@ -46,18 +46,22 @@ param(
     # The user's existing export target, read in place. Overridable for testing
     # or a future relocation; the production default never changes.
     [string]$AuthFramePath = "C:\secure-temp\rubix-price-auth-frame.txt",
-    # One hour, not two. The runbook's procedure is over by ~09:30 -- window
-    # opens 09:10, export by 09:25, feed confirmed before 09:30 -- so from a
-    # 09:10 start this still leaves forty minutes of slack past the end of the
-    # work and ten past the 10:00 open, which is the last moment starting the
-    # collector is any use. Two hours meant an abandoned window sat on the
-    # desktop until 11:30 and then died with 2147943691, an error code for
-    # nothing having gone wrong.
+    # Two hours. It was cut to one to stop an abandoned window sitting on the
+    # desktop until 11:30, which it did -- but that traded a cosmetic annoyance
+    # for the only thing on this machine that can start the collector.
     #
-    # Safe to shorten: the supervisor is spawned CREATE_NEW_PROCESS_GROUP and
-    # outlives the window. Observed on 2026-09-06 -- the window was killed at
-    # its limit at 11:30 and the collector kept writing quotes until 14:30.
-    [int]$MaxRuntimeHours = 1,
+    # This window is the human's way in: the supervisor needs an auth frame no
+    # more than fifteen minutes old, and nothing in this repository can produce
+    # one. If the collector drops at 10:30 and the window died at 10:10, the
+    # session is over until somebody opens it by hand. On 2026-09-07 the
+    # collector stopped at 10:08 and the window was terminated at 10:10:01 by
+    # the one-hour limit; those turned out to be unrelated, but for two minutes
+    # the recovery path and the failure overlapped, which is close enough.
+    #
+    # Two hours reaches 11:10 from a 09:10 start: past the open, past the
+    # opening auction, and through the part of the session where a restart is
+    # still worth something. The idle window costs nothing but pixels.
+    [int]$MaxRuntimeHours = 2,
     [switch]$EnableAutoStart,
     [switch]$WhatIfOnly
 )
