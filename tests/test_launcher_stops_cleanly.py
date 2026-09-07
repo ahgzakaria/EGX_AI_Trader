@@ -118,3 +118,90 @@ def test_asking_a_collector_that_is_already_gone_is_not_an_error():
 
     assert _Supervisor(_Dead()).request_collector_stop(timeout=1) is False
     assert _Supervisor(None).request_collector_stop(timeout=1) is False
+
+
+# --- a stop has to say who asked --------------------------------------------
+#
+# On 2026-09-07 the collector stopped eight minutes into the session. The log
+# said "Asked the collector to stop cleanly." and nothing else. Everything
+# around it was recoverable -- clean stop, through the flag, Streamlit survived
+# so it was not STOP.cmd, and the launcher's own health gate had reported
+# RUBIX_FRESH that morning -- but who asked was not on disk anywhere, so the
+# lost session has a cause that can be neither confirmed nor ruled out.
+
+def _launcher():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "lrp_stop", "scripts/launch_rubix_production.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_stop_names_the_call_chain_that_asked_for_it():
+    module = _launcher()
+
+    def a_button_handler():
+        return an_inner_step()
+
+    def an_inner_step():
+        return module._stop_requester()
+
+    described = a_button_handler()
+    assert "a_button_handler" in described
+    assert "an_inner_step" in described
+
+
+def test_the_stop_plumbing_names_its_caller_not_itself():
+    """`stop` and `request_collector_stop` are never the answer to 'who asked'."""
+
+    module = _launcher()
+
+    def stop():                      # the launcher's own method name
+        return module._stop_requester()
+
+    assert "stop:" not in stop()
+
+
+def test_the_attribution_is_not_limited_to_this_file():
+    """An atexit handler in another module is the case that was unanswerable."""
+
+    from pathlib import Path
+
+    source = Path("scripts/launch_rubix_production.py").read_text(encoding="utf-8")
+    body = source.partition("def _stop_requester():")[2].partition("\ndef ")[0]
+    assert "launch_rubix_production" not in body.split('"""')[-1], (
+        "filtering by filename hides a stop that came from somewhere else")
+
+
+def test_every_stop_log_line_carries_the_requester():
+    """Both initiators. The forced kill is the harsher path and the same question.
+
+    Read from the log_event call sites, not from the message text: the same
+    sentences appear in the docstring explaining why they carry a requester, and
+    matching those instead is how this test kept failing on its own prose.
+    """
+
+    import ast
+    from pathlib import Path
+
+    tree = ast.parse(
+        Path("scripts/launch_rubix_production.py").read_text(encoding="utf-8"))
+
+    initiators = {}
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call)
+                and getattr(node.func, "id", "") == "log_event"
+                and node.args and getattr(node.args[0], "value", "") == "stop"):
+            continue
+        rendered = ast.unparse(node.args[1])
+        for phrase in ("Asked the collector to stop cleanly",
+                       "Stopping process tree PID"):
+            if phrase in rendered:
+                initiators[phrase] = rendered
+
+    assert len(initiators) == 2, f"expected both initiators, found {list(initiators)}"
+    for phrase, rendered in initiators.items():
+        assert "_stop_requester()" in rendered, (
+            f"{phrase!r} does not name its caller, which is the thing being fixed")

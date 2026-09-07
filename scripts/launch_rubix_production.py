@@ -137,6 +137,33 @@ def configure_logging(debug=False):
     return LOGGER
 
 
+def _stop_requester():
+    """Name the code that asked for a stop.
+
+    On 2026-09-07 the collector stopped eight minutes into the session and the
+    log said only "Asked the collector to stop cleanly." Everything else was
+    knowable -- it was clean, it went through the flag, Streamlit survived so it
+    was not STOP.cmd, and the health gate's own report that morning read
+    RUBIX_FRESH -- but who asked was not recoverable from anything on disk, so a
+    session was lost to a cause that can be neither confirmed nor ruled out.
+
+    Deliberately not filtered to this file. A stop arriving from another module
+    -- an atexit handler in the assisted-start window, say -- is exactly the case
+    that was unanswerable, and filtering by filename would have hidden it. Only
+    the stop plumbing itself is skipped.
+    """
+
+    import traceback
+
+    skip = {"_stop_requester", "request_collector_stop", "stop", "_atexit_stop"}
+    frames = [
+        f"{frame.name}:{Path(frame.filename).name}:{frame.lineno}"
+        for frame in traceback.extract_stack()[:-1]
+        if frame.name not in skip
+    ]
+    return " <- ".join(reversed(frames[-3:])) if frames else "the top level"
+
+
 def log_event(stage, message, *, level=logging.INFO, exc_info=False):
     """Write one redacted stage transition to the durable launcher log."""
 
@@ -222,7 +249,8 @@ def stop_process(process, timeout=5):
     if process is None or process.poll() is not None:
         return
     pid = getattr(process, "pid", None)
-    log_event("stop", f"Stopping process tree PID {pid}.")
+    log_event("stop", f"Stopping process tree PID {pid}. "
+                        f"Requested by {_stop_requester()}.")
     if os.name == "nt" and pid:
         try:
             subprocess.run(
@@ -486,7 +514,8 @@ class ProductionSupervisor:
                 f"stop requested {datetime.now(timezone.utc).isoformat()}",
                 encoding="utf-8",
             )
-            log_event("stop", "Asked the collector to stop cleanly.")
+            log_event("stop", f"Asked the collector to stop cleanly. "
+                              f"Requested by {_stop_requester()}.")
             deadline = time.monotonic() + timeout
             while time.monotonic() < deadline:
                 if self.collector.poll() is not None:
