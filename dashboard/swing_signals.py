@@ -22,6 +22,7 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
+from core.effective_cost import load_symbol_costs, round_trip_for
 from dashboard.scan_memory import recall, remember, scan_caption
 from dashboard.ui import page_header
 
@@ -44,7 +45,8 @@ MEASURED_HOLD = SwingConfig().measured_holding_days
 SCAN_KEY = "swing_breakout"
 
 
-def _candidate_frame(scan_result) -> pd.DataFrame:
+def _candidate_frame(scan_result, costs=None) -> pd.DataFrame:
+    costs = costs or {}
     return pd.DataFrame([
         {
             "Ticker": c.symbol,
@@ -55,6 +57,7 @@ def _candidate_frame(scan_result) -> pd.DataFrame:
             "Momentum 12-1 %": c.momentum_12_1,
             "Momentum rank": c.momentum_rank,
             "ATR %": c.atr_percent,
+            "Round trip %": round_trip_for(costs, c.symbol),
         }
         for c in scan_result.candidates
     ])
@@ -94,6 +97,16 @@ def _column_config() -> dict:
         "ATR %": st.column_config.NumberColumn(
             "ATR %", format="%.2f%%", width="small",
             help="Daily true range as a percent of price. Context only.",
+        ),
+        "Round trip %": st.column_config.NumberColumn(
+            "Round trip %", format="%.3f%%", width="small",
+            help="What in-and-out costs in THIS name: 0.4638% in fees plus the "
+                 "crossing cost measured from the exchange's own trade tape, "
+                 "not the quoted spread. It runs 0.03% to 1.62% across the "
+                 "universe and is a property of the symbol, not of the day. "
+                 "Blank means too few measured sessions to say, never that it "
+                 "is cheap. Against the +0.88% median trade below, 35 of the "
+                 "211 measured names cannot cover it.",
         ),
     }
 
@@ -169,7 +182,9 @@ def show_swing_signals() -> None:
         )
     else:
         st.dataframe(
-            _candidate_frame(result), hide_index=True, width="stretch",
+            _candidate_frame(result, load_symbol_costs(
+                [c.symbol for c in result.candidates])),
+            hide_index=True, width="stretch",
             column_config=_column_config(),
         )
         _show_where_trades_went(result)

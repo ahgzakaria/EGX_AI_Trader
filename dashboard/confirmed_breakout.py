@@ -26,6 +26,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from core.effective_cost import load_symbol_costs, round_trip_for
 from dashboard.formatting import company_name
 from dashboard.scan_memory import recall, remember, scan_caption
 from dashboard.ui import empty_state, page_header, section_header
@@ -208,6 +209,7 @@ def _show_signals(result, cfg) -> None:
         "Ordered by how strongly volume confirmed the breakout. That is a "
         "reading order, not a ranking: nothing here predicts which one does best.",
     )
+    costs = load_symbol_costs([s.symbol for s in result.signals])
     rows = []
     for signal in result.signals:
         rows.append({
@@ -221,6 +223,7 @@ def _show_signals(result, cfg) -> None:
             "Risk %": signal.risk_percent,
             "Turnover EGP/day": signal.turnover_egp,
             "ATR %": signal.atr_percent,
+            "Round trip %": round_trip_for(costs, signal.symbol),
         })
     st.dataframe(
         pd.DataFrame(rows), hide_index=True, width="stretch",
@@ -263,6 +266,18 @@ def _show_signals(result, cfg) -> None:
                 format="%.2f%%", width="small",
                 help=f"Below the name's own {cfg.calm_window}-bar median, which "
                      f"is the condition. Calm relative to itself, not to peers.",
+            ),
+            "Round trip %": st.column_config.NumberColumn(
+                format="%.3f%%", width="small",
+                help="What in-and-out costs in THIS name: 0.4638% in fees plus "
+                     "the crossing cost measured from the exchange's own trade "
+                     "tape rather than the quoted spread. It runs 0.03% to "
+                     "1.62% across the universe and holds from one half of a "
+                     "symbol's history to the other at r = 0.836. Blank means "
+                     "too few measured sessions to say, never that it is cheap. "
+                     "This rule publishes no target, so the column is here to "
+                     "be subtracted from whatever you expect, not from a "
+                     "number the page supplies.",
             ),
         },
     )
