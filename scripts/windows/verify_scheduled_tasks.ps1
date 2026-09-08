@@ -98,6 +98,15 @@ $declared = @(
        Invokes = "run_daily_orb_automation.ps1"
        Expect = "09:45"; Limit = "PT7H"; Repeat = "-"; Logon = "S4U" }
 
+    # Interactive, and deliberately so: this is the one task whose entire output
+    # is a sound and a dialog on the operator's own desktop. Run as S4U it would
+    # poll all session and be seen by nobody, which is the failure it exists to
+    # prevent. PT5H covers 10:00-14:30 with room for the close.
+    @{ Task = "EGX Rubix Supervisor Watchdog"
+       Installer = "install_rubix_supervisor_watchdog_task.ps1"
+       Invokes = "watch_rubix_supervisor.py"
+       Expect = "10:00"; Limit = "PT5H"; Repeat = "-"; Logon = "Interactive" }
+
     # This script, run daily at 09:00 ahead of the 09:10 assisted start. It is
     # in its own table for two reasons: an undeclared task is reported, so a
     # checker missing from its own list would flag itself every morning until
