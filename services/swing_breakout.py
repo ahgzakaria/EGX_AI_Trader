@@ -45,6 +45,8 @@ from typing import Iterable, Optional
 
 import pandas as pd
 
+from core.daily_flow import median_turnover
+
 #: Trading days in a month, for the momentum window.
 MONTH = 21
 
@@ -377,8 +379,21 @@ def most_traded(histories: dict, count: int = None,
     if minimum_turnover is None:
         minimum_turnover = SwingConfig().minimum_daily_turnover_egp
 
+    # Reported turnover where it has been measured, the old estimate where it
+    # has not. `close x volume` is right to within 0.44% on the median name and
+    # wrong by a factor of forty-eight on a dollar-quoted one, because the close
+    # is in dollars and the turnover is in pounds: MOIL measured 6,555,994
+    # against a proxy of 154,398, VLMR 5,540,511 against 122,474. Both clear this
+    # floor and both were being dropped by it. Commit 596ecab fixed the same
+    # class of error for Sector Liquidity; this gate was never revisited.
+    measured = median_turnover(histories.keys())
+
     turnovers = {}
     for symbol, frame in histories.items():
+        reported = measured.get(symbol)
+        if reported is not None:
+            turnovers[symbol] = reported
+            continue
         columns = {c.lower(): c for c in frame.columns}
         try:
             value = (frame[columns["close"]] * frame[columns["volume"]]).tail(250)
