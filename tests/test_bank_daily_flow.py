@@ -227,3 +227,102 @@ def test_the_banker_never_drives_the_terminal():
 def test_a_missing_store_says_so_rather_than_banking_nothing(tmp_path):
     with pytest.raises(SystemExit):
         history_database(str(tmp_path / "absent.db"))
+
+
+# --- the recent tail, from the minute store ----------------------------------
+
+def build_intraday(path: Path, rows_by_symbol) -> Path:
+    """rows_by_symbol: {SYMBOL: [(TMIN, CLS, VOL, TOVR, NOTR)]}"""
+
+    connection = sqlite3.connect(path)
+    connection.execute("CREATE TABLE INTRADAY_MASTER (INTRADAYDATE INT PRIMARY KEY)")
+    for symbol, rows in rows_by_symbol.items():
+        connection.execute(
+            f"CREATE TABLE [_{symbol}] (INS TEXT, TMIN TEXT, OP TEXT, HIG TEXT, "
+            f"LOW TEXT, CLS TEXT, VOL TEXT, TOVR TEXT, NOTR TEXT, VWAP TEXT)")
+        connection.executemany(
+            f"INSERT INTO [_{symbol}] (TMIN, CLS, VOL, TOVR, NOTR) "
+            f"VALUES (?,?,?,?,?)", [tuple(str(v) for v in r) for r in rows])
+    connection.commit()
+    connection.close()
+    return path
+
+
+def minutes_for(day: str, minute: int) -> int:
+    """Epoch minutes for a UTC HH:MM on `day` (YYYY-MM-DD)."""
+
+    from datetime import datetime, timezone
+    start = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    return int(start.timestamp() // 60) + minute
+
+
+def test_minute_bars_sum_into_one_session(tmp_path):
+    from scripts.bank_daily_flow import aggregate_intraday
+
+    rows = [(minutes_for("2026-09-09", 420 + i), 10.0 + i, 100.0, 1000.0, 5)
+            for i in range(3)]
+    payload = aggregate_intraday(build_intraday(tmp_path / "i.db", {"COMI": rows}), set())
+    assert len(payload) == 1
+    row = payload[0]
+    assert row[0] == "COMI" and row[1] == "2026-09-09"
+    assert row[3] == pytest.approx(300.0)      # volume
+    assert row[4] == pytest.approx(3000.0)     # turnover
+    assert row[5] == 15                        # trades
+
+
+def test_the_session_close_is_the_last_minute_not_the_largest(tmp_path):
+    from scripts.bank_daily_flow import aggregate_intraday
+
+    rows = [(minutes_for("2026-09-09", 420), 99.0, 100.0, 1000.0, 5),
+            (minutes_for("2026-09-09", 600), 12.0, 100.0, 1000.0, 5)]
+    payload = aggregate_intraday(build_intraday(tmp_path / "i.db", {"COMI": rows}), set())
+    assert payload[0][2] == pytest.approx(12.0)
+
+
+def test_two_days_of_minutes_become_two_sessions(tmp_path):
+    from scripts.bank_daily_flow import aggregate_intraday
+
+    rows = [(minutes_for("2026-09-08", 420), 10.0, 100.0, 1000.0, 5),
+            (minutes_for("2026-09-09", 420), 11.0, 100.0, 1000.0, 5)]
+    payload = aggregate_intraday(build_intraday(tmp_path / "i.db", {"COMI": rows}), set())
+    assert sorted(r[1] for r in payload) == ["2026-09-08", "2026-09-09"]
+
+
+def test_a_session_history_already_supplied_is_left_alone(tmp_path):
+    """The history row carries the buy/sell split; a minute-summed row cannot."""
+
+    from scripts.bank_daily_flow import aggregate_intraday
+
+    rows = [(minutes_for("2026-09-07", 420), 10.0, 100.0, 1000.0, 5),
+            (minutes_for("2026-09-09", 420), 10.0, 100.0, 1000.0, 5)]
+    payload = aggregate_intraday(build_intraday(tmp_path / "i.db", {"COMI": rows}),
+                                 {("COMI", "2026-09-07")})
+    assert [r[1] for r in payload] == ["2026-09-09"]
+
+
+def test_a_minute_sourced_row_claims_no_flow(tmp_path):
+    from scripts.bank_daily_flow import SOURCE_INTRADAY, aggregate_intraday
+
+    rows = [(minutes_for("2026-09-09", 420), 10.0, 100.0, 1000.0, 5)]
+    row = aggregate_intraday(build_intraday(tmp_path / "i.db", {"COMI": rows}), set())[0]
+    assert row[15] == 0            # flow_measured
+    assert row[8] is None          # buy_value
+    assert row[9] is None          # sell_value
+    assert row[17] == SOURCE_INTRADAY
+
+
+def test_a_session_with_no_turnover_is_not_banked(tmp_path):
+    from scripts.bank_daily_flow import aggregate_intraday
+
+    rows = [(minutes_for("2026-09-09", 420), 10.0, 0.0, 0.0, 0)]
+    assert aggregate_intraday(build_intraday(tmp_path / "i.db", {"COMI": rows}),
+                              set()) == []
+
+
+def test_minute_symbols_are_canonicalised(tmp_path):
+    from scripts.bank_daily_flow import aggregate_intraday
+
+    rows = [(minutes_for("2026-09-09", 420), 10.0, 100.0, 1000.0, 5)]
+    payload = aggregate_intraday(
+        build_intraday(tmp_path / "i.db", {"GRCA": rows}), set())
+    assert payload[0][0] == "GRCA"

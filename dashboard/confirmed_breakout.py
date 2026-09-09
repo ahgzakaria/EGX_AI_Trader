@@ -26,6 +26,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from core.daily_flow import session_trades, trades_for
 from core.effective_cost import load_symbol_costs, round_trip_for
 from dashboard.formatting import company_name
 from dashboard.scan_memory import recall, remember, scan_caption
@@ -210,6 +211,8 @@ def _show_signals(result, cfg) -> None:
         "reading order, not a ranking: nothing here predicts which one does best.",
     )
     costs = load_symbol_costs([s.symbol for s in result.signals])
+    trades = session_trades([s.symbol for s in result.signals],
+                            result.session_date)
     rows = []
     for signal in result.signals:
         rows.append({
@@ -224,6 +227,7 @@ def _show_signals(result, cfg) -> None:
             "Turnover EGP/day": signal.turnover_egp,
             "ATR %": signal.atr_percent,
             "Round trip %": round_trip_for(costs, signal.symbol),
+            "Trades": trades_for(trades, signal.symbol),
         })
     st.dataframe(
         pd.DataFrame(rows), hide_index=True, width="stretch",
@@ -278,6 +282,10 @@ def _show_signals(result, cfg) -> None:
                      "This rule publishes no target, so the column is here to "
                      "be subtracted from whatever you expect, not from a "
                      "number the page supplies.",
+            ),
+            "Trades": st.column_config.NumberColumn(
+                format="localized", width="small",
+                help="Prints in the session this signal fired on -- not the name's usual day. The liquidity gate measures a median over 250 sessions, which is the right question for a universe and the wrong one for a fill: inside the names that pass it, 4.94% of sessions since 2024 carried under fifty trades, and names that clear the floor comfortably have had days of one print worth a few hundred pounds. Blank means the session was not measured, never that it was quiet.",
             ),
         },
     )

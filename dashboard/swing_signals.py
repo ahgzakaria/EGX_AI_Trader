@@ -22,6 +22,7 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
+from core.daily_flow import session_trades, trades_for
 from core.effective_cost import load_symbol_costs, round_trip_for
 from dashboard.scan_memory import recall, remember, scan_caption
 from dashboard.ui import page_header
@@ -45,8 +46,9 @@ MEASURED_HOLD = SwingConfig().measured_holding_days
 SCAN_KEY = "swing_breakout"
 
 
-def _candidate_frame(scan_result, costs=None) -> pd.DataFrame:
+def _candidate_frame(scan_result, costs=None, trades=None) -> pd.DataFrame:
     costs = costs or {}
+    trades = trades or {}
     return pd.DataFrame([
         {
             "Ticker": c.symbol,
@@ -58,6 +60,7 @@ def _candidate_frame(scan_result, costs=None) -> pd.DataFrame:
             "Momentum rank": c.momentum_rank,
             "ATR %": c.atr_percent,
             "Round trip %": round_trip_for(costs, c.symbol),
+            "Trades": trades_for(trades, c.symbol),
         }
         for c in scan_result.candidates
     ])
@@ -107,6 +110,10 @@ def _column_config() -> dict:
                  "Blank means too few measured sessions to say, never that it "
                  "is cheap. Against the +0.88% median trade below, 35 of the "
                  "211 measured names cannot cover it.",
+        ),
+        "Trades": st.column_config.NumberColumn(
+            "Trades", format="localized", width="small",
+            help="Prints in the session this signal fired on -- not the name's usual day. The liquidity gate measures a median over 250 sessions, which is the right question for a universe and the wrong one for a fill: inside the names that pass it, 4.94% of sessions since 2024 carried under fifty trades, and names that clear the floor comfortably have had days of one print worth a few hundred pounds. Blank means the session was not measured, never that it was quiet.",
         ),
     }
 
@@ -182,8 +189,11 @@ def show_swing_signals() -> None:
         )
     else:
         st.dataframe(
-            _candidate_frame(result, load_symbol_costs(
-                [c.symbol for c in result.candidates])),
+            _candidate_frame(
+                result,
+                load_symbol_costs([c.symbol for c in result.candidates]),
+                session_trades([c.symbol for c in result.candidates],
+                               result.session_date)),
             hide_index=True, width="stretch",
             column_config=_column_config(),
         )

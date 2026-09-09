@@ -56,6 +56,23 @@ BANK_DB = PROJECT_ROOT / "data" / "daily_flow.db"
 ARCHIVE_ROOT = (Path.home() / "AppData" / "Roaming" / "MubasherTrade"
                 / "PRO Egypt" / "UserData")
 HISTORY_LEAF = Path("History") / "CASE" / "history.db"
+INTRADAY_LEAF = Path("Intraday") / "CASE" / "INTRADAY_MASTER.db"
+
+#: `history.db` refreshes when the terminal decides to -- on 2026-09-09 it was
+#: still two sessions behind while the application had been running all day.
+#: The intraday store does keep up, holds a rolling fourteen sessions of minute
+#: bars, and its NOTR and TOVR sum to the daily figures: COMI on 2026-09-07 came
+#: to 6,460 trades against history's 6,465, and turnover within 0.03%. So the
+#: recent tail is filled from there, which is exactly the window a signal fires
+#: in. It carries no cash-flow split, so those columns stay absent rather than
+#: being invented.
+SOURCE_HISTORY = "history"
+SOURCE_INTRADAY = "intraday"
+
+#: Minutes in a day, for turning the intraday store's epoch-minute stamp into
+#: the session it belongs to. The EGX session is 07:00-11:30 UTC, so a session
+#: never straddles a UTC midnight and the date needs no timezone reasoning.
+MINUTES_PER_DAY = 1440
 
 #: Relative slack allowed before the in/out split is called inconsistent with
 #: the total it should reproduce. Measured over 26,436 rows the identity held
@@ -81,6 +98,7 @@ CREATE TABLE IF NOT EXISTS daily_flow (
     buy_share         REAL,
     flow_measured     INTEGER NOT NULL,
     identity_holds    INTEGER,
+    source            TEXT    NOT NULL,
     banked_at         TEXT    NOT NULL,
     PRIMARY KEY (canonical_symbol, session_date)
 );
@@ -103,6 +121,20 @@ def history_database(explicit=None) -> Path:
         f"No MubasherTrade history store found under {ARCHIVE_ROOT}. "
         "Open the terminal once, or pass --history."
     )
+
+
+def intraday_database(explicit=None) -> Path | None:
+    """The rolling minute store, or None when the terminal has not written one."""
+
+    if explicit:
+        path = Path(explicit)
+        return path if path.is_file() else None
+    if ARCHIVE_ROOT.is_dir():
+        for account in sorted(ARCHIVE_ROOT.iterdir()):
+            candidate = account / INTRADAY_LEAF
+            if candidate.is_file():
+                return candidate
+    return None
 
 
 def read_only(path: Path) -> sqlite3.Connection:
@@ -200,6 +232,67 @@ def read_symbol(history: sqlite3.Connection, table: str, since: str | None):
             yield session, measured
 
 
+def aggregate_intraday(path: Path, skip: set[tuple[str, str]]) -> list[tuple]:
+    """Daily rows summed from the minute store, for sessions history lacks.
+
+    Only the columns a minute bar can honestly produce: close, volume, turnover
+    and the trade count. The minute rows carry no buy/sell split, so the flow
+    columns stay NULL and `flow_measured` is 0 -- the same convention a
+    pre-2009 row gets, and for the same reason.
+    """
+
+    connection = read_only(path)
+    try:
+        tables = [r[0] for r in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")
+            if r[0].startswith("_")]
+        gathered: dict[tuple[str, str], list[float]] = {}
+        for table in tables:
+            symbol = canonical(table[1:])
+            if not symbol:
+                continue
+            try:
+                rows = connection.execute(
+                    f"SELECT TMIN, CLS, VOL, TOVR, NOTR FROM [{table}]").fetchall()
+            except sqlite3.Error:
+                continue
+            for stamp, close, volume, turnover, trades in rows:
+                minute = number(stamp)
+                close = number(close); volume = number(volume)
+                turnover = number(turnover); trades = number(trades)
+                if minute is None or close is None or close <= 0:
+                    continue
+                day = datetime.fromtimestamp(
+                    int(minute) * 60, tz=timezone.utc).strftime("%Y-%m-%d")
+                key = (symbol, day)
+                if key in skip:
+                    continue
+                cell = gathered.setdefault(key, [0.0, 0.0, 0.0, 0.0, 0.0])
+                cell[0] += volume if volume and volume > 0 else 0.0
+                cell[1] += turnover if turnover and turnover > 0 else 0.0
+                cell[2] += trades if trades and trades > 0 else 0.0
+                # The last minute of the session carries the session's close.
+                if minute >= cell[4]:
+                    cell[3] = close
+                    cell[4] = minute
+    finally:
+        connection.close()
+
+    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    payload = []
+    for (symbol, day), (volume, turnover, trades, close, _) in gathered.items():
+        if close <= 0 or turnover <= 0:
+            continue
+        payload.append((
+            symbol, day, close, volume, turnover,
+            int(trades) if trades > 0 else None, None,
+            turnover / trades if trades > 0 else None,
+            None, None, None, None, None, None, None, 0, None,
+            SOURCE_INTRADAY, stamp,
+        ))
+    return payload
+
+
 def open_bank(path: Path = BANK_DB) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path, timeout=60)
@@ -226,7 +319,7 @@ def bank(history_path: Path, bank_db: sqlite3.Connection, since=None) -> dict:
                 row["buy_value"], row["sell_value"], row["buy_volume"],
                 row["sell_volume"], row["buy_trades"], row["sell_trades"],
                 row["buy_share"], row["flow_measured"], row["identity_holds"],
-                stamp,
+                SOURCE_HISTORY, stamp,
             ))
             counts["rows"] += 1
             counts["with_flow"] += row["flow_measured"]
@@ -236,7 +329,7 @@ def bank(history_path: Path, bank_db: sqlite3.Connection, since=None) -> dict:
             counts["symbols"] += 1
             bank_db.executemany(
                 "INSERT OR REPLACE INTO daily_flow VALUES "
-                "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", payload)
+                "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", payload)
             bank_db.commit()
     history.close()
     return counts
@@ -264,6 +357,24 @@ def main(argv=None) -> int:
         print(f"  in + out did NOT reproduce the total: "
               f"{counts['identity_failures']:,} rows")
 
+    # The tail history.db has not caught up to yet. Never overwrites a history
+    # row: that one carries the buy/sell split and this one cannot.
+    intraday = intraday_database(args.intraday)
+    if intraday and not args.no_intraday:
+        banked = {(s, d) for s, d in bank_db.execute(
+            "SELECT canonical_symbol, session_date FROM daily_flow "
+            "WHERE source = ?", (SOURCE_HISTORY,))}
+        payload = aggregate_intraday(intraday, banked)
+        if payload:
+            bank_db.executemany(
+                "INSERT OR REPLACE INTO daily_flow VALUES "
+                "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", payload)
+            bank_db.commit()
+        newest = max((row[1] for row in payload), default=None)
+        print()
+        print(f"{len(payload):,} sessions filled from the minute store"
+              + (f", through {newest}" if newest else ""))
+
     total = bank_db.execute("SELECT COUNT(*) FROM daily_flow").fetchone()[0]
     span = bank_db.execute(
         "SELECT MIN(session_date), MAX(session_date) FROM daily_flow").fetchone()
@@ -278,6 +389,10 @@ def parse_args(argv=None):
                         help="path to MubasherTrade history.db")
     parser.add_argument("--bank", default=str(BANK_DB))
     parser.add_argument("--since", help="only sessions on or after YYYY-MM-DD")
+    parser.add_argument("--intraday", default=None,
+                        help="path to INTRADAY_MASTER.db")
+    parser.add_argument("--no-intraday", action="store_true",
+                        help="skip the recent tail from the minute store")
     parser.add_argument("--rebuild", action="store_true",
                         help="re-read everything rather than continuing")
     return parser.parse_args(argv)

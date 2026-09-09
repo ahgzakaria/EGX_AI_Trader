@@ -25,10 +25,10 @@ def build_bank(path: Path, rows) -> Path:
     connection = sqlite3.connect(path)
     connection.executescript(SCHEMA)
     connection.executemany(
-        "INSERT INTO daily_flow VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO daily_flow VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [(symbol, session, 10.0, 1000.0, turnover, trades, None, None,
           None, None, None, None, None, None, None, 0, None,
-          "2026-09-09T00:00:00+00:00")
+          "history", "2026-09-09T00:00:00+00:00")
          for symbol, session, turnover, trades in rows],
     )
     connection.commit()
@@ -155,3 +155,78 @@ def test_the_gate_never_invents_turnover_for_a_frame_it_cannot_read(monkeypatch)
     monkeypatch.setattr("services.swing_breakout.median_turnover",
                         lambda symbols=None: {})
     assert most_traded({"NO_COLUMNS": pd.DataFrame({"x": [1, 2, 3]})}) == {}
+
+
+# --- the session a signal fired on -------------------------------------------
+
+def test_the_session_count_is_the_named_day_not_the_median(tmp_path):
+    from core.daily_flow import session_trades
+
+    bank = build_bank(tmp_path / "flow.db", [
+        ("COMI", "2026-09-07", 9e6, 5000),
+        ("COMI", "2026-09-08", 9e6, 12),
+    ])
+    assert session_trades(path=bank, session_date="2026-09-08")["COMI"] == 12
+    assert session_trades(path=bank, session_date="2026-09-07")["COMI"] == 5000
+
+
+def test_with_no_date_the_latest_banked_session_is_used(tmp_path):
+    from core.daily_flow import session_trades
+
+    bank = build_bank(tmp_path / "flow.db", [
+        ("COMI", "2026-09-07", 9e6, 5000),
+        ("COMI", "2026-09-08", 9e6, 12),
+    ])
+    assert session_trades(path=bank)["COMI"] == 12
+
+
+def test_a_symbol_absent_from_that_session_is_absent_not_zero(tmp_path):
+    """A session nobody measured and a session nobody traded are different."""
+
+    from core.daily_flow import session_trades, trades_for
+
+    bank = build_bank(tmp_path / "flow.db", [("COMI", "2026-09-08", 9e6, 500)])
+    counts = session_trades(path=bank, session_date="2026-09-08")
+    assert trades_for(counts, "ABUK") is None
+    assert trades_for(counts, "COMI") == 500
+
+
+def test_a_session_count_survives_a_missing_bank(tmp_path):
+    from core.daily_flow import session_trades
+
+    assert session_trades(path=tmp_path / "absent.db") == {}
+
+
+def test_asking_for_some_symbols_returns_only_those(tmp_path):
+    from core.daily_flow import session_trades
+
+    bank = build_bank(tmp_path / "flow.db", [
+        ("COMI", "2026-09-08", 9e6, 500), ("ABUK", "2026-09-08", 9e6, 400)])
+    assert set(session_trades(["COMI"], "2026-09-08", path=bank)) == {"COMI"}
+
+
+# --- the pages ---------------------------------------------------------------
+
+def test_both_signal_pages_show_the_session_trade_count():
+    for name, key in (("dashboard/swing_signals.py", "c.symbol"),
+                      ("dashboard/confirmed_breakout.py", "signal.symbol")):
+        source = Path(name).read_text(encoding="utf-8")
+        assert "from core.daily_flow import session_trades, trades_for" in source
+        assert f'"Trades": trades_for(trades, {key})' in source
+        assert '"Trades": st.column_config.NumberColumn' in source
+
+
+def test_the_count_is_read_for_the_scanned_session_not_today():
+    for name in ("dashboard/swing_signals.py", "dashboard/confirmed_breakout.py"):
+        source = Path(name).read_text(encoding="utf-8")
+        assert "result.session_date" in source, (
+            f"{name} must ask for the session it scanned")
+
+
+def test_neither_page_filters_on_the_trade_count():
+    """Shown, never applied: these pages are read-only research views."""
+
+    for name in ("dashboard/swing_signals.py", "dashboard/confirmed_breakout.py"):
+        source = Path(name).read_text(encoding="utf-8")
+        for forbidden in ("trades <", "trades >", "if trades_for"):
+            assert forbidden not in source, f"{name} appears to filter on trades"

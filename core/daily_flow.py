@@ -129,10 +129,63 @@ def median_trades(symbols=None, *, path: Path | None = None,
             if len(values) >= minimum_sessions}
 
 
+def session_trades(symbols=None, session_date=None, *,
+                   path: Path | None = None) -> dict[str, int]:
+    """Trades in one named session, per symbol. The day a signal fired on.
+
+    The median over 250 sessions says whether a name is tradeable in general and
+    is a poor guide to one day: inside the universe that clears the liquidity
+    floor, 4.94% of sessions since 2024 carried fewer than fifty trades, and
+    names that pass comfortably have had days of a single print worth a few
+    hundred pounds. A signal on such a session assumes a fill that was not there.
+
+    With no session_date the latest banked session is used. A symbol with no row
+    for that date is absent, never zero -- a session nobody measured and a
+    session nobody traded are different facts and only one of them is a warning.
+    """
+
+    database = Path(path) if path else BANK_DB
+    if not database.is_file():
+        return {}
+    try:
+        connection = sqlite3.connect(
+            f"file:{database.resolve().as_posix()}?mode=ro", uri=True, timeout=30
+        )
+    except sqlite3.Error:
+        return {}
+    try:
+        if session_date is None:
+            row = connection.execute(
+                "SELECT MAX(session_date) FROM daily_flow").fetchone()
+            session_date = row[0] if row else None
+            if session_date is None:
+                return {}
+        rows = connection.execute(
+            "SELECT canonical_symbol, trades FROM daily_flow "
+            "WHERE session_date = ? AND trades IS NOT NULL",
+            (str(session_date),)).fetchall()
+    except sqlite3.Error:
+        return {}
+    finally:
+        connection.close()
+
+    wanted = {str(s).strip().upper() for s in symbols} if symbols else None
+    return {symbol: int(trades) for symbol, trades in rows
+            if wanted is None or symbol in wanted}
+
+
+def trades_for(counts: dict[str, int], symbol) -> int | None:
+    """This symbol's count for the session, or None when it was not measured."""
+
+    return counts.get(str(symbol).strip().upper())
+
+
 __all__ = [
     "BANK_DB",
     "DEFAULT_SESSIONS",
     "MINIMUM_SESSIONS",
     "median_trades",
     "median_turnover",
+    "session_trades",
+    "trades_for",
 ]
