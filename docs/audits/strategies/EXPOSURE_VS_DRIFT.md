@@ -197,6 +197,16 @@ any active configuration clears buy-and-hold **after costs and in real terms** â
 and if the answer is no, the useful product of this work is the benchmark, the
 cost model and the liquidity work, not a strategy.
 
+## Followed up
+
+The risk side of this comparison, the regime decomposition and an investable
+benchmark are measured in
+[BENCHMARK_RISK_AND_REGIME.md](BENCHMARK_RISK_AND_REGIME.md). In short: the
+strategy's drawdown is a third of the benchmark's and worth nothing once
+risk-adjusted or restated in dollars, and the only slice it wins with an
+adequate sample is the BEAR regime, where it lost 44.50% against the market's
+91.73%.
+
 **Carried forward for the rotation experiment when it is authorised:** it needs
 a **random-selection control** holding the same N names with the same turnover
 and the same costs. An always-invested system captures market drift whether or
