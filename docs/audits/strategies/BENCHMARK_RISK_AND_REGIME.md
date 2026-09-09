@@ -194,5 +194,15 @@ establish whether the BEAR advantage can be detected **at the time** rather than
 in labels assigned afterwards. If it cannot, the first outcome applies after all
 and should be recorded as such.
 
+## Followed up
+
+Whether the BEAR advantage is detectable at the time is measured in
+[REGIME_DETECTABILITY.md](REGIME_DETECTABILITY.md). It is: a proxy index below
+its own 200-day average flags the labelled BEAR with 89.5% precision at a
+one-day lag, and gating on it beats a random gate of the same duty cycle at the
+82nd to 91st percentile. It still fails the USD Calmar bar — best of twenty
+variants −0.04 against the buy-and-hold basket's +0.10 — so the constraint is
+the currency and the forfeited upside rather than the signal.
+
 **Carried forward, still unspent:** the rotation experiment's random-selection
 control, recorded in [EXPOSURE_VS_DRIFT.md](EXPOSURE_VS_DRIFT.md).
