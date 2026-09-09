@@ -244,6 +244,17 @@ class BacktestStatistics:
                 if benchmark.get("TotalReturn") is not None else None
             ),
 
+            # Equal-weight buy-and-hold of the same traded names, and the
+            # strategy's return against it. Untradable as a portfolio, and
+            # reported anyway: it is the number that says whether a rule which
+            # is in the market a quarter of the time beat simply owning it.
+            "BenchmarkEqualWeightReturn": benchmark.get("EqualWeightReturn"),
+            "BenchmarkEqualWeightCAGR": benchmark.get("EqualWeightCAGR"),
+            "ExcessReturnVsEqualWeight": (
+                round(total_return - benchmark["EqualWeightReturn"], 2)
+                if benchmark.get("EqualWeightReturn") is not None else None
+            ),
+
         }
 
     # ==================================
@@ -266,6 +277,9 @@ class BacktestStatistics:
             "MaxDrawdownClosedTrades": 0, "DrawdownBasis": CLOSED_TRADE,
             "BenchmarkReturn": None, "BenchmarkCAGR": None,
             "BenchmarkSymbols": None, "ExcessReturn": None,
+            "BenchmarkEqualWeightReturn": None,
+            "BenchmarkEqualWeightCAGR": None,
+            "ExcessReturnVsEqualWeight": None,
             "MaxConsecutiveWins": 0, "MaxConsecutiveLosses": 0,
             "SharpeRatio": 0, "SortinoRatio": 0, "CalmarRatio": 0,
             "CAGR": 0, "RecoveryFactor": 0, "KellyPercent": 0,
@@ -365,8 +379,31 @@ class BacktestStatistics:
         years = (total_days / 365.25) if total_days else 0
         cagr = (round(((1 + median / 100) ** (1 / years) - 1) * 100, 2)
                 if years > 0 and median > -100 else None)
+
+        # The second reading: an equal-weighted basket of the same names,
+        # rebalanced daily. It is not tradable -- rebalancing 200 EGX names
+        # every session is a cost nobody would pay -- and it returns several
+        # times the median, which is why the median is the headline and this
+        # sits beside it. It is reported because it is the index-like number,
+        # the one a strategy that spends most of its time in cash is really
+        # competing against, and leaving it out let "beats the median name"
+        # stand in for "beats the market".
+        equal_weight = None
+        equal_weight_cagr = None
+        daily = window.pct_change()
+        if len(daily) > 1:
+            basket = daily.mean(axis=1, skipna=True).fillna(0.0)
+            growth = float((1.0 + basket).prod())
+            if growth > 0:
+                equal_weight = round((growth - 1) * 100, 2)
+                if years > 0:
+                    equal_weight_cagr = round(
+                        ((growth) ** (1 / years) - 1) * 100, 2)
+
         return {"TotalReturn": round(median, 2), "CAGR": cagr,
-                "Symbols": len(returns)}
+                "Symbols": len(returns),
+                "EqualWeightReturn": equal_weight,
+                "EqualWeightCAGR": equal_weight_cagr}
 
     def _total_days(self):
         """Days from the first entry to the last exit, or ``None``.
