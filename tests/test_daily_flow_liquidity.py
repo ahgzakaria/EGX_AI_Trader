@@ -211,7 +211,8 @@ def test_both_signal_pages_show_the_session_trade_count():
     for name, key in (("dashboard/swing_signals.py", "c.symbol"),
                       ("dashboard/confirmed_breakout.py", "signal.symbol")):
         source = Path(name).read_text(encoding="utf-8")
-        assert "from core.daily_flow import session_trades, trades_for" in source
+        assert "from core.daily_flow import" in source
+        assert "session_trades" in source and "trades_for" in source
         assert f'"Trades": trades_for(trades, {key})' in source
         assert '"Trades": st.column_config.NumberColumn' in source
 
@@ -230,3 +231,80 @@ def test_neither_page_filters_on_the_trade_count():
         source = Path(name).read_text(encoding="utf-8")
         for forbidden in ("trades <", "trades >", "if trades_for"):
             assert forbidden not in source, f"{name} appears to filter on trades"
+
+
+# --- the exchange's own buy/sell split ---------------------------------------
+
+def build_bank_with_share(path: Path, rows) -> Path:
+    """rows: (symbol, session_date, buy_share | None)."""
+
+    connection = sqlite3.connect(path)
+    connection.executescript(SCHEMA)
+    connection.executemany(
+        "INSERT INTO daily_flow VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [(symbol, session, 10.0, 1000.0, 9e6, 500, None, None,
+          None, None, None, None, None, None, share,
+          1 if share is not None else 0, None,
+          "history" if share is not None else "intraday",
+          "2026-09-09T00:00:00+00:00")
+         for symbol, session, share in rows],
+    )
+    connection.commit()
+    connection.close()
+    return path
+
+
+def test_the_buy_share_is_read_for_the_named_session(tmp_path):
+    from core.daily_flow import session_buy_share
+
+    bank = build_bank_with_share(tmp_path / "flow.db", [
+        ("COMI", "2026-09-07", 0.62), ("COMI", "2026-09-06", 0.41)])
+    assert session_buy_share(path=bank, session_date="2026-09-07")["COMI"] == \
+        pytest.approx(0.62)
+
+
+def test_a_session_with_no_split_is_absent_not_balanced(tmp_path):
+    """An unknown flow is not an even one. The minute-sourced tail has no side."""
+
+    from core.daily_flow import buy_share_for, session_buy_share
+
+    bank = build_bank_with_share(tmp_path / "flow.db", [
+        ("COMI", "2026-09-09", None), ("ABUK", "2026-09-09", 0.55)])
+    shares = session_buy_share(path=bank, session_date="2026-09-09")
+    assert buy_share_for(shares, "COMI") is None
+    assert buy_share_for(shares, "ABUK") == pytest.approx(0.55)
+
+
+def test_with_no_date_the_latest_MEASURED_session_is_used(tmp_path):
+    """Not simply the latest session: the newest rows often carry no split."""
+
+    from core.daily_flow import session_buy_share
+
+    bank = build_bank_with_share(tmp_path / "flow.db", [
+        ("COMI", "2026-09-07", 0.62),
+        ("COMI", "2026-09-08", None),
+        ("COMI", "2026-09-09", None),
+    ])
+    assert session_buy_share(path=bank)["COMI"] == pytest.approx(0.62)
+
+
+def test_the_buy_share_survives_a_missing_bank(tmp_path):
+    from core.daily_flow import session_buy_share
+
+    assert session_buy_share(path=tmp_path / "absent.db") == {}
+
+
+def test_both_pages_show_the_measured_buy_share():
+    for name, key in (("dashboard/swing_signals.py", "c.symbol"),
+                      ("dashboard/confirmed_breakout.py", "signal.symbol")):
+        source = Path(name).read_text(encoding="utf-8")
+        assert "session_buy_share" in source
+        assert f'"Buy share": buy_share_for(shares, {key})' in source
+        assert '"Buy share": st.column_config.NumberColumn' in source
+
+
+def test_neither_page_filters_on_the_buy_share():
+    for name in ("dashboard/swing_signals.py", "dashboard/confirmed_breakout.py"):
+        source = Path(name).read_text(encoding="utf-8")
+        for forbidden in ("buy_share >", "buy_share <", "if buy_share_for"):
+            assert forbidden not in source, f"{name} appears to filter on flow"

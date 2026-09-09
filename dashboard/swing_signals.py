@@ -22,7 +22,8 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
-from core.daily_flow import session_trades, trades_for
+from core.daily_flow import (buy_share_for, session_buy_share,
+                             session_trades, trades_for)
 from core.effective_cost import load_symbol_costs, round_trip_for
 from dashboard.scan_memory import recall, remember, scan_caption
 from dashboard.ui import page_header
@@ -46,9 +47,11 @@ MEASURED_HOLD = SwingConfig().measured_holding_days
 SCAN_KEY = "swing_breakout"
 
 
-def _candidate_frame(scan_result, costs=None, trades=None) -> pd.DataFrame:
+def _candidate_frame(scan_result, costs=None, trades=None,
+                     shares=None) -> pd.DataFrame:
     costs = costs or {}
     trades = trades or {}
+    shares = shares or {}
     return pd.DataFrame([
         {
             "Ticker": c.symbol,
@@ -61,6 +64,7 @@ def _candidate_frame(scan_result, costs=None, trades=None) -> pd.DataFrame:
             "ATR %": c.atr_percent,
             "Round trip %": round_trip_for(costs, c.symbol),
             "Trades": trades_for(trades, c.symbol),
+            "Buy share": buy_share_for(shares, c.symbol),
         }
         for c in scan_result.candidates
     ])
@@ -114,6 +118,10 @@ def _column_config() -> dict:
         "Trades": st.column_config.NumberColumn(
             "Trades", format="localized", width="small",
             help="Prints in the session this signal fired on -- not the name's usual day. The liquidity gate measures a median over 250 sessions, which is the right question for a universe and the wrong one for a fill: inside the names that pass it, 4.94% of sessions since 2024 carried under fifty trades, and names that clear the floor comfortably have had days of one print worth a few hundred pounds. Blank means the session was not measured, never that it was quiet.",
+        ),
+        "Buy share": st.column_config.NumberColumn(
+            "Buy share", format="%.2f", width="small",
+            help="The share of the session's value that was buy-initiated, from the exchange's own split of every print -- not an indicator inferring it from where the close sat inside the bar. Measured on the same breakout with the exit held constant, a gate above 0.60 returns 4.27% a trade against CMF(20)'s 4.00% and MFI(14)'s 3.78% at the same selectivity, and it is the only one that moves the median trade. Around 0.50 is balanced. Blank means the session has no measured split yet -- the terminal's history store refreshes on its own schedule and the minute store that fills recent sessions carries no side -- never that the flow was even.",
         ),
     }
 
@@ -193,7 +201,9 @@ def show_swing_signals() -> None:
                 result,
                 load_symbol_costs([c.symbol for c in result.candidates]),
                 session_trades([c.symbol for c in result.candidates],
-                               result.session_date)),
+                               result.session_date),
+                session_buy_share([c.symbol for c in result.candidates],
+                                  result.session_date)),
             hide_index=True, width="stretch",
             column_config=_column_config(),
         )
