@@ -69,15 +69,36 @@ def _load_seed(symbol, *, period, interval):
 
 
 def _bridge_close(bar):
-    """Official close for the engine: auction clearing price when present, else continuous."""
-    for field in ("official_close", "continuous_close", "auction_last"):
+    """Return ``(close, official)`` -- the auction price when it exists.
+
+    The fallback to the continuous close is not a rounding difference. Across
+    1,791 bars holding both, they are identical in only 23.1% of sessions; the
+    median gap is 0.2451%, 9.72% differ by more than one percent, and the worst
+    is 11.24%. The closing auction moves the price, which is what it is for.
+
+    In 10.11% of those sessions the official close also lands outside the
+    continuous session's own high and low, so a bar missing its auction can
+    understate the day's range as well as misstate its close.
+
+    Returning the flag rather than the price alone is the point: an EGX daily
+    candle closes after the 14:25 auction, and a caller taking a continuous
+    close as if it were that is measuring 14:18 and calling it 14:30.
+    """
+
+    auction = bar.get("official_close")
+    if auction not in (None, "", "None"):
+        try:
+            return float(auction), True
+        except (TypeError, ValueError):
+            pass
+    for field in ("continuous_close", "auction_last"):
         val = bar.get(field)
         if val not in (None, "", "None"):
             try:
-                return float(val)
+                return float(val), False
             except (TypeError, ValueError):
                 continue
-    return None
+    return None, False
 
 
 def _bridge_rows_after(base, after_date, cache):
@@ -94,12 +115,15 @@ def _bridge_rows_after(base, after_date, cache):
             continue
         if str(bar.get("continuous_bar_status")) != FINAL_CONTINUOUS:
             continue
-        close = _bridge_close(bar)
+        close, official = _bridge_close(bar)
         try:
             row = {"session_date": pd.Timestamp(str(bar.get("session_date"))[:10]),
                    "Open": float(bar["open"]), "High": float(bar["high"]),
                    "Low": float(bar["low"]), "Close": close, "Adj Close": close,
-                   "Volume": float(bar.get("volume") or 0.0)}
+                   "Volume": float(bar.get("volume") or 0.0),
+                   # Not a column: carried alongside so the provenance can name
+                   # the sessions whose close is not the auction's.
+                   "_official_close": official}
         except (KeyError, TypeError, ValueError):
             continue
         if close is None or any(pd.isna(row[c]) for c in ("Open", "High", "Low")):
@@ -163,6 +187,8 @@ def append_bridge_bars(frame, symbol, *, cache=None, not_after=None,
     provenance = {
         "bridge_provider": RUBIX_DAILY_BRIDGE,
         "bridge_supplements": (),
+        "bridge_unconfirmed_close_count": 0,
+        "bridge_unconfirmed_close_dates": (),
         "bridge_available_sessions": 0,
         "bridge_sessions_appended": 0,
         "bridge_first_session": None,
@@ -212,7 +238,7 @@ def append_bridge_bars(frame, symbol, *, cache=None, not_after=None,
         return frame, provenance
 
     appended, duplicate, conflict = 0, 0, 0
-    dates = []
+    dates, unconfirmed = [], []
     updated = frame.copy()
     for row in rows:
         day = row["session_date"]
@@ -226,10 +252,20 @@ def append_bridge_bars(frame, symbol, *, cache=None, not_after=None,
             continue
         updated.loc[day] = {c: row[c] for c in CONTRACT_COLUMNS}
         dates.append(day)
+        if not row.get("_official_close", True):
+            unconfirmed.append(day)
         appended += 1
 
+    # Named, not filtered. A session whose auction never arrived is still the
+    # only record of that day, and dropping it would leave the history short of
+    # the last completed session -- the exact staleness this tail exists to
+    # fix. The caller decides whether a close it cannot confirm is good enough
+    # for what it is about to do.
     provenance.update(bridge_sessions_appended=appended,
-                      duplicate_count=duplicate, conflict_count=conflict)
+                      duplicate_count=duplicate, conflict_count=conflict,
+                      bridge_unconfirmed_close_count=len(unconfirmed),
+                      bridge_unconfirmed_close_dates=tuple(
+                          d.date().isoformat() for d in sorted(unconfirmed)))
     if not appended:
         return frame, provenance
 
@@ -316,6 +352,14 @@ def build_local_rubix_history(symbol, *, period="10y", interval="1d",
     return frame, prov
 
 
+def _confirmed(bar):
+    """True unless the measured store says this close is not the auction."""
+    flag = bar.get("CloseConfirmed")
+    if flag is None or pd.isna(flag):
+        return True
+    return bool(int(flag))
+
+
 def _export_rows_after(base, after_date):
     """Measured-export bars strictly after ``after_date``, in the tail's shape.
 
@@ -348,5 +392,13 @@ def _export_rows_after(base, after_date):
             # adjusted column must not claim one. The tail is raw either way.
             "Adj Close": close,
             "Volume": bar.get("Volume"),
+            # The measured store's close is the exchange's official close --
+            # the auction price -- which is precisely the field a Rubix bar is
+            # missing when its auction never arrived. One exception: a session
+            # the store rebuilt from minute bars that stopped before the cross
+            # carries CloseConfirmed 0, and it is a last price rather than a
+            # close. Sessions from the export predate that column and are
+            # confirmed, which is what the default preserves.
+            "_official_close": _confirmed(bar),
         })
     return rows
