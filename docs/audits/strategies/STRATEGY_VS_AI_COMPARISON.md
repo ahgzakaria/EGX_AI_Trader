@@ -1,5 +1,15 @@
 # Strategy Only vs Strategy + Walk-Forward AI
 
+
+> **Defensive-asset note (2026-09-10).** A risk claim in this document rests on
+> holding EGP cash while out of the market, and that is not a defence.
+> [REGIME_DETECTABILITY.md](REGIME_DETECTABILITY.md) measured the same shipped
+> configuration in both currencies: a drawdown of −18.27% in pounds and −65.29%
+> in dollars, against the market's −66.38%. The protection was the unit of
+> account falling, not the position. **Every drawdown, Calmar and Sortino figure
+> below overstates the protection it describes**, by an amount not computed here.
+> The ranking between configurations may survive; the level does not.
+
 > **Drawdown note (2026-08-29).** Every `MaxDrawdown` in this document was
 > measured before `backtesting/equity.py` marked open positions to market,
 > so each is a *closed-trade* drawdown and understates the real figure by

@@ -1,5 +1,15 @@
 # Removing Candle Confirmation — Measured, and It Costs
 
+
+> **Defensive-asset note (2026-09-10).** This document compares configurations on
+> drawdown without stating what the capital does when it is not in a position.
+> If the answer is EGP cash, the comparison is affected:
+> [REGIME_DETECTABILITY.md](REGIME_DETECTABILITY.md) found that the same shipped
+> configuration shows −18.27% in pounds and −65.29% in dollars against the
+> market's −66.38%, so an EGP drawdown overstates the protection. **Marked
+> ambiguous rather than corrected**, because the defensive asset is not stated
+> here and was not assumed.
+
 > **Drawdown note (2026-08-29).** Every `MaxDrawdown` in this document was
 > measured before `backtesting/equity.py` marked open positions to market,
 > so each is a *closed-trade* drawdown and understates the real figure by

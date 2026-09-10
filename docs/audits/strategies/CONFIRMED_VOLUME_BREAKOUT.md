@@ -1,5 +1,15 @@
 # CONFIRMED_VOLUME_BREAKOUT — A Second Swing Strategy, Built From Measurement
 
+
+> **Defensive-asset note (2026-09-10).** A risk claim in this document rests on
+> holding EGP cash while out of the market, and that is not a defence.
+> [REGIME_DETECTABILITY.md](REGIME_DETECTABILITY.md) measured the same shipped
+> configuration in both currencies: a drawdown of −18.27% in pounds and −65.29%
+> in dollars, against the market's −66.38%. The protection was the unit of
+> account falling, not the position. **Every drawdown, Calmar and Sortino figure
+> below overstates the protection it describes**, by an amount not computed here.
+> The ranking between configurations may survive; the level does not.
+
 **Question:** the Daily Dashboard strategy's gate stack has no out-of-sample
 edge ([DAILY_STRATEGY_DIAGNOSIS.md](DAILY_STRATEGY_DIAGNOSIS.md) §1). Built from
 scratch against everything that diagnosis found, what does this market actually

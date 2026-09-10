@@ -107,7 +107,12 @@ and which had been treated as the reason regime detection was impossible
 ([DAILY_STRATEGY_DIAGNOSIS §7](DAILY_STRATEGY_DIAGNOSIS.md)). It is a reusable
 component and it works. `scripts/research/regime_detectability.py`.
 
-**EGP cash is not a defensive asset.** The system's drawdown is a third of the
+**EGP cash is not a defensive asset.** Eleven archived documents now carry a
+dated note saying so — eight where the risk claim demonstrably rests on holding
+cash, three marked ambiguous because they compare drawdowns without stating what
+the capital does when it is not in a position. The list is in §8.
+
+The system's drawdown is a third of the
 market's in pounds and identical to it in dollars — **−65.29% against −66.38%**.
 The apparent defence came from sitting in a currency that fell 64% against the
 dollar over the window. This invalidates the reported risk profile of *any*
@@ -116,6 +121,54 @@ only the one measured here. Holding dollars while defensive is the single
 largest improvement measured anywhere in this investigation — EGP return +78% to
 +142%, USD drawdown −62% to −42% — and it was still not enough to clear the bar,
 which is itself the finding.
+
+
+### Documents annotated, and documents checked and left alone
+
+Applied 2026-09-10, following the precedent
+[DRAWDOWN_WAS_UNDERSTATED.md](DRAWDOWN_WAS_UNDERSTATED.md) set when the drawdown
+basis changed under 25 archived runs.
+
+**Annotated — the risk claim rests on holding EGP cash (8):**
+[STRATEGY_VS_AI_COMPARISON](STRATEGY_VS_AI_COMPARISON.md) (exposure 45.57% to
+5.02%, "improves every risk metric"),
+[AI_RISK_OVERLAY_COMPARISON](AI_RISK_OVERLAY_COMPARISON.md) (drawdown 18.59% to
+5.40%, Calmar 0.41 to 0.92),
+[AI_WALK_FORWARD_REPORT](AI_WALK_FORWARD_REPORT.md),
+[AI_RANKING_ROBUSTNESS_REPORT](AI_RANKING_ROBUSTNESS_REPORT.md),
+[MIN_RR_AS_RISK_CONTROL](MIN_RR_AS_RISK_CONTROL.md) (shipped explicitly as a risk
+control on a falling drawdown, with exposure falling beside it),
+[TRAILING_STOP_VERDICT](TRAILING_STOP_VERDICT.md),
+[SWING_IMPROVEMENT_LEVERS](SWING_IMPROVEMENT_LEVERS.md),
+[CONFIRMED_VOLUME_BREAKOUT](CONFIRMED_VOLUME_BREAKOUT.md).
+
+**Annotated as ambiguous — a drawdown comparison whose defensive asset is not
+stated, so it was marked rather than assumed (3):**
+[CONFIG_RECONCILIATION](CONFIG_RECONCILIATION.md),
+[CANDLE_REMOVAL_MEASURED](CANDLE_REMOVAL_MEASURED.md),
+[SEAL_RECUT_BREAKOUT_REMOVAL](SEAL_RECUT_BREAKOUT_REMOVAL.md).
+
+**Checked and left alone, with the reason:**
+
+* [CAPACITY_IS_THE_CONSTRAINT](CAPACITY_IS_THE_CONSTRAINT.md) — its drawdown
+  falls while peak deployment *rises* from 38% to 100%. The safety comes from
+  diversification, not from cash. It is the one document here whose risk claim
+  the finding leaves intact.
+* [COST_OF_DROPPING_THE_SCORE](COST_OF_DROPPING_THE_SCORE.md) — reports a
+  drawdown, concludes "noise in every direction", rests no claim on it.
+* [CANDLE_CONFIRMATION_REMOVAL](CANDLE_CONFIRMATION_REMOVAL.md) — concludes
+  neutral at trade level and expensive at portfolio level; no cash defence.
+* [DRAWDOWN_WAS_UNDERSTATED](DRAWDOWN_WAS_UNDERSTATED.md) — about the basis of a
+  drawdown, not about what the capital does when flat.
+* The four documents of this investigation and
+  [DAILY_STRATEGY_DIAGNOSIS](DAILY_STRATEGY_DIAGNOSIS.md),
+  [WORK_PLAN](WORK_PLAN.md) — they carry the finding or cross-reference it.
+* Every scalping and ORB document — intraday, flat overnight. See §8: the
+  currency effect reaches a multi-year risk profile, not a position held for
+  hours.
+* Everything outside `docs/audits/strategies/` — 110 documents under
+  `providers/`, `runtime/`, `regression/`, `architecture/` and `research/` make
+  no strategy risk claim.
 
 ## 7. The limit that conditions everything
 
@@ -130,6 +183,85 @@ markets. **There is no more data.** The panel is 191 symbols and 382,646 bars
 from 2016-07-19 to 2026-07-22, delisted names have no prices, and no index
 history exists. This is a limit on the conclusions, not a task for a future
 session.
+
+## 8. What the termination covers, and what it does not
+
+Written because in six months nobody will remember what "the program terminated"
+meant, and the answer is narrower than the phrase sounds.
+
+### In scope — terminated
+
+The **daily / swing and breakout family**: the Daily Dashboard strategy, the
+`strategy_momentum_breakout` / CONFIRMED_VOLUME_BREAKOUT module, and
+`strategy_breakout`. Thirty-four configurations, one universe of 191 symbols,
+2016-07-19 to 2026-07-22, all holding positions for days to weeks.
+
+That is what every measurement in §3 was taken on, and that is what is closed.
+
+### Not in scope — untouched, and on what basis
+
+| track | state | why it was not in scope |
+|---|---|---|
+| `scalping_orb` | shadow sessions running daily | intraday; never held overnight, never measured against a buy-and-hold benchmark here |
+| `scalping_expected_range` | paper state | intraday |
+| `scalping_uptrend_pullback` | paper state | intraday |
+| `scalping` (session validator) | **PAPER_RECORDING_ELIGIBLE**, 26 of 26 sessions qualifying — and `data/scalping.db` holds 1,295 signals with **0 entry attempts, 0 fills and 0 exits** | intraday, and it has never recorded a fill, so there is nothing to benchmark |
+| `sector_flow` | shipped | a liquidity view, not a strategy; produces no signal |
+| `forward_testing` | 201 live sessions, 7,556 signals, 5 paper positions | records what happens; it is instrumentation, not a configuration |
+| `decision_support` | shipped | advisory layer over the daily strategy; inherits its verdict but was not separately measured |
+
+None of these was tested and none is being declared dead. They are untested,
+which is a different statement, and this document makes no claim about them.
+
+### Do the two surviving findings transfer?
+
+**EGP cash is not a defensive asset — transfers, with a caveat.** The mechanism
+is arithmetic: the unit fell 64% against the dollar over the decade, so any
+position measured in pounds while sitting in pounds overstates its protection.
+It applies to any EGP-denominated track that reports a drawdown. The caveat is
+duration: a system flat overnight and over weekends still holds EGP through those
+hours, but a currency slide spread over ten years accrues to a position held for
+hours at a rate too small to matter per trade. **It affects the reported multi-
+year risk profile of an intraday track, not the risk of one intraday position.**
+
+**The causal regime detector — transfers cleanly.** It is built from daily panel
+bars and flags a market state; nothing in it is specific to the strategy it
+gated. Any track that wants to know whether the market is falling can read it.
+Whether gating an intraday system on it helps is untested.
+
+### Does the upside-capture argument apply to an intraday system?
+
+**Yes, and with more force — and this is already measured in this repository,
+so it needed no new run.**
+
+The argument against the daily strategy is that it captured about 6% of the
+market's up moves because it was mostly not holding. An intraday system holds
+*nothing* overnight, and
+[OVERNIGHT_GAP_PROBE.md §3](OVERNIGHT_GAP_PROBE.md) measured where the return
+actually arrives — 2,891 symbol-transitions over 16 sessions:
+
+| leg | mean | median | positive | t |
+|---|--:|--:|--:|--:|
+| **overnight, close to next open** | **+0.663%** | +0.370% | 72.6% | **+15.7** |
+| next session, open to close | −0.029% | −0.418% | 39.1% | −0.4 |
+
+The overnight leg was positive on **every one of the 13 measurable transitions**.
+A same-session strategy is structurally confined to the leg that averaged
+−0.029%, pays the full toll every day, and **cannot touch the +0.663% that
+arrives while it is flat** — which is that document's own conclusion, reached
+before this investigation existed.
+
+So the upside-capture problem is not merely inherited by the intraday tracks; it
+is sharper there. The daily strategy at least held overnight sometimes.
+
+**What is open.** That measurement is 16 sessions against the daily study's ten
+years, and it is a market-wide average rather than a test of any particular
+intraday rule. It establishes where the drift accrues. It does not establish that
+no intraday rule can earn its toll from the open-to-close leg, and nothing here
+tested one. **That question is open, and closing it would require measuring an
+intraday track against a benchmark — which is exactly the work this document
+declines to authorise for the terminated family and does not authorise here
+either.**
 
 ## Other limits
 
