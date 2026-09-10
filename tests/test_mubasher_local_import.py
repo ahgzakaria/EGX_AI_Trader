@@ -262,3 +262,128 @@ def test_stale_history_is_reported_rather_than_assumed_current(tmp_path):
     assert metadata["last_session"] == "2026-09-10"
     assert metadata["intraday_sessions_appended"] == ["2026-09-10"]
     assert metadata["source"] == "mubasher_local"
+
+
+# --- one session at a time, for the research that works in minutes ----------
+
+def test_a_sessions_shape_comes_out_of_the_minute_store(tmp_path):
+    """Open, close, high, low and the exchange's own turnover, per symbol."""
+
+    base = _build_root(tmp_path, intraday=[
+        ("COMI", _session_with_auction(138.33, 138.17))])
+
+    shapes = local.session_minutes("2026-09-10", base)
+
+    assert set(shapes) == {"COMI"}
+    comi = shapes["COMI"]
+    assert comi["open"] == pytest.approx(100.0), "the first traded minute"
+    assert comi["close"] == pytest.approx(138.17), "the auction, not 138.33"
+    assert comi["high"] == pytest.approx(138.33)
+    assert comi["low"] == pytest.approx(100.0)
+    assert comi["bars"] == 4
+    assert comi["last_minute"] == "14:25"
+    assert comi["close_confirmed"] is True
+
+
+def test_a_session_the_store_does_not_hold_is_empty_not_an_error(tmp_path):
+    base = _build_root(tmp_path, intraday=[
+        ("COMI", _session_with_auction(138.33, 138.17))])
+
+    assert local.session_minutes("2019-01-02", base) == {}
+    assert local.session_opens("2019-01-02", base) == {}
+
+
+def test_the_sessions_held_are_reported_in_order(tmp_path):
+    base = _build_root(tmp_path)
+    with sqlite3.connect(base / local.INTRADAY_RELATIVE) as connection:
+        connection.executemany("INSERT INTO INTRADAY_MASTER VALUES (?)",
+                               [(20260910,), (20260908,), (20260909,)])
+
+    assert local.available_sessions(base) == ["2026-09-08", "2026-09-09", "2026-09-10"]
+
+
+def test_the_open_is_the_first_traded_minute_and_never_invented(tmp_path):
+    """The daily record's OP is the previous close; this one is a trade."""
+
+    base = _build_root(tmp_path, intraday=[
+        ("ABUK", _session_with_auction(76.5, 76.2))])
+
+    opens = local.session_opens("2026-09-10", base)
+    assert opens == {"ABUK": pytest.approx(100.0)}
+
+
+# --- Roll's estimator, which must never be mistaken for a quoted spread -----
+
+def _tape(base, session, trades):
+    path = base / local.TAPE_RELATIVE / f"{session.replace('-', '')}.db"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "CREATE TABLE TRADES (SEQUENCE INTEGER, SYMBOL TEXT, TRADETIME TEXT, "
+            "TRADEPRICE TEXT, TRADEQUANTITY TEXT, ISODDLOTTRADE TEXT)")
+        connection.executemany(
+            "INSERT INTO TRADES VALUES (?,?,?,?,?,?)",
+            [(i, sym, "070000", str(price), "100", "0")
+             for i, (sym, price) in enumerate(trades)])
+    return path
+
+
+def test_a_bouncing_price_produces_an_estimate(tmp_path):
+    """Roll reads the bid-ask bounce, and that bounce is the whole signal.
+
+    Trades land at the bid or the ask at random around an unmoving mid, which
+    is the model the estimator is derived from. Perfect alternation is the
+    degenerate case and returns twice the spread, so it is not what a test of
+    the estimator should feed it.
+    """
+
+    import random
+
+    base = _build_root(tmp_path)
+    rng = random.Random(7)
+    spread = 0.5
+    prices = [100.0 + rng.choice((-1, 1)) * spread / 2 for _ in range(4000)]
+    _tape(base, "2026-09-10", [("COMI", p) for p in prices])
+
+    estimates = local.roll_spread_estimates("2026-09-10", base)
+
+    assert estimates["COMI"] is not None
+    assert estimates["COMI"] == pytest.approx(100.0 * spread / 100.0, rel=0.1), (
+        "a 0.5-wide book on a 100 price is a 0.5% spread")
+
+
+def test_a_trending_price_yields_no_estimate_rather_than_zero(tmp_path):
+    """Non-negative covariance is Roll's model declining to answer.
+
+    Recording a 0 there would say "this symbol costs nothing to trade", which
+    is the opposite of what the data supports.
+    """
+
+    base = _build_root(tmp_path)
+    _tape(base, "2026-09-10", [("COMI", 100.0 + i * 0.1) for i in range(80)])
+
+    # In exact arithmetic a constant drift has a covariance of zero; in this
+    # one it came out at about -1e-30, which passed a bare `cov < 0` and became
+    # a spread of 0.000000000001% -- a number that reads as "free to trade".
+    assert local.roll_spread_estimates("2026-09-10", base)["COMI"] is None
+
+
+def test_a_symbol_with_too_few_trades_is_not_estimated(tmp_path):
+    base = _build_root(tmp_path)
+    _tape(base, "2026-09-10", [("THIN", 10.0 + (i % 2) * 0.1) for i in range(10)])
+
+    assert "THIN" not in local.roll_spread_estimates("2026-09-10", base)
+
+
+def test_a_session_with_no_tape_is_empty_not_an_error(tmp_path):
+    base = _build_root(tmp_path)
+    assert local.roll_spread_estimates("2026-09-10", base) == {}
+
+
+def test_odd_lot_trades_are_excluded_from_the_estimate(tmp_path):
+    """They print away from the book and would widen every estimate."""
+
+    import inspect
+
+    source = inspect.getsource(local.roll_spread_estimates)
+    assert "ISODDLOTTRADE='0'" in source

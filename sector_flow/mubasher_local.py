@@ -252,6 +252,178 @@ def read_intraday(root=None, symbols=None):
     return tidy[tidy["turnover"] > 0]
 
 
+# --------------------------------------------------------------------------- #
+# One session at a time, for the research that works in minutes rather than days
+# --------------------------------------------------------------------------- #
+
+TAPE_RELATIVE = "HistoricalTrade/CASE"
+
+#: Below this many trades a session's tape says nothing about a symbol's
+#: spread, and Roll's covariance is noise. 30 is where the estimate stopped
+#: swinging by more than its own size between adjacent sessions.
+_ROLL_MIN_TRADES = 30
+
+#: Below this the covariance was negative only by float error. See
+#: ``roll_spread_estimates``.
+_ROLL_MIN_PERCENT = 1e-4
+
+
+def available_sessions(root=None):
+    """Cairo dates the minute store currently holds, newest last.
+
+    It keeps a rolling fourteen sessions. Anything older has to come from the
+    daily record, which has no minutes at all.
+    """
+
+    base = find_root(root)
+    if base is None or not (base / INTRADAY_RELATIVE).exists():
+        return []
+    try:
+        with _open_read_only(base / INTRADAY_RELATIVE) as connection:
+            rows = connection.execute("SELECT INTRADAYDATE FROM INTRADAY_MASTER").fetchall()
+    except sqlite3.Error:
+        return []
+    dates = []
+    for row in rows:
+        raw = str(row[0])
+        if len(raw) == 8:
+            dates.append(f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}")
+    return sorted(dates)
+
+
+def session_minutes(session, root=None, symbols=None):
+    """Per-symbol shape of one session, from the minute store.
+
+    Returns ``{ticker: dict}`` with the session's open, close, high, low,
+    reported turnover, bar count, the last minute reached, and whether the
+    close is the auction's.
+
+    The open here is the real one. It is the only true EGX opening price on
+    this machine: the daily record's ``OP`` column is the previous close, and
+    the terminal's CSV export puts the high in its "Open" column.
+    """
+
+    base = find_root(root)
+    if base is None or not (base / INTRADAY_RELATIVE).exists():
+        return {}
+
+    day = str(session)[:10]
+    shapes = {}
+    with _open_read_only(base / INTRADAY_RELATIVE) as connection:
+        for table, ticker in _instrument_tables(connection, symbols):
+            try:
+                rows = connection.execute(
+                    f'SELECT TMIN, OP, HIG, LOW, CLS, VOL, TOVR FROM "{table}" '
+                    f'ORDER BY CAST(TMIN AS INTEGER)').fetchall()
+            except sqlite3.Error:
+                continue
+
+            bars = []
+            for tmin, op, hig, low, cls, vol, tovr in rows:
+                try:
+                    stamp, minute = session_of(tmin)
+                    if stamp != day:
+                        continue
+                    bars.append((minute, float(op), float(hig), float(low),
+                                 float(cls), float(vol or 0), float(tovr or 0)))
+                except (TypeError, ValueError):
+                    continue
+            if not bars:
+                continue
+
+            last_minute = bars[-1][0]
+            shapes[ticker] = {
+                "open": bars[0][1],
+                "close": bars[-1][4],
+                "high": max(b[2] for b in bars),
+                "low": min(b[3] for b in bars),
+                "turnover": sum(b[6] for b in bars),
+                "volume": sum(b[5] for b in bars),
+                "bars": len(bars),
+                "last_minute": f"{last_minute // 60:02d}:{last_minute % 60:02d}",
+                "close_confirmed": last_minute >= AUCTION_FROM_MINUTE,
+            }
+    return shapes
+
+
+def session_opens(session, root=None, symbols=None):
+    """``{ticker: opening price}`` for one session, or an empty dict."""
+    return {ticker: shape["open"]
+            for ticker, shape in session_minutes(session, root, symbols).items()
+            if shape["open"] > 0}
+
+
+def roll_spread_estimates(session, root=None):
+    """Roll's effective spread per symbol, from the session's trade tape.
+
+    ``2 * sqrt(-cov(dP_t, dP_t-1))`` over the session's own trades, as a
+    percentage of the mean traded price, and ``None`` where the covariance is
+    not negative -- which is Roll's model saying it has no estimate rather than
+    an estimate of zero.
+
+    **It is not the quoted spread and must not be used as one.** Measured
+    against the quoted median spread on 2026-09-08, -09 and -10, across ~205
+    symbols a session: correlation 0.74 to 0.84, rank correlation 0.78 to 0.85,
+    but biased low -- median 0.26-0.28% against a quoted 0.39-0.46% -- so at a
+    0.3% cutoff it admits about twice as many symbols as tight and disagrees
+    with the quoted verdict on 22-36% of them.
+
+    So it is recorded beside a prediction and never read by the rule that makes
+    one. What it is good for is ranking; what it cannot do is stand in for a
+    cost.
+    """
+
+    base = find_root(root)
+    if base is None:
+        return {}
+    tape = base / TAPE_RELATIVE / f"{str(session)[:10].replace('-', '')}.db"
+    if not tape.exists():
+        return {}
+
+    import math
+    import statistics
+
+    prices = {}
+    try:
+        with _open_read_only(tape) as connection:
+            for symbol, price in connection.execute(
+                    "SELECT SYMBOL, TRADEPRICE FROM TRADES "
+                    "WHERE ISODDLOTTRADE='0' ORDER BY CAST(SEQUENCE AS INTEGER)"):
+                try:
+                    prices.setdefault(str(symbol).upper(), []).append(float(price))
+                except (TypeError, ValueError):
+                    continue
+    except sqlite3.Error as error:
+        logger.warning("mubasher tape: %s unreadable (%s)", tape.name, error)
+        return {}
+
+    estimates = {}
+    for symbol, series in prices.items():
+        if len(series) < _ROLL_MIN_TRADES:
+            continue
+        changes = [b - a for a, b in zip(series, series[1:])]
+        if len(changes) < 20:
+            continue
+        first, second = changes[:-1], changes[1:]
+        mean_first = statistics.mean(first)
+        mean_second = statistics.mean(second)
+        covariance = sum((a - mean_first) * (b - mean_second)
+                         for a, b in zip(first, second)) / (len(first) - 1)
+        mid = statistics.mean(series)
+        if covariance >= 0 or mid <= 0:
+            estimates[symbol] = None
+            continue
+        estimate = 100.0 * 2.0 * math.sqrt(-covariance) / mid
+        # A covariance that is negative only by float error is not a bounce.
+        # A price that walked one way all session gives cov of exactly zero in
+        # exact arithmetic and about -1e-30 in this one, which came out as a
+        # spread of 0.000000000001% -- a number that would read as "free to
+        # trade". Every real EGX spread is orders above this floor; it rejects
+        # arithmetic noise, and claims nothing about the market.
+        estimates[symbol] = estimate if estimate >= _ROLL_MIN_PERCENT else None
+    return estimates
+
+
 def store_symbols(database=DEFAULT_DATABASE):
     """Return the tickers the store already holds, without their suffix."""
 

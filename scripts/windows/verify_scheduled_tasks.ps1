@@ -77,11 +77,6 @@ $declared = @(
        Invokes = "record_confirmed_breakout_forward.py"
        Expect = "15:00"; Limit = "PT20M"; Repeat = "PT1H/PT7H"; Logon = "S4U" }
 
-    @{ Task = "EGX Gap Forward Recorder"
-       Installer = "install_gap_forward_task.ps1"
-       Invokes = "record_gap_forward.py"
-       Expect = "14:40"; Limit = "PT20M"; Repeat = "-"; Logon = "S4U" }
-
     @{ Task = "EGX ORB Full Shadow Automation"
        Installer = "install_orb_full_shadow_task.ps1"
        Invokes = "run_daily_orb_automation.ps1"
@@ -98,7 +93,7 @@ $declared = @(
        Expect = "09:00"; Limit = "PT10M"; Repeat = "-"; Logon = "S4U" }
 )
 
-# Retired with the Rubix feed on 2026-09-10. The daily candle comes from
+# Retired or relocated on 2026-09-10. The daily candle comes from
 # MubasherTrade PRO's own databases now, imported by
 # scripts\import_mubasher_local.py, so nothing runs during the session to build
 # one. They are DISABLED rather than deleted; the removal scripts under
@@ -107,7 +102,11 @@ $declared = @(
 $retired = @(
     "EGX Rubix Daily Finalizer",
     "EGX Rubix Assisted Start",
-    "EGX Rubix Supervisor Watchdog"
+    "EGX Rubix Supervisor Watchdog",
+    # Not retired but relocated: it reads Mubasher's minute store now, and
+    # RUN_DAILY.bat runs it. A 14:40 clock was the wrong owner for work that
+    # depends on a download somebody does by hand.
+    "EGX Gap Forward Recorder"
 )
 
 function Get-TaskAction {

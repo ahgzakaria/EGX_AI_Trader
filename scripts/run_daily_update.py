@@ -14,7 +14,8 @@ this, in the order the inputs require:
   2. read its databases into the measured store
   3. rebuild the sector liquidity history from it
   4. check that the daily candle reached the last completed session
-  5. check that the stores which record themselves have not stalled
+  5. record and grade the gap forward test, which used to run on a clock
+  6. check that the stores which record themselves have not stalled
 
 Step 1 is not decoration. The download is manual, so the likeliest reason a run
 produces nothing is that it did not happen -- and an import that reads a file
@@ -27,7 +28,7 @@ rebuild is worth knowing about separately from an import that did not happen.
 The exit code is 0 only when the last completed session is present in the
 store. That is the one thing worth failing on: everything downstream reads it,
 and a run that looks like it worked while the candle stayed a day behind is the
-failure this replaces. Step 5 is reported rather than failed on, because those
+failure this replaces. Step 6 is reported rather than failed on, because those
 stores are written by other tasks -- but a recorder that stops says nothing on
 its own, and the forward tests it feeds take a month to be worth reading.
 """
@@ -284,6 +285,36 @@ def check_candle(expected):
 
 
 # --------------------------------------------------------------------------- #
+# 4. the forward test that used to run itself
+# --------------------------------------------------------------------------- #
+
+def run_gap_forward():
+    """Record today's gap prediction and grade the one today settles.
+
+    This had its own scheduled task at 14:40, reading the Rubix feed. It has
+    been failing since the feed stopped, and it reads Mubasher's minute store
+    now -- so it belongs to the click rather than to a clock. The minute store
+    keeps a rolling fourteen sessions, which is ample for "record today, grade
+    yesterday", and both halves are idempotent, so running it twice changes
+    nothing.
+    """
+
+    import subprocess
+
+    completed = subprocess.run(
+        [sys.executable, "scripts/research/record_gap_forward.py", "daily"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    for line in (completed.stdout or "").splitlines():
+        if line.strip():
+            _say(f"  {line.rstrip()}")
+    if completed.returncode != 0:
+        for line in (completed.stderr or "").splitlines()[-6:]:
+            if line.strip():
+                _say(f"  ! {line.rstrip()}")
+    return completed.returncode == 0
+
+
+# --------------------------------------------------------------------------- #
 # 5. is anything that records itself quietly stalled?
 # --------------------------------------------------------------------------- #
 
@@ -340,7 +371,7 @@ def main(argv=None):
                         help="import only; leave the sector history alone")
     args = parser.parse_args(argv)
 
-    total = 4 if args.skip_sector_flow else 5
+    total = 5 if args.skip_sector_flow else 6
     _open_log()
     _say()
     _say(RULE)
@@ -378,6 +409,11 @@ def main(argv=None):
     current = check_candle(expected)
     if not current:
         failures.append("the candle is not at the last completed session")
+    step += 1
+
+    _step(step, total, "record and grade the gap forward test")
+    if not run_gap_forward():
+        failures.append("the gap forward test did not record")
     step += 1
 
     _step(step, total, "are the forward-test recorders still recording?")

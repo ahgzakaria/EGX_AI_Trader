@@ -32,20 +32,37 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import statistics
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-MARKET_DB = ROOT / "data" / "rubix_live_market.db"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 STORE = ROOT / "data" / "research" / "gap_forward.db"
 
-SESSION_START = "07:00"
-SESSION_END = "11:30"
-
 #: Bumped whenever the selection rule changes. Rows keep the version that made
-#: them, so a later analysis can refuse to pool two different rules.
-RULE_VERSION = "top20pct-intraday-spread0.3-turnover20M-v1"
+#: them, so a later analysis can refuse to pool two different rules -- and
+#: ``report`` refuses on its own if it finds more than one.
+#:
+#: v1 ran on the Rubix feed and read a quoted bid and ask. v2 reads
+#: MubasherTrade PRO's minute store, which carries no quotes at all, so the
+#: spread term is gone from the rule and ``spread_percent`` is NULL on every
+#: v2 row. That is a different rule and the version has to say so.
+#:
+#: What the term was doing is measurable on the 1,178 graded v1 rows: with it,
+#: 91 selections at +0.701% gross; without it, 186 at +0.770%. The spread was
+#: the cost gate, not the edge -- so the hypothesis survives the source change
+#: and the net-of-cost figure does not.
+RULE_VERSION = "top20pct-intraday-turnover20M-mubasher-v2"
 BROKER_ROUND_TRIP = 0.3638
+
+#: Minutes are read for the session's own Cairo date, so there is no window to
+#: state: the store's bars for 2026-09-10 are that session and nothing else.
+#: What still needs saying is where the auction is, because a session whose
+#: minutes stop before it has a last price and not a close.
+AUCTION_MINUTE = "14:25"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS gap_predictions (
@@ -61,6 +78,11 @@ CREATE TABLE IF NOT EXISTS gap_predictions (
     close_position REAL NOT NULL,
     turnover REAL NOT NULL,
     spread_percent REAL,
+    -- Roll's effective spread from the session's own trade tape. Recorded
+    -- beside the prediction and never read by the rule that made it: against
+    -- the quoted spread it ranks well (0.78-0.85) and is biased low, so it can
+    -- order symbols and cannot price one. NULL on every v1 row.
+    roll_spread_estimate REAL,
     close_price REAL NOT NULL,
     broker_round_trip REAL NOT NULL,
     -- graded later, by a separate invocation, never by the recorder
@@ -78,42 +100,44 @@ def connect():
     STORE.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(STORE)
     conn.executescript(SCHEMA)
+    # CREATE TABLE IF NOT EXISTS leaves an existing table's columns alone, so a
+    # store written before v2 keeps its old shape and rejects every insert with
+    # "no column named roll_spread_estimate". The 1,768 standing predictions in
+    # it are the experiment; they are migrated, never rebuilt.
+    held = {row[1] for row in conn.execute("PRAGMA table_info(gap_predictions)")}
+    if "roll_spread_estimate" not in held:
+        conn.execute("ALTER TABLE gap_predictions ADD COLUMN roll_spread_estimate REAL")
+        conn.commit()
     return conn
 
 
 def session_shapes(session: str, min_bars: int):
-    conn = sqlite3.connect(f"file:{MARKET_DB}?mode=ro", uri=True)
-    rows = conn.execute(
-        "select ticker, "
-        "  min(case when ra = 1 then open end), min(case when rd = 1 then close end), "
-        "  max(high), min(low), sum(volume * close), count(*) "
-        "from (select ticker, minute, open, high, low, close, volume, "
-        "        row_number() over (partition by ticker order by minute) ra, "
-        "        row_number() over (partition by ticker order by minute desc) rd "
-        "      from candles_1m "
-        "      where substr(minute,1,10) = ? "
-        "        and substr(minute,12,5) between ? and ? "
-        "        and open > 0 and high > 0 and low > 0 and close > 0) "
-        "group by ticker", (session, SESSION_START, SESSION_END)
-    ).fetchall()
-    spreads = {}
-    raw = {}
-    for ticker, bid, ask in conn.execute(
-        "select ticker, bid, ask from quotes "
-        "where substr(market_timestamp,1,10) = ? "
-        "and substr(market_timestamp,12,5) between ? and ? "
-        "and bid > 0 and ask > 0 and ask >= bid",
-        (session, SESSION_START, SESSION_END)
-    ):
-        raw.setdefault(ticker, []).append(200.0 * (ask - bid) / (ask + bid))
-    for ticker, values in raw.items():
-        if len(values) >= 20:
-            spreads[ticker] = statistics.median(values)
-    conn.close()
+    """One session's shape per symbol, from MubasherTrade PRO's minute store.
+
+    Three of these numbers are better than the feed this used to read. The open
+    is a real 10:00 open rather than the first bar a collector happened to
+    capture; the close is the price the 14:25 auction crossed at, which the old
+    feed never sent; and the turnover is the figure the exchange reported
+    rather than ``volume x close`` summed over minutes.
+
+    One is gone. The store carries no bid or ask -- neither does the daily
+    record, whose BBP/BAP columns are -1 in every row -- so ``spread`` is None
+    for every symbol and the rule that reads it changed with the source. See
+    RULE_VERSION.
+    """
+
+    from sector_flow.mubasher_local import roll_spread_estimates, session_minutes
+
+    minutes = session_minutes(session)
+    rolls = roll_spread_estimates(session)
 
     shapes = []
-    for ticker, first_open, last_close, high, low, turnover, bars in rows:
-        if bars < min_bars or not first_open or not last_close or low <= 0:
+    for ticker, shape in minutes.items():
+        if shape["bars"] < min_bars:
+            continue
+        first_open, last_close = shape["open"], shape["close"]
+        high, low = shape["high"], shape["low"]
+        if not first_open or not last_close or low <= 0:
             continue
         shapes.append({
             "ticker": ticker,
@@ -121,8 +145,11 @@ def session_shapes(session: str, min_bars: int):
             "intraday": 100.0 * (last_close - first_open) / first_open,
             "range": 100.0 * (high - low) / low,
             "close_position": (last_close - low) / (high - low) if high > low else 0.5,
-            "turnover": turnover or 0.0,
-            "spread": spreads.get(ticker),
+            "turnover": shape["turnover"] or 0.0,
+            "spread": None,                       # no quotes in this source
+            "roll": rolls.get(ticker),
+            "last_minute": shape["last_minute"],
+            "close_confirmed": shape["close_confirmed"],
         })
     return shapes
 
@@ -133,21 +160,37 @@ def session_shapes(session: str, min_bars: int):
 #: seconds of 14:30 Cairo, but collection does fail -- 2026-08-20 arrived eight
 #: hours late -- and the difference must not depend on the clock being generous.
 MINIMUM_SYMBOLS = 150
-LATEST_BAR_REQUIRED = "11:25"
+
+#: The old feed wrote a bar for every minute it ticked, so 160 of a session's
+#: ~270 minutes meant "traded throughout". Mubasher's store writes a bar only
+#: for a minute that actually traded -- median 142 bars a symbol against the
+#: feed's 254 -- so the same intent sits at a much lower count.
+#:
+#: Calibrated on 2026-09-09, where the old threshold kept 194 symbols: at 60
+#: this keeps 199, 187 of them the same names, losing 7. At 160 it would keep
+#: 110 and drop 90 symbols the rule had always accepted.
+DEFAULT_MIN_BARS = 60
 
 
 def session_is_complete(session: str, shapes) -> tuple[bool, str]:
+    """Refuse a session whose auction has not landed in the store yet.
+
+    The old gate asked whether the collector had reached 11:25 UTC. This one
+    asks the question that actually matters: did the closing auction print?
+    A session recorded from minutes that stop at 14:14 has a last continuous
+    trade where its close should be, and on 2026-09-10 that was a different
+    price for 163 of 191 symbols.
+    """
+
     if len(shapes) < MINIMUM_SYMBOLS:
         return False, (f"only {len(shapes)} symbols have {{}} bars; "
                        f"{MINIMUM_SYMBOLS} expected")
-    conn = sqlite3.connect(f"file:{MARKET_DB}?mode=ro", uri=True)
-    last = conn.execute(
-        "select max(substr(minute,12,5)) from candles_1m "
-        "where substr(minute,1,10) = ? and substr(minute,12,5) <= ?",
-        (session, SESSION_END)).fetchone()[0]
-    conn.close()
-    if not last or last < LATEST_BAR_REQUIRED:
-        return False, f"last bar is {last or 'absent'}, before {LATEST_BAR_REQUIRED}"
+    confirmed = [s for s in shapes if s["close_confirmed"]]
+    if len(confirmed) < MINIMUM_SYMBOLS:
+        latest = max((s["last_minute"] for s in shapes), default="absent")
+        return False, (f"only {len(confirmed)} symbols have closed on the auction "
+                       f"(last bar anywhere is {latest}, auction prints from "
+                       f"{AUCTION_MINUTE})")
     return True, ""
 
 
@@ -171,22 +214,23 @@ def record(session: str, min_bars: int, force: bool = False) -> None:
     conn = connect()
     written = 0
     for rank, shape in enumerate(shapes):
-        selected = int(
-            rank < cutoff
-            and shape["spread"] is not None and shape["spread"] <= 0.3
-            and shape["turnover"] >= 20_000_000
-        )
+        # No spread term: this source has no quotes, and a filter that reads a
+        # None every time selects nothing at all. On the 1,178 graded v1 rows
+        # dropping it took 91 selections at +0.701% gross to 186 at +0.770%,
+        # so it was gating cost rather than finding the effect. RULE_VERSION
+        # records which rule made the row; `report` refuses to pool two.
+        selected = int(rank < cutoff and shape["turnover"] >= 20_000_000)
         cursor = conn.execute(
             "INSERT OR IGNORE INTO gap_predictions "
             "(session, ticker, recorded_at, rule_version, selected, "
             " rank_in_session, session_count, intraday_return, session_range, "
-            " close_position, turnover, spread_percent, close_price, "
-            " broker_round_trip) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " close_position, turnover, spread_percent, roll_spread_estimate, "
+            " close_price, broker_round_trip) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (session, shape["ticker"], now, RULE_VERSION, selected, rank,
              len(shapes), shape["intraday"], shape["range"],
              shape["close_position"], shape["turnover"], shape["spread"],
-             shape["close"], BROKER_ROUND_TRIP))
+             shape.get("roll"), shape["close"], BROKER_ROUND_TRIP))
         written += cursor.rowcount
     conn.commit()
 
@@ -204,33 +248,44 @@ def record(session: str, min_bars: int, force: bool = False) -> None:
 def grade(session: str) -> None:
     """Fill outcomes for a session already recorded, from the NEXT open."""
     conn = connect()
+    # Only rows this rule version made. The two sources do not define an open
+    # the same way: on 2026-09-10 the feed's first captured bar and Mubasher's
+    # first traded minute agree for 87.6% of symbols and to 0.0000% at the
+    # median, but 14 of 217 differ by more than 0.5% and one by 5.4% -- the
+    # thin names, where the feed had a bar before the symbol had a trade.
+    #
+    # A prediction made from one source and settled against the other is a
+    # measurement change inside an experiment, on exactly the symbols the rule
+    # is least sure about. So v1 rows are closed out from the feed archive that
+    # made them, and v2 rows are graded here.
+    stale = conn.execute(
+        "select count(*) from gap_predictions "
+        "where session = ? and graded_at IS NULL and rule_version <> ?",
+        (session, RULE_VERSION)).fetchone()[0]
+    if stale:
+        print(f"session {session}: {stale} ungraded rows were recorded under an "
+              f"earlier rule version and are not graded from this source.")
     pending = conn.execute(
         "select ticker, close_price, spread_percent, broker_round_trip "
-        "from gap_predictions where session = ? and graded_at IS NULL",
-        (session,)).fetchall()
+        "from gap_predictions where session = ? and graded_at IS NULL "
+        "and rule_version = ?",
+        (session, RULE_VERSION)).fetchall()
     if not pending:
         print(f"session {session}: nothing ungraded "
               "(a graded prediction is never regraded)")
         conn.close()
         return
 
-    market = sqlite3.connect(f"file:{MARKET_DB}?mode=ro", uri=True)
-    following = market.execute(
-        "select min(substr(minute,1,10)) from candles_1m "
-        "where substr(minute,1,10) > ?", (session,)).fetchone()[0]
-    if not following:
-        print(f"session {session}: no later session exists yet; "
+    from sector_flow.mubasher_local import available_sessions, session_opens
+
+    later = [day for day in available_sessions() if day > session]
+    if not later:
+        print(f"session {session}: no later session is in the minute store; "
               "nothing can be graded, and nothing is")
-        market.close(); conn.close()
+        conn.close()
         return
-    opens = dict(market.execute(
-        "select ticker, min(case when ra = 1 then open end) from "
-        "(select ticker, minute, open, row_number() over "
-        "  (partition by ticker order by minute) ra from candles_1m "
-        " where substr(minute,1,10) = ? "
-        "   and substr(minute,12,5) between ? and ? and open > 0) "
-        "group by ticker", (following, SESSION_START, SESSION_END)))
-    market.close()
+    following = later[0]
+    opens = session_opens(following)
 
     now = datetime.now(timezone.utc).isoformat()
     graded = 0
@@ -302,13 +357,14 @@ def daily(min_bars: int) -> None:
     Every step is idempotent, so a task that fires twice, or catches up after a
     missed day, changes nothing it should not.
     """
-    conn = sqlite3.connect(f"file:{MARKET_DB}?mode=ro", uri=True)
-    sessions = [r[0] for r in conn.execute(
-        "select distinct substr(minute,1,10) d from candles_1m "
-        "order by d desc limit 2")]
-    conn.close()
+    from sector_flow.mubasher_local import available_sessions
+
+    sessions = list(reversed(available_sessions()))[:2]
     if not sessions:
-        raise SystemExit("no sessions in the market database")
+        raise SystemExit(
+            "the MubasherTrade PRO minute store holds no sessions. It keeps a "
+            "rolling fourteen and only while the terminal runs, so a machine "
+            "that has not opened it has nothing to record.")
 
     record(sessions[0], min_bars)
     if len(sessions) > 1:
@@ -322,7 +378,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("action", choices=("record", "grade", "report", "daily"))
     ap.add_argument("--session", help="YYYY-MM-DD; defaults to the latest session")
-    ap.add_argument("--min-bars", type=int, default=160)
+    ap.add_argument("--min-bars", type=int, default=DEFAULT_MIN_BARS)
     ap.add_argument("--force", action="store_true",
                     help="record even if the session looks incomplete")
     args = ap.parse_args()
@@ -336,10 +392,12 @@ def main() -> None:
 
     session = args.session
     if not session:
-        conn = sqlite3.connect(f"file:{MARKET_DB}?mode=ro", uri=True)
-        session = conn.execute(
-            "select max(substr(minute,1,10)) from candles_1m").fetchone()[0]
-        conn.close()
+        from sector_flow.mubasher_local import available_sessions
+
+        held = available_sessions()
+        if not held:
+            raise SystemExit("the MubasherTrade PRO minute store holds no sessions")
+        session = held[-1]
     if args.action == "record":
         record(session, args.min_bars, args.force)
     else:
