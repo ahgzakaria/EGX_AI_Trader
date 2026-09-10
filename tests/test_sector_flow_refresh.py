@@ -509,7 +509,12 @@ def test_a_symbol_the_provider_cannot_serve_comes_from_the_export(tmp_path):
 
     frame = store.frame_for("ACGC.CA", database)
     assert frame is not None and len(frame) == 2
-    assert list(frame.columns) == ["Open", "High", "Low", "Close", "Volume", "Turnover"]
+    assert list(frame.columns)[:6] == ["Open", "High", "Low", "Close",
+                                       "Volume", "Turnover"]
+    # A store that records whether a close is the auction price says so in a
+    # trailing column. Trailing and named, so a caller reading the contract by
+    # name is unaffected and one that never asks keeps the same six.
+    assert list(frame.columns)[6:] in ([], ["CloseConfirmed"])
     assert frame.attrs["market_data"]["effective_provider"] == "mubasher_export"
     assert frame.attrs["market_data"]["automatic_use_permitted"] is False, (
         "these prices are not dividend-adjusted; they describe turnover and "

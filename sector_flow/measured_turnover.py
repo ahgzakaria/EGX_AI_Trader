@@ -47,7 +47,15 @@ REQUIRED_COLUMNS = ("Symbol", "Date Range", "Volume", "Turnover")
 #: in 746,434 sessions that is 0.18% of bars, which is acceptable for counting
 #: advancers and decliners and is not acceptable for anything cumulative --
 #: which is why nothing here reaches an indicator or a backtest.
-PRICE_COLUMNS = {"Open": "open", "High": "high", "Low": "low", "Closed": "close"}
+#:
+#: "Open" is not among them, and the export does have a column of that name.
+#: It is a copy of the high: all 138,148 rows across the exported files have
+#: ``Open == High``, and the terminal's own ``history.db`` shows why -- its
+#: ``OP`` column is the previous session's close, and the exporter wrote the
+#: wrong field into the CSV. An open equal to the high makes every session look
+#: like a day that opened at its top and fell, which is a specific and wrong
+#: shape rather than a missing value. See ``sector_flow.mubasher_local``.
+PRICE_COLUMNS = {"High": "high", "Low": "low", "Closed": "close"}
 
 SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS {TABLE} (
@@ -59,6 +67,11 @@ CREATE TABLE IF NOT EXISTS {TABLE} (
     high REAL,
     low REAL,
     close REAL,
+    -- 1 when the close is the exchange's auction price, 0 when it is only the
+    -- last trade of continuous dealing. EGX crosses one auction after 14:15
+    -- and that single price is the official close; a session rebuilt from
+    -- minute bars that stop before it has a last price and not a close.
+    close_confirmed INTEGER,
     PRIMARY KEY (ticker, session_date)
 );
 CREATE TABLE IF NOT EXISTS {METADATA_TABLE} (
@@ -305,8 +318,16 @@ def frame_for(ticker, database=DEFAULT_DATABASE):
         return None
     try:
         with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+            # Selected by name after asking what the table has, because a store
+            # written before close_confirmed existed is still a valid store and
+            # naming a column it lacks would fail the whole read.
+            held = {row[1] for row in connection.execute(f"PRAGMA table_info({TABLE})")}
+            columns = ["session_date", "open", "high", "low", "close",
+                       "volume", "turnover"]
+            if "close_confirmed" in held:
+                columns.append("close_confirmed")
             rows = pd.read_sql(
-                f"SELECT session_date, open, high, low, close, volume, turnover "
+                f"SELECT {', '.join(columns)} "
                 f"FROM {TABLE} WHERE ticker=? ORDER BY session_date",
                 connection, params=(str(ticker).upper(),))
     except Exception:
@@ -319,6 +340,8 @@ def frame_for(ticker, database=DEFAULT_DATABASE):
         "Close": rows["close"], "Volume": rows["volume"],
         "Turnover": rows["turnover"],
     })
+    if "close_confirmed" in rows.columns:
+        frame["CloseConfirmed"] = rows["close_confirmed"]
     frame.index = pd.to_datetime(rows["session_date"])
     frame.index.name = "Date"
     frame.attrs["market_data"] = {
