@@ -325,3 +325,108 @@ def test_nothing_on_the_row_claims_a_hit_rate():
     for forbidden in ("hit_rate", "hit rate of", "win_rate", "probability_of"):
         assert forbidden not in source.replace(
             "No hit rate is reported and none should be added.", "")
+
+
+# --- position size -----------------------------------------------------------
+
+def test_shares_are_whole_and_never_negative():
+    result = qualifying_result()
+    if not result.count:
+        pytest.skip("the synthetic frame produced no candidate")
+    for candidate in result.candidates:
+        assert isinstance(candidate.shares_at_risk, int)
+        assert candidate.shares_at_risk >= 0
+
+
+def test_a_wider_stop_buys_fewer_shares_for_the_same_capital():
+    """The whole point of the column: equal money is not equal risk."""
+
+    from indicators.technical import calculate_indicators
+    from strategy_momentum_breakout.watch import watch as run
+
+    data = calculate_indicators(rising())
+    tight = run(histories={"S": data.copy()}, reach_atr=5.0, capital=100_000)
+    if not tight.count:
+        pytest.skip("the synthetic frame produced no candidate")
+
+    # Push the base low down on one bar that sits inside the stop window but
+    # outside the ATR window, so the stop widens and the Calm gate does not
+    # move. Halving the last 25 lows widens the stop and inflates ATR% past the
+    # name's own median, which refuses the candidate and skips the test -- a
+    # skipped test proves nothing.
+    wide_frame = data.copy()
+    wide_frame.loc[wide_frame.index[-18], "Low"] *= 0.5
+    wide = run(histories={"S": wide_frame}, reach_atr=5.0, capital=100_000)
+    if not wide.count:
+        pytest.skip("the widened frame produced no candidate")
+
+    assert wide.candidates[0].risk_per_share > tight.candidates[0].risk_per_share
+    assert wide.candidates[0].shares_at_risk < tight.candidates[0].shares_at_risk
+
+
+def test_the_risk_taken_matches_the_configured_budget():
+    """Within one share, since shares are whole."""
+
+    cfg = load_config()
+    capital = 100_000.0
+    from strategy_momentum_breakout.watch import watch as run
+
+    result = run(histories={"SETUP": rising()}, reach_atr=5.0, capital=capital)
+    if not result.count:
+        pytest.skip("the synthetic frame produced no candidate")
+    candidate = result.candidates[0]
+    budget = capital * cfg.risk_percent / 100.0
+    taken = candidate.shares_at_risk * candidate.risk_per_share
+    assert taken <= budget + 1e-9
+    assert budget - taken < candidate.risk_per_share
+
+
+def test_capital_defaults_to_the_configured_initial_capital():
+    cfg = load_config()
+    result = watch(histories={"SETUP": rising()}, reach_atr=5.0)
+    assert result.capital == float(cfg.initial_capital)
+
+
+def test_a_larger_account_buys_proportionally_more():
+    from strategy_momentum_breakout.watch import watch as run
+
+    small = run(histories={"S": rising()}, reach_atr=5.0, capital=100_000)
+    large = run(histories={"S": rising()}, reach_atr=5.0, capital=1_000_000)
+    if not (small.count and large.count):
+        pytest.skip("the synthetic frame produced no candidate")
+    assert large.candidates[0].shares_at_risk > small.candidates[0].shares_at_risk
+
+
+def test_the_sizing_note_names_both_portfolio_caps_from_config():
+    cfg = load_config()
+    result = qualifying_result()
+    if not result.count:
+        pytest.skip("the synthetic frame produced no candidate")
+    note = result.candidates[0].sizing_note
+    assert "Provisional" in note
+    assert "Recompute on the trigger day" in note
+    assert f"max_open_positions={cfg.max_open_positions}" in note
+    assert f"max_portfolio_risk_percent={cfg.max_portfolio_risk_percent:g}" in note
+
+
+def test_the_size_is_taken_off_the_trigger_not_the_close():
+    """Stated on the row, and true in the arithmetic."""
+
+    result = qualifying_result()
+    if not result.count:
+        pytest.skip("the synthetic frame produced no candidate")
+    candidate = result.candidates[0]
+    assert candidate.risk_per_share == pytest.approx(
+        round(candidate.prior_high - candidate.stop_loss_today,
+              load_config().price_precision))
+    assert "trigger level as a proxy for entry" in candidate.sizing_note
+
+
+def test_the_new_columns_reach_the_frame():
+    result = qualifying_result()
+    if not result.count:
+        pytest.skip("the synthetic frame produced no candidate")
+    columns = set(as_frame(result).columns)
+    for name in ("risk_per_share", "shares_at_risk", "position_value",
+                 "position_percent", "sizing_note"):
+        assert name in columns

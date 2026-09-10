@@ -59,6 +59,9 @@ def main(argv=None) -> int:
                         help="only the first N symbols, for a quick look")
     parser.add_argument("--no-sweep", action="store_true",
                         help="skip the reach sweep")
+    parser.add_argument("--capital", type=float, default=None,
+                        help="account size for the position columns "
+                             "(defaults to the configured initial_capital)")
     args = parser.parse_args(argv)
 
     cfg = load_config()
@@ -73,7 +76,8 @@ def main(argv=None) -> int:
     unreadable = {}
     histories = _histories(symbols,
                            on_error=lambda s, r: unreadable.setdefault(s, r))
-    result = watch(histories=histories, cfg=cfg, reach_atr=args.reach)
+    result = watch(histories=histories, cfg=cfg, reach_atr=args.reach,
+                   capital=args.capital)
     result.unreadable = unreadable
 
     print(RULE)
@@ -84,6 +88,9 @@ def main(argv=None) -> int:
     print(f"  candidates          {result.count}")
     print(f"  reach multiple      {args.reach:g} x ATR   "
           f"(presentation filter, not a measured threshold)")
+    print(f"  capital             {result.capital:,.0f} EGP at "
+          f"{cfg.risk_percent:g}% risk per trade"
+          + ("" if args.capital is not None else "  (configured default)"))
     print(f"  universe considered {result.considered}"
           + (f", {len(result.unreadable)} unreadable and skipped"
              if result.unreadable else ""))
@@ -123,7 +130,8 @@ def main(argv=None) -> int:
     print(RULE)
 
     header = (f"  {'symbol':<9}{'close':>9}{'trigger':>9}{'to go':>8}{'ATR':>6}"
-              f"{'stop':>9}{'risk%':>7}{'cost%':>7}{'net 2R%':>9}  spread")
+              f"{'stop':>9}{'risk%':>7}{'cost%':>7}{'net 2R%':>9}"
+              f"{'shares':>9}{'value':>12}{'% cap':>7}  spread")
     print(header)
     print("  " + "-" * (len(header) - 2))
     for c in result.candidates:
@@ -134,7 +142,8 @@ def main(argv=None) -> int:
         print(f"  {c.symbol:<9}{c.close:>9.3f}{c.prior_high:>9.3f}"
               f"{c.distance_percent:>7.2f}%{c.distance_atr:>6.2f}"
               f"{c.stop_loss_today:>9.3f}{c.risk_percent:>7.2f}{cost}{net}"
-              f"  {c.spread_source}")
+              f"{c.shares_at_risk:>9,}{c.position_value:>12,.0f}"
+              f"{c.position_percent:>7.1f}  {c.spread_source}")
 
     print("\n  On the trigger day, at the close, all three must be true:")
     for c in result.candidates[:5]:
@@ -149,6 +158,9 @@ def main(argv=None) -> int:
     print("  moved by the time the trigger fires and must be recomputed then.")
     print("  'net 2R%' uses an UNMEASURED 2R yardstick minus that symbol's own")
     print("  round trip, so a name whose cost eats its move is visible here.")
+    if result.count:
+        print()
+        print(wrap(result.candidates[0].sizing_note))
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d")

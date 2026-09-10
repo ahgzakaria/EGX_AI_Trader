@@ -25,6 +25,16 @@ choice -- it decides how long the list is, nothing in this repository has
 validated it, and every row says so. The multiple is swept so the default can be
 chosen from candidate counts rather than from taste.
 
+**Why the size column exists.** On the 2026-09-09 run the three candidates
+carried stop distances of 17.13%, 15.62% and 4.74% -- a 3.6x spread. Equal money
+across them is not equal risk: at the configured risk per trade, TMGH takes
+roughly three times the capital MCRO does. Sizing by money instead of by risk is
+the manual form of the concentration
+[CAPACITY_IS_THE_CONSTRAINT.md](../docs/audits/strategies/CAPACITY_IS_THE_CONSTRAINT.md)
+measured, where the worst single session improved from -10.10% to -5.02% once
+the same total risk was spread evenly. Computing it here removes the arithmetic
+from a Sunday evening, which is where that mistake gets made.
+
 **No hit rate is reported and none should be added.** Nothing here measures how
 often a set-up name goes on to fire, and this module will not carry a number
 that has not been measured.
@@ -33,6 +43,7 @@ that has not been measured.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from math import floor
 
 import pandas as pd
 
@@ -99,12 +110,18 @@ class Candidate:
     spread_source: str
     round_trip_cost_percent: float
     net_2r_after_cost_percent: float
+    risk_per_share: float
+    shares_at_risk: int
+    position_value: float
+    position_percent: float
+    sizing_note: str
 
 
 @dataclass
 class WatchResult:
     session_date: str = ""
     reach_atr: float = DEFAULT_REACH_ATR
+    capital: float = 0.0
     candidates: list = field(default_factory=list)
     #: How many symbols each stage was the *first* to refuse, so an empty week
     #: reads as "nothing is set up" rather than as a fault. Same discipline as
@@ -143,6 +160,20 @@ def _costs_for(symbol: str, cfg: BreakoutConfig):
     return spread, source, round(round_trip, 4), modelled
 
 
+def _sizing_note(cfg: BreakoutConfig) -> str:
+    """Why the number on the row is provisional, and what caps it in a book.
+
+    Both caps are read from the config, so a change to the portfolio policy
+    reaches this sentence instead of leaving it quietly stale.
+    """
+    return (
+        "Provisional. Shares are sized off the trigger level as a proxy for "
+        "entry; the real entry is the NEXT close, and both the trigger and the "
+        "stop roll. Recompute on the trigger day. Portfolio rule caps this at "
+        f"max_open_positions={cfg.max_open_positions} concurrent and "
+        f"max_portfolio_risk_percent={cfg.max_portfolio_risk_percent:g} total heat.")
+
+
 def _trigger_sentence(prior_high: float, cfg: BreakoutConfig) -> str:
     """What must be true at the close on the day it fires, in his words.
 
@@ -165,10 +196,17 @@ def _histories(symbols=None, on_error=None):
 
 
 def watch(histories=None, cfg: BreakoutConfig | None = None, symbols=None,
-          reach_atr: float = DEFAULT_REACH_ATR, on_error=None) -> WatchResult:
-    """Every readable symbol whose structure holds and whose trigger has not fired."""
+          reach_atr: float = DEFAULT_REACH_ATR, on_error=None,
+          capital: float | None = None) -> WatchResult:
+    """Every readable symbol whose structure holds and whose trigger has not fired.
+
+    `capital` sizes the position columns and defaults to the configured
+    `initial_capital`. The runner exposes it so a real account size can be
+    passed without editing settings.
+    """
 
     cfg = cfg or load_config()
+    capital = float(cfg.initial_capital if capital is None else capital)
     unreadable = {}
     if histories is None:
         histories = _histories(
@@ -176,7 +214,7 @@ def watch(histories=None, cfg: BreakoutConfig | None = None, symbols=None,
             on_error=on_error or (lambda s, r: unreadable.setdefault(s, r)))
 
     result = WatchResult(considered=len(histories), reach_atr=reach_atr,
-                         unreadable=unreadable)
+                         capital=capital, unreadable=unreadable)
     funnel = {"Unusable": 0, "InsufficientHistory": 0,
               **{gate: 0 for gate in STRUCTURAL_GATES},
               "AlreadyTriggered": 0, "OutOfReach": 0, "InvalidRisk": 0}
@@ -238,6 +276,15 @@ def watch(histories=None, cfg: BreakoutConfig | None = None, symbols=None,
         net_2r = (round(gross_2r - round_trip, 2)
                   if round_trip is not None else None)
 
+        # Sized off the trigger, not the close: the entry is the session after
+        # the trigger fires, and the trigger level is the nearest thing today
+        # knows to it. Every part of this is provisional and the row says so.
+        risk_per_share = prior_high - stop
+        budget = capital * float(cfg.risk_percent) / 100.0
+        shares = int(floor(budget / risk_per_share)) if risk_per_share > 0 else 0
+        shares = max(shares, 0)
+        position_value = shares * prior_high
+
         result.candidates.append(Candidate(
             symbol=symbol,
             session_date=str(data.index[last])[:10],
@@ -264,6 +311,12 @@ def watch(histories=None, cfg: BreakoutConfig | None = None, symbols=None,
             spread_source=source,
             round_trip_cost_percent=round_trip,
             net_2r_after_cost_percent=net_2r,
+            risk_per_share=round(risk_per_share, cfg.price_precision),
+            shares_at_risk=shares,
+            position_value=round(position_value, 2),
+            position_percent=(round(position_value / capital * 100, 2)
+                              if capital > 0 else None),
+            sizing_note=_sizing_note(cfg),
         ))
 
     result.funnel = funnel
