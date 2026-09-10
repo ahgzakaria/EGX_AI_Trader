@@ -430,3 +430,107 @@ def test_the_new_columns_reach_the_frame():
     for name in ("risk_per_share", "shares_at_risk", "position_value",
                  "position_percent", "sizing_note"):
         assert name in columns
+
+
+# --- the Streamlit page ------------------------------------------------------
+
+PAGE = Path("dashboard/breakout_watch.py")
+
+
+def test_the_page_imports_cleanly():
+    import dashboard.breakout_watch as page
+
+    assert hasattr(page, "show_breakout_watch")
+    assert callable(page.show_breakout_watch)
+
+
+def test_the_page_decides_nothing_and_imports_the_selection():
+    """It formats. watch.py selects. A second copy of the rule in the UI layer
+    is the failure scan.py's docstring exists to prevent."""
+
+    source = PAGE.read_text(encoding="utf-8")
+    assert "from strategy_momentum_breakout.watch import" in source
+    for name in ("watch", "write_csv", "resize", "HEADER_NOTE"):
+        assert name in source
+    # The gates and their arithmetic stay in the strategy package.
+    assert "def measure" not in source
+    assert "rolling(" not in source
+
+
+def test_the_page_restates_no_threshold_as_a_literal():
+    cfg = load_config()
+    code = _code_only(PAGE)
+    for value in (cfg.minimum_turnover_egp, cfg.minimum_volume_ratio,
+                  cfg.minimum_close_position, cfg.stop_atr_buffer,
+                  cfg.maximum_session_move_percent, cfg.initial_capital,
+                  cfg.risk_percent):
+        assert str(value) not in code, (
+            f"{value} appears as a literal on the page; read it from config")
+    for attribute in ("initial_capital", "risk_percent", "entry_mode",
+                      "holding_bars"):
+        assert f"cfg.{attribute}" in code, (
+            f"{attribute} must be read from the config object")
+
+
+def test_the_page_claims_no_hit_rate_and_no_ranking():
+    source = PAGE.read_text(encoding="utf-8")
+    for forbidden in ("hit_rate", "win_rate", "probability_of", "score",
+                      "best pick", "strongest"):
+        assert forbidden not in source.lower().replace(
+            "not a ranking claim", ""), f"the page must not carry {forbidden}"
+    assert "reading order" in source
+
+
+def test_the_page_carries_the_header_note_verbatim_and_uncollapsed():
+    """Persistently visible, not behind an expander: it is the sentence that
+    keeps a list of names from reading as a list of recommendations."""
+
+    source = PAGE.read_text(encoding="utf-8")
+    assert "st.info(HEADER_NOTE)" in source
+    assert "expander" not in source
+
+
+def test_the_page_renders_the_trigger_sentence_unmodified():
+    source = PAGE.read_text(encoding="utf-8")
+    assert "row['trigger_sentence']" in source or 'row["trigger_sentence"]' in source
+    # No rewriting of the sentence in the UI layer.
+    assert "close above" not in source
+
+
+def test_the_page_does_not_rescan_on_every_rerun():
+    source = PAGE.read_text(encoding="utf-8")
+    assert "@st.cache_data" in source
+    assert "Run fresh scan" in source
+    # The default view reads a saved file rather than walking the universe.
+    assert "available_csvs" in source
+
+
+def test_the_page_shows_the_sizing_and_funnel_columns():
+    source = PAGE.read_text(encoding="utf-8")
+    for column in ("shares_at_risk", "position_value", "position_percent"):
+        assert column in source
+    assert "STRUCTURAL_GATES" in source and "TRIGGER_GATES" in source
+
+
+def test_the_page_uses_the_one_writer():
+    """Two callers writing 'the same' CSV two ways is how a column comes to
+    mean one thing in a file and another on a screen."""
+
+    page = PAGE.read_text(encoding="utf-8")
+    runner = Path("scripts/weekly_breakout_watchlist.py").read_text(encoding="utf-8")
+    assert "write_csv(" in page and "write_csv(" in runner
+    assert "to_csv(" not in _code_only(Path("scripts/weekly_breakout_watchlist.py"))
+
+
+def test_resizing_a_saved_list_matches_a_fresh_scan_at_the_same_capital():
+    """The page re-sizes from saved columns; it must agree with watch()."""
+
+    from strategy_momentum_breakout.watch import resize
+    from strategy_momentum_breakout.watch import watch as run
+
+    fresh = run(histories={"SETUP": rising()}, reach_atr=5.0, capital=250_000)
+    if not fresh.count:
+        pytest.skip("the synthetic frame produced no candidate")
+    baseline = run(histories={"SETUP": rising()}, reach_atr=5.0, capital=100_000)
+    resized = resize(as_frame(baseline), 250_000.0)
+    assert int(resized["shares_at_risk"].iloc[0]) == fresh.candidates[0].shares_at_risk

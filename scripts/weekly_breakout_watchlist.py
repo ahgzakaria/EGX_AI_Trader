@@ -32,9 +32,8 @@ load_project_environment()
 from strategy_momentum_breakout.config import load as load_config     # noqa: E402
 from strategy_momentum_breakout.watch import (                        # noqa: E402
     DEFAULT_REACH_ATR, HEADER_NOTE, REACH_MULTIPLES, STRUCTURAL_GATES,
-    TRIGGER_GATES, as_frame, sweep_reach, watch)
+    TRIGGER_GATES, sweep_reach, watch, write_csv)
 
-OUT_DIR = PROJECT_ROOT / "reports" / "watchlist"
 RULE = "=" * 100
 
 
@@ -162,13 +161,12 @@ def main(argv=None) -> int:
         print()
         print(wrap(result.candidates[0].sizing_note))
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d")
-    out = OUT_DIR / f"watchlist_{stamp}_{result.session_date or 'unknown'}.csv"
-    frame = as_frame(result)
-    frame.insert(0, "note", HEADER_NOTE)
-    frame.to_csv(out, index=False, encoding="utf-8-sig")
-    print(f"\n  wrote {out.relative_to(PROJECT_ROOT)}")
+    # `watch.write_csv` is the one place a watchlist file is produced. The
+    # Streamlit page calls the same function, so a column cannot come to
+    # mean one thing in a file and another on a screen.
+    out = write_csv(result)
+    print()
+    print(f"  wrote {out.relative_to(PROJECT_ROOT)}")
     print(RULE)
     return 0
 

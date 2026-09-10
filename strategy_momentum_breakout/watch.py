@@ -279,7 +279,12 @@ def watch(histories=None, cfg: BreakoutConfig | None = None, symbols=None,
         # Sized off the trigger, not the close: the entry is the session after
         # the trigger fires, and the trigger level is the nearest thing today
         # knows to it. Every part of this is provisional and the row says so.
-        risk_per_share = prior_high - stop
+        # Rounded first, then divided. The row prints `risk_per_share`, and a
+        # reader who multiplies it by the share count must land on the risk
+        # budget -- sizing off the unrounded value makes the printed columns
+        # disagree with each other by a share, and makes a saved list re-sized
+        # on the page disagree with a fresh scan at the same capital.
+        risk_per_share = round(prior_high - stop, cfg.price_precision)
         budget = capital * float(cfg.risk_percent) / 100.0
         shares = int(floor(budget / risk_per_share)) if risk_per_share > 0 else 0
         shares = max(shares, 0)
@@ -311,7 +316,7 @@ def watch(histories=None, cfg: BreakoutConfig | None = None, symbols=None,
             spread_source=source,
             round_trip_cost_percent=round_trip,
             net_2r_after_cost_percent=net_2r,
-            risk_per_share=round(risk_per_share, cfg.price_precision),
+            risk_per_share=risk_per_share,
             shares_at_risk=shares,
             position_value=round(position_value, 2),
             position_percent=(round(position_value / capital * 100, 2)
@@ -347,3 +352,91 @@ def sweep_reach(histories=None, cfg: BreakoutConfig | None = None, symbols=None,
 
 def as_frame(result: WatchResult) -> pd.DataFrame:
     return pd.DataFrame([asdict(c) for c in result.candidates])
+
+
+# --- one place that writes a watchlist, and one that reads it back -----------
+
+def _out_dir() -> "Path":
+    from pathlib import Path
+
+    return Path(__file__).resolve().parents[1] / "reports" / "watchlist"
+
+
+def csv_path(result: WatchResult, out_dir=None) -> "Path":
+    """Where this run's list belongs. The name carries both dates on purpose:
+    the day it was produced and the session it read, so a stale list is
+    visibly stale rather than quietly old."""
+
+    from datetime import datetime
+
+    directory = _out_dir() if out_dir is None else out_dir
+    stamp = datetime.now().strftime("%Y%m%d")
+    return directory / f"watchlist_{stamp}_{result.session_date or 'unknown'}.csv"
+
+
+def write_csv(result: WatchResult, out_dir=None) -> "Path":
+    """Write the list. Called by the runner and by the page, never reimplemented.
+
+    Two callers writing "the same" CSV two ways is how a column comes to mean
+    one thing on a page and another in a file.
+    """
+    path = csv_path(result, out_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame = as_frame(result)
+    frame.insert(0, "note", HEADER_NOTE)
+    frame.to_csv(path, index=False, encoding="utf-8-sig")
+    return path
+
+
+def available_csvs(out_dir=None) -> list:
+    """Every saved list, newest first, so earlier weeks stay readable."""
+
+    directory = _out_dir() if out_dir is None else out_dir
+    if not directory.is_dir():
+        return []
+    return sorted(directory.glob("watchlist_*.csv"), reverse=True)
+
+
+def dates_from_name(path) -> tuple:
+    """(run date, session date) off the filename, or (None, None) if unreadable.
+
+    Read from the name rather than from the file so a list can be labelled
+    before it is opened, and so a hand-renamed file is reported as unknown
+    instead of being given a plausible date.
+    """
+    parts = path.stem.split("_")
+    if len(parts) < 3 or parts[0] != "watchlist":
+        return None, None
+    run, session = parts[1], parts[2]
+    if len(run) == 8 and run.isdigit():
+        run = f"{run[:4]}-{run[4:6]}-{run[6:]}"
+    else:
+        run = None
+    return run, (session if session != "unknown" else None)
+
+
+def resize(frame: pd.DataFrame, capital: float,
+           cfg: BreakoutConfig | None = None) -> pd.DataFrame:
+    """Re-derive the size columns for a different account, from a saved list.
+
+    The same arithmetic `watch` uses, applied to columns already on the row, so
+    changing the account size does not mean walking the universe again. Rows
+    without a usable risk per share are left alone rather than given a size.
+    """
+    cfg = cfg or load_config()
+    if "risk_per_share" not in frame or not len(frame):
+        return frame
+    out = frame.copy()
+    budget = float(capital) * float(cfg.risk_percent) / 100.0
+    risk = pd.to_numeric(out["risk_per_share"], errors="coerce")
+    trigger = pd.to_numeric(out.get("prior_high"), errors="coerce")
+    from math import floor as _floor
+
+    shares = (budget / risk).where(risk > 0)
+    out["shares_at_risk"] = shares.apply(
+        lambda v: int(_floor(v)) if pd.notna(v) and v >= 0 else None)
+    value = out["shares_at_risk"] * trigger
+    out["position_value"] = value.round(2)
+    out["position_percent"] = ((value / float(capital) * 100).round(2)
+                               if capital else None)
+    return out

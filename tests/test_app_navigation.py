@@ -132,15 +132,60 @@ def test_every_page_is_reachable_exactly_once():
     guard -- and because it is scored through the portfolio simulator, so its
     numbers are comparable to the Daily Dashboard strategy's line for line.
     See docs/audits/strategies/CONFIRMED_VOLUME_BREAKOUT.md.
+
+    "Breakout Watch" joined on 2026-09-10, immediately before it. It is the
+    same rule one session earlier -- what is approaching the trigger, against
+    what fired -- and both read `strategy_momentum_breakout/signal.measure`, so
+    the two cannot describe the rule differently. It is not folded into the
+    existing "Watchlist" page: that one is the user's own list of names under
+    the live scanner, this one is produced by a rule and replaced each week.
     """
     titles = _page_titles()
     assert len(titles) == len(set(titles)), f"a page is listed twice: {titles}"
     assert set(titles) == {
         "My Portfolio",
-        "Daily Dashboard", "Swing Breakout", "Confirmed Breakout",
-        "Sector Liquidity", "Watchlist", "Stock Details", "AI Analysis",
-        "System Health", "Settings",
+        "Daily Dashboard", "Swing Breakout", "Breakout Watch",
+        "Confirmed Breakout", "Sector Liquidity", "Watchlist",
+        "Stock Details", "AI Analysis", "System Health", "Settings",
     }
+
+
+def test_breakout_watch_is_read_before_the_page_that_confirms_it():
+    """Order carries the meaning: the set-up, then the confirmation.
+
+    Filing them the other way round would put the fired signal above the names
+    approaching one, which is not how a week is watched.
+    """
+
+    sections = _section_titles()
+    swing = next(v for k, v in sections.items() if "SWING" in k)
+    assert "Breakout Watch" in swing and "Confirmed Breakout" in swing
+    assert swing.index("Breakout Watch") + 1 == swing.index("Confirmed Breakout")
+
+
+def test_the_two_watchlists_do_not_collide():
+    """Two pages with 'watch' in the name must differ in every routable field."""
+
+    import ast as _ast
+
+    source = Path("app.py").read_text(encoding="utf-8")
+    tree = _ast.parse(source)
+    pages = []
+    for node in _ast.walk(tree):
+        if (isinstance(node, _ast.Call) and isinstance(node.func, _ast.Attribute)
+                and node.func.attr == "Page"):
+            entry = {}
+            for keyword in node.keywords:
+                if isinstance(keyword.value, _ast.Constant):
+                    entry[keyword.arg] = keyword.value.value
+            pages.append(entry)
+
+    titles = [p.get("title") for p in pages]
+    paths = [p.get("url_path") for p in pages if p.get("url_path")]
+    icons = [p.get("icon") for p in pages if p.get("icon")]
+    assert len(paths) == len(set(paths)), f"a url_path is reused: {paths}"
+    assert len(icons) == len(set(icons)), f"an icon is reused: {icons}"
+    assert "Breakout Watch" in titles and "Watchlist" in titles
 
 
 def test_retired_scalping_pages_are_not_navigable():

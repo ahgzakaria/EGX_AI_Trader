@@ -30,6 +30,7 @@ from dashboard.backtest_state import (
     recover_interrupted_backtest,
 )
 from dashboard.ai_stock_analysis import show_ai_stock_analysis
+from dashboard.breakout_watch import show_breakout_watch
 from dashboard.confirmed_breakout import show_confirmed_breakout
 from dashboard.home import show_dashboard, show_stock_details_page
 from dashboard.orb_signals import show_orb_signals
@@ -76,6 +77,23 @@ navigation = st.navigation({
             title="Swing Breakout",
             icon="📈",
             url_path="swing-breakout",
+        ),
+        # The session before Confirmed Breakout, and filed immediately before
+        # it for that reason: this page is what is approaching the trigger,
+        # that one is what fired. Same rule, same thresholds, same module --
+        # `strategy_momentum_breakout/watch.py` reads `signal.measure`, so a
+        # name here and a signal there cannot drift apart. Reading them in the
+        # other order would put the confirmation before the set-up, which is
+        # not how the week is watched.
+        #
+        # It is deliberately not part of the existing Watchlist page. That one
+        # is the user's own list of names under the live scanner; this one is
+        # produced by a rule and is thrown away each week.
+        st.Page(
+            show_breakout_watch,
+            title="Breakout Watch",
+            icon="🔭",
+            url_path="breakout-watch",
         ),
         # A close relative of Swing Breakout, not a rival to it: two
         # independent passes over this market landed on the same trigger, which
