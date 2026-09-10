@@ -49,7 +49,6 @@ from dashboard.formatting import (
     symbol_option_label,
     with_company_name_column,
 )
-from providers.rubix_subscription import build_rubix_subscription_plan
 
 EXPECTED_ACTIVE = 241
 
@@ -247,14 +246,15 @@ def test_rubix_mappings_are_explicit_and_never_suffix_guessed():
             # No verified observation ⇒ NO fabricated key.
             assert record.rubix_mapping_status != RUBIX_VERIFIED
 
-    plan = build_rubix_subscription_plan()
-    assert plan.invalid == ()
-    assert all(key.startswith("CASE~") for key in plan.subscriptions)
-    # Unverified symbols are reported, not silently guessed into a subscription.
-    assert set(plan.unmapped) == {
-        record.canonical_symbol for record in active_universe()
-        if not record.has_verified_rubix_mapping
-    }
+    # The plan builder that consumed these went with the collector on
+    # 2026-09-10. The rule it enforced is a property of the universe file, so
+    # it is asserted against the file directly: every key that exists is
+    # verified and derived, and an unverified symbol contributes none.
+    keys = rubix_subscription_symbols()
+    assert all(key.startswith("CASE~") for key in keys)
+    unverified = {record.canonical_symbol for record in active_universe()
+                  if not record.has_verified_rubix_mapping}
+    assert not any(f"CASE~{symbol}" in keys for symbol in unverified)
 
 
 def test_a_removed_symbol_with_an_open_position_stays_monitorable():
@@ -268,10 +268,6 @@ def test_a_removed_symbol_with_an_open_position_stays_monitorable():
     assert removed.rubix_symbol in with_exit
     assert len(with_exit) == len(baseline) + 1
 
-    plan = build_rubix_subscription_plan(
-        open_position_symbols=[f"{removed.canonical_symbol}.CA"])
-    assert removed.rubix_symbol in plan.subscriptions
-    assert plan.exit_monitoring == (removed.canonical_symbol,)
     # Monitoring an exit never makes the symbol eligible for a NEW entry.
     assert eligible_for_new_entry([removed.canonical_symbol]) == ()
 

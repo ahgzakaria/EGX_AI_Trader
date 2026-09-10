@@ -585,10 +585,10 @@ def wait_for_port(port, timeout_seconds=30):
 
 
 # The interactive TickerChart+Yahoo-fallback UI (LauncherUI) was removed when the
-# launchers were unified. This module now redirects to the Rubix Production Launcher
-# V2 (EODHD current research + Rubix live; frozen Yahoo is backtest-only). The
-# TickerChart collector utilities above are kept for run_tickerchart_collector.py
-# and tickerchart_health.py; there is no operational Yahoo path here.
+# launchers were unified. This module now redirects to scripts/launch_dashboard.py.
+# The TickerChart collector utilities above are kept for
+# run_tickerchart_collector.py and tickerchart_health.py; there is no
+# operational Yahoo path here.
 
 
 def _load_adapter_symbols(path):
@@ -612,17 +612,23 @@ def _load_adapter_symbols(path):
 
 
 def main(argv=None):
-    """Deprecated entry point — redirects to the unified Rubix Production Launcher V2.
+    """Deprecated entry point -- opens the dashboard launcher.
 
-    Both start_egx_ai_trader.bat and start_rubix_production.bat now open the same V2
-    launcher: EODHD current research, Rubix live intraday, frozen Yahoo snapshot for
-    legacy backtests only. There is no Yahoo operational startup or fallback here.
+    The TickerChart collector helpers above are why this module still exists:
+    run_tickerchart_collector.py and tickerchart_health.py import them. Its own
+    launcher UI was removed when the launchers were unified, and the unified
+    one was itself replaced on 2026-09-10 when the Rubix feed was retired --
+    two thirds of it drove a price collector that no longer runs.
+
+    ``--smoke-test`` is translated rather than dropped: it is what the old
+    installer's verification step passed, and a machine set up before this
+    still calls it.
     """
     args = list(sys.argv[1:] if argv is None else argv)
     if "--smoke-test" in args:
         args = ["--check" if a == "--smoke-test" else a for a in args]
-    from scripts.launch_rubix_production import main as v2_main
-    return v2_main(args)
+    from scripts.launch_dashboard import main as dashboard_main
+    return dashboard_main(args)
 
 
 if __name__ == "__main__":

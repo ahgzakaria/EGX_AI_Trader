@@ -153,58 +153,6 @@ class SingleInstanceLock:
         return False
 
 
-# Command-line fragments that uniquely identify a Rubix collector/supervisor
-# process. Recovery/duplicate-detection matches ONLY these — never a bare
-# "python.exe" — so Streamlit, pytest, training or any other Python is never hit.
-_RUBIX_PROC_PATTERNS = ("rubix_collector_supervisor.py", "rubix_feed.cli")
-
-
-def is_rubix_collector_process(command_line) -> bool:
-    """True only for a Rubix supervisor or collector process command line."""
-
-    text = str(command_line or "")
-    return any(pattern in text for pattern in _RUBIX_PROC_PATTERNS)
-
-
-def unhealthy_is_only_stale(health: dict) -> bool:
-    """True when the ONLY problem is stale quotes on an otherwise-good collector.
-
-    i.e. authenticated + connected + schema valid, but no fresh quotes. This is the
-    expected state on a non-trading day (no live ticks exist) — distinct from an
-    auth failure, a missing database, or a dashboard error.
-    """
-    if not isinstance(health, dict):
-        return False
-    connected = str(health.get("collector_status")) == "CONNECTED"
-    authed = str(health.get("authentication_status")) in ("ACKNOWLEDGED", "VALID")
-    stale = str(health.get("freshness")) == "STALE" or not health.get("symbols_received")
-    dashboard_ok = health.get("dashboard_ready") is not False
-    schema_ok = health.get("schema_valid") is not False
-    return connected and authed and stale and dashboard_ok and schema_ok
-
-
-def should_suppress_retry(health: dict, is_trading_day: bool) -> bool:
-    """On a non-trading day (weekend/holiday) a connected+authenticated+stale
-    collector is EXPECTED, so the launcher must not prompt a pointless Rubix retry."""
-    return (not is_trading_day) and unhealthy_is_only_stale(health)
-
-
-def supervisor_status(meta_path) -> dict:
-    """Non-destructive status for the launcher: is a live supervisor recorded?
-
-    Reads the diagnostic metadata and verifies the PID is alive AND matches the
-    recorded process start time (so a reused PID is never mistaken for the
-    supervisor). Never acquires the lock, so it cannot disturb a running instance.
-    """
-
-    record = read_pid_record(meta_path)
-    if not record:
-        return {"running": False, "pid": None, "record": {}}
-    running = pid_record_is_current(record)
-    return {"running": running, "pid": record.get("pid") if running else None,
-            "record": record}
-
-
 DEFAULT_WINDOW_SIZE = (1080, 820)
 MIN_WINDOW_SIZE = (900, 650)
 _GEOMETRY = re.compile(

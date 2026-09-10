@@ -1,17 +1,14 @@
 @echo off
-REM Double-click this to open the Rubix Production Launcher.
+REM Double-click this to open the EGX AI Trader dashboard.
 REM
-REM It is a thin shortcut to scripts\start_rubix_production.bat, which already
-REM validates the environment and opens the launcher window you use: the one
-REM with Browse for the auth file, Start Rubix & App, Stop, and Open Dashboard.
-REM That launcher starts the same collector supervisor and the dashboard, so
-REM there is nothing here to duplicate.
+REM It is a thin shortcut to scripts\start_egx_ai_trader.bat, which validates
+REM the environment and opens the launcher window: a port, Start dashboard,
+REM Open in browser, Stop.
 REM
-REM An earlier version of this file opened the Assisted Start window instead --
-REM the one the 09:45 scheduled task uses, which watches a fixed path and has no
-REM Browse. That is the automated morning path, not the one you drive by hand.
+REM It does NOT update any data. That is RUN_DAILY.bat, in this same folder,
+REM which you run after downloading history in MubasherTrade PRO.
 
 cd /d "%~dp0"
 
-call "scripts\start_rubix_production.bat" %*
+call "scripts\start_egx_ai_trader.bat" %*
 exit /b %ERRORLEVEL%

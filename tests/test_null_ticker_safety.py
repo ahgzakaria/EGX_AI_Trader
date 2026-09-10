@@ -221,14 +221,19 @@ def test_a_genuinely_missing_symbol_is_not_stringified_into_a_fake_ticker():
     assert universe.canonical(NULL) == NULL
 
 
-def test_selectors_and_subscription_planning_still_see_null():
-    from providers.rubix_subscription import build_rubix_subscription_plan
-    from scalping_expected_range.frozen_watchlist import validated_eodhd_symbols as rb
-    from scalping_uptrend_pullback.frozen_watchlist import validated_eodhd_symbols as up
+def test_selectors_and_the_watch_key_list_still_see_null():
+    """A ticker literally named NULL must survive every string path.
 
-    assert NULL in rb()
-    assert NULL in up()
-    # NULL has no verified Rubix mapping, so it is reported — never guessed.
-    plan = build_rubix_subscription_plan()
-    assert NULL in plan.unmapped
-    assert "CASE~NULL" not in plan.subscriptions
+    The subscription-plan builder this used to go through went with the
+    collector on 2026-09-10; the rule is the universe's, so it is asserted
+    where it lives. NULL is not a verified feed symbol, so no key is emitted
+    for it -- and that has to be because it was never verified, not because
+    something read the name as a null.
+    """
+
+    from core.universe import rubix_subscription_symbols
+
+    keys = rubix_subscription_symbols()
+    assert "CASE~NULL" not in keys
+    assert all(isinstance(key, str) and key for key in keys)
+

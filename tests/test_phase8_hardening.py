@@ -16,7 +16,6 @@ from services.dataset_archive import (
     frame_hash,
     load_archived_frames,
 )
-from scripts.rubix_collector_supervisor import redact, validate_auth_file
 
 
 def candles():
@@ -87,15 +86,6 @@ def test_backup_restore_is_checksummed_and_never_overwrites(tmp_path):
     assert (destination / "rubix_live_market.db").is_file()
     with pytest.raises(FileExistsError):
         restore_backup(backup, destination)
-
-
-def test_auth_validation_uses_metadata_and_logs_are_redacted(tmp_path):
-    auth = tmp_path / "temporary_frame.txt"
-    auth.write_text("private-frame", encoding="utf-8")
-    assert validate_auth_file(auth) == auth.resolve()
-    message = redact("authorization=secret --auth-frame-file C:/secret.txt")
-    assert "secret" not in message
-    assert "C:/secret.txt" not in message
 
 
 def test_orphaned_running_run_requires_explicit_recovery(tmp_path, monkeypatch):

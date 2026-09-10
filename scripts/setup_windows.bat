@@ -31,10 +31,10 @@ if not exist "config\settings.json" copy /y "config\settings.example.json" "conf
 
 echo.
 echo EGX AI Trader setup completed.
-echo Start with scripts\start_rubix_production.bat
+echo Start with scripts\start_egx_ai_trader.bat
 choice /M "Create an EGX AI Trader desktop shortcut"
 if errorlevel 2 goto :done
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Desktop')+'\EGX AI Trader.lnk');$s.TargetPath='%CD%\scripts\start_rubix_production.bat';$s.WorkingDirectory='%CD%';$s.Save()"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Desktop')+'\EGX AI Trader.lnk');$s.TargetPath='%CD%\scripts\start_egx_ai_trader.bat';$s.WorkingDirectory='%CD%';$s.Save()"
 :done
 pause
 exit /b 0

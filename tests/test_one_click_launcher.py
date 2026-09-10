@@ -258,15 +258,15 @@ def test_wait_requires_quote_from_current_collector_and_times_out():
     assert result.waiting is True
 
 
-def test_one_click_launcher_redirects_to_unified_v2_launcher():
-    # The old TickerChart+Yahoo-fallback UI is gone; running this launcher opens the
-    # unified Rubix Production Launcher V2 (EODHD + Rubix, no Yahoo fallback).
+def test_one_click_launcher_redirects_to_the_dashboard_launcher():
+    # The old TickerChart+Yahoo-fallback UI is gone, and so is the unified
+    # Rubix launcher that replaced it. Running this opens the dashboard.
     import scripts.launch_egx_ai_trader as one_click
 
     assert not hasattr(one_click, "failure_choice")   # Yahoo-fallback choice removed
     assert not hasattr(one_click, "LauncherUI")        # Yahoo-fallback UI removed
     src = __import__("inspect").getsource(one_click.main)
-    assert "launch_rubix_production" in src            # redirects to the V2 launcher
+    assert "launch_dashboard" in src
 
 
 class _FakeProcess:

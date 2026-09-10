@@ -1,5 +1,0 @@
-{
-  "_comment": "Tracked Rubix launcher DEFAULTS only — read-only at runtime; the launcher never writes here. Machine-specific choices live in config/rubix_launcher_settings.local.json and volatile session state in data/runtime/rubix_launcher_state.json (both git-ignored). See docs/maintenance/RUBIX_LAUNCHER_STATE_SEPARATION.md.",
-  "theme": "System",
-  "streamlit_port": 8501
-}

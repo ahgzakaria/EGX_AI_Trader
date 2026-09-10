@@ -36,6 +36,8 @@ data/yahoo_cache/
 # Runtime health/status snapshots
 data/*_health.json
 data/*.pid.json
+# Remembered launcher window position -- per-machine, never shared.
+data/dashboard_launcher_window.json
 data/*.lock
 
 # Append-only AI analysis history is runtime production data, never source control.

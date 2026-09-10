@@ -61,18 +61,17 @@ def test_the_button_scripts_are_pure_ascii(path):
 
 
 def test_start_delegates_to_the_launcher_the_project_already_has():
-    """START.cmd must not be a second way to bring the collector up.
+    """START.cmd must not become a second way to bring the app up.
 
-    The first version opened Assisted Start -- the window the 09:45 task uses,
-    which watches a fixed path and has no Browse. That is the automated morning
-    path. The launcher a person drives by hand is the Rubix Production
-    Launcher, and scripts/start_rubix_production.bat already validates the
-    environment and opens it.
+    Its first version opened Assisted Start -- the window a scheduled task
+    used, watching a fixed path with no Browse -- rather than the launcher a
+    person drives by hand. The names have changed twice since; the rule has
+    not. It delegates to scripts/start_egx_ai_trader.bat, which validates the
+    environment and opens the window, and it drives nothing itself.
     """
     start = Path("START.cmd").read_text(encoding="utf-8")
-    assert "start_rubix_production.bat" in start
-    for reinvented in ("run_rubix_assisted_start", "rubix_collector_supervisor",
-                       "streamlit"):
+    assert "start_egx_ai_trader.bat" in start
+    for reinvented in ("launch_dashboard.py", "streamlit", "python.exe"):
         assert reinvented not in start, (
             f"START.cmd must delegate, not drive {reinvented} itself"
         )
@@ -80,7 +79,7 @@ def test_start_delegates_to_the_launcher_the_project_already_has():
 
 def test_the_launcher_batch_it_delegates_to_still_exists():
     """A wrapper pointing at a file that moved is a button that does nothing."""
-    batch = Path("scripts/start_rubix_production.bat")
+    batch = Path("scripts/start_egx_ai_trader.bat")
     assert batch.is_file()
     text = batch.read_text(encoding="utf-8")
-    assert "launch_rubix_production.py" in text
+    assert "launch_dashboard.py" in text
