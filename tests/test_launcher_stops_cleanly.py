@@ -37,6 +37,31 @@ def test_the_flag_path_matches_the_supervisor_s_own_default():
     assert r"data\runtime\stop_requested.flag" in stop_script
 
 
+@pytest.fixture(autouse=True)
+def _isolated_stop_flag(tmp_path, monkeypatch):
+    """Never write the production stop flag.
+
+    These tests exercise the real request_collector_stop, which writes
+    data/runtime/stop_requested.flag -- the exact file a live supervisor polls
+    to shut itself down. On 2026-09-10 that stopped the collector twelve
+    minutes before the close, and the same thing on 2026-09-07 cost four hours
+    of a session and went unexplained until the stop path learned to name its
+    caller:
+
+        14:18:09 stage=stop Asked the collector to stop cleanly.
+          Requested by test_stop_only_touches_launcher_owned_processes <- pytest
+
+    The tests were right about the behaviour and wrong about the address. The
+    default still has to equal the production path -- a separate test asserts
+    that and must keep doing so -- but nothing here may write to it.
+    """
+
+    from scripts import launch_rubix_production as launcher
+
+    monkeypatch.setattr(launcher, "COLLECTOR_STOP_FLAG",
+                        tmp_path / "stop_requested.flag")
+
+
 def test_stop_asks_before_it_kills():
     """The order matters: a kill first makes the request meaningless."""
     import inspect
@@ -55,12 +80,22 @@ class _Supervisor(ProductionSupervisor):
 
 @pytest.fixture
 def watcher(tmp_path):
-    """A process shaped like the supervisor: it polls the flag and exits 0."""
+    """A process shaped like the supervisor: it polls the flag and exits 0.
+
+    Reads the flag path off the module rather than the name imported at the top
+    of this file, so it watches whatever _isolated_stop_flag redirected the
+    writer to. Bound to the import instead, the watcher polls the production
+    path while the writer touches a temporary one, and the test fails by
+    "ignored the flag" -- which is what happens when a test is isolated halfway.
+    """
+    from scripts import launch_rubix_production as launcher
+
+    flag_path = launcher.COLLECTOR_STOP_FLAG
     script = tmp_path / "watcher.py"
     script.write_text(textwrap.dedent(f"""
         import time
         from pathlib import Path
-        flag = Path(r"{COLLECTOR_STOP_FLAG}")
+        flag = Path(r"{flag_path}")
         started = time.time()
         while time.time() - started < 60:
             if flag.exists() and flag.stat().st_mtime >= started:
@@ -68,14 +103,14 @@ def watcher(tmp_path):
             time.sleep(0.1)
         raise SystemExit(3)
     """), encoding="utf-8")
-    COLLECTOR_STOP_FLAG.unlink(missing_ok=True)
+    flag_path.unlink(missing_ok=True)
     child = subprocess.Popen([sys.executable, str(script)])
     time.sleep(0.6)
     yield child
     if child.poll() is None:
         child.kill()
         child.wait(timeout=5)
-    COLLECTOR_STOP_FLAG.unlink(missing_ok=True)
+    flag_path.unlink(missing_ok=True)
 
 
 def test_a_supervisor_that_honours_the_flag_is_never_killed(watcher):

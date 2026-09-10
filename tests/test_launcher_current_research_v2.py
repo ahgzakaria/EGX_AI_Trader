@@ -19,6 +19,30 @@ from services import research_launcher_status as status
 # 1. Yahoo removed from the launcher UI
 # --------------------------------------------------------------------------- #
 
+@pytest.fixture(autouse=True)
+def _isolated_stop_flag(tmp_path, monkeypatch):
+    """Never write the production stop flag.
+
+    These tests exercise the real request_collector_stop, which writes
+    data/runtime/stop_requested.flag -- the exact file a live supervisor polls
+    to shut itself down. On 2026-09-10 that stopped the collector twelve
+    minutes before the close, and the same thing on 2026-09-07 cost four hours
+    of a session and went unexplained until the stop path learned to name its
+    caller:
+
+        14:18:09 stage=stop Asked the collector to stop cleanly.
+          Requested by test_stop_only_touches_launcher_owned_processes <- pytest
+
+    The tests were right about the behaviour and wrong about the address. The
+    default still has to equal the production path -- a separate test asserts
+    that and must keep doing so -- but nothing here may write to it.
+    """
+
+    from scripts import launch_rubix_production as launcher
+
+    monkeypatch.setattr(launcher, "COLLECTOR_STOP_FLAG",
+                        tmp_path / "stop_requested.flag")
+
 def test_no_start_yahoo_only_button_or_method():
     ui = launcher.RubixAuthenticationAssistantUI
     assert not hasattr(ui, "start_yahoo_only")

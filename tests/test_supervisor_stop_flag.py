@@ -233,3 +233,43 @@ def test_the_flag_drives_the_real_loop_out_through_its_shutdown_path(tmp_path, m
     recorded = json.loads(health_file.read_text(encoding="utf-8"))
     assert recorded["shutdown"] is True
     assert recorded["database"] == {"integrity": "ok"}
+
+
+# --- no test may write the production stop flag ------------------------------
+#
+# It went unnoticed twice. On 2026-09-07 the collector stopped at 10:08, eight
+# minutes into the session, and the cause was unrecoverable -- the log said only
+# "Asked the collector to stop cleanly." On 2026-09-10, once the stop path named
+# its caller, the same event read:
+#
+#     14:18:09 stage=stop Asked the collector to stop cleanly.
+#       Requested by test_stop_only_touches_launcher_owned_processes <- pytest
+#
+# The suite was stopping live trading. Both times the tests passed: they were
+# right about the behaviour and wrong about the address, and a green run is
+# exactly why nobody looked.
+
+def test_no_test_writes_the_real_stop_flag():
+    """Any test touching COLLECTOR_STOP_FLAG must redirect it first."""
+
+    import re
+    from pathlib import Path
+
+    offenders = []
+    for path in sorted(Path("tests").glob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        if "COLLECTOR_STOP_FLAG" not in text and "stop_requested.flag" not in text:
+            continue
+        # Reading the constant to assert the default is correct is the point of
+        # one test and must stay allowed. Writing through it is what is banned.
+        writes = re.search(r"COLLECTOR_STOP_FLAG\s*\.\s*(write_text|touch|open)", text)
+        redirected = ("monkeypatch.setattr" in text
+                      and "COLLECTOR_STOP_FLAG" in text) or "_isolated_stop_flag" in text
+        calls_stop = ("request_collector_stop" in text
+                      or re.search(r"\bsupervisor\.stop\(\)", text))
+        if (writes or calls_stop) and not redirected:
+            offenders.append(path.name)
+
+    assert not offenders, (
+        "these can stop a live collector mid-session; redirect "
+        f"COLLECTOR_STOP_FLAG to tmp_path first: {offenders}")
