@@ -53,7 +53,7 @@ def _block_category(tier, state, evidence):
         return "BRIDGE_CONFLICT"
     if state == "VOLUME_POLICY_UNRESOLVED":
         return "VOLUME_POLICY_UNRESOLVED"
-    if state in ("LOCAL_SEED_ONLY_STALE", "LOCAL_PLUS_RUBIX_STALE"):
+    if state in ("LOCAL_SEED_ONLY_STALE", "LOCAL_PLUS_MUBASHER_STALE"):
         return "LOCAL_SEED_STALE"
     if tier in ("TIER_A_FORWARD_SAFE", "TIER_B_FORWARD_EODHD_NO_FALLBACK",
                 "TIER_C_HISTORICAL_REVIEW"):
@@ -156,7 +156,7 @@ def main():
     activated = [m for m in manifest if m["activated"]]
     eodhd_active = sum(1 for m in activated if m["current_research_provider"] == "eodhd")
     local_active = sum(1 for m in activated
-                       if m["current_research_provider"] == "local_plus_rubix")
+                       if m["current_research_provider"] == "local_plus_mubasher")
     inventory = [
         {"domain": "CURRENT_RESEARCH_V2", "role": "EODHD-supported daily research",
          "provider": "EODHD (tiered, split-adjusted price + event-specific volume)",

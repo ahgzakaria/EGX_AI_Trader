@@ -2,14 +2,14 @@
 
   * CURRENT_RESEARCH_V2 — current scans, indicators, pre-session, Expected Range,
     Watchlist, forward tests. Sources: **EODHD** (Tier A/B/C-clean), or validated
-    **local history + Rubix Daily Bridge** for EODHD-unsupported symbols.
+    **local history + Mubasher daily tail** for EODHD-unsupported symbols.
     **Yahoo is never used here and is never an operational fallback.**
   * LEGACY_BACKTEST_V1 — reproduction of approved historical baselines only, served
     from the FROZEN Yahoo snapshot (local cache, **no network**), immutable.
 
 Bars from the two domains are never mixed in one dataset: every frame carries a
 ``data_domain`` in ``attrs['market_data']``. Nothing here changes strategy, indicators,
-scoring, thresholds, TP/SL, Rubix, or the production flags.
+scoring, thresholds, TP/SL, or the production flags.
 """
 
 from __future__ import annotations
@@ -34,10 +34,10 @@ RECON_PATH = Path("reports/eodhd/corporate_action_reconciliation.csv")
 # current-research states
 EODHD_OPERATIONAL_CLEAN_WINDOW = "EODHD_OPERATIONAL_CLEAN_WINDOW"
 EODHD_RESEARCH_REVIEW_REQUIRED = "EODHD_RESEARCH_REVIEW_REQUIRED"
-LOCAL_PLUS_RUBIX_READY = "LOCAL_PLUS_RUBIX_READY"
-LOCAL_PLUS_RUBIX_STALE = "LOCAL_PLUS_RUBIX_STALE"
+LOCAL_PLUS_MUBASHER_READY = "LOCAL_PLUS_MUBASHER_READY"
+LOCAL_PLUS_MUBASHER_STALE = "LOCAL_PLUS_MUBASHER_STALE"
 LOCAL_SEED_ONLY_STALE = "LOCAL_SEED_ONLY_STALE"
-LOCAL_PLUS_RUBIX_BUILDING_HISTORY = "LOCAL_PLUS_RUBIX_BUILDING_HISTORY"
+LOCAL_PLUS_MUBASHER_BUILDING_HISTORY = "LOCAL_PLUS_MUBASHER_BUILDING_HISTORY"
 BRIDGE_CONFLICT = "BRIDGE_CONFLICT"
 VOLUME_POLICY_UNRESOLVED = "VOLUME_POLICY_UNRESOLVED"
 DATA_INSUFFICIENT = "DATA_INSUFFICIENT"
@@ -469,12 +469,12 @@ def eodhd_history(symbol, *, min_bars=250, force_refresh=False, client=None,
     return out
 
 
-# --- unsupported symbols: validated local history + Rubix Daily Bridge -------
+# --- unsupported symbols: validated local history + Mubasher daily tail ------
 
 
-def local_plus_rubix_history(symbol, *, period="10y", interval="1d", min_bars=250,
-                             bridge_cache=None, not_after=None):
-    """Frozen Yahoo seed + REAL Rubix Daily Bridge append, with an honest readiness gate.
+def local_plus_mubasher_history(symbol, *, period="10y", interval="1d", min_bars=250,
+                                not_after=None):
+    """Frozen Yahoo seed + measured Mubasher tail, with an honest readiness gate.
 
     Returns a canonical frame whose ``attrs['market_data']`` carries full seed/bridge
     provenance, an ``operational_status`` and ``freshness`` fields. Raises
@@ -482,11 +482,10 @@ def local_plus_rubix_history(symbol, *, period="10y", interval="1d", min_bars=25
     it is reported via ``operational_status`` so the symbol is visibly blocked, never
     silently treated as fresh.
     """
-    from core.local_rubix_history import build_local_rubix_history
+    from core.local_daily_history import build_local_daily_history
 
     base = _base(symbol)
-    frame, prov = build_local_rubix_history(base, period=period, interval=interval,
-                                            bridge_cache=bridge_cache,
+    frame, prov = build_local_daily_history(base, period=period, interval=interval,
                                             not_after=not_after)
     if frame is None:
         raise ResearchDataUnavailable(base, DATA_UNAVAILABLE,
@@ -503,12 +502,12 @@ def local_plus_rubix_history(symbol, *, period="10y", interval="1d", min_bars=25
     if conflicts > 0:
         status = BRIDGE_CONFLICT
     elif rows < max(1, int(min_bars)):
-        status = LOCAL_PLUS_RUBIX_BUILDING_HISTORY if appended > 0 else DATA_INSUFFICIENT
+        status = LOCAL_PLUS_MUBASHER_BUILDING_HISTORY if appended > 0 else DATA_INSUFFICIENT
     elif at_expected:
         # Seed already current, or a real bridge bar brought it current.
-        status = LOCAL_PLUS_RUBIX_READY
+        status = LOCAL_PLUS_MUBASHER_READY
     elif appended > 0:
-        status = LOCAL_PLUS_RUBIX_STALE          # bridge contributing but still behind
+        status = LOCAL_PLUS_MUBASHER_STALE          # bridge contributing but still behind
     else:
         status = LOCAL_SEED_ONLY_STALE           # frozen seed behind, no bridge bar yet
 
@@ -601,17 +600,17 @@ def get_current_research_history(symbol, *, period="10y", interval="1d", min_bar
         # EODHD publishes a completed session a day late, and sometimes two.
         # Until it does, this history stops before the last completed session
         # and the daily guard refuses the symbol as stale — so the scan skips
-        # names whose data is merely unpublished, not missing. Rubix already
-        # holds those sessions; append them.
+        # names whose data is merely unpublished, not missing. The measured
+        # store already holds those sessions; append them.
         #
         # Append-only, after EODHD's last date. EODHD keeps every session it
         # owns, so nothing already published can be restated by the bridge.
-        from core.local_rubix_history import append_bridge_bars
+        from core.local_daily_history import append_bridge_bars
 
         # An unresolved corporate action means the adjusted body and the raw
         # tail may not share a price basis — but only if it falls INSIDE the
         # appended window. EODHD's adjustment already propagates an older
-        # action backwards through the series it publishes, and today's Rubix
+        # action backwards through the series it publishes, and the appended
         # bar is quoted on today's basis, so the two agree. Blocking on any
         # unresolved action ever, regardless of date, withheld the tail from 8
         # of 209 symbols over actions dated 2006 to 2025 — none of which can
@@ -629,26 +628,19 @@ def get_current_research_history(symbol, *, period="10y", interval="1d", min_bar
             # while no corporate action falls inside the appended window, which
             # `unresolved_action_date` is what guards; the series is renamed
             # either way so nothing downstream reads it as uniformly adjusted.
-            series = "SPLIT_ADJUSTED_PLUS_RUBIX_RAW_TAIL"
-            provider = "eodhd_plus_rubix"
-            # A tail that came from the measured export says so. It is the
-            # exchange's official auction close rather than one built from
-            # minutes this project captured, and the two differ by 0.15% at the
-            # median. Reporting it as `eodhd_plus_rubix` would make a second
-            # source invisible in the provenance every consumer reads.
-            if bridge_md.get("bridge_supplements"):
-                provider = "eodhd_plus_rubix_plus_export"
+            series = "SPLIT_ADJUSTED_PLUS_MUBASHER_RAW_TAIL"
+            provider = "eodhd_plus_mubasher"
 
         effective = pd.Timestamp(frame.index[-1]).date()
         fresh = _freshness(effective, expected)
         state = EODHD_OPERATIONAL_CLEAN_WINDOW
         seed_present, price_policy = False, "SPLIT_ADJUSTED_ALL_EVENTS"
     else:
-        # EODHD-unsupported / manual: frozen Yahoo seed + REAL Rubix Daily Bridge.
+        # EODHD-unsupported / manual: frozen Yahoo seed + measured Mubasher tail.
         # A symbol with no seed at all raises here rather than returning a state,
         # so the held fallback has to cover both exits, not just the stale one.
         try:
-            frame, state, local_md = local_plus_rubix_history(
+            frame, state, local_md = local_plus_mubasher_history(
                 base, period=period, interval=interval, min_bars=min_bars,
                 not_after=expected)
         except ResearchDataUnavailable as missing:
@@ -658,11 +650,11 @@ def get_current_research_history(symbol, *, period="10y", interval="1d", min_bar
             if held is None:
                 raise
             return _held_frame(held, base, tier, expected, min_bars)
-        provider, series = "local_plus_rubix", "PROJECT_LOCAL_SEED_PLUS_RUBIX"
+        provider, series = "local_plus_mubasher", "PROJECT_LOCAL_SEED_PLUS_MUBASHER"
         effective = pd.Timestamp(frame.index[-1]).date()
         fresh = {"status": local_md.get("freshness_status"), "lag": local_md.get("session_lag")}
         seed_present, price_policy = True, "FROZEN_YAHOO_SEED_NATIVE"
-        if state not in (LOCAL_PLUS_RUBIX_READY,):
+        if state not in (LOCAL_PLUS_MUBASHER_READY,):
             blocked = ResearchDataUnavailable(
                 base, state, _local_block_detail(local_md, expected))
             if not allow_held:
@@ -703,10 +695,10 @@ def get_current_research_history(symbol, *, period="10y", interval="1d", min_bar
         "history_sufficient": len(frame) >= min_bars,
         "data_quality_status": state,
     })
-    # Which sessions came from Rubix rather than the tier's own provider, so a
-    # report can always say where the newest bar came from.
+    # Which sessions came from the Mubasher tail rather than the tier's own
+    # provider, so a report can always say where the newest bar came from.
     if bridge_md is not None:
-        md.update({f"rubix_{k}" if not k.startswith("bridge") else k: v
+        md.update({f"mubasher_{k}" if not k.startswith("bridge") else k: v
                    for k, v in bridge_md.items()})
     frame.attrs["market_data"] = md
     return frame

@@ -353,7 +353,7 @@ class DataQualitySummary:
     """Calculated data-quality/provenance evidence. Yahoo network use must be False."""
     status: DataStatus
     data_domain: str = "CURRENT_RESEARCH_V2"
-    provider: str = "eodhd"                       # eodhd | local_plus_rubix
+    provider: str = "eodhd"                       # eodhd | local_plus_mubasher
     freshness_status: str = "UNKNOWN"
     expected_completed_session: str | None = None
     latest_completed_session: str | None = None

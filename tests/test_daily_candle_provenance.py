@@ -357,17 +357,14 @@ def test_the_guard_touches_no_provider_cache_or_process():
         assert forbidden not in source, f"the guard reaches for {forbidden}"
 
 
-# --- a second supplier for the same tail --------------------------------------
+# --- the one supplier of the daily tail ---------------------------------------
 #
-# On 2026-09-07 the collector stopped eight minutes into the session, no Rubix
-# bar could be built from 29 captured minutes, and every symbol fell back to
-# plain EODHD: eodhd_plus_rubix went from 187 of 222 symbols the session before
-# to zero, and the history stopped a day short of the last completed session.
-#
-# The export holds that session. It is the exchange's official auction close
-# rather than one built from minutes this project captured, and on 2026-09-06
-# where both exist the volumes agree exactly while the closes differ by 0.15%
-# at the median. So it goes second, and it is named when it is used.
+# The tail used to be the Rubix daily bridge, with the measured export second.
+# It is the measured store alone now, because the Rubix feed never sent an
+# auction price: on 2026-09-08 all 220 auction-window rows for COMI carried one
+# identical price, and only 29.5% of 6,067 bridge bars ever had a confirmed
+# official close. An EGX session closes on the price the 14:25 cross set, which
+# is the one Mubasher's own daily record carries.
 
 def _frame(dates, close=10.0):
     import pandas as pd
@@ -379,58 +376,65 @@ def _frame(dates, close=10.0):
         index=index)
 
 
-def test_the_export_fills_only_sessions_rubix_did_not(monkeypatch):
+def test_the_measured_store_supplies_the_whole_tail(monkeypatch):
     import pandas as pd
 
-    from core import local_rubix_history as history
+    from core import local_daily_history as history
 
-    monkeypatch.setattr(history, "default_bridge_cache", lambda: object())
-    monkeypatch.setattr(history, "_bridge_rows_after", lambda *a, **k: [
+    monkeypatch.setattr(history, "_measured_rows_after", lambda *a, **k: [
+        {"session_date": pd.Timestamp("2026-09-07"), "Open": 2.0, "High": 2.0,
+         "Low": 2.0, "Close": 2.0, "Adj Close": 2.0, "Volume": 7.0},
         {"session_date": pd.Timestamp("2026-09-06"), "Open": 1.0, "High": 1.0,
          "Low": 1.0, "Close": 1.0, "Adj Close": 1.0, "Volume": 5.0}])
-    monkeypatch.setattr(history, "_export_rows_after", lambda *a, **k: [
-        # the same session Rubix already supplied, and one it did not
-        {"session_date": pd.Timestamp("2026-09-06"), "Open": 9.0, "High": 9.0,
-         "Low": 9.0, "Close": 9.0, "Adj Close": 9.0, "Volume": 99.0},
-        {"session_date": pd.Timestamp("2026-09-07"), "Open": 2.0, "High": 2.0,
-         "Low": 2.0, "Close": 2.0, "Adj Close": 2.0, "Volume": 7.0}])
 
     frame, prov = history.append_bridge_bars(_frame(["2026-09-03"]), "COMI.CA")
 
     assert prov["bridge_sessions_appended"] == 2
-    assert frame.loc[pd.Timestamp("2026-09-06"), "Close"] == 1.0, (
-        "Rubix owns the session it supplied; the export must not restate it")
+    # Out of order in, in order out: the appender sorts before it appends.
+    assert frame.loc[pd.Timestamp("2026-09-06"), "Close"] == 1.0
     assert frame.loc[pd.Timestamp("2026-09-07"), "Close"] == 2.0
-    assert prov["bridge_supplements"] == ("2026-09-07",)
-    assert "MUBASHER_EXPORT_BRIDGE" in prov["bridge_provider"]
+    assert prov["bridge_supplements"] == ("2026-09-06", "2026-09-07")
+    assert prov["bridge_provider"] == history.MUBASHER_DAILY_TAIL
 
 
-def test_a_tail_rubix_covered_alone_names_only_rubix(monkeypatch):
-    import pandas as pd
+def test_no_measured_session_names_no_supplement(monkeypatch):
+    from core import local_daily_history as history
 
-    from core import local_rubix_history as history
+    monkeypatch.setattr(history, "_measured_rows_after", lambda *a, **k: [])
 
-    monkeypatch.setattr(history, "default_bridge_cache", lambda: object())
-    monkeypatch.setattr(history, "_bridge_rows_after", lambda *a, **k: [
-        {"session_date": pd.Timestamp("2026-09-06"), "Open": 1.0, "High": 1.0,
-         "Low": 1.0, "Close": 1.0, "Adj Close": 1.0, "Volume": 5.0}])
-    monkeypatch.setattr(history, "_export_rows_after", lambda *a, **k: [
-        {"session_date": pd.Timestamp("2026-09-06"), "Open": 9.0, "High": 9.0,
-         "Low": 9.0, "Close": 9.0, "Adj Close": 9.0, "Volume": 99.0}])
+    frame, prov = history.append_bridge_bars(_frame(["2026-09-03"]), "COMI.CA")
 
-    _, prov = history.append_bridge_bars(_frame(["2026-09-03"]), "COMI.CA")
     assert prov["bridge_supplements"] == ()
-    assert prov["bridge_provider"] == history.RUBIX_DAILY_BRIDGE, (
-        "naming a supplement that supplied nothing hides which source acted")
+    assert prov["bridge_sessions_appended"] == 0
+    assert prov["bridge_provider"] == history.MUBASHER_DAILY_TAIL
 
 
-def test_the_router_reports_the_export_in_the_provider_name():
-    """A second source must not be invisible in the provenance."""
+def test_the_router_reports_the_tail_in_the_provider_name():
+    """The source of the newest bar must not be invisible in the provenance."""
 
     import inspect
 
     from core import research_router
 
     source = inspect.getsource(research_router)
-    assert "eodhd_plus_rubix_plus_export" in source
-    assert 'bridge_md.get("bridge_supplements")' in source
+    assert "eodhd_plus_mubasher" in source
+    assert "SPLIT_ADJUSTED_PLUS_MUBASHER_RAW_TAIL" in source
+    assert "eodhd_plus_rubix" not in source
+
+
+def test_nothing_in_the_daily_candle_path_still_reads_rubix():
+    """The bridge is gone, not merely unused.
+
+    A module that still imports the Rubix schema or cache would rebuild the
+    old path the first time somebody passed it a cache, and the provenance
+    would go back to naming a source that cannot confirm a close.
+    """
+
+    import inspect
+
+    from core import local_daily_history
+
+    source = inspect.getsource(local_daily_history)
+    for forbidden in ("RUBIX_DERIVED", "final_bars_after", "default_bridge_cache",
+                      "continuous_close", "FINAL_CONTINUOUS"):
+        assert forbidden not in source, f"the daily tail still reaches for {forbidden}"

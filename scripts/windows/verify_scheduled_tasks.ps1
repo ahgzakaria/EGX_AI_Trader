@@ -67,12 +67,6 @@ if (-not $PythonExe) { $PythonExe = Join-Path $ProjectRoot "venv\Scripts\python.
 # which is exactly the kind of edit that lands on the machine and never reaches
 # the repository.
 $declared = @(
-    @{ Task = "EGX Rubix Daily Finalizer"
-       Installer = "install_rubix_daily_finalizer_task.ps1"
-       Invokes = "run_rubix_daily_finalizer.py"
-       Expect = "derived"; Margin = 5
-       Limit = "PT2H"; Repeat = "PT30M/PT2H"; Logon = "S4U" }
-
     @{ Task = "EGX Sector Flow Refresh"
        Installer = "install_sector_flow_refresh_task.ps1"
        Invokes = "refresh_sector_flow.py"
@@ -88,26 +82,12 @@ $declared = @(
        Invokes = "record_gap_forward.py"
        Expect = "14:40"; Limit = "PT20M"; Repeat = "-"; Logon = "S4U" }
 
-    @{ Task = "EGX Rubix Assisted Start"
-       Installer = "install_rubix_assisted_start_task.ps1"
-       Invokes = "run_rubix_assisted_start.py"
-       Expect = "09:10"; Limit = "PT2H"; Repeat = "-"; Logon = "Interactive" }
-
     @{ Task = "EGX ORB Full Shadow Automation"
        Installer = "install_orb_full_shadow_task.ps1"
        Invokes = "run_daily_orb_automation.ps1"
        Expect = "09:45"; Limit = "PT7H"; Repeat = "-"; Logon = "S4U" }
 
-    # Interactive, and deliberately so: this is the one task whose entire output
-    # is a sound and a dialog on the operator's own desktop. Run as S4U it would
-    # poll all session and be seen by nobody, which is the failure it exists to
-    # prevent. PT5H covers 10:00-14:30 with room for the close.
-    @{ Task = "EGX Rubix Supervisor Watchdog"
-       Installer = "install_rubix_supervisor_watchdog_task.ps1"
-       Invokes = "watch_rubix_supervisor.py"
-       Expect = "10:00"; Limit = "PT5H"; Repeat = "-"; Logon = "Interactive" }
-
-    # This script, run daily at 09:00 ahead of the 09:10 assisted start. It is
+    # This script, run daily at 09:00. It is
     # in its own table for two reasons: an undeclared task is reported, so a
     # checker missing from its own list would flag itself every morning until
     # people stopped reading it; and a check that silently stops running looks
@@ -116,6 +96,18 @@ $declared = @(
        Installer = "install_scheduled_tasks_verification_task.ps1"
        Invokes = "verify_scheduled_tasks.ps1"
        Expect = "09:00"; Limit = "PT10M"; Repeat = "-"; Logon = "S4U" }
+)
+
+# Retired with the Rubix feed on 2026-09-10. The daily candle comes from
+# MubasherTrade PRO's own databases now, imported by
+# scripts\import_mubasher_local.py, so nothing runs during the session to build
+# one. They are DISABLED rather than deleted; the removal scripts under
+# scripts/windows are what deletes them. Listed here so a disabled task
+# is reported as retired rather than as an undeclared stray.
+$retired = @(
+    "EGX Rubix Daily Finalizer",
+    "EGX Rubix Assisted Start",
+    "EGX Rubix Supervisor Watchdog"
 )
 
 function Get-TaskAction {
@@ -213,10 +205,22 @@ $rows | Format-Table -AutoSize -Wrap
 # Anything EGX-named that this repository does not declare. The ORB wrapper was
 # invisible exactly this way: registered, working, described nowhere.
 $known = $declared.Task
-$stray = Get-ScheduledTask | Where-Object {
+$allStray = Get-ScheduledTask | Where-Object {
     $_.TaskPath -eq "\" -and $_.TaskName -like "EGX*" -and $known -notcontains $_.TaskName
 }
+# A retired task still registered and still disabled is the expected state, not
+# a stray. One that is retired and somehow ENABLED is the interesting case: it
+# means something re-enabled a session-time job the daily candle no longer
+# needs, so it falls through to the stray list below and is counted.
+$retiredFound = @($allStray | Where-Object {
+    $retired -contains $_.TaskName -and $_.State -eq "Disabled" })
+$stray = @($allStray | Where-Object { $retiredFound.TaskName -notcontains $_.TaskName })
 $strayLive = @($stray | Where-Object { $_.State -ne "Disabled" })
+if ($retiredFound) {
+    Write-Host "Retired with the Rubix feed, disabled as expected:" -ForegroundColor DarkGray
+    foreach ($r in $retiredFound) { Write-Host "  $($r.TaskName)" }
+    Write-Host ""
+}
 if ($stray) {
     Write-Host "Registered but not declared by this repository:" -ForegroundColor Yellow
     foreach ($s in $stray) { Write-Host "  $($s.TaskName)  [$($s.State)]" }

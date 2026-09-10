@@ -70,14 +70,14 @@ def stale_local(status):
 # --------------------------------------------------------------------------- #
 
 def test_a_held_symbol_stays_blocked_by_default_when_the_seed_is_missing(held_symbol, monkeypatch):
-    monkeypatch.setattr(research_router, "local_plus_rubix_history",
+    monkeypatch.setattr(research_router, "local_plus_mubasher_history",
                         fail_local("DATA_UNAVAILABLE"))
     with pytest.raises(ResearchDataUnavailable):
         get_current_research_history(held_symbol, min_bars=20)
 
 
 def test_a_held_symbol_stays_blocked_by_default_when_the_seed_is_stale(held_symbol, monkeypatch):
-    monkeypatch.setattr(research_router, "local_plus_rubix_history",
+    monkeypatch.setattr(research_router, "local_plus_mubasher_history",
                         stale_local("LOCAL_SEED_ONLY_STALE"))
     with pytest.raises(ResearchDataUnavailable):
         get_current_research_history(held_symbol, min_bars=20)
@@ -86,7 +86,7 @@ def test_a_held_symbol_stays_blocked_by_default_when_the_seed_is_stale(held_symb
 def test_the_block_keeps_its_original_status(held_symbol, monkeypatch):
     """The caller must still learn why the local path failed, not a new reason."""
 
-    monkeypatch.setattr(research_router, "local_plus_rubix_history",
+    monkeypatch.setattr(research_router, "local_plus_mubasher_history",
                         stale_local("LOCAL_SEED_ONLY_STALE"))
     with pytest.raises(ResearchDataUnavailable) as raised:
         get_current_research_history(held_symbol, min_bars=20)
@@ -100,19 +100,19 @@ def test_the_block_keeps_its_original_status(held_symbol, monkeypatch):
 @pytest.mark.parametrize("local", [
     fail_local("DATA_UNAVAILABLE"),
     stale_local("LOCAL_SEED_ONLY_STALE"),
-    stale_local("LOCAL_PLUS_RUBIX_STALE"),
+    stale_local("LOCAL_PLUS_MUBASHER_STALE"),
 ])
 def test_both_local_exits_can_serve_a_held_frame(held_symbol, monkeypatch, local):
     """The no-seed exit raises and the stale exit returns a state; cover both."""
 
-    monkeypatch.setattr(research_router, "local_plus_rubix_history", local)
+    monkeypatch.setattr(research_router, "local_plus_mubasher_history", local)
     frame = get_current_research_history(held_symbol, min_bars=20, allow_held=True)
     assert len(frame) == len(SESSIONS)
     assert frame.attrs["market_data"]["data_quality_status"] == TIER_D_HELD_FOR_REVIEW
 
 
 def test_a_held_frame_declares_itself_unfit_for_automatic_use(held_symbol, monkeypatch):
-    monkeypatch.setattr(research_router, "local_plus_rubix_history",
+    monkeypatch.setattr(research_router, "local_plus_mubasher_history",
                         fail_local("DATA_UNAVAILABLE"))
     metadata = get_current_research_history(
         held_symbol, min_bars=20, allow_held=True).attrs["market_data"]
@@ -152,7 +152,7 @@ def test_an_unresolved_corporate_action_still_blocks_a_held_symbol(held_symbol, 
     unsafe.attrs["volume_meta"] = {"volume_safe_for_lookback": False,
                                    "latest_action_in_lookback": "2026-08-20"}
     monkeypatch.setattr(research_router, "eodhd_history", lambda base, **kwargs: unsafe)
-    monkeypatch.setattr(research_router, "local_plus_rubix_history",
+    monkeypatch.setattr(research_router, "local_plus_mubasher_history",
                         fail_local("DATA_UNAVAILABLE"))
 
     with pytest.raises(ResearchDataUnavailable):
@@ -163,7 +163,7 @@ def test_an_eodhd_failure_re_raises_the_original_block(held_symbol, monkeypatch)
     def boom(base, **kwargs):
         raise RuntimeError("provider down")
     monkeypatch.setattr(research_router, "eodhd_history", boom)
-    monkeypatch.setattr(research_router, "local_plus_rubix_history",
+    monkeypatch.setattr(research_router, "local_plus_mubasher_history",
                         stale_local("LOCAL_SEED_ONLY_STALE"))
 
     with pytest.raises(ResearchDataUnavailable) as raised:

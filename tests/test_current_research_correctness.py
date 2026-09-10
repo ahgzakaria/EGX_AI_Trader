@@ -1,4 +1,4 @@
-"""Correctness-fix tests: real Rubix bridge append, honest freshness gating, and
+"""Correctness-fix tests: measured daily-tail append, honest freshness gating, and
 event-specific volume normalization for CURRENT_RESEARCH_V2 (no Yahoo network)."""
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ import json
 from datetime import date
 from pathlib import Path
 
-import core.local_rubix_history as lrh
+import core.local_daily_history as lrh
 import core.research_router as router
 from providers import eodhd_volume_adjustment as vol
 
@@ -35,48 +35,45 @@ def _seed(rows=300, start="2024-01-01"):
                          "Adj Close": 10.2 + v * 0.01, "Volume": 1000.0 + v}, index=idx)
 
 
-class _Bridge:
-    """Minimal NormalizedDailyCache stand-in returning FINAL_CONTINUOUS bars."""
+def _tail(bars):
+    """A measured-store lookup returning ``bars`` for any request.
 
-    def __init__(self, bars):
-        self._bars = bars
+    The tail is injected rather than read, because a test that reads the real
+    measured store appends real market data to its own fixture.
+    """
 
-    def final_bars_after(self, after_date, source_type="RUBIX_DERIVED"):
-        return [b for b in self._bars if b["session_date"] > after_date]
-
-
-class _RawBridge:
-    """Returns bars unconditionally — used to exercise the in-frame dedup/conflict guard."""
-
-    def __init__(self, bars):
-        self._bars = bars
-
-    def final_bars_after(self, after_date, source_type="RUBIX_DERIVED"):
-        return list(self._bars)
+    return lambda base, after_date: [b for b in bars
+                                     if b["session_date"] > pd.Timestamp(after_date)]
 
 
-def _bar(sym, day, close, *, status="FINAL_CONTINUOUS", final="FINAL", vol=500.0,
-         official=None):
-    return {"canonical_symbol": f"{sym}.CA", "session_date": day, "open": close,
-            "high": close + 0.1, "low": close - 0.1, "continuous_close": close,
-            "official_close": official if official is not None else close,
-            "auction_last": official, "volume": vol,
-            "finalization_status": final, "continuous_bar_status": status}
+def _raw_tail(bars):
+    """Returns bars unconditionally -- exercises the in-frame dedup/conflict guard."""
+    return lambda base, after_date: list(bars)
+
+
+def _bar(day, close, *, volume=500.0, confirmed=True, open_=None):
+    """One measured-store row in the shape the appender consumes."""
+    price = close if open_ is None else open_
+    return {"session_date": pd.Timestamp(day), "Open": price,
+            "High": close + 0.1, "Low": close - 0.1, "Close": close,
+            "Adj Close": close, "Volume": volume,
+            "_official_close": confirmed}
 
 
 # --------------------------------------------------------------------------- #
-# Part 2/3 — real bridge append
+# Part 2/3 -- real tail append
 # --------------------------------------------------------------------------- #
 
-def test_valid_final_continuous_bridge_bar_is_appended(monkeypatch):
+def test_a_measured_session_is_appended(monkeypatch):
     seed = _seed(300)
     monkeypatch.setattr(lrh, "_load_seed", lambda *a, **k: (seed.copy(), "FROZEN_YAHOO_SEED"))
     nxt = (seed.index[-1] + pd.tseries.offsets.BDay(1)).date().isoformat()
-    frame, prov = lrh.build_local_rubix_history(
-        "ZZZ", bridge_cache=_Bridge([_bar("ZZZ", nxt, 11.0, official=11.05)]))
+    monkeypatch.setattr(lrh, "_measured_rows_after", _tail([_bar(nxt, 11.05)]))
+    frame, prov = lrh.build_local_daily_history("ZZZ")
     assert prov["bridge_sessions_appended"] == 1
     assert prov["effective_latest_session"] == nxt
-    # official_close (auction) becomes the engine Close, fixing the old `close` KeyError
+    # The store's close is the exchange's auction price, and it becomes the
+    # engine's Close.
     assert float(frame.iloc[-1]["Close"]) == 11.05
 
 
@@ -84,56 +81,63 @@ def test_append_is_idempotent(monkeypatch):
     seed = _seed(50)
     monkeypatch.setattr(lrh, "_load_seed", lambda *a, **k: (seed.copy(), "FROZEN_YAHOO_SEED"))
     nxt = (seed.index[-1] + pd.tseries.offsets.BDay(1)).date().isoformat()
-    bridge = _Bridge([_bar("ZZZ", nxt, 11.0)])
-    f1, p1 = lrh.build_local_rubix_history("ZZZ", bridge_cache=bridge)
+    monkeypatch.setattr(lrh, "_measured_rows_after", _tail([_bar(nxt, 11.0)]))
+    f1, p1 = lrh.build_local_daily_history("ZZZ")
     monkeypatch.setattr(lrh, "_load_seed", lambda *a, **k: (f1.copy(), "FROZEN_YAHOO_SEED"))
-    _f2, p2 = lrh.build_local_rubix_history("ZZZ", bridge_cache=bridge)
+    _f2, p2 = lrh.build_local_daily_history("ZZZ")
     assert p1["bridge_sessions_appended"] == 1
     assert p2["bridge_sessions_appended"] == 0        # same bar not appended twice
 
 
-def test_duplicate_bridge_session_is_not_duplicated(monkeypatch):
+def test_duplicate_session_is_not_duplicated(monkeypatch):
     seed = _seed(50)
-    last = seed.index[-1].date().isoformat()
+    last = seed.index[-1]
     monkeypatch.setattr(lrh, "_load_seed", lambda *a, **k: (seed.copy(), "FROZEN_YAHOO_SEED"))
     # a bar for a date already in the seed with matching OHLC -> duplicate, not appended
     r = seed.iloc[-1]
-    dup = {"canonical_symbol": "ZZZ.CA", "session_date": last,
-           "open": float(r["Open"]), "high": float(r["High"]), "low": float(r["Low"]),
-           "continuous_close": float(r["Close"]), "official_close": float(r["Close"]),
-           "auction_last": float(r["Close"]), "volume": float(r["Volume"]),
-           "finalization_status": "FINAL", "continuous_bar_status": "FINAL_CONTINUOUS"}
-    frame, prov = lrh.build_local_rubix_history("ZZZ", bridge_cache=_RawBridge([dup]))
+    dup = {"session_date": last, "Open": float(r["Open"]), "High": float(r["High"]),
+           "Low": float(r["Low"]), "Close": float(r["Close"]),
+           "Adj Close": float(r["Close"]), "Volume": float(r["Volume"]),
+           "_official_close": True}
+    monkeypatch.setattr(lrh, "_measured_rows_after", _raw_tail([dup]))
+    frame, prov = lrh.build_local_daily_history("ZZZ")
     assert prov["bridge_sessions_appended"] == 0
     assert prov["duplicate_count"] == 1
     assert len(frame) == len(seed)
 
 
-def test_conflicting_bridge_bar_is_not_silently_overwritten(monkeypatch):
+def test_conflicting_bar_is_not_silently_overwritten(monkeypatch):
     seed = _seed(50)
-    last = seed.index[-1].date().isoformat()
+    last = seed.index[-1]
     original = float(seed.iloc[-1]["Close"])
     monkeypatch.setattr(lrh, "_load_seed", lambda *a, **k: (seed.copy(), "FROZEN_YAHOO_SEED"))
-    frame, prov = lrh.build_local_rubix_history(
-        "ZZZ", bridge_cache=_RawBridge([_bar("ZZZ", last, original + 5.0, official=original + 5.0)]))
+    monkeypatch.setattr(lrh, "_measured_rows_after",
+                        _raw_tail([_bar(last, original + 5.0)]))
+    frame, prov = lrh.build_local_daily_history("ZZZ")
     assert prov["conflict_count"] == 1
     assert prov["bridge_sessions_appended"] == 0
     assert float(frame.loc[seed.index[-1], "Close"]) == original    # kept, not overwritten
 
 
-def test_non_final_bridge_bar_is_rejected(monkeypatch):
+def test_a_close_the_auction_never_set_is_appended_and_named(monkeypatch):
+    """It is still the only record of that day; the provenance says it is unconfirmed."""
+
     seed = _seed(50)
     monkeypatch.setattr(lrh, "_load_seed", lambda *a, **k: (seed.copy(), "FROZEN_YAHOO_SEED"))
     nxt = (seed.index[-1] + pd.tseries.offsets.BDay(1)).date().isoformat()
-    _f, prov = lrh.build_local_rubix_history(
-        "ZZZ", bridge_cache=_Bridge([_bar("ZZZ", nxt, 11.0, status="PARTIAL_SESSION")]))
-    assert prov["bridge_sessions_appended"] == 0       # only FINAL_CONTINUOUS accepted
+    monkeypatch.setattr(lrh, "_measured_rows_after",
+                        _tail([_bar(nxt, 11.0, confirmed=False)]))
+    frame, bridge = lrh.append_bridge_bars(seed.copy(), "ZZZ")
+    assert bridge["bridge_sessions_appended"] == 1
+    assert bridge["bridge_unconfirmed_close_count"] == 1
+    assert bridge["bridge_unconfirmed_close_dates"] == (nxt,)
 
 
 def test_provenance_identifies_frozen_yahoo_seed(monkeypatch):
     seed = _seed(300)
     monkeypatch.setattr(lrh, "_load_seed", lambda *a, **k: (seed.copy(), "FROZEN_YAHOO_SEED"))
-    _f, prov = lrh.build_local_rubix_history("ZZZ", bridge_cache=_Bridge([]))
+    monkeypatch.setattr(lrh, "_measured_rows_after", _tail([]))
+    _f, prov = lrh.build_local_daily_history("ZZZ")
     assert prov["seed_provider"] == "FROZEN_YAHOO_SEED"
     assert prov["yahoo_seed_present"] is True
     assert prov["yahoo_network_used"] is False
@@ -146,9 +150,9 @@ def test_provenance_identifies_frozen_yahoo_seed(monkeypatch):
 def _route_local(monkeypatch, sym, frame, prov):
     _tiers(monkeypatch, {sym: {"symbol": sym, "tier": "TIER_D_UNSUPPORTED_OR_MANUAL"}})
     frame.attrs["market_data"] = dict(prov)
-    monkeypatch.setattr(router, "build_local_rubix_history", lambda *a, **k: (frame, prov),
+    monkeypatch.setattr(router, "build_local_daily_history", lambda *a, **k: (frame, prov),
                         raising=False)
-    monkeypatch.setattr(lrh, "build_local_rubix_history", lambda *a, **k: (frame, prov))
+    monkeypatch.setattr(lrh, "build_local_daily_history", lambda *a, **k: (frame, prov))
 
 
 def _tiers(monkeypatch, mapping):
@@ -182,7 +186,7 @@ def test_seed_reaching_expected_is_ready_with_zero_appends(monkeypatch):
     prov = _prov("2026-07-22", appended=0)
     _route_local(monkeypatch, "ZZZ", frame, prov)
     md = router.get_current_research_history("ZZZ", min_bars=10).attrs["market_data"]
-    assert md["data_quality_status"] == router.LOCAL_PLUS_RUBIX_READY
+    assert md["data_quality_status"] == router.LOCAL_PLUS_MUBASHER_READY
 
 
 def test_conflict_blocks_as_bridge_conflict(monkeypatch):
@@ -415,3 +419,27 @@ def test_a_resolved_session_is_resolved_once(monkeypatch):
     assert router._expected_completed_session() == resolved
     assert len(calls) == 1
     router.reset_research_caches()
+
+
+def test_the_router_calls_the_builder_with_arguments_it_accepts(monkeypatch):
+    """The seed path is exercised for real, not through a stubbed router.
+
+    Every other test of this path monkeypatches ``local_plus_mubasher_history``
+    itself, so when the builder lost its ``bridge_cache`` parameter and the
+    router kept passing one, 4,303 tests passed and the first TIER_D symbol
+    asked for raised TypeError. This calls the chain.
+    """
+
+    seed = _seed(300)
+    nxt = (seed.index[-1] + pd.tseries.offsets.BDay(1)).date().isoformat()
+    monkeypatch.setattr(lrh, "_load_seed", lambda *a, **k: (seed.copy(), "FROZEN_YAHOO_SEED"))
+    monkeypatch.setattr(lrh, "_measured_rows_after", _tail([_bar(nxt, 11.05)]))
+
+    frame, status, md = router.local_plus_mubasher_history("ZZZ", min_bars=250)
+
+    assert md["bridge_sessions_appended"] == 1
+    assert md["provider"] == "local_plus_mubasher"
+    assert md["bridge_provider"] == lrh.MUBASHER_DAILY_TAIL
+    assert float(frame.iloc[-1]["Close"]) == 11.05
+    assert status in (router.LOCAL_PLUS_MUBASHER_READY,
+                      router.LOCAL_PLUS_MUBASHER_STALE)

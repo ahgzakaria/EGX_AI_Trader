@@ -72,7 +72,7 @@ def test_oras_cannot_reach_yahoo_through_any_generic_fallback(monkeypatch):
         raise router.ResearchDataUnavailable("ORAS", router.DATA_UNAVAILABLE, "eodhd down")
     monkeypatch.setattr(router, "eodhd_history", _boom)
     # even if a local/Yahoo path exists it must NOT be used for ORAS
-    monkeypatch.setattr(router, "local_plus_rubix_history",
+    monkeypatch.setattr(router, "local_plus_mubasher_history",
                         lambda *a, **k: pytest.fail("ORAS must never use local/Yahoo fallback"))
     with pytest.raises(router.ResearchDataUnavailable):
         router.get_current_research_history("ORAS", min_bars=10)
@@ -95,7 +95,7 @@ def test_tier_c_unresolved_event_blocks_safely_without_yahoo(monkeypatch):
     # unresolved action near the end → not enough clean sessions after it
     monkeypatch.setattr(router, "unresolved_action_date", lambda s: "2025-02-01")
     monkeypatch.setattr(router, "eodhd_history", lambda s, **k: _frame(300))
-    monkeypatch.setattr(router, "local_plus_rubix_history",
+    monkeypatch.setattr(router, "local_plus_mubasher_history",
                         lambda *a, **k: pytest.fail("Tier C must not silently use Yahoo/local"))
     with pytest.raises(router.ResearchDataUnavailable) as e:
         router.get_current_research_history("CCC", min_bars=250)
@@ -104,15 +104,15 @@ def test_tier_c_unresolved_event_blocks_safely_without_yahoo(monkeypatch):
 
 # --- unsupported symbols ----------------------------------------------------
 
-def test_unsupported_symbol_uses_local_plus_rubix(monkeypatch):
+def test_unsupported_symbol_uses_local_plus_mubasher(monkeypatch):
     _tiers(monkeypatch, {"ZZZ": {"symbol": "ZZZ", "tier": "TIER_D_UNSUPPORTED_OR_MANUAL"}})
     frame = _frame()
-    monkeypatch.setattr(router, "local_plus_rubix_history",
-                        lambda *a, **k: (frame, router.LOCAL_PLUS_RUBIX_READY,
+    monkeypatch.setattr(router, "local_plus_mubasher_history",
+                        lambda *a, **k: (frame, router.LOCAL_PLUS_MUBASHER_READY,
                                          {"freshness_status": "HISTORY_CURRENT",
                                           "session_lag": 0}))
     md = router.get_current_research_history("ZZZ", min_bars=10).attrs["market_data"]
-    assert md["provider"] == "local_plus_rubix"
+    assert md["provider"] == "local_plus_mubasher"
     assert md["yahoo_network_used"] is False
     assert md["yahoo_seed_present"] is True
 
@@ -122,17 +122,17 @@ def test_insufficient_history_reports_data_insufficient(monkeypatch):
 
     def _short(*_a, **_k):
         raise router.ResearchDataUnavailable("ZZZ", router.DATA_INSUFFICIENT, "12 bars")
-    monkeypatch.setattr(router, "local_plus_rubix_history", _short)
+    monkeypatch.setattr(router, "local_plus_mubasher_history", _short)
     with pytest.raises(router.ResearchDataUnavailable) as e:
         router.get_current_research_history("ZZZ", min_bars=250)
     assert e.value.status == router.DATA_INSUFFICIENT
 
 
 def test_bridge_append_is_idempotent_and_never_duplicates(monkeypatch):
-    # The real bridge appender lives in core.local_rubix_history and is covered in
+    # The real bridge appender lives in core.local_daily_history and is covered in
     # detail in test_current_research_correctness.py. Here we assert the router still
     # exposes the local route by its new name and no longer the buggy _append helper.
-    assert hasattr(router, "local_plus_rubix_history")
+    assert hasattr(router, "local_plus_mubasher_history")
     assert not hasattr(router, "_append_bridge_bars")
 
 

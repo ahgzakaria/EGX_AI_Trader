@@ -319,17 +319,17 @@ def test_unsafe_volume_does_not_increase_confidence():
 def test_provenance_is_derived_from_frame_metadata():
     df = _uptrend()
     df.attrs["market_data"].update({
-        "data_domain": "CURRENT_RESEARCH_V2", "provider": "local_plus_rubix",
+        "data_domain": "CURRENT_RESEARCH_V2", "provider": "local_plus_mubasher",
         "yahoo_network_used": False, "yahoo_seed_present": True,
-        "live_provider": "rubix", "data_quality_status": "LOCAL_PLUS_RUBIX_READY",
+        "live_provider": "rubix", "data_quality_status": "LOCAL_PLUS_MUBASHER_READY",
     })
     dq = evidence.build_evidence(_request("UP"), df, market_phase=MarketPhase.CONTINUOUS,
                                  generated_at=GEN_AT).data_quality
     assert dq.data_domain == "CURRENT_RESEARCH_V2"
-    assert dq.provider == "local_plus_rubix"          # derived, not assumed eodhd
+    assert dq.provider == "local_plus_mubasher"          # derived, not assumed eodhd
     assert dq.yahoo_seed_present is True              # frozen bootstrap seed allowed
     assert dq.yahoo_network_used is False             # invariant still holds
-    assert any("router_status=LOCAL_PLUS_RUBIX_READY" in n for n in dq.notes)
+    assert any("router_status=LOCAL_PLUS_MUBASHER_READY" in n for n in dq.notes)
 
 
 def test_yahoo_network_never_used_even_if_metadata_absent():

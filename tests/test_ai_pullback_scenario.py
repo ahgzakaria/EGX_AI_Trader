@@ -216,7 +216,7 @@ def test_target_selection_cannot_use_future_unconfirmed_pivot():
 
 def test_non_eodhd_history_is_not_used_for_pullback_structure():
     frame = _frame()
-    frame.attrs["market_data"]["provider"] = "local_plus_rubix"
+    frame.attrs["market_data"]["provider"] = "local_plus_mubasher"
     result = _evaluate(frame)
     assert result.state == PullbackState.NOT_APPLICABLE
     assert result.invalidation_reason == "EODHD_COMPLETED_DAILY_REQUIRED"

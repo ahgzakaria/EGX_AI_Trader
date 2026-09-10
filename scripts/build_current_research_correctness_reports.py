@@ -22,7 +22,7 @@ if str(PROJECT_ROOT) not in sys.path:
 import pandas as pd                                     # noqa: E402
 
 from core.environment import load_project_environment   # noqa: E402
-from core.local_rubix_history import build_local_rubix_history  # noqa: E402
+from core.local_daily_history import build_local_daily_history  # noqa: E402
 import core.research_router as router                   # noqa: E402
 from providers.eodhd_volume_adjustment import (         # noqa: E402
     CORPORATE_ACTION_POLICY_VERSION, MULTIPLY_BY_FACTOR, classify_events,
@@ -101,7 +101,7 @@ def append_audit(expected):
             rows.append({"symbol": base, "operational_status": "EXCLUDED_NON_EQUITY",
                          "seed_provider": None, "required_bars": MIN_BARS})
             continue
-        frame, prov = build_local_rubix_history(base)
+        frame, prov = build_local_daily_history(base)
         if frame is None:
             rows.append({"symbol": base, "operational_status": "DATA_UNAVAILABLE",
                          "seed_provider": None, "required_bars": MIN_BARS,
@@ -110,7 +110,7 @@ def append_audit(expected):
             continue
         try:
             router.get_current_research_history(base, min_bars=MIN_BARS)
-            status = router.LOCAL_PLUS_RUBIX_READY
+            status = router.LOCAL_PLUS_MUBASHER_READY
         except router.ResearchDataUnavailable as e:
             status = e.status
         total_appended += int(prov["bridge_sessions_appended"])
@@ -234,10 +234,10 @@ def main():
     # Corrected counts, reconciled to 265, from the freshly-built manifest.
     man = pd.read_csv(OUT / "current_research_migration_manifest.csv", encoding="utf-8-sig")
     ready = int(man["activated"].sum())
-    local = man[man["current_research_provider"] == "local_plus_rubix"]
+    local = man[man["current_research_provider"] == "local_plus_mubasher"]
     cat = Counter(man.loc[~man["activated"], "block_category"])
     stale = int(cat.get("LOCAL_SEED_STALE", 0))
-    building = int((man["state"] == "LOCAL_PLUS_RUBIX_BUILDING_HISTORY").sum())
+    building = int((man["state"] == "LOCAL_PLUS_MUBASHER_BUILDING_HISTORY").sum())
     insufficient = int((man["state"] == "DATA_INSUFFICIENT").sum())
     unavailable = int((man["state"] == "DATA_UNAVAILABLE").sum())
     excluded = int((man["state"] == "EXCLUDED_NON_EQUITY").sum())
@@ -249,9 +249,9 @@ def main():
         st = rows["state"].fillna("")
         return {
             "ready": int(rows["activated"].sum()),
-            "stale": int(st.isin(["LOCAL_SEED_ONLY_STALE", "LOCAL_PLUS_RUBIX_STALE"]).sum()),
+            "stale": int(st.isin(["LOCAL_SEED_ONLY_STALE", "LOCAL_PLUS_MUBASHER_STALE"]).sum()),
             "insufficient": int(st.isin(["DATA_INSUFFICIENT",
-                                         "LOCAL_PLUS_RUBIX_BUILDING_HISTORY"]).sum()),
+                                         "LOCAL_PLUS_MUBASHER_BUILDING_HISTORY"]).sum()),
             "unavailable": int((st == "DATA_UNAVAILABLE").sum()),
             "excluded": int((st == "EXCLUDED_NON_EQUITY").sum()),
             "total": int(len(rows)),
