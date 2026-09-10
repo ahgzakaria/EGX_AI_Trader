@@ -96,9 +96,13 @@ $declared = @(
 # Retired or relocated on 2026-09-10. The daily candle comes from
 # MubasherTrade PRO's own databases now, imported by
 # scripts\import_mubasher_local.py, so nothing runs during the session to build
-# one. They are DISABLED rather than deleted; the removal scripts under
-# scripts/windows are what deletes them. Listed here so a disabled task
-# is reported as retired rather than as an undeclared stray.
+# one.
+#
+# The three Rubix tasks were unregistered once the scripts they invoked were
+# deleted -- a disabled task pointing at a missing file is a trap for whoever
+# re-enables it. They stay named here because a machine restored from an older
+# backup will have them back, and an unexplained EGX task in that list is the
+# thing this check exists to surface.
 $retired = @(
     "EGX Rubix Daily Finalizer",
     "EGX Rubix Assisted Start",

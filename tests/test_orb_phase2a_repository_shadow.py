@@ -27,7 +27,6 @@ from scalping_orb.opening_range import OpeningRangeStatus, build_opening_range
 from scalping_orb.repository import OrbResearchRepository
 from scalping_orb.session import OrbSessionPhase
 from scalping_orb.shadow import OrbShadowIngestionService
-from scripts.audits.inspect_orb_rubix_readiness import parse_args, run
 
 
 CAIRO = ZoneInfo("Africa/Cairo")
@@ -338,35 +337,3 @@ def _tiny_rubix(path: Path):
                     1,
                 ),
             )
-
-
-def test_readiness_cli_is_read_only_and_generates_required_outputs(tmp_path):
-    database = tmp_path / "rubix.db"
-    output = tmp_path / "reports"
-    config_path = tmp_path / "config.json"
-    _tiny_rubix(database)
-    before = database.read_bytes()
-    config_path.write_text(json.dumps(OrbDataConfig().as_dict()), encoding="utf-8")
-    args = parse_args(
-        [
-            "--rubix-db",
-            str(database),
-            "--config",
-            str(config_path),
-            "--output-dir",
-            str(output),
-        ]
-    )
-    run(args)
-    assert database.read_bytes() == before
-    required = {
-        "ORB_PHASE2A_DATA_READINESS.md",
-        "ORB_RUBIX_VOLUME_SEMANTICS.md",
-        "orb_session_coverage.csv",
-        "orb_volume_quality.csv",
-        "orb_opening_range_readiness.csv",
-        "orb_capabilities.json",
-    }
-    assert required.issubset({item.name for item in output.iterdir()})
-    capabilities = json.loads((output / "orb_capabilities.json").read_text())
-    assert capabilities["true_vwap_status"] == "TRUE_VWAP_UNAVAILABLE"
