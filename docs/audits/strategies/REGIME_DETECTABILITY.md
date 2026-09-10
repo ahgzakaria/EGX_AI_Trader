@@ -174,6 +174,17 @@ question. It is whether an EGP-denominated equity system is the right object at
 all when the unit itself lost 64% against the dollar over the window — and that
 is answered by choosing a different objective, not a different rule.
 
+## Followed up — and terminated
+
+The one remaining diagnosis, that the exit was cutting winners short, was tested
+in [EXIT_WIDTH_UNDER_A_WORKING_GATE.md](EXIT_WIDTH_UNDER_A_WORKING_GATE.md) and
+failed. Widening the trailing stop to disabled moved upside capture from 6.1% to
+6.5%, and the best variant reached USD Calmar -0.04 against the +0.10 bar.
+
+**That was the final strategy experiment. The program is terminated** and the
+whole investigation is consolidated in
+[INVESTIGATION_SUMMARY.md](INVESTIGATION_SUMMARY.md).
+
 **Still unspent, and now unnecessary as specified:** the rotation experiment's
 random-selection control ([EXPOSURE_VS_DRIFT.md](EXPOSURE_VS_DRIFT.md)). An
 always-invested rotation was the remaining hope for capturing the drift the
