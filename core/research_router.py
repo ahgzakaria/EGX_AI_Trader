@@ -548,6 +548,58 @@ def clean_window_status(symbol, *, min_bars=250):
 # --- the router --------------------------------------------------------------
 
 
+#: The records the live path can read. EODHD until a shadow period has shown the
+#: two agree; ``scripts/record_live_source_shadow.py`` is that shadow.
+LIVE_SOURCES = ("eodhd", "mubasher")
+
+from contextlib import contextmanager as _contextmanager      # noqa: E402
+from contextvars import ContextVar as _ContextVar              # noqa: E402
+
+_LIVE_SOURCE = _ContextVar("live_history_source", default=None)
+
+
+def live_history_source():
+    """The record the live path reads: a scoped override, else the setting.
+
+    An unknown value raises rather than falling back. A live scan quietly
+    reading a different record from the one configured is exactly the failure
+    a setting like this must not be able to cause.
+    """
+    override = _LIVE_SOURCE.get()
+    if override:
+        value = override
+    else:
+        from config.settings_manager import settings
+        value = str(settings.data.get("live_history_source", "eodhd")).strip().lower()
+    if value not in LIVE_SOURCES:
+        raise ValueError(f"live_history_source {value!r} is not one of {LIVE_SOURCES}")
+    return value
+
+
+@_contextmanager
+def live_source(name):
+    """Read the live path from a named record, for the duration only."""
+    token = _LIVE_SOURCE.set(str(name).strip().lower())
+    try:
+        yield
+    finally:
+        _LIVE_SOURCE.reset(token)
+
+
+def _mubasher_live_frame(base, *, min_bars, expected):
+    """The Mubasher live frame, or ResearchDataUnavailable naming why not."""
+    from core.mubasher_live_history import READY, mubasher_live_history
+
+    frame, status, provenance = mubasher_live_history(
+        base, min_bars=min_bars, not_after=expected)
+    if status != READY:
+        detail = (f"measured store through {provenance.get('effective_latest_session')}, "
+                  f"expected {expected}, {provenance.get('rows', 0)} sessions"
+                  if frame is not None else "not in the measured store")
+        raise ResearchDataUnavailable(base, status, detail)
+    return frame
+
+
 def get_current_research_history(symbol, *, period="10y", interval="1d", min_bars=250,
                                  scan_context=None, allow_held=False):
     """CURRENT_RESEARCH_V2 history. Never a Yahoo network call. Raises when unusable.
@@ -578,8 +630,21 @@ def get_current_research_history(symbol, *, period="10y", interval="1d", min_bar
     volume_meta = {}
     bridge_md = None
 
-    if tier in ("TIER_A_FORWARD_SAFE", "TIER_B_FORWARD_EODHD_NO_FALLBACK",
-                "TIER_C_HISTORICAL_REVIEW"):
+    if live_history_source() == "mubasher":
+        # Every tier from one record. Mubasher carries all active symbols, so
+        # the tiers -- which exist to route around EODHD's gaps -- do not apply.
+        from core.mubasher_live_history import PRICE_POLICY, READY, SERIES
+
+        frame = _mubasher_live_frame(base, min_bars=min_bars, expected=expected)
+        provider, series = "mubasher_live", SERIES
+        effective = pd.Timestamp(frame.index[-1]).date()
+        fresh = _freshness(effective, expected)
+        state = READY
+        seed_present, price_policy = False, PRICE_POLICY
+        volume_meta = {"volume_series": "MUBASHER_EXCHANGE_VOLUME",
+                       "volume_adjustment_policy": "SPLIT_ADJUSTED_BY_THE_TERMINAL"}
+    elif tier in ("TIER_A_FORWARD_SAFE", "TIER_B_FORWARD_EODHD_NO_FALLBACK",
+                  "TIER_C_HISTORICAL_REVIEW"):
         if tier == "TIER_C_HISTORICAL_REVIEW":
             state, detail = clean_window_status(base, min_bars=min_bars)
             if state != EODHD_OPERATIONAL_CLEAN_WINDOW:

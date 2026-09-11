@@ -424,6 +424,84 @@ def roll_spread_estimates(session, root=None):
     return estimates
 
 
+def isin_ticker_map(root=None):
+    """``{ISIN: Mubasher ticker}`` from the terminal's own CASE symbol master.
+
+    Mubasher files some companies under a different ticker from the universe's:
+    EODHD's AIND, ALRA and MATD are the terminal's AIHC, AIFI and MMAT. The ISIN
+    is what identifies them as the same company, never the name. Returns an
+    empty mapping when the master cannot be read.
+    """
+
+    base = find_root(root)
+    if base is None:
+        return {}
+    path = base.parent.parent / "Cache" / "PrimarySystemMeta.db"
+    if not path.is_file():
+        return {}
+    try:
+        with _open_read_only(path) as connection:
+            row = connection.execute(
+                "SELECT JSON FROM SYMBOL_MASTER WHERE EXCHANGE='CASE' AND LANGUAGE='EN'"
+            ).fetchone()
+        if not row:
+            return {}
+        payload = json.loads(row[0])
+        fields = payload["HED"]["TD"].split("|")
+        mapping = {}
+        for line in payload["DAT"]["TD"]:
+            entry = dict(zip(fields, str(line).split("|")))
+            isin = str(entry.get("ISIN_CODE", "")).strip()
+            ticker = str(entry.get("SYMBOL", "")).strip().upper()
+            if isin and ticker:
+                mapping.setdefault(isin, ticker)
+        return mapping
+    except (sqlite3.Error, KeyError, ValueError, TypeError) as error:
+        logger.warning("mubasher symbol master unreadable (%s)", error)
+        return {}
+
+
+def _isin_aliases(base, scope, isin_of=None, by_isin=None):
+    """``{Mubasher ticker: scope ticker}`` for scope tickers with no table of their own.
+
+    Only a ticker the terminal genuinely lacks is resolved, and only to a table
+    no other scope ticker already claims, so a company can never be imported
+    twice under two names.
+    """
+
+    try:
+        if isin_of is None:
+            from core.universe import load_universe
+            isin_of = {record.canonical_symbol: str(getattr(record, "isin", "") or "").strip()
+                       for record in load_universe()}
+        if by_isin is None:
+            by_isin = isin_ticker_map(base)
+        if not by_isin:
+            return {}
+        with _open_read_only(base / HISTORY_RELATIVE, immutable=True) as connection:
+            held = {ticker for _, ticker in _instrument_tables(connection)}
+    except Exception as error:                              # an enrichment, not a gate
+        logger.warning("mubasher import: ISIN resolution skipped (%s)", error)
+        return {}
+
+    aliases = {}
+    for ticker in sorted(scope):
+        if ticker in held:
+            continue
+        twin = by_isin.get(isin_of.get(ticker, ""))
+        if twin and twin in held and twin not in scope and twin not in aliases:
+            aliases[twin] = ticker
+    return aliases
+
+
+def _renamed(frame, aliases):
+    if frame.empty or not aliases:
+        return frame
+    frame = frame.copy()
+    frame["ticker"] = frame["ticker"].map(lambda ticker: aliases.get(ticker, ticker))
+    return frame
+
+
 def store_symbols(database=DEFAULT_DATABASE):
     """Return the tickers the store already holds, without their suffix."""
 
@@ -455,7 +533,8 @@ def default_scope(database=DEFAULT_DATABASE):
     return scope
 
 
-def import_local(root=None, database=DEFAULT_DATABASE, suffix=".CA", symbols=None):
+def import_local(root=None, database=DEFAULT_DATABASE, suffix=".CA", symbols=None,
+                 aliases=None):
     """Refresh the measured store from the terminal's own databases.
 
     ``history.db`` is authoritative wherever it reaches; the minute store fills
@@ -463,6 +542,12 @@ def import_local(root=None, database=DEFAULT_DATABASE, suffix=".CA", symbols=Non
     export. Returns the metadata row it wrote, or raises if neither database
     produced a usable row -- a store silently replaced by nothing is the one
     outcome worth failing on.
+
+    A scope ticker the terminal files under another name is read from that
+    table and stored under the scope's ticker (``aliases``, resolved by ISIN
+    when not given). Without it AIND, ALRA and MATD were absent from the store
+    altogether, while the terminal held their full histories as AIHC, AIFI and
+    MMAT.
     """
 
     base = find_root(root)
@@ -472,8 +557,11 @@ def import_local(root=None, database=DEFAULT_DATABASE, suffix=".CA", symbols=Non
 
     scope = ({str(s).split(".")[0].upper() for s in symbols} if symbols
              else default_scope(database))
-    history = read_history(base, symbols=scope)
-    intraday = read_intraday(base, symbols=scope)
+    if aliases is None:
+        aliases = _isin_aliases(base, scope)
+    read_scope = set(scope) | set(aliases)
+    history = _renamed(read_history(base, symbols=read_scope), aliases)
+    intraday = _renamed(read_intraday(base, symbols=read_scope), aliases)
 
     if history.empty and intraday.empty:
         raise ValueError(f"No usable rows in {base}")
@@ -520,6 +608,7 @@ def import_local(root=None, database=DEFAULT_DATABASE, suffix=".CA", symbols=Non
         "intraday_sessions_appended": (sorted(set(filled["session_date"]))
                                        if len(filled) else []),
         "unconfirmed_close_rows": int(len(unconfirmed)),
+        "isin_resolved": {stored: twin for twin, stored in sorted(aliases.items())},
     }
     with sqlite3.connect(database) as connection:
         connection.execute(

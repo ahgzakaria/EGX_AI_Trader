@@ -380,6 +380,54 @@ def test_a_session_with_no_tape_is_empty_not_an_error(tmp_path):
     assert local.roll_spread_estimates("2026-09-10", base) == {}
 
 
+def _history_row(day, close, turnover=5000.0):
+    return ("0", day, str(close), str(close + 1), str(close - 1), str(close),
+            "100", str(turnover), "10")
+
+
+def test_a_ticker_filed_under_another_name_is_stored_under_the_universes(tmp_path):
+    """The terminal holds EODHD's AIND as AIHC; the store must carry it as AIND."""
+
+    base = _build_root(tmp_path, history_rows=[
+        ("AIHC", [_history_row("20260906", 1.10), _history_row("20260907", 1.20)]),
+    ])
+    database = str(tmp_path / "measured.db")
+    metadata = local.import_local(base, database=database, symbols=["AIND"],
+                                  aliases={"AIHC": "AIND"})
+    assert metadata["isin_resolved"] == {"AIND": "AIHC"}
+    frame = store.frame_for("AIND.CA", database=database)
+    assert frame is not None and list(frame["Close"]) == [1.10, 1.20]
+    assert store.frame_for("AIHC.CA", database=database) is None
+
+
+def test_isin_resolution_names_only_tickers_the_terminal_lacks(tmp_path):
+    base = _build_root(tmp_path, history_rows=[
+        ("AIHC", [_history_row("20260907", 1.20)]),
+        ("COMI", [_history_row("20260907", 140.0)]),
+    ])
+    by_isin = {"EGS21351C019": "AIHC", "EGS60121C018": "COMI"}
+    isin_of = {"AIND": "EGS21351C019", "COMI": "EGS60121C018", "GONE": "NOPE"}
+    aliases = local._isin_aliases(base, {"AIND", "COMI", "GONE"},
+                                  isin_of=isin_of, by_isin=by_isin)
+    assert aliases == {"AIHC": "AIND"}
+
+
+def test_the_symbol_master_maps_isin_to_the_terminals_ticker(tmp_path):
+    import json
+
+    base = _build_root(tmp_path)
+    cache = base.parent.parent / "Cache"
+    cache.mkdir(parents=True, exist_ok=True)
+    payload = {"HED": {"TD": "EXCHANGE|SYMBOL|ISIN_CODE"},
+               "DAT": {"TD": ["CASE|AIHC|EGS21351C019", "CASE|MMAT|EGS70P91C010"]}}
+    with sqlite3.connect(cache / "PrimarySystemMeta.db") as connection:
+        connection.execute("CREATE TABLE SYMBOL_MASTER (EXCHANGE TEXT, VERSION TEXT, "
+                           "LANGUAGE TEXT, JSON TEXT)")
+        connection.execute("INSERT INTO SYMBOL_MASTER VALUES ('CASE', '1', 'EN', ?)",
+                           (json.dumps(payload),))
+    assert local.isin_ticker_map(base) == {"EGS21351C019": "AIHC", "EGS70P91C010": "MMAT"}
+
+
 def test_odd_lot_trades_are_excluded_from_the_estimate(tmp_path):
     """They print away from the book and would widen every estimate."""
 

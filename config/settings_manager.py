@@ -16,6 +16,10 @@ DEFAULT_SETTINGS = {
     # "yahoo" selects the archived snapshot, for reproducing findings measured on it.
     "backtest_provider": "frozen_mubasher",
     "fallback_provider": "yahoo",
+    # The record the live scanner's daily history comes from. "eodhd" until
+    # scripts/record_live_source_shadow.py has shown MubasherTrade PRO's record
+    # ("mubasher") agreeing in practice; see core/mubasher_live_history.py.
+    "live_history_source": "eodhd",
     "market_data": {
         "cache_path": "data/market_data_cache.sqlite",
         "cache_source_provider": "rubix",

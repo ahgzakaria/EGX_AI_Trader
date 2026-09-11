@@ -4,6 +4,7 @@
     "forward_testing_provider": "rubix",
     "backtest_provider": "frozen_mubasher",
     "fallback_provider": "yahoo",
+    "live_history_source": "eodhd",
     "market_data": {
         "cache_path": "data/market_data_cache.sqlite",
         "cache_source_provider": "rubix",
