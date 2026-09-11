@@ -14,6 +14,7 @@ import pandas as pd
 
 from config.settings_manager import settings
 from core.egx_session import egx_session_phase, trading_session_lag
+from core.frozen_mubasher_store import PROVIDER_KEY as FROZEN_MUBASHER_KEY
 from core.symbols import SYMBOL_SOURCE, load_symbols
 from providers.base_provider import ProviderDataError, ProviderError, REQUIRED_COLUMNS
 from providers.eodhd_provider import EODHDProvider
@@ -31,6 +32,7 @@ from services.dataset_archive import (
 
 logger = logging.getLogger(__name__)
 _PURPOSE = ContextVar("market_data_purpose", default="backtest")
+_BACKTEST_SOURCE = ContextVar("backtest_source", default=None)
 _PROVIDER_INSTANCES = None
 
 
@@ -47,6 +49,23 @@ def provider_purpose(purpose):
         yield
     finally:
         _PURPOSE.reset(token)
+
+
+@contextmanager
+def backtest_source(name):
+    """Read backtests from a record named here, for the duration only.
+
+    Backtests read the frozen MubasherTrade PRO record by default. A finding
+    measured on the Yahoo snapshot is reproduced by asking for that archive by
+    name -- ``with backtest_source("yahoo"):`` -- rather than by changing what
+    every other backtest reads.
+    """
+
+    token = _BACKTEST_SOURCE.set(str(name).strip().lower())
+    try:
+        yield
+    finally:
+        _BACKTEST_SOURCE.reset(token)
 
 
 def _provider_instances():
@@ -104,12 +123,24 @@ def reset_provider_instances():
 
 
 def provider_name_for(purpose):
+    if purpose == "backtest":
+        # A scoped request by name wins, so a finding measured on the Yahoo
+        # archive can still be reproduced on it.
+        override = _BACKTEST_SOURCE.get()
+        if override:
+            return override
+        return str(settings.data.get("backtest_provider", FROZEN_MUBASHER_KEY)).strip().lower()
     key = {
         "scanner": "scanner_provider",
         "dashboard": "dashboard_provider",
         "forward_testing": "forward_testing_provider",
-        "backtest": "backtest_provider",
-    }.get(purpose, "backtest_provider")
+    }.get(purpose)
+    if key is None:
+        # Purposes with no route of their own used to borrow the backtest
+        # provider, which was Yahoo. The backtest provider is now a frozen
+        # record that serves backtests only, so these keep resolving where
+        # they always did instead of following it there.
+        return str(settings.data.get("fallback_provider", "yahoo")).strip().lower()
     return str(settings.data.get(key, "yahoo")).strip().lower()
 
 
@@ -137,9 +168,20 @@ def load_history(
     providers = _provider_instances()
     cache = providers["local_cache"]
 
-    # LEGACY_BACKTEST_V1 — reproduction of approved baselines only, served from the
-    # FROZEN Yahoo snapshot (local cache, no network). Immutable; never used for
-    # current research and never used to judge current freshness.
+    # Backtests read a frozen record, never a live provider. The default is the
+    # frozen MubasherTrade PRO record (data/frozen_mubasher, verified by SHA-256
+    # on every read). LEGACY_BACKTEST_V1, the Yahoo snapshot, is kept as an
+    # archive for reproducing findings measured on it and is read only when
+    # named. Anything else is refused: a backtest must never fall back quietly.
+    if purpose == "backtest" and requested_name == FROZEN_MUBASHER_KEY:
+        frozen = _frozen_mubasher_history(
+            symbol, period, interval, min_bars, require_positive_volume)
+        capture_active(symbol, frozen, "normalized")
+        return frozen
+    if purpose == "backtest" and requested_name != "yahoo":
+        raise ProviderError(
+            f"backtest_provider {requested_name!r} is not a backtest record; "
+            f"use {FROZEN_MUBASHER_KEY!r} or 'yahoo' (the archive)")
     if purpose == "backtest":
         from core.research_router import (
             ResearchDataUnavailable,
@@ -424,6 +466,52 @@ def _load_one(
     return _clean_for_engine(
         frame, symbol, min_bars, require_positive_volume
     )
+
+
+def _trim_to_period(frame, period):
+    """Keep the last ``Ny`` years, measured back from the record's own last session.
+
+    The Yahoo archive was a ten-year download, so a backtest asking for "10y"
+    gets the same length of history from either record.
+    """
+
+    text = str(period or "").strip().lower()
+    if text in {"", "max"}:
+        return frame
+    if text.endswith("y") and text[:-1].isdigit():
+        cutoff = frame.index[-1] - pd.DateOffset(years=int(text[:-1]))
+        return frame[frame.index >= cutoff]
+    raise ProviderError(f"the frozen Mubasher record cannot serve period {period!r}")
+
+
+def _frozen_mubasher_history(symbol, period, interval, min_bars, require_positive_volume):
+    """A backtest frame from the frozen MubasherTrade PRO record, or ProviderError.
+
+    A missing symbol or a file whose bytes changed is refused. Nothing falls
+    back to Yahoo, because a backtest that silently changes its input is the
+    failure this record exists to prevent.
+    """
+
+    from core.frozen_mubasher_store import DATA_DOMAIN, FrozenStoreTampered, load_frozen
+
+    if str(interval).strip().lower() not in {"1d", "1day", "day"}:
+        raise ProviderError(f"the frozen Mubasher record is daily; {interval!r} was asked for")
+    try:
+        loaded = load_frozen(symbol)
+    except FrozenStoreTampered as error:
+        raise ProviderError(f"frozen Mubasher record refused for {symbol}: {error}") from error
+    if loaded is None:
+        raise ProviderError(f"the frozen Mubasher record holds no {symbol}")
+    metadata = dict(loaded.attrs.get("market_data", {}))
+    metadata.update({
+        "data_domain": DATA_DOMAIN,
+        "requested_provider": FROZEN_MUBASHER_KEY,
+        "period": period,
+        "interval": interval,
+    })
+    trimmed = _trim_to_period(loaded, period).copy()
+    trimmed.attrs["market_data"] = metadata
+    return _clean_for_engine(trimmed, symbol, min_bars, require_positive_volume)
 
 
 def _clean_for_engine(frame, symbol, min_bars, require_positive_volume=True):

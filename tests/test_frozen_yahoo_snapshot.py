@@ -108,10 +108,13 @@ def test_the_backtest_path_cannot_download_or_write(providers, snapshot,
                                                     no_yahoo_download):
     before = _digest(snapshot)
 
-    frame = routing.load_history("SWDY.CA", purpose="backtest")
-    assert frame.attrs["market_data"]["data_domain"] == router.LEGACY_BACKTEST_V1
-    with pytest.raises(ProviderError):
-        routing.load_history("ABUK.CA", purpose="backtest")     # not in the snapshot
+    # Backtests read the frozen Mubasher record by default; the Yahoo archive
+    # is reached by name, which is the path this test pins.
+    with routing.backtest_source("yahoo"):
+        frame = routing.load_history("SWDY.CA", purpose="backtest")
+        assert frame.attrs["market_data"]["data_domain"] == router.LEGACY_BACKTEST_V1
+        with pytest.raises(ProviderError):
+            routing.load_history("ABUK.CA", purpose="backtest")     # not in the snapshot
 
     assert no_yahoo_download == []
     assert _digest(snapshot) == before

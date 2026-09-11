@@ -48,6 +48,10 @@ MANIFEST_NAME = "_manifest.json"
 PROVIDER = "FROZEN_MUBASHER"
 OPEN_POLICY = "PREVIOUS_CLOSE_NOT_A_TRADED_OPEN"
 PRICE_ADJUSTMENT = "SPLIT_ADJUSTED_NOT_DIVIDEND_ADJUSTED"
+#: The value of the ``backtest_provider`` setting that selects this store, and
+#: the data domain its frames carry.
+PROVIDER_KEY = "frozen_mubasher"
+DATA_DOMAIN = "FROZEN_MUBASHER_BACKTEST_V1"
 
 EXPORT_FORMAT = "mubasher_export_csv"
 HISTORY_DB_FORMAT = "history_db_csv"

@@ -90,7 +90,7 @@ def test_eodhd_is_registered_but_default_routing_is_unchanged(monkeypatch):
     routing.reset_provider_instances()
     providers = routing._provider_instances()
     assert "eodhd" in providers
-    assert routing.provider_name_for("backtest") == "yahoo"
+    assert routing.provider_name_for("backtest") == "frozen_mubasher"
     assert routing.provider_name_for("scanner") != "eodhd"
     assert routing.provider_name_for("dashboard") != "eodhd"
     assert routing.provider_name_for("forward_testing") != "eodhd"

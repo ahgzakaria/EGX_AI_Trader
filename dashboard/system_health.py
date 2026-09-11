@@ -224,13 +224,21 @@ def _provider_domains_panel():
     st.caption("EODHD-unsupported symbols use validated local history plus completed "
                "Rubix Daily Bridge sessions — never a Yahoo update.")
 
-    st.subheader("LEGACY · Frozen Yahoo Snapshot")
+    from config.settings_manager import settings as _settings
+    from core.frozen_mubasher_store import read_manifest as _frozen_manifest
+
+    st.subheader("BACKTEST INPUT · Frozen records")
+    frozen = _frozen_manifest()
     g = st.columns(3)
-    g[0].metric("Provider", "FROZEN_YAHOO_SNAPSHOT")
-    g[1].metric("Used for", "Backtest reproduction only")
+    g[0].metric("Backtests read", str(_settings.data.get("backtest_provider", "frozen_mubasher")))
+    g[1].metric("Frozen Mubasher record",
+                f"{frozen.get('symbol_count', '—')} symbols to "
+                f"{frozen.get('export_last_session', '—')}")
     g[2].metric("Live network calls", "none")
-    st.caption("Legacy snapshots are immutable, are NOT used for current research, and do "
-               "NOT affect current freshness.")
+    st.caption("Backtests read the frozen MubasherTrade PRO record (data/frozen_mubasher), "
+               "whose files are checked against their SHA-256 on every read. The Yahoo "
+               "snapshot is kept as an archive for reproducing findings measured on it and "
+               "is read only when asked for by name. Neither affects current freshness.")
 
 
 def show_replay_run():

@@ -28,11 +28,23 @@ from core.environment import load_project_environment
 
 load_project_environment()
 
-from core.data_provider import load_history, provider_purpose  # noqa: E402
+from core.data_provider import (  # noqa: E402
+    backtest_source, load_history, provider_purpose)
 from core.symbols import load_symbols  # noqa: E402
 from indicators.technical import calculate_indicators  # noqa: E402
 
 CACHE = PROJECT_ROOT / "data" / "research" / "backtest_panel.parquet"
+
+#: The findings this panel reproduces were measured on the Yahoo snapshot, so
+#: it builds from that archive unless another record is named. Backtests
+#: themselves now read the frozen Mubasher record; a research script that wants
+#: it asks for ``source="frozen_mubasher"``. Each record caches to its own file,
+#: so a panel built from one source can never be served as the other.
+DEFAULT_SOURCE = "yahoo"
+
+
+def cache_path(source: str = DEFAULT_SOURCE) -> Path:
+    return CACHE if source == "yahoo" else CACHE.with_name(f"backtest_panel_{source}.parquet")
 
 #: The engine refuses to evaluate before bar 200 and stops 20 bars from the end.
 #: A symbol shorter than that can never produce a trade, so it is not in the
@@ -40,12 +52,12 @@ CACHE = PROJECT_ROOT / "data" / "research" / "backtest_panel.parquet"
 MIN_BARS = 260
 
 
-def build(symbols=None) -> pd.DataFrame:
+def build(symbols=None, source: str = DEFAULT_SOURCE) -> pd.DataFrame:
     frames = []
     failures = []
     for symbol in symbols or load_symbols():
         try:
-            with provider_purpose("backtest"):
+            with provider_purpose("backtest"), backtest_source(source):
                 frame = load_history(symbol, purpose="backtest")
             if frame is None or len(frame) < MIN_BARS:
                 failures.append((symbol, f"only {0 if frame is None else len(frame)} bars"))
@@ -65,17 +77,21 @@ def build(symbols=None) -> pd.DataFrame:
     return panel
 
 
-def load(rebuild: bool = False) -> pd.DataFrame:
-    if CACHE.exists() and not rebuild:
-        return pd.read_parquet(CACHE)
-    panel = build()
-    CACHE.parent.mkdir(parents=True, exist_ok=True)
-    panel.to_parquet(CACHE, index=False)
+def load(rebuild: bool = False, source: str = DEFAULT_SOURCE) -> pd.DataFrame:
+    path = cache_path(source)
+    if path.exists() and not rebuild:
+        return pd.read_parquet(path)
+    panel = build(source=source)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    panel.to_parquet(path, index=False)
     return panel
 
 
 if __name__ == "__main__":
-    panel = load(rebuild="--rebuild" in sys.argv)
+    source = (sys.argv[sys.argv.index("--source") + 1]
+              if "--source" in sys.argv else DEFAULT_SOURCE)
+    panel = load(rebuild="--rebuild" in sys.argv, source=source)
     print(f"{panel['Symbol'].nunique()} symbols, {len(panel):,} bars, "
-          f"{panel['Date'].min().date()} -> {panel['Date'].max().date()}")
-    print(f"cached at {CACHE.relative_to(PROJECT_ROOT)}")
+          f"{panel['Date'].min().date()} -> {panel['Date'].max().date()} "
+          f"from {source}")
+    print(f"cached at {cache_path(source).relative_to(PROJECT_ROOT)}")

@@ -62,8 +62,10 @@ OUTPUTS = (
     "symbol_statistics.csv",
 )
 
-#: Sections whose values decide what a backtest measures.
-RECORDED_SECTIONS = ("strategy", "backtest", "data", "ai")
+#: Sections whose values decide what a backtest measures. ``backtest_provider``
+#: is a top-level key rather than a section, and is recorded all the same: the
+#: same configuration on a different record is a different measurement.
+RECORDED_SECTIONS = ("strategy", "backtest", "data", "ai", "backtest_provider")
 
 
 def _hash(path: Path):
@@ -100,6 +102,11 @@ def _data_fingerprint():
                     stat.st_mtime, timezone.utc
                 ).isoformat(),
             }
+    # The frozen record's files are hashed in its manifest, so the manifest's
+    # own hash identifies every byte a backtest on it could have read.
+    frozen_manifest = ROOT / "data" / "frozen_mubasher" / "_manifest.json"
+    if frozen_manifest.exists():
+        fingerprint["frozen_mubasher_manifest_sha256"] = _hash(frozen_manifest)
     return fingerprint
 
 

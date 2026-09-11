@@ -87,11 +87,11 @@ def test_schema_normalization_preserves_exact_ohlcv_values():
     assert result.iloc[-1]["Close"] == source.iloc[-1]["close"]
 
 
-def test_default_routes_use_rubix_live_and_yahoo_backtest():
+def test_default_routes_use_rubix_live_and_the_frozen_mubasher_backtest():
     assert routing.provider_name_for("scanner") == "rubix"
     assert routing.provider_name_for("dashboard") == "rubix"
     assert routing.provider_name_for("forward_testing") == "rubix"
-    assert routing.provider_name_for("backtest") == "yahoo"
+    assert routing.provider_name_for("backtest") == "frozen_mubasher"
 
 
 def test_schema_validation_rejects_missing_volume():

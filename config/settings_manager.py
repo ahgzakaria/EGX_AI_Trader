@@ -12,7 +12,9 @@ DEFAULT_SETTINGS = {
     "scanner_provider": "rubix",
     "dashboard_provider": "rubix",
     "forward_testing_provider": "rubix",
-    "backtest_provider": "yahoo",
+    # Backtests read the frozen MubasherTrade PRO record (data/frozen_mubasher).
+    # "yahoo" selects the archived snapshot, for reproducing findings measured on it.
+    "backtest_provider": "frozen_mubasher",
     "fallback_provider": "yahoo",
     "market_data": {
         "cache_path": "data/market_data_cache.sqlite",

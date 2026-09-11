@@ -2,7 +2,7 @@
     "scanner_provider": "rubix",
     "dashboard_provider": "rubix",
     "forward_testing_provider": "rubix",
-    "backtest_provider": "yahoo",
+    "backtest_provider": "frozen_mubasher",
     "fallback_provider": "yahoo",
     "market_data": {
         "cache_path": "data/market_data_cache.sqlite",
