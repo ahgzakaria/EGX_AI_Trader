@@ -198,6 +198,13 @@ The **daily / swing and breakout family**: the Daily Dashboard strategy, the
 
 That is what every measurement in §3 was taken on, and that is what is closed.
 
+> **Reopened once, 2026-09-11, and closed again.** At the owner's request, for a
+> single pre-registered test: two chart-placed profit targets (measured move and
+> Fibonacci 161.8% extension) on CONFIRMED_VOLUME_BREAKOUT as shipped, with the
+> pass bar fixed before the run. Both failed in both eras.
+> [STRUCTURAL_TARGETS.md](STRUCTURAL_TARGETS.md). No other configuration was
+> run, and the termination stands as written.
+
 ### Not in scope — untouched, and on what basis
 
 | track | state | why it was not in scope |
@@ -282,6 +289,7 @@ venv/Scripts/python.exe scripts/research/exposure_usd_and_survivorship.py
 venv/Scripts/python.exe scripts/research/benchmark_risk_profile.py
 venv/Scripts/python.exe scripts/research/regime_detectability.py
 venv/Scripts/python.exe scripts/research/exit_width_under_gate.py
+venv/Scripts/python.exe scripts/research/structural_targets.py
 ```
 
 ## The documents, in order
@@ -290,3 +298,4 @@ venv/Scripts/python.exe scripts/research/exit_width_under_gate.py
 2. [BENCHMARK_RISK_AND_REGIME.md](BENCHMARK_RISK_AND_REGIME.md) — the benchmark's own risk, by year and regime, an investable benchmark
 3. [REGIME_DETECTABILITY.md](REGIME_DETECTABILITY.md) — the causal detector, the gated overlay, the random control
 4. [EXIT_WIDTH_UNDER_A_WORKING_GATE.md](EXIT_WIDTH_UNDER_A_WORKING_GATE.md) — the final experiment
+5. [STRUCTURAL_TARGETS.md](STRUCTURAL_TARGETS.md) — the one reopening: measured-move and Fibonacci targets, pre-registered, both failed

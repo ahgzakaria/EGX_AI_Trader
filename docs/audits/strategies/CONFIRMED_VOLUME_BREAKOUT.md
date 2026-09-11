@@ -166,6 +166,16 @@ Targets were tested and are worse than useless: a 2R target gives +0.96%/+0.67%,
 a 3R target +3.32%/+1.28%, against +5.04%/+3.34% for letting the clock run. So
 there is no target, which also means there is no target to place below the entry.
 
+> **AMENDED 2026-09-11.** The 2R / 3R figures above are not the shipped rule's.
+> They come from `breakout_exits.py`, which ran the candidate of the time
+> (cross-sectional ranks, a 2 ATR stop, a forty-bar cap). The conclusion was
+> re-measured on the rule as shipped, with two chart-placed targets rather than
+> stop multiples, pre-registered:
+> [STRUCTURAL_TARGETS.md](STRUCTURAL_TARGETS.md). Both fail in both eras —
+> measured move −0.11% / −2.70% lift and Fibonacci 161.8% −1.18% / −3.26%,
+> against +3.85% / +1.92% with no target. The sentence stands; its evidence is
+> now that document.
+
 Reproduce: `scripts/research/breakout_exits.py`,
 `scripts/research/shipped_rule_evidence.py`.
 
@@ -423,7 +433,8 @@ Reproduce: `venv/Scripts/python.exe -m strategy_momentum_breakout.runner`, and
 | Cross-sectional ATR% rank | Works (+2.12% valid) but the self-referential form is better (+2.33%) and needs no universe. |
 | Cross-sectional turnover rank | Same: an absolute EGP floor measures as well and is simpler. |
 | 12-1 momentum, top half | +2.79% valid but 2 bad years and it needs the cross-section. Left out; it is what Swing Breakout uses instead. |
-| Targets at 2R / 3R | Much worse. Capping the upside removes the result. |
+| Targets at 2R / 3R | Much worse. Capping the upside removes the result. (Measured on the candidate, not the shipped rule — see §4's amendment.) |
+| Measured-move and Fibonacci 161.8% targets | Measured on the shipped rule, pre-registered. Both fail in both eras; lift falls from +3.85% / +1.92% to −0.11% / −2.70% and −1.18% / −3.26%. [STRUCTURAL_TARGETS.md](STRUCTURAL_TARGETS.md). |
 | Trailing stops (chandelier, EMA20, EMA50) | All worse than a fixed wide stop plus the clock. |
 | Close-based exits (under EMA20 / EMA50) | +1.11% to +1.43% validation lift, below the base stop's. |
 | Holding 25 or 30 bars | Looked better until the benchmark was matched to the holding length; then twenty is the peak. See §5. |
