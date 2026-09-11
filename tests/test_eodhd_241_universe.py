@@ -50,14 +50,16 @@ from dashboard.formatting import (
     with_company_name_column,
 )
 
-EXPECTED_ACTIVE = 241
+#: EODHD lists 241 codes; 5 of them duplicate a live ticker and are registered
+#: as aliases in data/universe/symbol_aliases.csv.
+EXPECTED_ACTIVE = 236
 
 
 # --------------------------------------------------------------------------- #
 # Authoritative snapshot
 # --------------------------------------------------------------------------- #
 
-def test_migration_snapshot_contains_exactly_241_active_symbols():
+def test_migration_snapshot_yields_exactly_the_expected_active_symbols():
     assert len(active_universe()) == EXPECTED_ACTIVE
     assert len(active_symbols()) == EXPECTED_ACTIVE
     assert universe_provenance()["active_count"] == EXPECTED_ACTIVE

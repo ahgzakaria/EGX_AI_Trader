@@ -42,6 +42,7 @@ from core.universe import (  # noqa: E402
     RUBIX_VERIFIED,
     UNIVERSE_SOURCE,
     canonical,
+    read_alias_registry,
 )
 from providers.eodhd_client import EODHDClient  # noqa: E402
 
@@ -274,11 +275,20 @@ def _record(row, *, active, observed, source_as_of):
 
 
 def build_universe_rows(active_rows, delisted_rows, legacy_tickers, observed,
-                        source_as_of):
-    """Active records plus the archived records history still needs to name."""
+                        source_as_of, aliases=None):
+    """Active records plus the archived records history still needs to name.
+
+    ``aliases`` (``{alias: live ticker}``) keeps an EODHD code that duplicates a
+    live ticker inactive, so a rebuild cannot list one instrument twice.
+    """
 
     records = [_record(row, active=True, observed=observed,
                        source_as_of=source_as_of) for row in active_rows]
+    for record in records:
+        live = (aliases or {}).get(record["canonical_symbol"])
+        if live:
+            record["is_active"] = "false"
+            record["source"] = f"{SOURCE_LABEL}?alias_of={live}"
     active_codes = {record["canonical_symbol"] for record in records}
 
     delisted_by_code = {canonical(row.get("Code")): row for row in delisted_rows}
@@ -556,7 +566,8 @@ def migrate(*, expected_count=EXPECTED_ACTIVE_COUNT, dry_run=False, client=None,
     source_as_of = retrieved_at.isoformat()
 
     records = build_universe_rows(active_rows, delisted_rows, legacy_tickers,
-                                  observed, source_as_of)
+                                  observed, source_as_of,
+                                  aliases=read_alias_registry(UNIVERSE_PATH))
     write_universe(records, dry_run)
     summary = build_audit(active_rows, legacy_tickers, records, observed,
                           retrieved_at, dry_run)

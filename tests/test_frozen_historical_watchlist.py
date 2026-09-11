@@ -118,7 +118,7 @@ def test_selector_universe_is_the_authoritative_eodhd_active_list():
     symbols = validated_eodhd_symbols()
 
     assert symbols == tuple(sorted(active_symbols()))
-    assert len(symbols) == 241
+    assert len(symbols) == 236      # 241 EODHD codes less 5 registered aliases
     assert "EGX30ETF" not in symbols            # retired, never re-admitted
     assert "RAYA" in symbols
 
