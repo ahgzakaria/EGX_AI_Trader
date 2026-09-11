@@ -159,6 +159,36 @@ def test_a_file_naming_another_ticker_is_refused(tmp_path):
         freeze.read_checked(renamed)
 
 
+def test_a_history_db_copy_written_from_numpy_values_reads_back_exactly(tmp_path):
+    """The first freeze wrote ``np.float64(12.5)`` into the file and served no bars."""
+    from scripts import freeze_mubasher_export as freeze
+
+    index = pd.DatetimeIndex(pd.to_datetime(["2026-09-06", "2026-09-07"]), name="Date")
+    history = pd.DataFrame({
+        "High": np.array([12.5, 13.25]), "Low": np.array([11.0, 12.1]),
+        "Close": np.array([12.0, 13.123]), "Volume": np.array([1500.0, 2400.0]),
+        "Turnover": np.array([18000.5, 31495.2]),
+    }, index=index)
+    path = tmp_path / "WXYZ.csv"
+    freeze.write_history_db_copy(history, path)
+    assert "np.float64" not in path.read_text(encoding="utf-8")
+    assert freeze.round_trips(history, path)
+    served = store.read_history_db_copy(path)
+    assert list(served["Close"]) == [12.0, 13.123]
+
+
+def test_round_trip_detects_a_file_that_does_not_read_back(tmp_path):
+    from scripts import freeze_mubasher_export as freeze
+
+    index = pd.DatetimeIndex(pd.to_datetime(["2026-09-07"]), name="Date")
+    history = pd.DataFrame({"High": [1.0], "Low": [1.0], "Close": [1.0],
+                            "Volume": [1.0], "Turnover": [1.0]}, index=index)
+    path = tmp_path / "BAD.csv"
+    path.write_text(store.HISTORY_DB_HEADER + "\n2026-09-07,np.float64(1.0),1,1,1,1\n",
+                    encoding="utf-8")
+    assert not freeze.round_trips(history, path)
+
+
 def test_verification_finds_a_single_differing_close(tmp_path):
     from scripts import freeze_mubasher_export as freeze
 

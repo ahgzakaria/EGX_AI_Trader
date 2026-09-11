@@ -111,6 +111,31 @@ def verify_against_history(export: pd.DataFrame, history: pd.DataFrame):
     return len(shared), differing
 
 
+def write_history_db_copy(history: pd.DataFrame, path: Path) -> None:
+    """Write a history.db frame in ``store.HISTORY_DB_HEADER`` layout.
+
+    Every value is written as a plain Python float. The first version wrote
+    ``repr`` of the NumPy scalar, which under NumPy 2 is ``np.float64(12.5)``:
+    every number read back as NaN, and the three symbols frozen that way served
+    no bars at all.
+    """
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        handle.write(store.HISTORY_DB_HEADER + "\n")
+        for date, row in history.iterrows():
+            values = ",".join(repr(float(row[column]))
+                              for column in ("High", "Low", "Close", "Volume", "Turnover"))
+            handle.write(f"{date.date()},{values}\n")
+
+
+def round_trips(history: pd.DataFrame, path: Path) -> bool:
+    """Whether the written file reads back to exactly the frame it was written from."""
+    back = store.read_history_db_copy(path)
+    columns = ["High", "Low", "Close", "Volume", "Turnover"]
+    return (len(back) == len(history)
+            and back.index.equals(history.index)
+            and np.array_equal(back[columns].to_numpy(float), history[columns].to_numpy(float)))
+
+
 def _span(frame):
     return (str(frame.index.min().date()), str(frame.index.max().date())) if len(frame) else (None, None)
 
@@ -207,11 +232,10 @@ def main(argv=None) -> int:
         history = history[history["Close"] > 0]
         (building / "history_db").mkdir(exist_ok=True)
         target = building / "history_db" / f"{symbol}.csv"
-        with open(target, "w", encoding="utf-8", newline="") as handle:
-            handle.write(store.HISTORY_DB_HEADER + "\n")
-            for date, row in history.iterrows():
-                handle.write(f"{date.date()},{row['High']!r},{row['Low']!r},{row['Close']!r},"
-                             f"{row['Volume']!r},{row['Turnover']!r}\n")
+        write_history_db_copy(history, target)
+        if not round_trips(history, target):
+            print(f"refused: history_db/{symbol}.csv does not read back to _{ticker}")
+            return 2
         first, last = _span(history)
         records[symbol] = {
             "symbol": symbol, "file": f"history_db/{symbol}.csv",
