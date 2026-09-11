@@ -20,10 +20,11 @@ Four deliberate properties:
   selector, but historical trades, saved runs and reports can still resolve their
   archived name.
 * **One instrument, one active ticker.** EODHD lists some companies under a
-  second code whose series is a copy of the live ticker's (``AUTO`` for
-  ``GBCO``). Both were active, so every scan counted the company twice. Those
-  codes are registered in ``data/universe/symbol_aliases.csv``; an alias that is
-  active, or that points at a ticker which is not, raises.
+  second code: a copy of the live ticker's series (``AUTO`` for ``GBCO``) or
+  the ticker a renamed company traded under before (``ARVA`` for ``AMII``).
+  Both were active, so every scan counted the company twice. Those codes are
+  registered in ``data/universe/symbol_aliases.csv``; an alias that is active,
+  or that points at a ticker which is not, raises.
 
 This module performs no network, price, indicator or strategy operation.
 """
@@ -118,11 +119,12 @@ class UniverseSymbol:
         return bool(self.rubix_symbol) and self.rubix_mapping_status == RUBIX_VERIFIED
 
 
-#: EGX contains a LEGITIMATE ticker literally spelled ``NULL`` (Fitness Prime).
-#: pandas' default NA tokens include "NULL", "NA", "N/A", "NaN" and "None", so a
-#: plain ``pd.read_csv`` silently turns that real ticker into NaN — and any
-#: ``dropna()`` downstream then deletes the row outright. Every reader of a
-#: symbol-bearing file must therefore go through :func:`read_symbol_frame`.
+#: EODHD lists a ticker literally spelled ``NULL`` (Fitness Prime, kept inactive
+#: as an alias of FTNS), and saved runs still name it. pandas' default NA tokens
+#: include "NULL", "NA", "N/A", "NaN" and "None", so a plain ``pd.read_csv``
+#: silently turns that ticker into NaN — and any ``dropna()`` downstream then
+#: deletes the row outright. Every reader of a symbol-bearing file must therefore
+#: go through :func:`read_symbol_frame`.
 NA_SAFE_READ_OPTIONS = {"keep_default_na": False, "na_values": [""]}
 
 

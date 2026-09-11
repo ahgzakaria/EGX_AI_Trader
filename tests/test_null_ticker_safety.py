@@ -1,10 +1,12 @@
-"""EGX has a LEGITIMATE ticker literally spelled ``NULL`` (Fitness Prime).
+"""EODHD lists a ticker literally spelled ``NULL`` (Fitness Prime).
 
-pandas' default NA tokens include ``NULL``, ``NA``, ``N/A``, ``NaN`` and
-``None``, so a plain ``pd.read_csv`` silently converts that real ticker into
-NaN — and any ``dropna()`` downstream then deletes the security outright. These
-tests pin the literal string through every production reader, the CSV/JSON
-round trip, the selectors and the UI formatter.
+It is inactive — a registered alias of FTNS, whose name it carries — but its row
+stays in the universe file and saved runs still name it. pandas' default NA
+tokens include ``NULL``, ``NA``, ``N/A``, ``NaN`` and ``None``, so a plain
+``pd.read_csv`` silently converts that ticker into NaN — and any ``dropna()``
+downstream then deletes the row outright. These tests pin the literal string
+through every production reader, the CSV/JSON round trip, the selectors and the
+UI formatter.
 
 No network call, no provider, no production database.
 """
@@ -51,13 +53,16 @@ NULL_NAME = "Fitness Prime"
 # The authoritative universe
 # --------------------------------------------------------------------------- #
 
-def test_null_exists_in_the_active_authoritative_universe():
+def test_null_survives_in_the_authoritative_universe_as_an_alias():
     record = lookup(NULL)
-    assert record is not None, "the real EGX ticker NULL was lost"
+    assert record is not None, "the EODHD ticker NULL was lost"
     assert record.canonical_symbol == NULL
-    assert record.is_active
-    assert is_active(NULL)
-    assert NULL in active_symbols()
+    # Inactive because it is a registered alias, not because it was read as NaN.
+    assert not record.is_active
+    assert NULL not in active_symbols()
+    assert NULL in universe.read_alias_registry()
+    assert universe.live_symbol(NULL) == "FTNS"
+    assert is_active("FTNS")
 
 
 def test_null_carries_the_official_egx_suffix():
@@ -110,19 +115,28 @@ def test_the_na_safe_reader_still_infers_numeric_columns():
 
 
 @pytest.mark.parametrize("loader", [load_symbols, load_active_symbols])
-def test_symbol_loaders_return_null(loader):
+def test_symbol_loaders_leave_null_out_only_as_a_registered_alias(loader, tmp_path):
     symbols = loader(SYMBOL_SOURCE)
-    assert "NULL.CA" in symbols
-    assert len(symbols) == 236      # 241 EODHD codes less 5 registered aliases
+    assert "NULL.CA" not in symbols
+    assert "FTNS.CA" in symbols
+    assert len(symbols) == 230      # 241 EODHD codes less 11 registered aliases
+
+    # The same file with NULL's row marked active loads the literal ticker.
+    text = Path(UNIVERSE_SOURCE).read_text(encoding="utf-8-sig")
+    alias_row = ",false,EODHD exchange-symbol-list/EGX?alias_of=FTNS,"
+    assert text.count(alias_row) == 1
+    flipped = tmp_path / "egx_universe.csv"
+    flipped.write_text(text.replace(alias_row, ",true,EODHD exchange-symbol-list/EGX,"),
+                       encoding="utf-8")
+    assert "NULL.CA" in loader(flipped)
 
 
-def test_approved_symbol_options_include_null():
+def test_approved_symbol_options_offer_fitness_prime_once():
     options = load_approved_symbol_options()
-    match = [option for option in options if option.ticker == NULL]
-    assert len(match) == 1
-    assert match[0].english_name == NULL_NAME
-    assert match[0].eodhd_symbol == "NULL.EGX"
-    assert match[0].display_label == "NULL — Fitness Prime"
+    assert not [option for option in options if option.ticker == NULL]
+    match = [option for option in options if option.english_name == NULL_NAME]
+    assert [option.ticker for option in match] == ["FTNS"]
+    assert match[0].display_label == "FTNS — Fitness Prime"
 
 
 def test_a_ticker_only_csv_containing_null_is_not_dropped(tmp_path):

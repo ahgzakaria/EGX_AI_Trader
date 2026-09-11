@@ -248,8 +248,10 @@ def test_saved_historical_runs_can_still_read_their_own_recorded_universe(tmp_pa
     assert recorded == ["COMI.CA", "ACRO.CA", "NULL.CA"]
     # Including a symbol the migration removed, which stays readable…
     assert universe.display_label("ACRO.CA") == "ACRO — Acrow Misr"
-    # …without becoming eligible for a new entry.
-    assert universe.eligible_for_new_entry(recorded) == ("COMI.CA", "NULL.CA")
+    # …without becoming eligible for a new entry. NULL reads back as the literal
+    # ticker and is ineligible only because it is a registered alias of FTNS.
+    assert universe.display_label("NULL.CA") == "NULL — Fitness Prime"
+    assert universe.eligible_for_new_entry(recorded) == ("COMI.CA",)
 
 
 def test_the_universe_file_shipped_is_exactly_the_activated_snapshot():

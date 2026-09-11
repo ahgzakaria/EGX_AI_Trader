@@ -1,10 +1,11 @@
 """One instrument, one active ticker.
 
 EODHD lists some EGX companies under two codes: the live ticker and a second
-code whose series is a copy of it (``AUTO`` for ``GBCO``). Both were active, so
-every universe scan counted the company twice — on 2026-09-10 the forward-test
-book recorded a signal for AUTO.CA and GBCO.CA on each of the last 11 sessions.
-The copies are registered in ``data/universe/symbol_aliases.csv`` and kept
+code — a copy of its series (``AUTO`` for ``GBCO``) or the ticker the company
+traded under before a rename (``ARVA`` for ``AMII``). Both were active, so every
+universe scan counted the company twice — on 2026-09-10 the forward-test book
+recorded a signal for AUTO.CA and GBCO.CA on each of the last 11 sessions. The
+second codes are registered in ``data/universe/symbol_aliases.csv`` and kept
 inactive.
 
 The last test compares the recent EODHD series of every active pair. It reads
@@ -43,10 +44,12 @@ TWIN_WINDOW = 60
 #: Common traded sessions a pair needs before it can be judged.
 TWIN_MIN_COMMON = 10
 #: Share of common traded sessions with the same close and the same volume.
-#: Measured on the 2026-09-11 cache over all 241 EODHD codes: every pair named
-#: in this file or in the alias registry matches on 100% of its common sessions;
-#: the closest other pairs are HBCO/NULL at 16/29 (0.55) and FTNS/NULL at 13/29
-#: (0.45), and no further pair matches on a single session.
+#: Measured on the 2026-09-11 cache over all 241 EODHD codes, exactly seven
+#: pairs match on 100% of their common sessions and all seven are registered:
+#: the five copies (57-60 sessions), AMII/ARVA (34) and SEIG/SEIGA (15). The
+#: closest other pairs are HBCO/NULL at 16/29 (0.55) and FTNS/NULL at 13/29
+#: (0.45); no further pair matches on a single session. EDBM, PIOH and SRWA
+#: have no traded bar in the window, so they pair with nothing.
 TWIN_MIN_SHARE = 0.9
 #: Two feeds of one instrument can disagree by a few shares on a large print:
 #: ORMT against OIH by at most 8 shares on prints of up to 192,407,552.
@@ -54,21 +57,9 @@ VOLUME_TOLERANCE = 1e-5
 
 #: Price twins that are NOT registered aliases, because the evidence does not
 #: settle which ticker is the copy. The test fails if one stops being a twin, so
-#: an entry is removed once it is resolved rather than left to go stale.
-UNRESOLVED_TWINS = {
-    ("AMII", "ARVA"): (
-        "same ISIN EGS3E1E1C013. Mubasher history.db _ARVA ends 2026-07-26 and "
-        "_AMII starts 2026-07-26; Rubix has 6,219 ARVA quotes (newest "
-        "2026-07-28) and none for AMII; EODHD ARVA ends 2026-08-04 while AMII "
-        "runs to 2026-09-10. The universe still maps Rubix to ARVA, so making "
-        "either an alias changes live monitoring."
-    ),
-    ("SEIG", "SEIGA"): (
-        "different ISINs (EGS67031C012, EGS67032C010 — the $ line). SEIGA has "
-        "zero volume on 45 of its last 60 EODHD bars and equals SEIG on the "
-        "other 15; no Rubix quote or Mubasher table exists for SEIGA."
-    ),
-}
+#: an entry is removed once it is resolved rather than left to go stale. Empty
+#: since 2026-09-11, when AMII/ARVA and SEIG/SEIGA were resolved and registered.
+UNRESOLVED_TWINS = {}
 
 
 # --------------------------------------------------------------------------- #
@@ -93,6 +84,26 @@ def test_gb_corp_is_scanned_once_under_its_live_ticker():
     assert "AUTO" not in symbols
     assert live_symbol("AUTO.EGX") == "GBCO"
     assert live_symbol("GBCO") == "GBCO"
+
+
+def test_a_renamed_company_is_scanned_once_under_its_current_ticker():
+    symbols = active_symbols()
+    for retired, current in (("ARVA", "AMII"), ("EDBM", "CRST"), ("PIOH", "ASPI"),
+                             ("SRWA", "CNFN")):
+        assert current in symbols and retired not in symbols
+        assert lookup(retired).isin == lookup(current).isin
+        assert live_symbol(retired) == current
+
+
+def test_no_rubix_key_is_guessed_for_a_renamed_ticker():
+    from core.universe import rubix_subscription_symbols
+
+    keys = rubix_subscription_symbols()
+    # The feed stopped pricing ARVA on 2026-07-28 and has never carried AMII.
+    assert "CASE~ARVA" not in keys
+    assert "CASE~AMII" not in keys
+    # An open ARVA position would still be monitored under the key it traded on.
+    assert "CASE~ARVA" in rubix_subscription_symbols(open_position_symbols=("ARVA.CA",))
 
 
 def test_each_registry_row_carries_the_alias_isin_and_its_evidence():
