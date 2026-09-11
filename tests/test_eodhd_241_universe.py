@@ -50,9 +50,10 @@ from dashboard.formatting import (
     with_company_name_column,
 )
 
-#: EODHD lists 241 codes; 5 of them duplicate a live ticker and are registered
-#: as aliases in data/universe/symbol_aliases.csv.
-EXPECTED_ACTIVE = 236
+#: EODHD lists 241 codes; 11 of them duplicate a live ticker — a copy of its
+#: series or its retired ticker — and are registered as aliases in
+#: data/universe/symbol_aliases.csv.
+EXPECTED_ACTIVE = 230
 
 
 # --------------------------------------------------------------------------- #
