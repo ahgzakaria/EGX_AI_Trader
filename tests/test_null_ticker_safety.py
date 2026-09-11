@@ -113,7 +113,7 @@ def test_the_na_safe_reader_still_infers_numeric_columns():
 def test_symbol_loaders_return_null(loader):
     symbols = loader(SYMBOL_SOURCE)
     assert "NULL.CA" in symbols
-    assert len(symbols) == 241
+    assert len(symbols) == 236      # 241 EODHD codes less 5 registered aliases
 
 
 def test_approved_symbol_options_include_null():

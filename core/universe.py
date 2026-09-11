@@ -7,7 +7,7 @@ consumer — daily refresh, historical loading, scans, the Stable Range-Bound an
 Uptrend Pullback selectors, AI analysis, backtests, Watchlist, Stock Details and
 Rubix subscription planning — reads membership from here and nowhere else.
 
-Three deliberate properties:
+Four deliberate properties:
 
 * **No fallback.** A missing, empty, malformed or duplicated universe file
   raises :class:`UniverseUnavailable`. The retired 265-symbol
@@ -19,6 +19,11 @@ Three deliberate properties:
   same file with ``is_active`` false. They can never enter an operational
   selector, but historical trades, saved runs and reports can still resolve their
   archived name.
+* **One instrument, one active ticker.** EODHD lists some companies under a
+  second code whose series is a copy of the live ticker's (``AUTO`` for
+  ``GBCO``). Both were active, so every scan counted the company twice. Those
+  codes are registered in ``data/universe/symbol_aliases.csv``; an alias that is
+  active, or that points at a ticker which is not, raises.
 
 This module performs no network, price, indicator or strategy operation.
 """
@@ -39,6 +44,12 @@ ARCHIVED_LEGACY_SOURCE = "data/universe/archive/legacy_symbols_265.csv"
 
 #: Timestamped raw EODHD responses captured at migration time.
 SNAPSHOT_DIR = "data/universe/snapshots"
+
+#: EODHD codes that duplicate an instrument already listed under its live EGX
+#: ticker. The registry sits beside the universe file it governs, so a universe
+#: loaded from any other directory carries its own registry or none.
+ALIAS_FILENAME = "symbol_aliases.csv"
+ALIAS_FIELDNAMES = ("alias_symbol", "live_symbol", "isin", "evidence", "reviewed_on")
 
 EXCHANGE = "EGX"
 EODHD_SUFFIX = ".EGX"
@@ -172,6 +183,7 @@ def _truthy(value) -> bool:
 
 
 _CACHE = {}
+_ALIAS_CACHE = {}
 _LOCK = threading.Lock()
 
 
@@ -180,6 +192,64 @@ def clear_cache():
 
     with _LOCK:
         _CACHE.clear()
+        _ALIAS_CACHE.clear()
+
+
+def read_alias_registry(universe_path=None):
+    """``{alias: live ticker}`` from the registry beside the universe file.
+
+    An absent registry means no aliases. A present but malformed one raises: an
+    alias row that cannot be read is a duplicate that cannot be excluded.
+    """
+
+    path = Path(universe_path or UNIVERSE_SOURCE).with_name(ALIAS_FILENAME)
+    if not path.is_file():
+        return {}
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except OSError as error:
+        raise UniverseUnavailable(f"Alias registry unreadable at '{path}': {error}") from error
+
+    reader = csv.DictReader(text.splitlines())
+    missing = [name for name in ALIAS_FIELDNAMES if name not in (reader.fieldnames or [])]
+    if missing:
+        raise UniverseUnavailable(
+            f"Alias registry '{path}' is missing columns: {', '.join(missing)}"
+        )
+    aliases = {}
+    for line_no, row in enumerate(reader, start=2):
+        alias = canonical(row.get("alias_symbol"))
+        live = canonical(row.get("live_symbol"))
+        if not alias or not live or alias == live:
+            raise UniverseUnavailable(f"Malformed alias row in '{path}' line {line_no}")
+        if alias in aliases:
+            raise UniverseUnavailable(f"Duplicate alias '{alias}' in '{path}'")
+        aliases[alias] = live
+    chained = sorted(set(aliases) & set(aliases.values()))
+    if chained:
+        raise UniverseUnavailable(
+            f"Alias registry '{path}' names {', '.join(chained)} as both alias and live ticker"
+        )
+    return aliases
+
+
+def _check_aliases(records, aliases, path):
+    by_symbol = {record.canonical_symbol: record for record in records}
+    for alias, live in sorted(aliases.items()):
+        record = by_symbol.get(alias)
+        if record is None:
+            continue
+        if record.is_active:
+            raise UniverseUnavailable(
+                f"'{alias}' is registered as an alias of '{live}' but is active in "
+                f"'{path}'; the same instrument would be scanned twice"
+            )
+        target = by_symbol.get(live)
+        if target is None or not target.is_active:
+            raise UniverseUnavailable(
+                f"Alias '{alias}' points at '{live}', which is not an active symbol "
+                f"in '{path}'"
+            )
 
 
 def _parse(path: Path):
@@ -275,9 +345,22 @@ def load_universe(path=None):
         return cached
     records = tuple(sorted(_parse(resolved),
                            key=lambda r: (not r.is_active, r.canonical_symbol)))
+    aliases = read_alias_registry(resolved)
+    _check_aliases(records, aliases, resolved)
     with _LOCK:
         _CACHE[key] = records
+        _ALIAS_CACHE[key] = aliases
     return records
+
+
+def live_symbol(symbol, path=None) -> str:
+    """The live ticker for any spelling: the ticker an alias duplicates, or itself."""
+
+    ticker = canonical(symbol)
+    load_universe(path)
+    with _LOCK:
+        aliases = _ALIAS_CACHE.get(str(Path(path or UNIVERSE_SOURCE)), {})
+    return aliases.get(ticker, ticker)
 
 
 def active_universe(path=None):

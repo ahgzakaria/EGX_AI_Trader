@@ -253,14 +253,18 @@ def test_saved_historical_runs_can_still_read_their_own_recorded_universe(tmp_pa
 
 
 def test_the_universe_file_shipped_is_exactly_the_activated_snapshot():
-    """The live file must still match the snapshot the migration validated."""
+    """The live file must still match the snapshot the migration validated,
+    less the codes registered as aliases of a live ticker."""
 
     import json
 
     snapshots = sorted(Path(universe.SNAPSHOT_DIR).glob("eodhd_egx_active_*.json"))
     payload = json.loads(snapshots[-1].read_text(encoding="utf-8"))
     snapshot_codes = {row["Code"] for row in payload["rows"]}
+    aliases = set(universe.read_alias_registry(UNIVERSE_SOURCE))
 
     active = {record.canonical_symbol for record in universe.active_universe(UNIVERSE_SOURCE)}
-    assert active == snapshot_codes
-    assert len(active) == payload["count"] == 241
+    assert aliases <= snapshot_codes
+    assert active == snapshot_codes - aliases
+    assert payload["count"] == 241
+    assert len(active) == 241 - len(aliases)
