@@ -400,6 +400,37 @@ def test_a_ticker_filed_under_another_name_is_stored_under_the_universes(tmp_pat
     assert store.frame_for("AIHC.CA", database=database) is None
 
 
+def test_a_renamed_ticker_carries_the_retired_tickers_history(tmp_path):
+    """AMII's table starts on the bar ARVA's ends; the store must hold both as AMII."""
+
+    base = _build_root(tmp_path, history_rows=[
+        ("ARVA", [_history_row("20260723", 12.00), _history_row("20260726", 12.47)]),
+        ("AMII", [_history_row("20260726", 12.47), _history_row("20260727", 12.60)]),
+    ])
+    database = str(tmp_path / "measured.db")
+    metadata = local.import_local(base, database=database, symbols=["AMII"],
+                                  aliases={}, predecessors={"AMII": ["ARVA"]})
+    frame = store.frame_for("AMII.CA", database=database)
+    assert list(frame.index.strftime("%Y-%m-%d")) == ["2026-07-23", "2026-07-26", "2026-07-27"]
+    assert metadata["predecessors_stitched"] == {"AMII": {"from": "ARVA", "sessions": 1}}
+    assert store.frame_for("ARVA.CA", database=database) is None
+
+
+def test_a_retired_ticker_on_another_price_basis_is_not_stitched(tmp_path):
+    """EDBM and CRST share sessions at a 0.66 ratio; joining them would fake a move."""
+
+    base = _build_root(tmp_path, history_rows=[
+        ("EDBM", [_history_row("20260723", 1.00), _history_row("20260726", 1.00)]),
+        ("CRST", [_history_row("20260726", 0.66), _history_row("20260727", 0.70)]),
+    ])
+    database = str(tmp_path / "measured.db")
+    metadata = local.import_local(base, database=database, symbols=["CRST"],
+                                  aliases={}, predecessors={"CRST": ["EDBM"]})
+    frame = store.frame_for("CRST.CA", database=database)
+    assert list(frame.index.strftime("%Y-%m-%d")) == ["2026-07-26", "2026-07-27"]
+    assert metadata["predecessors_stitched"] == {}
+
+
 def test_isin_resolution_names_only_tickers_the_terminal_lacks(tmp_path):
     base = _build_root(tmp_path, history_rows=[
         ("AIHC", [_history_row("20260907", 1.20)]),

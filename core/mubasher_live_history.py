@@ -55,13 +55,50 @@ def _base(symbol) -> str:
     return str(symbol).strip().upper().split(".")[0]
 
 
+_STORE_LAST = {}
+
+
+def store_last_session(database):
+    """The newest session the measured store holds for any symbol, or ``None``.
+
+    Cached per file identity, so a rebuilt store is read again.
+    """
+    from pathlib import Path
+    import sqlite3
+
+    from sector_flow import measured_turnover
+
+    path = Path(database)
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    key = (str(path.resolve()), stat.st_size, stat.st_mtime_ns)
+    if key not in _STORE_LAST:
+        try:
+            with sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True) as connection:
+                value = connection.execute(
+                    f"SELECT MAX(session_date) FROM {measured_turnover.TABLE}").fetchone()[0]
+        except sqlite3.Error:
+            return None
+        _STORE_LAST[key] = pd.Timestamp(value).date() if value else None
+    return _STORE_LAST[key]
+
+
 def mubasher_live_history(symbol, *, min_bars=250, not_after=None, database=None):
     """``(frame, status, provenance)`` for one symbol from the measured store.
 
     ``frame`` is ``None`` when the store holds nothing for the symbol. ``status``
-    is ``READY``, ``STALE`` (the store ends before ``not_after``),
+    is ``READY``, ``STALE`` (the store as a whole ends before ``not_after``),
     ``INSUFFICIENT`` (fewer than ``min_bars`` sessions) or ``UNAVAILABLE``. The
     caller decides what each means; this only reports it.
+
+    Stale is a property of the record, not of one symbol. A symbol that did not
+    trade on the session has no bar for it here, while EODHD prints a
+    zero-volume bar that the scanner's own cleaning then drops -- so both end on
+    the same traded session, and refusing the symbol here would be a false
+    disagreement. The first version did exactly that to EPPK, GPPL, MATD and
+    SAIB on 2026-09-10.
     """
     from sector_flow import measured_turnover
 
@@ -116,9 +153,16 @@ def mubasher_live_history(symbol, *, min_bars=250, not_after=None, database=None
         last_close_confirmed=bool(flags.iloc[-1]),
     )
 
+    store_last = store_last_session(database)
+    ceiling = pd.Timestamp(not_after).date() if not_after is not None else None
+    provenance.update(
+        store_last_session=store_last.isoformat() if store_last else None,
+        traded_on_expected_session=None if ceiling is None else effective >= ceiling,
+    )
     if len(frame) < max(1, int(min_bars)):
         status = INSUFFICIENT
-    elif not_after is not None and effective < pd.Timestamp(not_after).date():
+    elif ceiling is not None and (store_last is None or store_last < ceiling):
+        # The record is behind: the download or the import was not run.
         status = STALE
     else:
         status = READY

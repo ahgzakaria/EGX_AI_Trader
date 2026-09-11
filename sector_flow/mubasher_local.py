@@ -494,6 +494,61 @@ def _isin_aliases(base, scope, isin_of=None, by_isin=None):
     return aliases
 
 
+def _predecessors(scope):
+    """``{live ticker: [retired tickers]}`` from the alias registry, for tickers in scope."""
+
+    try:
+        from core.universe import read_alias_registry
+        registry = read_alias_registry()
+    except Exception as error:                              # an enrichment, not a gate
+        logger.warning("mubasher import: alias registry unavailable (%s)", error)
+        return {}
+    found = {}
+    for alias, live in sorted(registry.items()):
+        if live in scope:
+            found.setdefault(live, []).append(alias)
+    return found
+
+
+def _stitch_predecessors(history, predecessors):
+    """Prepend a retired ticker's earlier sessions to the ticker that replaced it.
+
+    The terminal keeps a renamed company's history under its old table: AMII's
+    table starts on 2026-07-26 with 33 sessions, while ARVA's holds 3,827 from
+    2010 and ends on that same bar. Only a predecessor whose closes are
+    identical to the live table on every session they share is stitched. EDBM
+    and CRST share sessions on a 0.66 price basis, and joining those would put
+    a false 34% move into the series.
+
+    Returns ``(history, {live: {"from": retired, "sessions": n}})``.
+    """
+
+    if history.empty or not predecessors:
+        return history, {}
+    pieces, stitched = [history], {}
+    for live, retired in sorted(predecessors.items()):
+        current = history[history["ticker"] == live]
+        if current.empty:
+            continue
+        first = current["session_date"].min()
+        for old in retired:
+            before = history[history["ticker"] == old]
+            if before.empty:
+                continue
+            shared = before[["session_date", "close"]].merge(
+                current[["session_date", "close"]], on="session_date",
+                suffixes=("_old", "_new"))
+            if shared.empty or not ((shared["close_old"] - shared["close_new"]).abs()
+                                    <= 1e-9).all():
+                continue
+            earlier = before[before["session_date"] < first].assign(ticker=live)
+            if len(earlier):
+                pieces.append(earlier)
+                stitched[live] = {"from": old, "sessions": int(len(earlier))}
+            break
+    return pd.concat(pieces, ignore_index=True), stitched
+
+
 def _renamed(frame, aliases):
     if frame.empty or not aliases:
         return frame
@@ -534,7 +589,7 @@ def default_scope(database=DEFAULT_DATABASE):
 
 
 def import_local(root=None, database=DEFAULT_DATABASE, suffix=".CA", symbols=None,
-                 aliases=None):
+                 aliases=None, predecessors=None):
     """Refresh the measured store from the terminal's own databases.
 
     ``history.db`` is authoritative wherever it reaches; the minute store fills
@@ -559,9 +614,19 @@ def import_local(root=None, database=DEFAULT_DATABASE, suffix=".CA", symbols=Non
              else default_scope(database))
     if aliases is None:
         aliases = _isin_aliases(base, scope)
-    read_scope = set(scope) | set(aliases)
+    if predecessors is None:
+        predecessors = _predecessors(scope)
+    retired = {old for olds in predecessors.values() for old in olds}
+    read_scope = set(scope) | set(aliases) | retired
     history = _renamed(read_history(base, symbols=read_scope), aliases)
+    history, stitched = _stitch_predecessors(history, predecessors)
     intraday = _renamed(read_intraday(base, symbols=read_scope), aliases)
+    # A retired table was read to be stitched, not to be stored under its own
+    # name; only the scope's tickers are written.
+    if not history.empty:
+        history = history[history["ticker"].isin(scope)]
+    if not intraday.empty:
+        intraday = intraday[intraday["ticker"].isin(scope)]
 
     if history.empty and intraday.empty:
         raise ValueError(f"No usable rows in {base}")
@@ -609,6 +674,7 @@ def import_local(root=None, database=DEFAULT_DATABASE, suffix=".CA", symbols=Non
                                        if len(filled) else []),
         "unconfirmed_close_rows": int(len(unconfirmed)),
         "isin_resolved": {stored: twin for twin, stored in sorted(aliases.items())},
+        "predecessors_stitched": stitched,
     }
     with sqlite3.connect(database) as connection:
         connection.execute(

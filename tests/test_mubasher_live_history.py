@@ -70,6 +70,20 @@ def test_a_store_behind_the_expected_session_is_stale(tmp_path):
     assert status == live.STALE
 
 
+def test_a_symbol_that_did_not_trade_on_the_session_is_not_stale(tmp_path):
+    """Stale is the record being behind, not one name having no trade that day."""
+    path, dates = make_store(tmp_path, end="2026-09-08")
+    with sqlite3.connect(path) as connection:
+        connection.execute(f"INSERT INTO {measured_turnover.TABLE} VALUES "
+                           "('SWDY.CA', '2026-09-10', 1.0, 1.0, NULL, 1.0, 1.0, 1.0, 1)")
+    frame, status, provenance = live.mubasher_live_history(
+        "COMI", min_bars=250, not_after=date(2026, 9, 10), database=path)
+    assert status == live.READY
+    assert provenance["traded_on_expected_session"] is False
+    assert provenance["store_last_session"] == "2026-09-10"
+    assert frame.index[-1].date() == date(2026, 9, 8)
+
+
 def test_too_little_history_is_insufficient_and_nothing_is_unavailable(tmp_path):
     path, dates = make_store(tmp_path, sessions=100)
     _, status, _ = live.mubasher_live_history(
