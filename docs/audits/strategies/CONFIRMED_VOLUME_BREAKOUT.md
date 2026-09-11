@@ -291,6 +291,14 @@ with negative lift** — the same conclusion, slightly less flattering, and it i
 the one quoted everywhere else in this document. Where two of my own measurements
 disagree, the one that reads the shipped code wins.
 
+> **AMENDED 2026-09-11.** Those figures were measured on the Yahoo snapshot.
+> The same harness on the frozen MubasherTrade PRO record (`data/frozen_mubasher`,
+> all 230 active symbols) keeps the rule positive in both eras but shrinks the
+> validation lift. Same symbols and spans give +3.88% / +1.27%, walk-forward
+> +1.87%. The full record gives +3.59% / +1.37%, walk-forward +1.90%.
+> The training lift does not move. See
+> [SHIPPED_RULE_ON_MUBASHER.md](SHIPPED_RULE_ON_MUBASHER.md).
+
 And the three additions, put on top of Swing Breakout's own rule:
 
 | Added | trades | train lift | valid lift |

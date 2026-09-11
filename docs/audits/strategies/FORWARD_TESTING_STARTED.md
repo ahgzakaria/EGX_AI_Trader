@@ -234,6 +234,13 @@ result was the thresholds fitting the decade they were chosen on — which is
 exactly what a forward test is for, and the reason it was started before anyone
 put money behind it.
 
+> **AMENDED 2026-09-11.** +1.92% was measured on the Yahoo snapshot. On the
+> frozen MubasherTrade PRO record, which covers the whole universe and is the
+> better-supported source, the same rule's validation lift is **+1.27% to
+> +1.39%**. A forward lift in that range is the rule doing what it measured, not
+> falling short of it. See
+> [SHIPPED_RULE_ON_MUBASHER.md](SHIPPED_RULE_ON_MUBASHER.md).
+
 ## Limits
 
 - One market, one strategy, one configuration.
