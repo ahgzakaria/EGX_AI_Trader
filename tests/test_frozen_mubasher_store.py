@@ -118,6 +118,26 @@ def test_an_unknown_format_is_refused(tmp_path):
         store.load_frozen("ABCD", root=tmp_path)
 
 
+def test_the_manifest_is_parsed_once_until_the_file_changes(tmp_path, monkeypatch):
+    """A symbol the store lacks is asked for on every bar; each ask must be cheap."""
+    freeze_into(tmp_path)
+    parses = []
+    real_loads = store.json.loads
+    monkeypatch.setattr(store.json, "loads",
+                        lambda text: parses.append(1) or real_loads(text))
+    for _ in range(50):
+        assert store.load_frozen("^CASE30", root=tmp_path) is None
+    assert len(parses) == 1
+
+    manifest_path = tmp_path / store.MANIFEST_NAME
+    # The unpatched parser: this read is the test's own, not the store's.
+    rewritten = real_loads(manifest_path.read_text(encoding="utf-8"))
+    rewritten["frozen_at"] = "2026-09-12T00:00:00+00:00 (rewritten)"
+    manifest_path.write_text(json.dumps(rewritten), encoding="utf-8")
+    assert store.read_manifest(root=tmp_path)["frozen_at"].endswith("(rewritten)")
+    assert len(parses) == 2
+
+
 def test_reading_writes_nothing(tmp_path):
     freeze_into(tmp_path)
     before = {p: (p.stat().st_mtime_ns, p.stat().st_size) for p in tmp_path.rglob("*") if p.is_file()}

@@ -89,11 +89,30 @@ def sha256_file(path) -> str:
     return digest.hexdigest()
 
 
+_MANIFESTS = {}
+
+
 def read_manifest(root=None) -> dict:
+    """The parsed manifest, re-read only when the file itself changes.
+
+    Parsed once per file identity (path, size, modification time) and shared.
+    Callers only read it. This is not an optimisation for its own sake: the
+    sealed ``strategy.market_analyzer`` asks for ``^CASE30`` on every bar and
+    caches it only on success, the store has no index, so a backtest asked the
+    store 2,192 times per symbol -- and re-parsing the manifest each time took a
+    full Strategy Only run from about 330 seconds to 1,542.
+    """
     path = _root(root) / MANIFEST_NAME
-    if not path.is_file():
+    try:
+        stat = path.stat()
+    except OSError:
         return {}
-    return json.loads(path.read_text(encoding="utf-8"))
+    key = (str(path.resolve()), stat.st_size, stat.st_mtime_ns)
+    manifest = _MANIFESTS.get(key)
+    if manifest is None:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        _MANIFESTS[key] = manifest
+    return manifest
 
 
 def frozen_symbols(root=None) -> list:
