@@ -136,6 +136,29 @@ def round_trips(history: pd.DataFrame, path: Path) -> bool:
             and np.array_equal(back[columns].to_numpy(float), history[columns].to_numpy(float)))
 
 
+def stitch_predecessor(live: pd.DataFrame, retired: pd.DataFrame):
+    """The retired ticker's earlier sessions joined to the live series, or ``None``.
+
+    The terminal keeps a renamed company's history under its old ticker: the
+    export's AMII holds 33 sessions from 2026-07-26 while ARVA holds 3,827 that
+    end on that same bar. They are joined only when their closes are identical
+    on every session they share -- EDBM and CRST share sessions at a 0.66 ratio,
+    and joining those would put a false move into the series. ``None`` also when
+    the retired ticker has nothing before the live one begins.
+    """
+    shared = live.index.intersection(retired.index)
+    if not len(shared):
+        return None
+    if not np.allclose(live.loc[shared, "Close"].to_numpy(float),
+                       retired.loc[shared, "Close"].to_numpy(float), rtol=0, atol=1e-9):
+        return None
+    earlier = retired[retired.index < live.index.min()]
+    if earlier.empty:
+        return None
+    columns = ["High", "Low", "Close", "Volume", "Turnover"]
+    return pd.concat([earlier[columns], live[columns]]).sort_index()
+
+
 def _span(frame):
     return (str(frame.index.min().date()), str(frame.index.max().date())) if len(frame) else (None, None)
 
@@ -247,6 +270,39 @@ def main(argv=None) -> int:
         added.append(f"{symbol}<-{ticker}")
     connection.close()
 
+    # Renamed companies: the live ticker is served from its retired twin's
+    # earlier sessions plus its own. Both export files stay in the store
+    # byte for byte; the joined series is a separate, hashed file.
+    from core.universe import read_alias_registry
+
+    stitched = {}
+    for alias, live in sorted(read_alias_registry().items()):
+        if live not in exports or alias not in exports:
+            continue
+        joined = stitch_predecessor(exports[live][1], exports[alias][1])
+        if joined is None:
+            continue
+        (building / "stitched").mkdir(exist_ok=True)
+        target = building / "stitched" / f"{live}.csv"
+        write_history_db_copy(joined, target)
+        if not round_trips(joined, target):
+            print(f"refused: stitched/{live}.csv does not read back to what was joined")
+            return 2
+        added_sessions = int(len(joined) - len(exports[live][1]))
+        first, last = _span(joined)
+        export_entry = records[live]
+        records[live] = {
+            "symbol": live, "file": f"stitched/{live}.csv",
+            "format": store.HISTORY_DB_FORMAT, "sha256": store.sha256_file(target),
+            "rows": int(len(joined)), "first_session": first, "last_session": last,
+            "source": (f"export/{alias}.csv sessions before {export_entry['first_session']} "
+                       f"joined to export/{live}.csv; closes identical on every shared session"),
+            "mubasher_ticker": live, "stitched_from": alias,
+            "stitched_sessions": added_sessions,
+            "export_file": export_entry["file"], "export_sha256": export_entry["sha256"],
+        }
+        stitched[live] = {"from": alias, "sessions": added_sessions}
+
     manifest = {
         "frozen_at": datetime.now(timezone.utc).isoformat(),
         "provider": store.PROVIDER,
@@ -269,6 +325,7 @@ def main(argv=None) -> int:
     print(f"frozen {len(records)} symbols into {dest}")
     print(f"  from the export: {len(exports)}")
     print(f"  added from history.db by ISIN: {added or 'none'}")
+    print(f"  renamed tickers joined to their retired twin: {stitched or 'none'}")
     if skipped:
         print(f"  active symbols not frozen: {skipped}")
     missing_active = sorted(active - set(records))

@@ -1,5 +1,5 @@
 {
-  "frozen_at": "2026-09-11T18:45:15.492837+00:00",
+  "frozen_at": "2026-09-11T20:24:17.704742+00:00",
   "provider": "FROZEN_MUBASHER",
   "source_directory": "E:\\EGX_Symbols",
   "export_last_session": "2026-09-07",
@@ -246,16 +246,18 @@
     },
     "AMII": {
       "symbol": "AMII",
-      "file": "export/AMII.csv",
-      "format": "mubasher_export_csv",
-      "sha256": "f7908ed5872d69534a291f1976637556ee24be3137738230384f39775cfeebb3",
-      "source_sha256": "f7908ed5872d69534a291f1976637556ee24be3137738230384f39775cfeebb3",
-      "rows": 30,
-      "first_session": "2026-07-26",
+      "file": "stitched/AMII.csv",
+      "format": "history_db_csv",
+      "sha256": "b7b44ad44fab3711da6fb57b8094eeebffbb54de76394b852342de12651fba8c",
+      "rows": 3856,
+      "first_session": "2010-05-18",
       "last_session": "2026-09-07",
-      "source": "MubasherTrade PRO Export History (E:\\EGX_Symbols)",
+      "source": "export/ARVA.csv sessions before 2026-07-26 joined to export/AMII.csv; closes identical on every shared session",
       "mubasher_ticker": "AMII",
-      "verified_sessions_against_history_db": 30
+      "stitched_from": "ARVA",
+      "stitched_sessions": 3826,
+      "export_file": "export/AMII.csv",
+      "export_sha256": "f7908ed5872d69534a291f1976637556ee24be3137738230384f39775cfeebb3"
     },
     "AMOC": {
       "symbol": "AMOC",
@@ -2391,16 +2393,18 @@
     },
     "QNBE": {
       "symbol": "QNBE",
-      "file": "export/QNBE.csv",
-      "format": "mubasher_export_csv",
-      "sha256": "d26bfc2dad0acf6aac9930434852626d63d9318f811ff19dfb272988802b5e85",
-      "source_sha256": "d26bfc2dad0acf6aac9930434852626d63d9318f811ff19dfb272988802b5e85",
-      "rows": 1200,
-      "first_session": "2021-09-06",
+      "file": "stitched/QNBE.csv",
+      "format": "history_db_csv",
+      "sha256": "905011f1f8fe88a8ab7014417601e4a0088a1a86ec142b2e9be1ee9a46279204",
+      "rows": 5236,
+      "first_session": "2003-11-03",
       "last_session": "2026-09-07",
-      "source": "MubasherTrade PRO Export History (E:\\EGX_Symbols)",
+      "source": "export/QNBA.csv sessions before 2021-09-06 joined to export/QNBE.csv; closes identical on every shared session",
       "mubasher_ticker": "QNBE",
-      "verified_sessions_against_history_db": 1200
+      "stitched_from": "QNBA",
+      "stitched_sessions": 4036,
+      "export_file": "export/QNBE.csv",
+      "export_sha256": "d26bfc2dad0acf6aac9930434852626d63d9318f811ff19dfb272988802b5e85"
     },
     "RACC": {
       "symbol": "RACC",

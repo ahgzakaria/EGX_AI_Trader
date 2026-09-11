@@ -209,6 +209,40 @@ def test_round_trip_detects_a_file_that_does_not_read_back(tmp_path):
     assert not freeze.round_trips(history, path)
 
 
+def _series(rows):
+    index = pd.DatetimeIndex(pd.to_datetime([r[0] for r in rows]), name="Date")
+    return pd.DataFrame({"High": [r[1] + 0.1 for r in rows], "Low": [r[1] - 0.1 for r in rows],
+                         "Close": [r[1] for r in rows], "Volume": [100.0] * len(rows),
+                         "Turnover": [1000.0] * len(rows)}, index=index)
+
+
+def test_a_retired_twin_with_identical_shared_closes_is_joined():
+    from scripts import freeze_mubasher_export as freeze
+
+    retired = _series([("2026-07-23", 12.00), ("2026-07-24", 12.20), ("2026-07-26", 12.47)])
+    live = _series([("2026-07-26", 12.47), ("2026-07-27", 12.60)])
+    joined = freeze.stitch_predecessor(live, retired)
+    assert list(joined.index.strftime("%Y-%m-%d")) == [
+        "2026-07-23", "2026-07-24", "2026-07-26", "2026-07-27"]
+    assert list(joined["Close"]) == [12.00, 12.20, 12.47, 12.60]
+
+
+def test_a_retired_twin_on_another_price_basis_is_not_joined():
+    from scripts import freeze_mubasher_export as freeze
+
+    retired = _series([("2026-07-23", 1.00), ("2026-07-26", 1.00)])
+    live = _series([("2026-07-26", 0.66), ("2026-07-27", 0.70)])
+    assert freeze.stitch_predecessor(live, retired) is None
+
+
+def test_nothing_to_join_when_the_twin_has_no_earlier_sessions_or_none_shared():
+    from scripts import freeze_mubasher_export as freeze
+
+    live = _series([("2026-07-26", 12.47), ("2026-07-27", 12.60)])
+    assert freeze.stitch_predecessor(live, _series([("2026-07-27", 12.60)])) is None
+    assert freeze.stitch_predecessor(live, _series([("2026-07-20", 11.0)])) is None
+
+
 def test_verification_finds_a_single_differing_close(tmp_path):
     from scripts import freeze_mubasher_export as freeze
 
