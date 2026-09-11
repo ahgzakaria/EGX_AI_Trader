@@ -11,6 +11,7 @@ from indicators.technical import calculate_indicators
 from providers.local_cache_provider import LocalCacheProvider
 from providers.rubix_sqlite_provider import RubixSQLiteProvider
 from services.swing_coverage_audit import classify_failure
+from tests.fixtures.frozen_snapshot import write_snapshot
 
 
 def _daily(rows=300):
@@ -99,7 +100,7 @@ def _pin_current_research(monkeypatch, frame, provider="eodhd"):
 def test_rubix_quote_overlay_never_changes_completed_daily_history(tmp_path, monkeypatch):
     original = _daily()
     cache = LocalCacheProvider(tmp_path / "cache.sqlite", source_provider="yahoo")
-    cache.store("yahoo", "COMI.CA", "10y", "1d", original)
+    write_snapshot(cache.path, "COMI.CA", original)
     database = tmp_path / "rubix.db"
     _rubix(database, low=0.0)
     rubix = RubixSQLiteProvider(
@@ -133,7 +134,7 @@ def test_rubix_quote_overlay_never_changes_completed_daily_history(tmp_path, mon
 def test_disconnected_rubix_does_not_erase_valid_swing_history(tmp_path, monkeypatch):
     original = _daily()
     cache = LocalCacheProvider(tmp_path / "cache.sqlite", source_provider="yahoo")
-    cache.store("yahoo", "COMI.CA", "10y", "1d", original)
+    write_snapshot(cache.path, "COMI.CA", original)
     rubix = RubixSQLiteProvider(tmp_path / "missing.db")
     monkeypatch.setitem(settings.data, "scanner_provider", "rubix")
     monkeypatch.setattr(routing, "_PROVIDER_INSTANCES", {
