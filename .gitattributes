@@ -1,0 +1,5 @@
+# Frozen market records are verified by the SHA-256 of their bytes
+# (core/frozen_mubasher_store.py). With core.autocrlf on, git would rewrite
+# their line endings on checkout and every file would then be refused, so git
+# must store and restore them exactly.
+data/frozen_mubasher/** -text
