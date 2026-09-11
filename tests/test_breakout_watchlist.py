@@ -7,8 +7,8 @@ arithmetic would be easiest to introduce and hardest to notice.
 
 So these tests pin the construction, not the output: that every threshold comes
 from `config.load()`, that the gate split covers `signal.GATES` exactly, that a
-name which has already fired is refused, and that nothing on a row claims a
-number nobody measured.
+name already above its trigger is refused while a strong close or heavy volume
+under it is not, and that nothing on a row claims a number nobody measured.
 """
 
 from __future__ import annotations
@@ -168,7 +168,50 @@ def test_a_name_that_already_fired_is_not_on_the_watchlist():
     data.loc[data.index[-1], "Close"] = float(table["PriorHigh"].iloc[-1]) * 1.05
     result = watch(histories={"FIRED": data}, reach_atr=DEFAULT_REACH_ATR)
     assert result.count == 0
-    assert result.funnel["AlreadyTriggered"] == 1
+    assert result.funnel["AboveTrigger"] == 1
+
+
+def _near_candidate():
+    data = rising()
+    assert watch(histories={"NEAR": data},
+                 reach_atr=DEFAULT_REACH_ATR).count == 1, (
+        "the fixture must be a candidate before it is changed")
+    return data
+
+
+def test_a_strong_close_under_the_trigger_stays_on_the_list():
+    """Closing at the top of the bar is not firing without the breakout.
+
+    A first version refused any name with any trigger gate true, and on the
+    2026-09-10 close that dropped 11 names for this alone -- two of the three
+    nearest to their trigger among them.
+    """
+
+    from indicators.technical import calculate_indicators
+
+    data = _near_candidate()
+    last = data.index[-1]
+    data.loc[last, "High"] = data.loc[last, "Close"]        # close at the high
+    table = measure(calculate_indicators(data.copy()), load_config())
+    assert bool(table["ClosePositionPassed"].iloc[-1])
+    assert not bool(table["Breakout"].iloc[-1])
+    result = watch(histories={"STRONG": data}, reach_atr=DEFAULT_REACH_ATR)
+    assert result.count == 1
+    assert result.funnel["AboveTrigger"] == 0
+
+
+def test_heavy_volume_under_the_trigger_stays_on_the_list():
+    data = _near_candidate()
+    cfg = load_config()
+    last = data.index[-1]
+    data.loc[last, "Volume"] = data["Volume"].iloc[-2] * cfg.turnover_window
+    from indicators.technical import calculate_indicators
+
+    table = measure(calculate_indicators(data.copy()), cfg)
+    assert bool(table["VolumeConfirmation"].iloc[-1])
+    assert not bool(table["Breakout"].iloc[-1])
+    result = watch(histories={"HEAVY": data}, reach_atr=DEFAULT_REACH_ATR)
+    assert result.count == 1
 
 
 def test_a_name_far_below_its_trigger_is_out_of_reach():

@@ -110,9 +110,10 @@ def main(argv=None) -> int:
     print(f"      {'structural gates (must pass now)':<44}")
     for gate in STRUCTURAL_GATES:
         print(f"        {gate:<40}{result.funnel.get(gate, 0):>5}")
-    already = "already fired (scan.py handles those)"
-    print(f"      {already:<44}{result.funnel.get('AlreadyTriggered', 0):>5}")
-    print(f"        trigger gates: {', '.join(TRIGGER_GATES)}")
+    already = "above trigger (scan.py says if fired)"
+    print(f"      {already:<44}{result.funnel.get('AboveTrigger', 0):>5}")
+    print(f"        trigger gates: {', '.join(TRIGGER_GATES)} -- only the "
+          f"first refuses; the others may already hold")
     for other in ("OutOfReach", "InvalidRisk", "InsufficientHistory", "Unusable"):
         print(f"      {other:<44}{result.funnel.get(other, 0):>5}")
 

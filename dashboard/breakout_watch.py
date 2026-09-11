@@ -93,8 +93,8 @@ def _render_funnel(funnel: dict) -> None:
     structural = pd.DataFrame(
         [{"gate": gate, "refused": funnel.get(gate, 0)} for gate in STRUCTURAL_GATES])
     other = pd.DataFrame([
-        {"gate": "already fired — Confirmed Breakout has those",
-         "refused": funnel.get("AlreadyTriggered", 0)},
+        {"gate": "already above the trigger — Confirmed Breakout says if it fired",
+         "refused": funnel.get("AboveTrigger", 0)},
         {"gate": "out of reach", "refused": funnel.get("OutOfReach", 0)},
         {"gate": "invalid risk", "refused": funnel.get("InvalidRisk", 0)},
         {"gate": "insufficient history",
@@ -106,7 +106,8 @@ def _render_funnel(funnel: dict) -> None:
         st.caption("Structural gates — must all pass now")
         st.dataframe(structural, hide_index=True, width="stretch")
     with right:
-        st.caption(f"Trigger gates ({', '.join(TRIGGER_GATES)}) must NOT have fired")
+        st.caption(f"Trigger gates ({', '.join(TRIGGER_GATES)}): the close must "
+                   f"still be below the trigger; the other two may already hold")
         st.dataframe(other, hide_index=True, width="stretch")
 
 

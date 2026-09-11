@@ -16,8 +16,17 @@ the principle `scan.py` states and the reason nothing here is a literal.
   describe the instrument, they move slowly, and a candidate must satisfy every
   one of them *now*.
 * **trigger** -- Breakout, VolumeConfirmation, ClosePosition. These describe one
-  session's behaviour. A candidate must satisfy *none* of them yet: a name that
-  has already broken out is `scan.py`'s business, not this list's.
+  session's behaviour, and the rule fires only when all three hold on the same
+  close. A candidate must still be *below* its trigger level; a name already
+  above it is past this list, and whether it fired is `scan.py`'s business.
+
+  The other two are deliberately not held against a name. A first version
+  refused any name on which *any* trigger gate was true, which read "closed in
+  the top of its range" and "traded heavily" as "already fired". Neither is a
+  firing without the breakout, and a strong close under the high is what
+  approaching one looks like. On the 2026-09-10 close that version dropped 12 of
+  the 57 names whose structure held and whose close sat below the trigger --
+  11 for the close position, 1 for volume -- including two of the three nearest.
 
 **The reach filter is not a measured threshold.** Keeping only names whose close
 sits below the trigger but within some multiple of ATR of it is a presentation
@@ -61,12 +70,14 @@ assert set(STRUCTURAL_GATES) | set(TRIGGER_GATES) == set(GATES), (
     "every gate in signal.GATES must be classified as structural or trigger")
 
 #: Swept, not chosen. `sweep_reach` reports what each returns, and the default
-#: below was read off those counts over the live universe on 2026-09-09:
-#: 0.5 ATR returned 0 names, 1.0 returned 3, 1.5 returned 10. One is the
-#: smallest multiple that returns a list at all, which is the only defensible
-#: reason to prefer it -- it is a choice about list length, not about edge, and
-#: the sweep is printed every run so a week that returns nothing at 1.0 can be
-#: widened deliberately rather than silently.
+#: below was first read off those counts over the live universe on 2026-09-09:
+#: 0.5 ATR returned 0 names, 1.0 returned 3, 1.5 returned 10, on the reason that
+#: one was the smallest multiple returning a list at all. Those counts came from
+#: the selection that wrongly refused names for a strong close (see the module
+#: docstring). Corrected, the 2026-09-10 close returns 3 / 5 / 8, so that reason
+#: no longer singles out 1.0. It is kept because it is a choice about list
+#: length, not about edge, and nothing measured prefers another; the sweep is
+#: printed every run so the list can be widened or narrowed deliberately.
 REACH_MULTIPLES = (0.5, 1.0, 1.5)
 DEFAULT_REACH_ATR = 1.0
 
@@ -217,7 +228,7 @@ def watch(histories=None, cfg: BreakoutConfig | None = None, symbols=None,
                          capital=capital, unreadable=unreadable)
     funnel = {"Unusable": 0, "InsufficientHistory": 0,
               **{gate: 0 for gate in STRUCTURAL_GATES},
-              "AlreadyTriggered": 0, "OutOfReach": 0, "InvalidRisk": 0}
+              "AboveTrigger": 0, "OutOfReach": 0, "InvalidRisk": 0}
     sessions = []
 
     for symbol, frame in histories.items():
@@ -245,8 +256,11 @@ def watch(histories=None, cfg: BreakoutConfig | None = None, symbols=None,
             funnel[failed_structural[0]] += 1
             continue
 
-        if any(checks[g] for g in TRIGGER_GATES):
-            funnel["AlreadyTriggered"] += 1
+        # Only the breakout itself puts a name past this list. Volume and close
+        # position being true today are not a firing without it -- see the
+        # module docstring for what refusing on them cost.
+        if checks["Breakout"]:
+            funnel["AboveTrigger"] += 1
             continue
 
         close = float(row["Close"])
