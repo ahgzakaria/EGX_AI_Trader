@@ -578,10 +578,15 @@ def _local_block_detail(local_md, expected):
 
 def get_legacy_backtest_history(symbol, *, period="10y", interval="1d",
                                 snapshot_version="v1"):
-    """LEGACY_BACKTEST_V1 — frozen Yahoo snapshot from local cache, NO network."""
+    """LEGACY_BACKTEST_V1 — frozen Yahoo snapshot from local cache, NO network.
+
+    Rows after the snapshot's freeze session are ignored (see
+    ``providers.frozen_yahoo_snapshot``); a missing symbol raises.
+    """
+    from providers.frozen_yahoo_snapshot import FrozenYahooSnapshotProvider
     from providers.local_cache_provider import LocalCacheProvider
-    cache = LocalCacheProvider()
-    frame = cache.load_cached("yahoo", symbol, period, interval, allow_expired=True)
+    frame = FrozenYahooSnapshotProvider(LocalCacheProvider()).load_history(
+        symbol, period, interval)
     if frame is None or getattr(frame, "empty", True):
         raise ResearchDataUnavailable(_base(symbol), DATA_UNAVAILABLE,
                                       "no frozen Yahoo snapshot for this symbol/range")

@@ -17,11 +17,11 @@ from core.egx_session import egx_session_phase, trading_session_lag
 from core.symbols import SYMBOL_SOURCE, load_symbols
 from providers.base_provider import ProviderDataError, ProviderError, REQUIRED_COLUMNS
 from providers.eodhd_provider import EODHDProvider
+from providers.frozen_yahoo_snapshot import FrozenYahooSnapshotProvider
 from providers.local_cache_provider import LocalCacheProvider
 from providers.provider_manager import ProviderManager
 from providers.rubix_sqlite_provider import RubixSQLiteProvider
 from providers.tickerchart_provider import TickerChartProvider
-from providers.yahoo_provider import YahooProvider
 from services.dataset_archive import (
     capture_active,
     replay_active,
@@ -57,17 +57,11 @@ def _provider_instances():
             market_cfg.get("cache_path", "data/market_data_cache.sqlite"),
             source_provider=market_cfg.get("cache_source_provider", "rubix"),
         )
-        yahoo = YahooProvider()
-
-        def yahoo_history_seed(symbol, period, interval):
-            """Warm indicators with historical Yahoo candles, never live fallback."""
-
-            try:
-                return cache.load_cached("yahoo", symbol, period, interval)
-            except ProviderError:
-                frame = yahoo.load_history(symbol, period, interval)
-                cache.store("yahoo", symbol, period, interval, frame)
-                return frame
+        # "yahoo" is the frozen backtest snapshot and nothing else: it reads the
+        # cache and fails on a miss. It used to download on a miss or an expired
+        # entry and store the result, which replaced six symbols' histories after
+        # the freeze. It is also the daily warm-up seed for Rubix and TickerChart.
+        yahoo = FrozenYahooSnapshotProvider(cache)
 
         _PROVIDER_INSTANCES = {
             "yahoo": yahoo,
@@ -84,7 +78,7 @@ def _provider_instances():
                     "RUBIX_BAR_STALE_SECONDS",
                     market_cfg.get("rubix_bar_stale_seconds", 120),
                 )) / 60,
-                history_loader=yahoo_history_seed,
+                history_loader=yahoo.load_history,
                 expected_symbols=load_symbols(SYMBOL_SOURCE),
             ),
             "tickerchart": TickerChartProvider(
@@ -95,7 +89,7 @@ def _provider_instances():
                     "TICKERCHART_STALE_AFTER_MINUTES",
                     market_cfg.get("tickerchart_stale_after_minutes", 1440),
                 ),
-                history_loader=yahoo_history_seed,
+                history_loader=yahoo.load_history,
             ),
             "local_cache": cache,
         }
@@ -392,7 +386,9 @@ def _load_one(
     # the original symbol at the normalized stage below.
     raw_archive_symbol = f"{symbol}__source_{provider.name}"
     raw_metadata = {"provider": provider.name, "engine_symbol": symbol}
-    if provider.name == "local_cache":
+    # Both read local rows directly. The generic path below downloads on a cache
+    # miss and stores the download, which the frozen Yahoo snapshot must never do.
+    if provider.name in {"local_cache", "yahoo"}:
         frame = provider.load_history(symbol, period, interval)
         capture_active(raw_archive_symbol, frame, "raw", raw_metadata)
         return _clean_for_engine(

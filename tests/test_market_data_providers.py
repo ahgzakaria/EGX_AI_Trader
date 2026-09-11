@@ -28,6 +28,7 @@ from providers.symbol_mapping import (
     to_tickerchart_symbol,
 )
 from providers.yahoo_provider import YahooProvider
+from tests.fixtures.frozen_snapshot import write_snapshot
 from services.dataset_archive import (
     DatasetArchive,
     activate_archive,
@@ -389,14 +390,14 @@ def test_tickerchart_schema_failure_is_explicit(tmp_path):
 
 
 def test_sqlite_cache_roundtrip_and_expiration(tmp_path):
-    cache = LocalCacheProvider(tmp_path / "market.sqlite", source_provider="yahoo")
+    cache = LocalCacheProvider(tmp_path / "market.sqlite", source_provider="eodhd")
     frame = candle_frame(3)
     frame.attrs["market_data"] = {
-        "provider": "yahoo",
+        "provider": "eodhd",
         "received_timestamp": datetime.now(timezone.utc).isoformat(),
     }
-    cache.store("yahoo", "COMI.CA", "10y", "1d", frame)
-    loaded = cache.load_cached("yahoo", "COMI.CA", "10y", "1d")
+    cache.store("eodhd", "COMI.CA", "10y", "1d", frame)
+    loaded = cache.load_cached("eodhd", "COMI.CA", "10y", "1d")
     pd.testing.assert_frame_equal(loaded, frame, check_freq=False, check_dtype=False)
     assert loaded.attrs["market_data"]["cache_hit"] is True
 
@@ -404,7 +405,7 @@ def test_sqlite_cache_roundtrip_and_expiration(tmp_path):
     with sqlite3.connect(cache.path) as connection:
         connection.execute("UPDATE market_data_entries SET fetched_at=?", (expired,))
     with pytest.raises(ProviderDataError, match="cache expired"):
-        cache.load_cached("yahoo", "COMI.CA", "10y", "1d")
+        cache.load_cached("eodhd", "COMI.CA", "10y", "1d")
 
 
 def test_dashboard_route_falls_back_and_backtest_stays_on_yahoo(tmp_path, monkeypatch):
@@ -431,7 +432,7 @@ def test_dashboard_route_falls_back_and_backtest_stays_on_yahoo(tmp_path, monkey
 
     # After the EODHD migration the backtest purpose is served from the FROZEN Yahoo
     # snapshot (local cache, immutable, NO network) — the legacy domain.
-    cache.store("yahoo", "SWDY.CA", "10y", "1d", candle_frame())
+    write_snapshot(cache.path, "SWDY.CA", candle_frame())
     import providers.local_cache_provider as local_cache_module
 
     monkeypatch.setattr(

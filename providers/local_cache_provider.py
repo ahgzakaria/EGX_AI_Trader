@@ -101,6 +101,20 @@ class LocalCacheProvider(MarketDataProvider):
             "fetched_at": entry["fetched_at"] if entry else None,
         }
 
+    def latest_sessions(self, provider, period, interval):
+        """``{symbol: latest candle timestamp}`` for one cache key, read-only."""
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT symbol, MAX(timestamp) AS latest FROM market_data_candles
+                WHERE provider=? AND period=? AND interval=?
+                GROUP BY symbol
+                """,
+                (provider, period, interval),
+            ).fetchall()
+        return {row["symbol"]: row["latest"] for row in rows}
+
     def load_cached(self, provider, symbol, period, interval, allow_expired=False):
         with self._connect() as connection:
             entry = connection.execute(
@@ -149,6 +163,14 @@ class LocalCacheProvider(MarketDataProvider):
         return normalized
 
     def store(self, provider, symbol, period, interval, frame):
+        # The Yahoo rows are the frozen snapshot every backtest was measured on.
+        # A store replaces a symbol's whole series, which is how six of them
+        # changed after the freeze.
+        if str(provider).strip().lower() == "yahoo":
+            raise ProviderDataError(
+                f"refusing to write yahoo/{symbol}/{period}/{interval}: "
+                "the Yahoo backtest snapshot is frozen"
+            )
         normalized = normalize_history(frame, symbol, provider)
         metadata = dict(frame.attrs.get("market_data", {}))
         fetched_at = metadata.get("received_timestamp") or datetime.now(timezone.utc).astimezone().isoformat()
