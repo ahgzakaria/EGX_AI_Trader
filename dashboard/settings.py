@@ -748,9 +748,11 @@ def show_settings():
                         f"{current} / {total} ({update.get('percent', 0)}%)"
                     )
                     progress.progress(ratio)
+                    from dashboard.formatting import display_ticker
+
                     status.info(
                         f"{state.backtest_stage} — Current symbol: "
-                        f"{update.get('symbol', 'N/A')}"
+                        f"{display_ticker(update.get('symbol', 'N/A'))}"
                     )
                     percent_text.write(state.backtest_progress_text)
                 elapsed_text.caption(

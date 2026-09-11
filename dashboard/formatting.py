@@ -87,6 +87,124 @@ def with_company_name_column(frame, symbol_column, name_column=NAME_COLUMN):
     return out[order]
 
 
+# --- the exchange suffix, shown to a person ----------------------------------
+
+#: Column names (compared case-insensitively) whose values are tickers.
+TICKER_COLUMNS = frozenset({"symbol", "ticker", "engine_symbol", SYMBOL_COLUMN})
+
+#: Suffixes the program keys tickers with and a reader has no use for. ``.CA`` is
+#: the engine's wire format, inherited from Yahoo's EGX convention; ``.EGX`` is
+#: EODHD's. Neither says anything about where the data came from.
+_EXCHANGE_SUFFIXES = (".CA", ".EGX")
+
+_DISPLAY_INSTALLED = "_egx_ticker_display"
+
+
+def display_ticker(value):
+    """``COMI`` for ``COMI.CA`` or ``COMI.EGX``; any other value, unchanged.
+
+    Presentation only, and deliberately narrow: a value without one of the two
+    suffixes -- a company name, a ``TICKER — Name`` label, ``NULL``, a number --
+    is returned exactly as given.
+    """
+
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    upper = text.upper()
+    for suffix in _EXCHANGE_SUFFIXES:
+        if upper.endswith(suffix) and len(text) > len(suffix):
+            return text[: -len(suffix)]
+    return value
+
+
+def _is_ticker_label(name) -> bool:
+    return isinstance(name, str) and name.strip().lower() in TICKER_COLUMNS
+
+
+def _frame_with_display_tickers(frame):
+    """A copy with ticker columns shown bare, or ``frame`` itself when it has none."""
+
+    import pandas as pd
+
+    columns = [column for column in frame.columns if _is_ticker_label(column)]
+    index_is_ticker = _is_ticker_label(frame.index.name)
+    if not columns and not index_is_ticker:
+        return frame
+    shown = frame.copy()
+    for column in columns:
+        values = shown[column]
+        if isinstance(values, pd.Series):
+            shown[column] = values.map(display_ticker)
+    if index_is_ticker:
+        shown.index = shown.index.map(display_ticker)
+    return shown
+
+
+def with_display_tickers(data):
+    """``data`` as a table would show it: tickers without the exchange suffix.
+
+    Accepts a DataFrame, a pandas Styler or a list of row dicts, and returns a
+    copy; the page's own object, and anything a strategy reads, is untouched.
+    Anything else is returned as given.
+    """
+
+    try:
+        import pandas as pd
+        from pandas.io.formats.style import Styler
+
+        if isinstance(data, Styler):
+            shown = _frame_with_display_tickers(data.data)
+            if shown is data.data:
+                return data
+            styler = data._copy(deepcopy=False)
+            styler.data = shown
+            return styler
+        if isinstance(data, pd.DataFrame):
+            return _frame_with_display_tickers(data)
+        if isinstance(data, list) and data and all(isinstance(row, dict) for row in data):
+            frame = pd.DataFrame(data)
+            shown = _frame_with_display_tickers(frame)
+            return data if shown is frame else shown
+    except Exception:                                       # never break a page to tidy it
+        return data
+    return data
+
+
+def install_ticker_display():
+    """Show tickers without ``.CA`` in every read-only table the app draws.
+
+    The suffix is the engine's key and is stored in almost every report and
+    store the pages read -- 39 report files carry it -- so it is removed at the
+    one place all of them pass through: Streamlit's ``dataframe`` and ``table``
+    methods on ``DeltaGenerator``, which serve ``st.dataframe`` and every
+    column, tab and container alike. ``data_editor`` is left alone, because an
+    editor hands its values back to the page. Installing twice does nothing.
+    """
+
+    import functools
+
+    import streamlit as st
+    from streamlit.delta_generator import DeltaGenerator
+
+    for name in ("dataframe", "table"):
+        original = getattr(DeltaGenerator, name)
+        if getattr(original, _DISPLAY_INSTALLED, False):
+            continue
+
+        def wrapper(self, data=None, *args, __original=original, **kwargs):
+            return __original(self, with_display_tickers(data), *args, **kwargs)
+
+        functools.update_wrapper(wrapper, original)
+        setattr(wrapper, _DISPLAY_INSTALLED, True)
+        setattr(DeltaGenerator, name, wrapper)
+        main = getattr(st, "_main", None)
+        if main is not None:
+            # `st.dataframe` was bound to the main container when Streamlit was
+            # imported, before this ran, so it is bound again to pick this up.
+            setattr(st, name, getattr(main, name))
+
+
 # --- numbers ----------------------------------------------------------------
 
 

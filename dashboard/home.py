@@ -337,9 +337,11 @@ def _render_scan_job(job):
         row[0].metric("Elapsed", _format_duration(snapshot.elapsed_seconds))
         row[1].metric("Remaining (est.)",
                       _format_duration(snapshot.estimated_remaining_seconds))
-        row[2].metric("Current symbol", snapshot.current_symbol or "—")
+        from dashboard.formatting import display_ticker
+
+        row[2].metric("Current symbol", display_ticker(snapshot.current_symbol) or "—")
         row[3].metric("Last symbol",
-                      f"{snapshot.last_completed_symbol or '—'}"
+                      f"{display_ticker(snapshot.last_completed_symbol) or '—'}"
                       + (f" · {snapshot.last_symbol_seconds:.2f}s"
                          if snapshot.last_symbol_seconds else ""))
 

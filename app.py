@@ -25,6 +25,13 @@ from core.environment import load_project_environment
 
 load_project_environment()
 
+# Tickers are keyed COMI.CA throughout the program -- the engine's format, from
+# the Yahoo era -- and a reader has no use for the suffix. Every read-only table
+# shows COMI instead. Display only: no stored value and no strategy input changes.
+from dashboard.formatting import install_ticker_display
+
+install_ticker_display()
+
 from dashboard.backtest_state import (
     initialize_backtest_state,
     recover_interrupted_backtest,
