@@ -46,6 +46,30 @@ def test_a_sub_value_is_optional():
     assert "<small>" in context_strip([("شراء", "3", "green", "1%")])
 
 
+def test_a_count_and_its_share_cannot_read_as_one_number():
+    """On screen this read "10952%".
+
+    The count and its share are both numerals in the same tabular face, and
+    .2rem of margin between them is not a gap a reader can see. 109 watched and
+    52% of the scan rendered as one nine-figure number, 100 avoided and 48% as
+    "10048%", and a coverage of 209/225 with 16 excluded as "209/225-16". The
+    separator has to be a character in the markup, where it cannot be lost to
+    a stylesheet change.
+    """
+    text = re.sub(r"<[^>]+>", "", context_strip([("متابعة WATCH", "109",
+                                                  "amber", "52%")]))
+    assert "10952" not in text
+    # Both spaces are in the markup. The left one is a non-breaking space
+    # rather than a margin, so a stylesheet change cannot close the gap again.
+    assert "109 · 52%" in text
+
+
+def test_a_reading_with_no_share_gains_no_orphan_separator():
+    text = re.sub(r"<[^>]+>", "", context_strip([("الجلسة", "2026-09-10",
+                                                  "gray", "")]))
+    assert "·" not in text
+
+
 def test_a_reading_cannot_inject_markup():
     markup = context_strip([("<script>a</script>", "<script>b</script>",
                              "green", "<script>c</script>")])

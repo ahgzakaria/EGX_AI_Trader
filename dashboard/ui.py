@@ -485,7 +485,7 @@ def apply_global_style():
             font-weight:600; color:var(--text); font-variant-numeric:tabular-nums;
             white-space:nowrap; }
         .egx-strip .c .v small { font-size:.64rem; color:var(--text-low);
-            font-weight:400; margin-inline-start:.2rem; }
+            font-weight:400; margin-inline-start:.32rem; }
         @media (max-width:1400px) {
             .egx-strip { grid-template-columns:repeat(4, minmax(0,1fr)); }
         }
@@ -1098,7 +1098,13 @@ def context_strip(readings):
         colour = _TONE.get(tone, _TONE["gray"])[2] if tone else "var(--muted)"
         border = (f"border-color:{_TONE[tone][1]}"
                   if tone in _TONE else "")
-        extra = f"<small>{html.escape(str(sub))}</small>" if sub else ""
+        # The separator is a character in the markup, not a margin in the
+        # stylesheet. A count and its share are both numerals in the same
+        # tabular face, and .2rem of margin between them was not a gap a reader
+        # could see: 109 watched and 52% of the scan rendered as "10952%", and
+        # 209/225 with 16 excluded as "209/225-16".
+        extra = (f"<small> · {html.escape(str(sub))}</small>"
+                 if sub else "")
         cells.append(
             f'<div class="c" style="{border}">'
             f'<span class="k"><i style="background:{colour}"></i>'
