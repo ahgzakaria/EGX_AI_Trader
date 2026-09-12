@@ -316,8 +316,11 @@ def test_volume_ratio_and_obv_are_suppressed_when_volume_is_unsafe(result):
 
 
 def test_volume_group_is_present_when_volume_is_safe(result):
+    """OBV's label now says "cumulative" -- the fact asserted here is that the
+    row is present, not what it is called."""
     labels = [label_en for _, label_en, _ in _flat_indicator_rows(result)]
-    assert "Volume Ratio" in labels and "OBV" in labels
+    assert "Volume Ratio" in labels
+    assert any(label.startswith("OBV") for label in labels)
 
 
 def test_missing_indicator_values_render_as_em_dash(result):

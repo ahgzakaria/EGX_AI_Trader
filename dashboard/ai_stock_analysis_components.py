@@ -398,6 +398,86 @@ def volume_analysis_available(indicators: IndicatorSummary) -> bool:
     return bool(indicators.volume_safe)
 
 
+def indicator_readings(indicators: IndicatorSummary, close: float | None):
+    """What the indicator values say, rather than what they are.
+
+    The page rendered sixteen raw numbers in five panels and said nothing about
+    any of them: SMA 20 beside EMA 20 a tenth of a pound apart, MACD beside its
+    own signal beside the histogram that is the difference between them, and an
+    on-balance volume of 1,375,847,323 -- a number whose absolute value carries
+    no meaning at all.
+
+    Every line below is a **restatement of supplied fields**, never a new
+    measurement: a comparison between two numbers the evidence engine already
+    produced, and each one names what it compared. Nothing here computes an
+    indicator, and nothing here is a threshold this project has validated --
+    where a conventional band is used (RSI), the line says it is a convention.
+
+    Returns ``(label_ar, reading, tone, basis)`` tuples. A reading that cannot
+    be made from the fields present is omitted rather than guessed.
+    """
+    readings: list[tuple[str, str, str, str]] = []
+
+    # --- where the close sits in its own trend --------------------------------
+    averages = [("20", indicators.sma_20), ("50", indicators.sma_50),
+                ("200", indicators.sma_200)]
+    known = [(window, value) for window, value in averages if value is not None]
+    if close is not None and known:
+        above = [window for window, value in known if close > value]
+        if len(above) == len(known):
+            reading, tone = f"فوق متوسطاته الـ{len(known)}", "green"
+        elif not above:
+            reading, tone = f"تحت متوسطاته الـ{len(known)}", "red"
+        else:
+            reading, tone = f"فوق {'، '.join(above)} وتحت الباقي", "amber"
+        readings.append((
+            "الإغلاق مقابل متوسطاته", reading, tone,
+            "مقارنة الإغلاق بـ SMA " + "، ".join(w for w, _ in known)))
+
+    # The EMAs are not a second reading. They are the same three windows with a
+    # different weighting, and on this evidence SMA 20 and EMA 20 sat 0.12%
+    # apart -- two panels of numbers for one fact. They stay in the raw table.
+
+    # --- momentum, as the one thing the three MACD fields say -----------------
+    if indicators.macd is not None and indicators.macd_signal is not None:
+        crossed = indicators.macd > indicators.macd_signal
+        readings.append((
+            "MACD مقابل إشارته",
+            "فوق الإشارة" if crossed else "تحت الإشارة",
+            "green" if crossed else "red",
+            "الفرق بينهما هو الهيستوجرام المعروض في الجدول"))
+
+    # --- RSI, with its band named as a convention -----------------------------
+    if indicators.rsi_14 is not None:
+        value = float(indicators.rsi_14)
+        if value >= 70:
+            band, tone = "نطاق التشبع الشرائي", "amber"
+        elif value <= 30:
+            band, tone = "نطاق التشبع البيعي", "amber"
+        else:
+            band, tone = "منتصف النطاق", "gray"
+        readings.append((
+            "مؤشر القوة النسبية", f"{value:.0f} · {band}", tone,
+            "حدود 30/70 عُرف شائع، وليست عتبة مقيسة في هذا المشروع"))
+
+    # --- volatility in a unit that compares across names ----------------------
+    if indicators.atr_14 is not None and close:
+        percent = float(indicators.atr_14) / float(close) * 100.0
+        readings.append((
+            "مدى الحركة اليومي", f"{percent:.1f}% من السعر", "gray",
+            "ATR(14) مقسومًا على الإغلاق"))
+
+    # --- how busy the session was against the name's own normal ---------------
+    if indicators.volume_ratio is not None:
+        ratio = float(indicators.volume_ratio)
+        tone = "green" if ratio >= 1.5 else ("gray" if ratio >= 0.8 else "amber")
+        readings.append((
+            "حجم الجلسة", f"{ratio:.2f}× متوسطه", tone,
+            "الحجم مقسومًا على متوسط 20 جلسة"))
+
+    return readings
+
+
 def indicator_groups(indicators: IndicatorSummary):
     """Typed IndicatorSummary → grouped display rows.
 
@@ -433,7 +513,12 @@ def indicator_groups(indicators: IndicatorSummary):
             ("متوسط الحجم 20", "Average Volume 20",
              dash(indicators.average_volume_20, fmt_volume)),
             ("نسبة الحجم", "Volume Ratio", fmt_ratio(indicators.volume_ratio)),
-            ("الحجم على الرصيد", "OBV", dash(indicators.obv, fmt_compact)),
+            # Kept, and deliberately not promoted to a reading: OBV is a
+            # running total from an arbitrary start, so its absolute value
+            # says nothing. Only its direction over time does, and this page
+            # holds one session.
+            ("الحجم على الرصيد (تراكمي)", "OBV (cumulative)",
+             dash(indicators.obv, fmt_compact)),
             ("قيمة التداول", "Turnover", dash(indicators.turnover, fmt_turnover)),
         ]))
     return groups

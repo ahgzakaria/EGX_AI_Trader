@@ -73,6 +73,7 @@ from dashboard.ai_stock_analysis_components import (
     generate_card_bytes,
     include_live_in_session_range,
     indicator_groups,
+    indicator_readings,
     is_auction,
     isolate_ltr,
     key_level_rows,
@@ -97,6 +98,8 @@ from dashboard.ui import (
     metric_card,
     page_header,
     section_header,
+    TONE_VARS,
+    unavailable_state,
     status_bar,
 )
 from dashboard.formatting import company_name, symbol_option_label
@@ -291,12 +294,12 @@ def _page_style():
             font-variant-numeric:tabular-nums; }
         .egx-kv td.v bdi { unicode-bidi:isolate; }
         .egx-panel { background:var(--surface); border:1px solid var(--border);
-            border-radius:12px; padding:.7rem .85rem; height:100%; }
+            border-radius:var(--r-card); padding:.7rem .85rem; height:100%; }
         .egx-panel h4 { margin:0 0 .45rem; font-size:.86rem; direction:rtl; }
         .egx-panel h4 span { display:block; font-size:.62rem; color:var(--muted);
             text-transform:uppercase; letter-spacing:.04em; direction:ltr; text-align:right; }
         .egx-scenario { background:var(--surface); border:1px solid var(--border);
-            border-left:3px solid var(--blue); border-radius:12px; padding:.8rem .95rem; }
+            border-left:3px solid var(--blue); border-radius:var(--r-card); padding:.8rem .95rem; }
         .egx-scenario .t { font-weight:800; font-size:.98rem; direction:rtl; }
         .egx-conf { display:flex; align-items:center; gap:.6rem; margin:.28rem 0; }
         .egx-conf .lbl { min-width:150px; font-size:.8rem; direction:rtl; }
@@ -314,6 +317,29 @@ def _page_style():
             direction:rtl; text-align:right; white-space:normal; word-break:normal;
             overflow-wrap:break-word; }
         .egx-metric .v.text bdi { unicode-bidi:isolate; }
+        /* A reading: what two supplied numbers say when compared, with the
+           comparison named at the far end of the same line. One line each, so
+           five readings cost five rows rather than ten. The tone is carried on
+           a rule at the row's leading edge rather than on the label, so an
+           amber row stays as legible as a grey one.
+
+           The label column is a fixed width, not a percentage: at 40% of a
+           1300px page it was a 520px column holding a four-word label, which
+           left the reading itself stranded in the middle of the row. */
+        .egx-reads { display:flex; flex-direction:column; gap:1px;
+            background:var(--border); border:1px solid var(--border); }
+        .egx-read { display:flex; align-items:baseline; gap:.7rem; direction:rtl;
+            background:var(--surface); padding:.42rem .7rem;
+            border-right:3px solid var(--tone); }
+        .egx-read .k { flex:0 0 13rem; font-size:.8rem; color:var(--muted); }
+        .egx-read .r { flex:0 0 auto; min-width:11rem; font-weight:700;
+            font-size:.88rem; color:var(--tone); }
+        /* The basis follows the reading rather than being flung to the far
+           edge: left-aligned in an 880px track it began 890px away from the
+           number it explains. */
+        .egx-read .b { flex:1; text-align:right; font-size:.7rem;
+            color:var(--text-low); }
+        .egx-read .r bdi, .egx-read .b bdi { unicode-bidi:isolate; }
         </style>
         """, unsafe_allow_html=True)
 
@@ -515,6 +541,25 @@ def _chart_section(result, presentation=None):
             st.plotly_chart(intraday_figure, use_container_width=True)
 
 
+def _readings_list(readings):
+    """Render `(label, reading, tone, basis)` rows.
+
+    Each row is a comparison between two numbers the evidence engine already
+    supplied, and the small line under it names which two. Nothing is computed
+    here.
+    """
+    rows = []
+    for label_ar, reading, tone, basis in readings:
+        colour = TONE_VARS.get(tone, "var(--muted)")
+        rows.append(
+            f'<div class="egx-read" style="--tone:{colour}">'
+            f'<span class="k">{html.escape(str(label_ar))}</span>'
+            f'<span class="r">{_isolate_identifiers(reading)}</span>'
+            f'<span class="b">{_isolate_identifiers(basis)}</span></div>')
+    st.markdown(f'<div class="egx-reads">{"".join(rows)}</div>',
+                unsafe_allow_html=True)
+
+
 def _technical_section(result):
     section_header("النظرة الفنية", "Technical Overview — supplied typed fields only")
     indicators = result.indicators
@@ -530,13 +575,30 @@ def _technical_section(result):
         metric_card("الزخم", momentum_ar, label_en=f"Momentum · {momentum_en}",
                     tone=momentum_tone, sub=momentum_basis)
 
-    columns = st.columns(len(groups))
-    for column, (title_ar, title_en, rows) in zip(columns, groups):
-        with column:
-            st.markdown(f'<div class="egx-panel"><h4>{html.escape(title_ar)}'
-                        f'<span>{html.escape(title_en)}</span></h4>', unsafe_allow_html=True)
-            _kv_table(rows)
-            st.markdown("</div>", unsafe_allow_html=True)
+    # The readings lead, and the sixteen raw values sit behind one disclosure.
+    # The panels used to BE the section: five columns of numbers with nothing
+    # said about any of them, including two panels of moving averages a tenth of
+    # a pound apart and an OBV total whose absolute value carries no meaning.
+    # The completed session's close, not the live print: every indicator
+    # here was computed on completed sessions, and comparing a live quote
+    # against them would compare two different clocks.
+    close = result.price.close if result.price else None
+    readings = indicator_readings(indicators, close)
+    if readings:
+        _readings_list(readings)
+    else:
+        unavailable_state("لا توجد قراءة", "No reading can be made",
+                          "لم تصل أي من قيم المؤشرات المطلوبة للمقارنة.")
+
+    with st.expander("القيم الخام للمؤشرات · Raw indicator values", expanded=False):
+        columns = st.columns(len(groups))
+        for column, (title_ar, title_en, rows) in zip(columns, groups):
+            with column:
+                st.markdown(f'<div class="egx-panel"><h4>{html.escape(title_ar)}'
+                            f'<span>{html.escape(title_en)}</span></h4>',
+                            unsafe_allow_html=True)
+                _kv_table(rows)
+                st.markdown("</div>", unsafe_allow_html=True)
 
     if not volume_analysis_available(indicators):
         arabic, english = VOLUME_UNAVAILABLE_LABELS

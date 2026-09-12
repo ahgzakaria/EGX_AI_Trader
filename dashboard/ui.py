@@ -48,6 +48,11 @@ _TONE = {name: _tone(rgb) for name, rgb in _TONE_COLOUR.items()}
 #: stylesheet. Charts were picking their own -- #2563eb, #0891b2, #dc2626,
 #: #64748b -- so the same "grey" on two pages was two different greys, and a
 #: drawdown chart was Tailwind red beside a design-system red legend.
+#: The same tones as CSS variable references, for inline styles in markup that
+#: the browser resolves. Unlike COLOURS this is not a second copy of the
+#: palette -- it points at the one declaration in the stylesheet.
+TONE_VARS = {name: f"var(--{name})" for name in _TONE_COLOUR}
+
 COLOURS = {name: _tone(rgb)[2] for name, rgb in _TONE_COLOUR.items()}
 COLOURS.update({
     "accent": "#2f5fd0",        # the action colour, matching --accent
