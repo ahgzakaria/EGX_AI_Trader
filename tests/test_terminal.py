@@ -281,6 +281,31 @@ def test_the_panes_scroll_and_the_page_does_not():
     assert ".term .scroll { overflow:auto" in style  # the panes
 
 
+def test_every_size_in_the_frame_comes_off_the_one_token():
+    """Twenty hard-coded sizes between 8.5px and 20px is how a screen ends up
+    needing a magnifying glass, and how fixing that becomes twenty edits."""
+    style = re.sub(r"/\*.*?\*/", "", terminal.style_html(), flags=re.S)
+    literals = [size for size in re.findall(r"font-size:([^;}]+)", style)
+                if "px" in size and "--term-fs" not in size]
+    assert not literals, f"a size that does not move with the token: {literals}"
+
+
+def test_nothing_in_the_frame_is_drawn_below_the_legibility_floor():
+    """`em` compounds: a .82em label inside a .82em header rendered at 9.1px,
+    the smallest thing on the screen, which is the opposite of what a label
+    nested inside a heading should be."""
+    style = re.sub(r"/\*.*?\*/", "", terminal.style_html(), flags=re.S)
+    base = terminal.TERMINAL_FONT_PX
+    for size in re.findall(r"font-size:\s*\.(\d+)em", style):
+        assert base * float(f"0.{size}") >= 11.0, (
+            f".{size}em of {base}px is below the floor")
+
+
+def test_the_type_size_is_one_number():
+    assert "--term-fs:12px" in terminal.style_html(font_px=12)
+    assert terminal.TERMINAL_FONT_PX >= 13
+
+
 def test_the_terminal_takes_its_colours_from_the_one_palette():
     """A second copy of the palette is how the greens stopped agreeing."""
     style = re.sub(r"/\*.*?\*/", "", terminal.style_html(), flags=re.S)

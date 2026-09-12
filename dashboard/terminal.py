@@ -44,6 +44,12 @@ TERMINAL_HEIGHT = 900
 #: collapsed the container's padding and hidden the Streamlit header.
 TERMINAL_CHROME = 16
 
+#: The one number the whole screen is sized from. Every other size in the frame
+#: is an ``em`` multiple of it, so changing the type size is changing this and
+#: nothing else -- the first pass hard-coded twenty sizes between 8.5px and
+#: 20px, and 8.5px column headings on a 1080p screen are not readable.
+TERMINAL_FONT_PX = 13.5
+
 
 # --------------------------------------------------------------------------- #
 # formatting
@@ -322,11 +328,11 @@ header[data-testid="stHeader"] { display:none !important; }
    them pushed the frame 48px down the page. */
 [data-testid="stMainBlockContainer"] [data-testid="stVerticalBlock"] {
     gap:0 !important; }
-.term { height:calc(100vh - __CHROME__px); display:grid;
-    grid-template-rows:28px 1fr 22px; background:var(--surface);
+.term { --term-fs:__FS__px; height:calc(100vh - __CHROME__px); display:grid;
+    grid-template-rows:2.4em 1fr 1.9em; background:var(--surface);
     border:1px solid var(--border); overflow:hidden;
     font-family:var(--font-mono);
-    font-size:11px; line-height:1.35; color:var(--text);
+    font-size:var(--term-fs); line-height:1.4; color:var(--text);
     font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1,"zero" 1; }
 .term * { box-sizing:border-box; }
 
@@ -335,17 +341,18 @@ header[data-testid="stHeader"] { display:none !important; }
     border-bottom:1px solid var(--border); }
 .term .rail .brand { display:flex; align-items:center; padding:0 12px;
     font-weight:600; letter-spacing:.06em; border-right:1px solid var(--border); }
-.term .rail .k { padding:0 10px; color:var(--text-low); font-size:9px;
+.term .rail .k { padding:0 10px; color:var(--text-low); font-size:.82em;
     letter-spacing:.12em; text-transform:uppercase;
     border-right:1px solid var(--border); display:flex; align-items:center;
     gap:6px; white-space:nowrap; }
-.term .rail .k b { color:var(--text); font-weight:500; font-size:11px;
+.term .rail .k b { color:var(--text); font-weight:500;
+    font-size:var(--term-fs);
     letter-spacing:0; text-transform:none; }
 .term .rail .k i, .term .status .c i { width:5px; height:5px; border-radius:50%;
     display:block; flex-shrink:0; }
 .term .rail .sp { flex:1; border-right:1px solid var(--border); }
 .term .rail a { display:flex; align-items:center; padding:0 14px;
-    color:var(--muted); font-size:9.5px; letter-spacing:.1em;
+    color:var(--muted); font-size:.85em; letter-spacing:.1em;
     text-transform:uppercase; text-decoration:none;
     border-right:1px solid var(--border); }
 .term .rail a:last-child { border-right:0; }
@@ -364,12 +371,13 @@ header[data-testid="stHeader"] { display:none !important; }
 .term .ph { display:flex; align-items:center; justify-content:space-between;
     gap:8px; padding:5px 10px; background:var(--bg-2);
     border-bottom:1px solid var(--border); flex-shrink:0; }
-.term .ph h2 { font-size:9px; font-weight:600; letter-spacing:.14em;
+.term .ph h2 { font-size:.82em; font-weight:600; letter-spacing:.14em;
     text-transform:uppercase; color:var(--muted); margin:0; }
-.term .ph h2 .ar { font-family:var(--font-ar); font-size:10px;
+.term .ph h2 .ar { font-family:var(--font-ar);
+    font-size:calc(var(--term-fs) * .85);
     color:var(--text-low); font-weight:400; letter-spacing:0;
     text-transform:none; margin-right:6px; }
-.term .ph .meta { font-size:9.5px; color:var(--text-low); letter-spacing:.04em;
+.term .ph .meta { font-size:.85em; color:var(--text-low); letter-spacing:.04em;
     white-space:nowrap; }
 .term .scroll { overflow:auto; min-height:0; flex:1; }
 .term .scroll::-webkit-scrollbar { width:7px; height:7px; }
@@ -380,20 +388,20 @@ header[data-testid="stHeader"] { display:none !important; }
     border-bottom:1px solid var(--border); flex-shrink:0; }
 .term .figs > div { padding:6px 10px; border-right:1px solid var(--border); }
 .term .figs > div:last-child { border-right:0; }
-.term .figs .k, .term .idx .k, .term .bars .lbl { font-size:8.5px;
+.term .figs .k, .term .idx .k, .term .bars .lbl { font-size:.82em;
     letter-spacing:.1em; text-transform:uppercase; color:var(--text-low); }
-.term .figs .v { font-size:15px; font-weight:600; margin-top:2px;
+.term .figs .v { font-size:1.3em; font-weight:600; margin-top:2px;
     letter-spacing:-.01em; }
-.term .figs .s { font-size:9px; color:var(--text-low); margin-top:1px; }
+.term .figs .s { font-size:.82em; color:var(--text-low); margin-top:1px; }
 
 /* tables */
 .term table { width:100%; border-collapse:collapse; }
-.term th { position:sticky; top:0; background:var(--bg-2); font-size:8.5px;
+.term th { position:sticky; top:0; background:var(--bg-2); font-size:.82em;
     font-weight:600; letter-spacing:.1em; text-transform:uppercase;
-    color:var(--text-low); text-align:left; padding:4px 8px;
+    color:var(--text-low); text-align:left; padding:5px 9px;
     border-bottom:1px solid var(--border); z-index:1; }
 .term th.r, .term td.r { text-align:right; }
-.term td { padding:3px 8px; border-bottom:1px solid rgba(255,255,255,.035);
+.term td { padding:4px 9px; border-bottom:1px solid rgba(255,255,255,.035);
     white-space:nowrap; }
 .term tbody tr:hover td { background:rgba(255,255,255,.035); }
 .term td.t { font-weight:600; color:var(--text); }
@@ -403,14 +411,14 @@ header[data-testid="stHeader"] { display:none !important; }
    gate wears elsewhere: it is not a row with a zero in it. */
 .term tr.unk td { background:repeating-linear-gradient(45deg,
     rgba(192,132,252,.07) 0 3px, transparent 3px 6px); }
-.term .sig { font-size:8.5px; font-weight:600; letter-spacing:.06em;
+.term .sig { font-size:.82em; font-weight:600; letter-spacing:.06em;
     padding:1px 4px; border:1px solid; }
 .term .sig.buy { color:var(--green); border-color:rgba(61,220,151,.45); }
 .term .sig.watch { color:var(--amber); border-color:rgba(255,176,32,.4); }
 .term .sig.avoid, .term .sig.hold { color:var(--text-low);
     border-color:var(--border); }
 .term .sig.exit { color:var(--red); border-color:rgba(255,92,108,.45); }
-.term .rg { color:var(--text-low); font-size:9px; letter-spacing:.04em; }
+.term .rg { color:var(--text-low); font-size:.82em; letter-spacing:.04em; }
 
 /* one trade drawn to scale */
 .term td.rail { width:118px; position:relative; padding:3px 8px; }
@@ -424,17 +432,17 @@ header[data-testid="stHeader"] { display:none !important; }
 /* market */
 .term .idx { padding:8px 10px; border-bottom:1px solid var(--border);
     flex-shrink:0; }
-.term .idx .v { font-size:20px; font-weight:600; letter-spacing:-.02em;
+.term .idx .v { font-size:1.55em; font-weight:600; letter-spacing:-.02em;
     margin-top:1px; }
-.term .idx .d { font-size:10px; margin-top:1px; }
+.term .idx .d { font-size:.82em; margin-top:1px; }
 .term .kv { display:flex; justify-content:space-between; gap:8px;
-    padding:3.5px 10px; border-bottom:1px solid rgba(255,255,255,.035);
-    font-size:10.5px; }
+    padding:4.5px 10px; border-bottom:1px solid rgba(255,255,255,.035);
+    font-size:.86em; }
 .term .kv .k { color:var(--text-low); }
 .term .bars { padding:9px 10px; }
 .term .bars .lbl { margin-bottom:6px; }
 .term .bar { display:grid; grid-template-columns:44px 1fr 30px; gap:7px;
-    align-items:center; margin-bottom:4px; font-size:10px; }
+    align-items:center; margin-bottom:4px; font-size:.82em; }
 .term .bar .n { color:var(--muted); }
 .term .bar .t { height:6px; background:var(--bg-2);
     border:1px solid var(--border); position:relative; }
@@ -445,13 +453,13 @@ header[data-testid="stHeader"] { display:none !important; }
 
 /* a pane that could not be computed */
 .term .na { padding:14px 12px; }
-.term .na b { color:var(--unknown); font-size:15px; }
-.term .na p { margin:4px 0 0; color:var(--text-low); font-size:10px;
+.term .na b { color:var(--unknown); font-size:1.3em; }
+.term .na p { margin:4px 0 0; color:var(--text-low); font-size:.82em;
     line-height:1.6; max-width:34em; }
 
 /* status line */
 .term .status { display:flex; align-items:stretch; background:var(--bg-2);
-    border-top:1px solid var(--border); font-size:9.5px;
+    border-top:1px solid var(--border); font-size:.85em;
     color:var(--text-low); }
 .term .status .c { padding:0 10px; display:flex; align-items:center; gap:6px;
     border-right:1px solid var(--border); white-space:nowrap; }
@@ -462,7 +470,7 @@ header[data-testid="stHeader"] { display:none !important; }
 """
 
 
-def style_html(chrome=TERMINAL_CHROME):
+def style_html(chrome=TERMINAL_CHROME, font_px=TERMINAL_FONT_PX):
     """The stylesheet, with what sits above and below the frame subtracted.
 
     A plain replace rather than %-formatting: the sheet is full of literal
@@ -470,7 +478,8 @@ def style_html(chrome=TERMINAL_CHROME):
     them would have to be doubled, which is a footgun sitting in the middle of
     a stylesheet nobody expects to be a format string.
     """
-    return STYLE.replace("__CHROME__", str(int(chrome)))
+    return (STYLE.replace("__CHROME__", str(int(chrome)))
+                 .replace("__FS__", f"{float(font_px):g}"))
 
 
 # --------------------------------------------------------------------------- #

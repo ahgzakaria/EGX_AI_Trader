@@ -156,10 +156,15 @@ def apply_global_style():
             --border-hover: rgba(255,255,255,.2); --surface-hover: #161d2c;
             --link: #9dbcff;
         }
-        /* 12px, not 16. Sixteen is a reading size for prose on a website; this is
-   an instrument read by sweeping, and the size is what separates the two
-   before a single colour or border is chosen. */
-.stApp { background: var(--bg); color: var(--text); font-size:12px;
+        /* Not 16. Sixteen is a reading size for prose on a website; this is an
+   instrument read by sweeping, and the size is what separates the two before a
+   single colour or border is chosen.
+
+   But 12px was too far. On the 1920x1080 screen this is actually read on, at
+   100% zoom, the tables came back as "I need a magnifying glass" -- and a
+   number nobody can read is not dense, it is absent. 13.5px keeps the
+   instrument register and is legible at arm's length. */
+.stApp { background: var(--bg); color: var(--text); font-size:13.5px;
             font-family: var(--font-sans); }
         /* Digits that sit in a column must line up in that column. `zero` as
            well as `tnum`: a slashed zero is what separates 0 from O in a
@@ -219,7 +224,7 @@ def apply_global_style():
         [data-testid="stSidebarUserContent"] { order:1; padding-bottom:.35rem; }
         [data-testid="stSidebarNav"] { order:2; }
         [data-testid="stSidebarNav"] a {
-            border-radius: 0; min-height:26px; font-size:.8rem;
+            border-radius: 0; min-height:30px; font-size:.85rem;
             border-left:2px solid transparent; padding-left:.5rem;
         }
         [data-testid="stSidebarNav"] a:hover {
@@ -312,16 +317,17 @@ def apply_global_style():
            it is a label you learn once, while the cells are read every day. */
         [data-testid="stDataFrame"] {
             border: 1px solid var(--border); border-radius: 0; overflow: hidden;
-            font-size:11.5px;
+            font-size:13px;
         }
         [data-testid="stDataFrame"] [role="columnheader"] {
-            font-size:9.5px; font-weight:600; letter-spacing:.1em;
+            font-size:11px; font-weight:600; letter-spacing:.08em;
             text-transform:uppercase; color:var(--text-low);
         }
-        /* 26px rows. Forty was a floor set for a 16px page; at 11.5px it is two
-   lines of air around one line of type, and it is why a scan of 209 names
-   needed eight screens. */
-[data-testid="stDataFrame"] [role="gridcell"] { font-size:11.5px; min-height:26px; }
+        /* 30px rows. Forty was a floor set for a 16px page -- two lines of air
+   around one line of type, and why a scan of 209 names needed eight screens.
+   Thirty is one line of 13px type with room to breathe, which is the point at
+   which a column of prices can actually be read down. */
+[data-testid="stDataFrame"] [role="gridcell"] { font-size:13px; min-height:30px; }
 
         /* Tabs as an underlined rail. The pills-in-a-box they replace read as
            a second, competing navigation next to the sidebar's. */

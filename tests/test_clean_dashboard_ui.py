@@ -90,19 +90,24 @@ def test_global_style_is_set_at_terminal_density():
     that is swept: at 16px a 209-row scan needs eight screens, and the request
     on 2026-09-12 was explicitly for a dense terminal that does not scroll.
 
-    The floors are not gone, they moved. Nothing here goes below 9.5px, which
-    is the label size, and table cells stay at 11.5px.
+    The floors are not gone, they moved -- and then they moved back up once.
+    The first pass put the body at 12px, cells at 11.5px and column headings at
+    9.5px, and on the 1920x1080 screen this is actually read on, at 100% zoom,
+    the answer that came back was that it needed a magnifying glass. A number
+    nobody can read is not dense, it is absent. The register is unchanged --
+    this is still an instrument, not a page of prose -- but the floor is now
+    11px for a label and 13px for anything carrying a number.
     """
     import re
 
     source = Path("dashboard/ui.py").read_text(encoding="utf-8")
-    assert "font-size:12px" in source                       # body
-    assert "font-size:11.5px" in source                     # table cells
+    assert "font-size:13.5px" in source                     # body
+    assert "font-size:13px" in source                       # table cells
     assert "min-height: 28px" in source                     # controls
     assert "@media (max-width: 900px)" in source
     smallest = min(float(size) for size in
                    re.findall(r"font-size:\s*([\d.]+)px", source))
-    assert smallest >= 9.5, f"{smallest}px is below the label floor"
+    assert smallest >= 11.0, f"{smallest}px is below the label floor"
 
 
 def test_system_health_owns_developer_diagnostics_language():
