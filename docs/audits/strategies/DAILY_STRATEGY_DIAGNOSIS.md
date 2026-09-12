@@ -195,6 +195,46 @@ Reproduce: `python scripts/research/isolated_backtest.py --label with_index`
 against `reports/experiments/20260911_202536_mubasher_no_index` (the run made
 before the index was frozen, with the record otherwise identical).
 
+### And then switched off, on purpose
+
+Asked for on 2026-09-12, measured before it was applied.
+`strategy.require_market_analyzer` is now `false` in `config/settings.json`.
+
+A third run, `--set strategy.require_market_analyzer=false` with the index
+present, reproduces the "filter open" column **exactly**: 609 trades, profit
+factor 1.54, total return 142.71%, Sharpe 0.81. Not approximately -- the two
+results files agree on every symbol, date and price of all 609 trades, in the
+same order. The one column that differs is `reasons`, and it differs on
+609 rows out of 609:
+
+```
+- TRENDING | Market Analyzer unavailable (...holds no ^CASE30) - defaulting to allow | Perfect EMA Alignment | ...
++ TRENDING | Perfect EMA Alignment | ...
+```
+
+That line on every trade ever taken is what the defect looked like from inside
+the data, and its disappearance is the whole change. So the three states are
+now known and separated:
+
+| | trades | profit factor | total return |
+|---|---|---|---|
+| gate on, index missing (what shipped for years) | 609 | 1.54 | 142.71% |
+| gate off, index present (**now**) | 609 | 1.54 | 142.71% |
+| gate on, index present | 561 | 1.49 | 121.25% |
+
+The first two are the same measurement. What changed is that the first was an
+accident reported as `PASS` and the second is a decision, with the cost of the
+alternative measured beside it.
+
+The index itself is not switched off by this and is not wasted: it is still
+loaded, still reported as `IndexRegime` on every scan row and on the stock
+detail page, and `strategy_selector/market_classifier.py` still reads it. It
+informs; it no longer blocks. Turning the gate back on is one line in
+`config/settings.json`, and the table above says what it costs.
+
+Runs: `20260911_202536_mubasher_no_index`, `20260912_075758_mubasher_with_index`,
+`20260912_081329_filter_off`.
+
 ## 8. Prices are rounded to two decimals on a market that trades in piastres
 
 `entry.py` rounds `BuyHigh`, `StopLoss`, `Target1` and `Target2` with

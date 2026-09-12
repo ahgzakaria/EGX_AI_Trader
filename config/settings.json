@@ -72,7 +72,7 @@
         "market_index_slow_ema": 200,
         "max_rr": 100.0,
         "require_candle_confirmation": false,
-        "require_market_analyzer": true,
+        "require_market_analyzer": false,
         "require_quality_filter": true,
         "quality_min_adx": 21,
         "quality_min_volume_ratio": 1.0,
