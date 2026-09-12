@@ -505,6 +505,45 @@ def apply_global_style():
         .egx-quiet p { margin:.5rem 0 0; color:var(--muted); font-size:.88rem;
             line-height:1.7; max-width:78ch; }
 
+        /* --- a panel that could not be computed ----------------------------
+           The third member of the set, and the one the app was missing. There
+           are three different nothings and they were all `.egx-empty`:
+
+             empty        nothing is here -- no search results, nothing loaded
+             quiet        it was measured and the answer is none
+             unavailable  it could not be computed, so there is no answer
+
+           The Sector Liquidity page alone had five of the third kind wearing
+           the first's clothes: no complete session, no strength measurement,
+           no rotation history, no forecast, no live forecast. Each is "not
+           enough data yet", which is the unknown state of a whole panel --
+           so it wears the same violet hatch a single unmeasured value does. */
+        .egx-unavailable { border:1px solid var(--unknown-border);
+            border-radius:var(--r-card); background:var(--unknown-hatch);
+            padding:1rem 1.15rem; }
+        .egx-unavailable strong { display:block; color:var(--unknown);
+            font-size:.98rem; font-weight:600; }
+        .egx-unavailable p { margin:.45rem 0 0; color:var(--muted);
+            font-size:.88rem; line-height:1.7; max-width:78ch; }
+        .egx-unavailable .need { display:inline-block; margin-top:.5rem;
+            font-family:var(--font-mono); font-size:.72rem; color:var(--text-low);
+            border:1px dashed var(--unknown-border); border-radius:var(--r-chip);
+            padding:.1rem .4rem; }
+
+        /* --- a projection, which is not a measurement ----------------------
+           Sector share and a forecast of sector share were four tables of
+           percentages in identical dress. Dashed, because every other border
+           on these pages is solid and solid is what measured looks like. */
+        .egx-projection { border:1px dashed rgba(96,165,250,.5);
+            border-left:3px solid var(--blue); border-radius:var(--r-card);
+            background:var(--blue-bg); padding:.6rem .85rem; margin:.1rem 0 .5rem;
+            display:flex; gap:.6rem; align-items:baseline; flex-wrap:wrap; }
+        .egx-projection b { font-family:var(--font-mono); font-size:.66rem;
+            letter-spacing:.06em; text-transform:uppercase; color:var(--blue);
+            white-space:nowrap; }
+        .egx-projection span { color:var(--muted); font-size:.83rem;
+            line-height:1.65; }
+
         .egx-rangebar { position:relative; height:8px; border-radius:999px;
             background: linear-gradient(90deg,#10233f,#12325a); border:1px solid var(--border); }
         .egx-rangebar .dot { position:absolute; top:-3px; width:12px; height:12px; border-radius:50%;
@@ -617,6 +656,37 @@ def quiet_state(title, message, count=""):
         f'<div class="egx-quiet"><div class="h">'
         f'<strong>{html.escape(str(title))}</strong>{chip}</div>'
         f'<p>{html.escape(str(message))}</p></div>',
+        unsafe_allow_html=True)
+
+
+def unavailable_state(title, message, needs=""):
+    """A panel that could not be computed -- not one that came back empty.
+
+    "No complete session yet" and "no rows matched your filter" were the same
+    grey dashed box. They are not the same fact: one is a gap in the record
+    that will close, the other is an answer. ``needs`` states what would make
+    it computable, because a reader who cannot see a panel should be able to
+    tell whether to wait, to run something, or to stop expecting it.
+    """
+    need = (f'<span class="need">{html.escape(str(needs))}</span>'
+            if needs else "")
+    st.markdown(
+        f'<div class="egx-unavailable">'
+        f'<strong>{html.escape(str(title))}</strong>'
+        f'<p>{html.escape(str(message))}</p>{need}</div>',
+        unsafe_allow_html=True)
+
+
+def projection_note(message, label="PROJECTION · تقدير"):
+    """Marks what follows as a projection rather than a measurement.
+
+    Sector share and a forecast of sector share are both tables of percentages
+    and were rendered identically. This goes immediately above the projected
+    one, so the distinction cannot be lost by scrolling past a caption.
+    """
+    st.markdown(
+        f'<div class="egx-projection"><b>{html.escape(str(label))}</b>'
+        f'<span>{html.escape(str(message))}</span></div>',
         unsafe_allow_html=True)
 
 

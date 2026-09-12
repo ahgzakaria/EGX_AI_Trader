@@ -26,7 +26,8 @@ import pandas as pd
 import streamlit as st
 
 from config.settings_manager import settings
-from dashboard.ui import empty_state, metric_card, page_header, section_header, status_bar
+from dashboard.ui import (empty_state, metric_card, page_header, projection_note,
+                         section_header, status_bar, unavailable_state)
 from decision_support.sector_analysis import load_sector_map
 from sector_flow.builder import (
     DEFAULT_DATABASE,
@@ -104,7 +105,14 @@ def show_sector_flow():
     usable = complete_sessions(history)
     snapshot = latest_snapshot(history)
     if snapshot.empty:
-        empty_state("No complete session", "Every stored session failed the coverage check.", icon="🌊")
+        unavailable_state(
+            "No complete session · لا توجد جلسة مكتملة",
+            "Every stored session failed the coverage check. A sector share is "
+            "one symbol's turnover over the market's, so a session that is "
+            "missing part of the market is excluded whole rather than shown in "
+            "part.",
+            needs="a session passing the coverage check",
+        )
         return
 
     session = snapshot["SessionDate"].iloc[0].date()
@@ -205,7 +213,11 @@ def _strength(history):
     )
     frame = strength_frame(history)
     if frame.empty:
-        empty_state("No measurement", "No complete session to measure strength from.")
+        unavailable_state(
+            "No measurement · لا يوجد قياس",
+            "There is no complete session to measure strength from.",
+            needs="one complete session",
+        )
         return
 
     st.dataframe(
@@ -238,7 +250,12 @@ def _rotation(history):
     )
     matrix = rotation_matrix(history, sessions=HEATMAP_SESSIONS)
     if matrix.empty:
-        empty_state("No rotation history", "Not enough complete sessions yet.")
+        unavailable_state(
+            "No rotation history · لا يوجد تاريخ دوران",
+            "Rotation is measured across sessions, and not enough complete ones "
+            "are stored yet.",
+            needs=f"{HEATMAP_SESSIONS} complete sessions",
+        )
         return
 
     ordered = matrix[matrix.mean().sort_values(ascending=False).index]
@@ -256,7 +273,12 @@ def _next_session(history):
     )
     baseline = baseline_forecast(history)
     if baseline.empty:
-        empty_state("No forecast", "Not enough complete sessions.")
+        unavailable_state(
+            "No forecast · لا يوجد توقّع",
+            "The baseline averages the last five complete sessions, and there "
+            "are not enough of them yet.",
+            needs="5 complete sessions",
+        )
         return
 
     st.warning(
@@ -285,6 +307,12 @@ def _next_session(history):
     })
     if "Baseline" in frame:
         table["الموديل (للمقارنة)"] = frame["Predicted"].map(lambda v: _percent(v, 2))
+    # Every other table on this page is measured exchange turnover. This one is
+    # not, and four tables of percentages in identical dress cannot be told
+    # apart by scrolling past a caption.
+    projection_note(
+        "أرقام هذا الجدول محسوبة من الجلسات السابقة ولم تُقَس — ليست دوراناً "
+        "فعلياً كبقية الصفحة.")
     st.dataframe(table, hide_index=True, use_container_width=True)
 
 
@@ -296,9 +324,11 @@ def _intraday_section(history):
     rubix = settings.get("market_data").get("rubix_db_path")
     minutes = _intraday(rubix, "data/sectors.csv")
     if minutes.empty:
-        empty_state(
-            "No intraday candles",
-            "The live collector has not recorded any minute bars for a mapped symbol.",
+        unavailable_state(
+            "No intraday candles · لا توجد شموع لحظية",
+            "The live collector has not recorded any minute bars for a mapped "
+            "symbol.",
+            needs="the intraday collector running",
         )
         return
 
@@ -313,12 +343,17 @@ def _intraday_section(history):
 
     forecast = forecast_rest_of_day(minutes, complete_sessions(history))
     if forecast.empty:
-        empty_state(
-            "No live forecast",
-            f"Fewer than {MIN_OPENING_MINUTES} minutes of the opening window were observed.",
+        unavailable_state(
+            "No live forecast · لا يوجد توقّع حي",
+            "Too little of the opening window has been observed to blend it "
+            "with yesterday.",
+            needs=f"{MIN_OPENING_MINUTES} opening minutes",
         )
         return
 
+    projection_note(
+        "مزيج من أول ثلاثين دقيقة ومن جلسة أمس. الجلسة لم تُغلق بعد، "
+        "فهذه أرقام مُقدَّرة لا مُقاسة.")
     st.dataframe(
         pd.DataFrame({
             "القطاع": forecast["Sector"],
