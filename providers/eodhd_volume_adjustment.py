@@ -47,7 +47,11 @@ _SEVERITY = {NONE: 0, KEEP_RAW: 1, MULTIPLY_BY_FACTOR: 2, PROVIDER_ALREADY_ADJUS
 _BLOCKING = {EVENT_SPECIFIC, UNRESOLVED}
 
 RECON_PATH = Path("reports/eodhd/corporate_action_reconciliation.csv")
-CORPORATE_ACTION_POLICY_VERSION = "corporate_action_reconciliation@2026-07-23"
+# The version travels with every frame as provenance, so it moves whenever
+# the reconciliation behind it moves. 2026-09-12 added nine events across
+# six symbols, judged against the measured Mubasher record rather than
+# against Yahoo.
+CORPORATE_ACTION_POLICY_VERSION = "corporate_action_reconciliation@2026-09-12"
 # Longest volume window used by the liquidity ranking (avg_volume_30); the safety gate
 # checks whether a non-multiply event falls within this many completed sessions.
 DEFAULT_VOLUME_LOOKBACK_SESSIONS = 30
