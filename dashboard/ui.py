@@ -381,6 +381,52 @@ def apply_global_style():
             letter-spacing:.02em; white-space:nowrap; }
         .egx-prov b { font-weight:500; color:var(--muted); }
 
+        /* --- the action card, in four kinds -------------------------------
+           The portfolio page has four things to say about a holding and they
+           were three generic banners and a card. They are different facts and
+           they send the reader to different places:
+
+             act          something to do now, priced after costs
+             unvalidated  a recommendation whose rule has never been measured
+             withheld     no trustworthy price, so no advice is issued at all
+             noplan       nothing was ever measured for this holding
+
+           `withheld` is amber because it is a freshness problem and running
+           the import fixes it. `noplan` is the unknown violet because nothing
+           was ever computed -- the same distinction as everywhere else. */
+        .egx-act { background:var(--surface); border:1px solid var(--border);
+            border-left:3px solid var(--gray); border-radius:var(--r-card);
+            padding:.8rem 1rem; margin-bottom:.55rem; }
+        .egx-act.k-act.t-red { border-left-color:var(--red); }
+        .egx-act.k-act.t-amber { border-left-color:var(--amber); }
+        .egx-act.k-act.t-green { border-left-color:var(--green); }
+        .egx-act.k-act.t-blue { border-left-color:var(--blue); }
+        .egx-act.k-unvalidated { border-left-color:var(--blue);
+            background:linear-gradient(var(--blue-bg), var(--blue-bg)), var(--surface); }
+        .egx-act.k-withheld { border-left-color:var(--amber);
+            background:linear-gradient(var(--amber-bg), var(--amber-bg)), var(--surface); }
+        .egx-act.k-noplan { border-left-color:var(--unknown);
+            background:var(--unknown-hatch), var(--surface); }
+        .egx-act .top { display:flex; justify-content:space-between; align-items:center;
+            gap:.6rem; flex-wrap:wrap; }
+        .egx-act .tick { font-size:1.05rem; font-weight:600; letter-spacing:-.01em; }
+        .egx-act .name { font-size:.76rem; color:var(--muted); font-weight:400;
+            margin-right:.45rem; }
+        .egx-act .badges { display:flex; gap:.3rem; flex-wrap:wrap; }
+        .egx-act .why { margin-top:.5rem; line-height:1.75; color:var(--text); }
+        /* The figures a decision is actually made on, in one row, monospaced
+           so two cards can be compared down the column rather than read. */
+        .egx-act .nums { display:flex; flex-wrap:wrap; gap:.15rem 1.4rem;
+            margin-top:.55rem; padding-top:.5rem; border-top:1px solid var(--border);
+            font-family:var(--font-mono); font-variant-numeric:tabular-nums;
+            font-size:.78rem; }
+        .egx-act .nums div { display:flex; gap:.4rem; }
+        .egx-act .nums .k { color:var(--text-low); font-family:var(--font-sans);
+            font-size:.72rem; }
+        .egx-act .nums .v { color:var(--text); }
+        .egx-act .nums .v.pos { color:var(--green); }
+        .egx-act .nums .v.neg { color:var(--red); }
+
         /* --- evidence, not an instruction ---------------------------------
            Worn by any panel whose output is research rather than a trade to
            place. Blue, never green: green on this page means a position made
@@ -747,6 +793,39 @@ def provenance_html(source, label="src"):
 def advisory_html(text="ADVISORY · بحث استرشادي"):
     """Marks a panel as evidence to read, not an instruction to act on."""
     return f'<span class="egx-advisory">{html.escape(str(text))}</span>'
+
+
+#: What a holding's card is saying. Four kinds, because "sell this now", "the
+#: rule behind this was never measured", "no price I trust, so no advice" and
+#: "nothing was ever measured for this holding" are four different facts and
+#: were three generic banners and a card.
+ACT, UNVALIDATED, WITHHELD_KIND, NO_PLAN = "act", "unvalidated", "withheld", "noplan"
+
+
+def action_card_html(ticker, *, kind=ACT, tone="gray", name="", badges=(),
+                     why="", figures=()):
+    """One holding's card. ``figures`` is ``(label, value, tone)`` triples.
+
+    ``tone`` colours the leading rail for an ``ACT`` card only; the other three
+    kinds carry their own, because what they mean does not vary by action.
+    """
+    head = f'<span class="tick">{html.escape(str(ticker))}</span>'
+    if name:
+        head += f'<span class="name">{html.escape(str(name))}</span>'
+    numbers = ""
+    if figures:
+        cells = []
+        for label, value, figure_tone in figures:
+            css = f" {figure_tone}" if figure_tone in ("pos", "neg") else ""
+            cells.append(f'<div><span class="k">{html.escape(str(label))}</span>'
+                         f'<span class="v{css}">{html.escape(str(value))}</span></div>')
+        numbers = f'<div class="nums">{"".join(cells)}</div>'
+    return (
+        f'<div class="egx-act k-{html.escape(kind)} t-{html.escape(tone)}">'
+        f'<div class="top"><div>{head}</div>'
+        f'<div class="badges">{"".join(badges)}</div></div>'
+        f'<div class="why">{why}</div>{numbers}</div>'
+    )
 
 
 def status_badge(status):

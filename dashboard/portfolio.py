@@ -22,6 +22,7 @@ Read-only with respect to the market: no order is placed anywhere, ever.
 
 from __future__ import annotations
 
+import html
 from collections import Counter
 from datetime import date
 
@@ -32,8 +33,13 @@ from holdings import imports, invoices
 
 from core.level_status import BASIS_COMPLETED_CLOSE, BASIS_LIVE
 from core.symbols import ApprovedSymbol, load_approved_symbol_options, resolve_approved_symbol
-from dashboard.formatting import NAME_COLUMN, with_company_name_column
+from dashboard.formatting import NAME_COLUMN, company_name, with_company_name_column
 from dashboard.ui import (
+    ACT,
+    NO_PLAN,
+    UNVALIDATED,
+    WITHHELD_KIND,
+    action_card_html,
     badge_html,
     empty_state,
     metric_card,
@@ -159,37 +165,50 @@ def _summary(view):
     # Whole pounds in the summary: five cards on one row wrap a decimal onto a
     # second line, and piastres carry no information at portfolio scale. The
     # positions table below keeps three decimals, where they decide things.
-    columns = st.columns(5)
-    with columns[0]:
-        metric_card("القيمة السوقية", _money(view.market_value_egp, 0), "Market Value")
-    with columns[1]:
-        net = view.unrealized_net_egp
-        metric_card("ربح غير محقق (صافي)", _money(net, 0), "Unrealized, after costs",
-                    tone="green" if net >= 0 else "red")
-    with columns[2]:
-        realized = view.book.realized_pnl_egp
-        metric_card("ربح محقق", _money(realized, 0), "Realized",
-                    tone="green" if realized >= 0 else "red")
-    with columns[3]:
-        metric_card("الكاش", _money(view.book.cash_egp, 0), "Cash")
-    with columns[4]:
-        exposure = view.exposure_percent
-        metric_card("نسبة التعرض", "—" if exposure is None else f"{exposure:.1f}%",
-                    "Invested / Equity")
-
-    # Total risk against the same limit the backtest is run under, so a reader
-    # comparing the two is comparing like with like.
+    # Risk to the stop is promoted to a tile of its own. It was a caption under
+    # the row, in the same grey as the note about unpriced positions -- and it
+    # is the only number here that makes two positions of different sizes and
+    # different stop distances comparable, which is what the reader is doing.
+    # Market value, unrealised profit and money-still-at-risk are three
+    # different quantities and they read identically until one of them is
+    # weighted differently.
     risk = sum(value for value in (_risk_egp(item) for item in view.positions)
                if value is not None)
     equity = view.total_equity_egp
-    if risk and equity > 0:
-        percent = risk / equity * 100.0
-        limit = float(getattr(view.policy, "max_portfolio_risk_percent", 0) or 0)
-        st.caption(
-            f"إجمالي المخاطرة حتى الوقف: {_money(risk, 0)} جنيه "
-            f"({percent:.1f}% من رأس المال)"
-            + (f" — الحد في إعدادات الباك-تست {limit:.0f}%." if limit else ".")
+    limit = float(getattr(view.policy, "max_portfolio_risk_percent", 0) or 0)
+    risk_percent = (risk / equity * 100.0) if equity > 0 else None
+
+    columns = st.columns(5)
+    with columns[0]:
+        exposure = view.exposure_percent
+        metric_card("القيمة السوقية", _money(view.market_value_egp, 0), "Market Value",
+                    sub=("" if exposure is None
+                         else f"نسبة التعرض للأسهم: {exposure:.1f}%"))
+    with columns[1]:
+        net = view.unrealized_net_egp
+        metric_card("ربح غير محقق (صافي)", _money(net, 0), "Unrealized, after costs",
+                    tone="green" if net >= 0 else "red",
+                    sub="بعد العمولة والدمغة وتكلفة الخروج")
+    with columns[2]:
+        # Against the same limit the backtest is run under, so a reader
+        # comparing the two is comparing like with like.
+        metric_card(
+            "المخاطرة حتى الوقف", _money(risk, 0), "Capital at Risk",
+            tone="amber" if (risk_percent is not None and limit
+                             and risk_percent > limit) else None,
+            sub=("—" if risk_percent is None else
+                 f"{risk_percent:.1f}% من رأس المال"
+                 + (f" · الحد {limit:.0f}%" if limit else "")),
         )
+    with columns[3]:
+        realized = view.book.realized_pnl_egp
+        metric_card("ربح محقق", _money(realized, 0), "Realized",
+                    tone="green" if realized >= 0 else "red")
+    with columns[4]:
+        cash = view.book.cash_egp
+        metric_card("الكاش", _money(cash, 0), "Cash",
+                    tone="red" if cash < 0 else None,
+                    sub="مكشوف" if cash < 0 else "")
 
     if view.unpriced_count:
         st.caption(
@@ -210,31 +229,32 @@ def _actions(view):
         if item.recommendation is not None and item.recommendation.action == WITHHELD
     ]
 
-    if not actionable:
-        st.success("لا يوجد إجراء مطلوب الآن — كل المراكز ضمن خططها.")
-    for item in actionable:
-        _action_card(item)
-
-    if withheld:
-        st.info(
-            "محجوب لعدم توفر سعر موثوق: "
-            + "، ".join(item.symbol for item in withheld)
-            + " — لا توصية تُبنى على سعر قديم."
-        )
-
     # A position with no plan is not a bug to hide: it is a holding this page
     # cannot advise on, and the reason belongs next to it.
     planless = [item for item in view.positions
                 if item.plan is not None and not item.plan.available]
+
+    if not (actionable or withheld or planless):
+        st.success("لا يوجد إجراء مطلوب الآن — كل المراكز ضمن خططها.")
+
+    # One component, four kinds, in one stack. They used to be a card, a joined
+    # sentence in an info banner, and a warning each -- three shapes for three
+    # facts that a reader has to weigh against each other.
+    for item in actionable:
+        _action_card(item)
+    for item in withheld:
+        _withheld_card(item)
     for item in planless:
-        st.warning(
-            f"{item.symbol}: لا توجد خطة خروج — "
-            + (item.error or {
-                "NO_HISTORY": "لا توجد شموع يومية كافية لهذا السهم",
-                "NO_ATR": "لا يمكن حساب مدى التذبذب (ATR) لهذا السهم",
-            }.get(item.plan.reason, item.plan.reason or "سبب غير معروف"))
-            + ". المركز محسوب في الأرقام، لكن بدون وقف ولا أهداف."
-        )
+        _no_plan_card(item)
+
+
+def _name(symbol):
+    """The company name beside the ticker, or nothing if it is not known."""
+    try:
+        name = company_name(symbol)
+    except Exception:                       # a missing name must not lose the card
+        return ""
+    return "" if not name or name == symbol else name
 
 
 def _action_card(item):
@@ -246,25 +266,69 @@ def _action_card(item):
         badge_html(BASIS_ARABIC.get(recommendation.price_basis, recommendation.price_basis),
                    "green" if recommendation.price_basis == BASIS_LIVE else "gray"),
     ]
+    # Stated on the card itself, not buried in documentation: this rule's exit
+    # evidence has not been validated on this market yet. It also changes what
+    # kind of card this is, so the whole card reads as provisional rather than
+    # one badge in a row of four carrying the entire caveat.
+    kind = ACT
     if not recommendation.measured:
-        # Stated on the card itself, not buried in documentation: this rule's
-        # exit evidence has not been validated on this market yet.
-        badges.append(badge_html("قاعدة غير مُقاسة بعد", "blue",
+        kind = UNVALIDATED
+        badges.append(badge_html("قاعدة غير مُقاسة بعد", "unknown",
                                  title="Unmeasured rule; logged for evaluation"))
 
+    net = recommendation.net_egp
     st.markdown(
-        f"""<div style="background:var(--surface);border:1px solid var(--border);
-        border-left:4px solid var(--text);border-radius:11px;padding:.85rem 1rem;
-        margin-bottom:.6rem">
-        <div style="display:flex;justify-content:space-between;align-items:center;
-        gap:.6rem;flex-wrap:wrap">
-        <strong style="font-size:1.05rem">{item.symbol}</strong>
-        <div style="display:flex;gap:.35rem;flex-wrap:wrap">{''.join(badges)}</div></div>
-        <div style="margin-top:.5rem;line-height:1.7">{recommendation.reason_ar}</div>
-        <div style="margin-top:.4rem;color:var(--muted);font-size:.82rem">
-        السعر {_price(recommendation.price)} · الكمية {_money(recommendation.quantity, 0)}
-        · الصافي بعد التكاليف {_money(recommendation.net_egp)} جنيه
-        ({_percent(recommendation.net_percent)})</div></div>""",
+        action_card_html(
+            item.symbol, kind=kind, tone=tone, name=_name(item.symbol), badges=badges,
+            why=html.escape(str(recommendation.reason_ar or "")),
+            figures=(
+                ("السعر", _price(recommendation.price), None),
+                ("الكمية", _money(recommendation.quantity, 0), None),
+                ("الصافي بعد التكاليف",
+                 f"{_money(net)} ({_percent(recommendation.net_percent)})",
+                 None if net is None else ("pos" if net >= 0 else "neg")),
+            ),
+        ),
+        unsafe_allow_html=True,
+    )
+
+
+def _withheld_card(item):
+    """No price this page trusts, so it issues no advice at all.
+
+    Separate from "no plan": the plan exists and the data is stale, which is a
+    thing the evening import fixes. These were joined into one sentence naming
+    every withheld ticker, which said what was blocked but not why per name.
+    """
+    st.markdown(
+        action_card_html(
+            item.symbol, kind=WITHHELD_KIND, name=_name(item.symbol),
+            badges=[badge_html("توصية محجوبة", "amber"),
+                    badge_html(BASIS_ARABIC.get(item.price.basis, item.price.basis), "amber")],
+            why="لا توصية تُبنى على سعر قديم. المركز محسوب في الأرقام، "
+                "والتوصية محجوبة حتى يصل سعر موثوق.",
+            figures=(("آخر سعر معروف", _price(item.price.value), None),),
+        ),
+        unsafe_allow_html=True,
+    )
+
+
+def _no_plan_card(item):
+    """Nothing was ever measured for this holding -- not stale, absent."""
+    reason = item.error or {
+        "NO_HISTORY": "لا توجد شموع يومية كافية لهذا السهم",
+        "NO_ATR": "لا يمكن حساب مدى التذبذب (ATR) لهذا السهم",
+    }.get(item.plan.reason, item.plan.reason or "سبب غير معروف")
+    st.markdown(
+        action_card_html(
+            item.symbol, kind=NO_PLAN, name=_name(item.symbol),
+            badges=[badge_html("بدون خطة خروج", "unknown",
+                               title="No exit plan could be built for this holding")],
+            why=html.escape(str(reason))
+                + ". المركز محسوب في الأرقام، لكن بدون وقف ولا أهداف.",
+            figures=(("الكمية", _money(item.position.quantity, 0), None),
+                     ("متوسط الشراء", _price(item.position.average_price), None)),
+        ),
         unsafe_allow_html=True,
     )
 
