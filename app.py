@@ -37,6 +37,7 @@ from dashboard.backtest_state import (
     recover_interrupted_backtest,
 )
 from dashboard.ai_stock_analysis import show_ai_stock_analysis
+from dashboard.terminal import show_terminal
 from dashboard.breakout_watch import show_breakout_watch
 from dashboard.confirmed_breakout import show_confirmed_breakout
 from dashboard.home import show_dashboard, show_stock_details_page
@@ -66,6 +67,13 @@ initialize_backtest_state(st.session_state)
 recover_interrupted_backtest(st.session_state, RunRepository)
 
 navigation = st.navigation({
+    # One screen, read after the close, that holds the whole picture: what is
+    # held, what the scan found, and what the market did. It sits first because
+    # it is where a session starts -- and it owns no job: every control on it
+    # is a link to the page that does.
+    "الطرفية · TERMINAL": [
+        st.Page(show_terminal, title="Terminal", url_path="terminal"),
+    ],
     # Not a fourth way of trading, and not a tool either: the positions the
     # user actually holds. Every other workspace answers "what should I buy?".
     # This one answers what happens to the money that was already committed,

@@ -193,6 +193,12 @@ def show_breakout_watch() -> None:
                 st.session_state.get("_breakout_watch_key", "fresh"),
                 float(reach), float(capital))
         st.success(f"Saved to {source}")
+        # The funnel exists only on a fresh scan -- the saved CSV carries the
+        # survivors and not the counts -- so it is kept here for the Terminal,
+        # which reads it and never reconstructs it from the survivors.
+        st.session_state["breakout_watch_funnel"] = {
+            "counts": dict(funnel), "candidates": len(frame) if frame is not None
+            else None, "session": session_date}
     elif selected is not None:
         frame = _load_saved(selected)
         run_date, session_date = dates_from_name(selected)

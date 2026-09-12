@@ -88,18 +88,22 @@ def test_navigation_is_the_portfolio_two_workspaces_and_tools():
     sections = _section_titles()
     headings = list(sections)
 
-    assert len(headings) == 4, headings
-    assert "PORTFOLIO" in headings[0]
-    assert "SWING" in headings[1]
-    assert "AI ANALYSIS" in headings[2]
-    assert "SYSTEM" in headings[3]
+    assert len(headings) == 5, headings
+    assert "TERMINAL" in headings[0]
+    assert "PORTFOLIO" in headings[1]
+    assert "SWING" in headings[2]
+    assert "AI ANALYSIS" in headings[3]
+    assert "SYSTEM" in headings[4]
 
+    # The terminal is one screen and owns no job: it reads what the other pages
+    # produced, and every control on it is a link to the page that produces it.
+    assert sections[headings[0]] == ["Terminal"]
     # The portfolio is one page, not a workspace that grew a second view.
-    assert sections[headings[0]] == ["My Portfolio"]
+    assert sections[headings[1]] == ["My Portfolio"]
     # AI Analysis is its own workspace, not filed with the diagnostics.
-    assert sections[headings[2]] == ["AI Analysis"]
+    assert sections[headings[3]] == ["AI Analysis"]
     # System holds tools only; nothing that produces a trading signal.
-    assert sections[headings[3]] == ["System Health", "Settings"]
+    assert sections[headings[4]] == ["System Health", "Settings"]
 
 
 def test_there_is_no_scalping_workspace_left():
@@ -143,10 +147,17 @@ def test_every_page_is_reachable_exactly_once():
     the two cannot describe the rule differently. It is not folded into the
     existing "Watchlist" page: that one is the user's own list of names under
     the live scanner, this one is produced by a rule and replaced each week.
+
+    "Terminal" joined on 2026-09-12, in a section of its own above the
+    portfolio. It is not a sixth way of trading and not a diagnostic: it is the
+    post-close read of everything the other pages produced, on one screen that
+    does not scroll. It owns no job -- its controls are links to the pages that
+    do -- which is why it is filed apart from the workspaces that run them.
     """
     titles = _page_titles()
     assert len(titles) == len(set(titles)), f"a page is listed twice: {titles}"
     assert set(titles) == {
+        "Terminal",
         "My Portfolio",
         "Daily Dashboard", "Swing Breakout", "Breakout Watch",
         "Confirmed Breakout", "Sector Liquidity", "Watchlist",
