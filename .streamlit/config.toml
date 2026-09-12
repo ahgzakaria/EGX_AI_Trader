@@ -1,4 +1,9 @@
 # Presentation only — dark trading-terminal base theme for native widgets.
+#
+# These four values must equal --bg, --surface and --text in dashboard/ui.py.
+# Streamlit paints its own chrome from here and the injected stylesheet paints
+# everything else; two grounds means a striped page, and a test pins them
+# together for exactly that reason.
 # Does not affect any strategy, calculation, provider, or flag.
 #
 # The typefaces are set here rather than in injected CSS because Streamlit
@@ -10,10 +15,10 @@
 # font host is unreachable costs nothing but the typeface.
 [theme]
 base = "dark"
-primaryColor = "#3b82f6"
-backgroundColor = "#0b1220"
-secondaryBackgroundColor = "#131c30"
-textColor = "#e6edf7"
+primaryColor = "#6f9eff"
+backgroundColor = "#0a0e15"
+secondaryBackgroundColor = "#0d121b"
+textColor = "#dfe6f0"
 font = "\"IBM Plex Sans\", system-ui, -apple-system, \"Segoe UI\", sans-serif"
 codeFont = "\"IBM Plex Mono\", ui-monospace, \"Cascadia Mono\", Consolas, monospace"
 

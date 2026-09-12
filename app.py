@@ -51,7 +51,7 @@ from dashboard.watchlist import show_watchlist
 from services.experiment_tracking import RunRepository
 
 
-st.set_page_config(page_title="EGX AI Trader", page_icon="📈", layout="wide")
+st.set_page_config(page_title="EGX AI Trader", page_icon="▦", layout="wide")
 
 apply_global_style()
 sidebar_brand()
@@ -72,17 +72,16 @@ navigation = st.navigation({
     # which is where the result of all the others is actually decided. It sits
     # first because it is the page with real money on it.
     "المحفظة · PORTFOLIO": [
-        st.Page(show_portfolio, title="My Portfolio", icon="💼",
+        st.Page(show_portfolio, title="My Portfolio",
                 url_path="portfolio"),
     ],
     # Days to weeks, on daily bars. The timeframe where the cost of trading
     # stops being the dominant term.
     "سوينج · SWING": [
-        st.Page(show_dashboard, title="Daily Dashboard", icon="📊", default=True),
+        st.Page(show_dashboard, title="Daily Dashboard", default=True),
         st.Page(
             show_swing_signals,
             title="Swing Breakout",
-            icon="📈",
             url_path="swing-breakout",
         ),
         # The session before Confirmed Breakout, and filed immediately before
@@ -99,7 +98,6 @@ navigation = st.navigation({
         st.Page(
             show_breakout_watch,
             title="Breakout Watch",
-            icon="🔭",
             url_path="breakout-watch",
         ),
         # A close relative of Swing Breakout, not a rival to it: two
@@ -113,17 +111,15 @@ navigation = st.navigation({
         st.Page(
             show_confirmed_breakout,
             title="Confirmed Breakout",
-            icon="🚀",
             url_path="confirmed-breakout",
         ),
         st.Page(
             show_sector_flow,
             title="Sector Liquidity",
-            icon="🌊",
             url_path="sector-liquidity",
         ),
-        st.Page(show_watchlist, title="Watchlist", icon="⭐"),
-        st.Page(show_stock_details_page, title="Stock Details", icon="🔎"),
+        st.Page(show_watchlist, title="Watchlist"),
+        st.Page(show_stock_details_page, title="Stock Details"),
     ],
     # There is no SCALPING workspace any more. ORB Signals joined the earlier
     # retirements (Scalping Dashboard / Active Trades / History, backed by
@@ -144,7 +140,7 @@ navigation = st.navigation({
     # diagnostics. Compatibility name used by integration tests:
     # AI Stock Analysis.
     "تحليل · AI ANALYSIS": [
-        st.Page(show_ai_stock_analysis, title="AI Analysis", icon="🤖"),
+        st.Page(show_ai_stock_analysis, title="AI Analysis"),
     ],
     # Tools, not a fourth way of trading. The legacy research and diagnostic
     # views remain reachable only from System Health.
@@ -152,10 +148,9 @@ navigation = st.navigation({
         st.Page(
             show_system_health,
             title="System Health",
-            icon="🩺",
             url_path="system-health",
         ),
-        st.Page(show_settings, title="Settings", icon="⚙️"),
+        st.Page(show_settings, title="Settings"),
     ],
 })
 navigation.run()

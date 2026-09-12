@@ -36,7 +36,11 @@ def test_every_navigation_icon_is_accepted_by_streamlit():
             if keyword.arg == "icon" and isinstance(keyword.value, ast.Constant):
                 icons.append(keyword.value.value)
 
-    assert icons, "No Streamlit page icons were discovered in app.py"
+    # There are none now, and that is the point: a column of emoji down a
+    # navigation is the clearest tell that a screen is a consumer app rather
+    # than an instrument. The validation stays so that if one is ever added
+    # back it still has to be something Streamlit accepts.
+    assert icons == [], f"navigation icons are back: {icons}"
     for icon in icons:
         validate_icon_or_emoji(icon)
 

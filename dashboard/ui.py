@@ -22,11 +22,11 @@ logger = logging.getLogger(__name__)
 #: with a #10b981 border -- the design system's green wearing Tailwind's -- and
 #: the same was true of amber, red and blue (docs/design/stitch/AUDIT.md §3).
 _TONE_COLOUR = {
-    "green": (52, 211, 153),      # #34d399
-    "amber": (251, 191, 36),      # #fbbf24
-    "red": (248, 113, 113),       # #f87171
-    "gray": (148, 163, 184),      # #94a3b8
-    "blue": (96, 165, 250),       # #60a5fa
+    "green": (61, 220, 151),      # #3ddc97
+    "amber": (255, 176, 32),      # #ffb020
+    "red": (255, 92, 108),        # #ff5c6c
+    "gray": (139, 151, 170),      # #8b97aa
+    "blue": (111, 158, 255),      # #6f9eff
     # Not a sixth shade of grey. "Never measured" has to be distinguishable
     # from "measured and unremarkable", and grey already means the second.
     "unknown": (192, 132, 252),   # #c084fc
@@ -50,13 +50,16 @@ _TONE = {name: _tone(rgb) for name, rgb in _TONE_COLOUR.items()}
 #: drawdown chart was Tailwind red beside a design-system red legend.
 COLOURS = {name: _tone(rgb)[2] for name, rgb in _TONE_COLOUR.items()}
 COLOURS.update({
-    "accent": "#2563eb",        # the action colour, matching --accent
-    "text": "#e6edf7",
-    "muted": "#8ea1bd",
-    "surface": "#131c30",
-    "bg": "#0b1220",
-    "bg_2": "#0e1729",
-    "border": "#223049",
+    "accent": "#2f5fd0",        # the action colour, matching --accent
+    "text": "#dfe6f0",
+    "muted": "#8b97aa",
+    "surface": "#0d121b",
+    "bg": "#0a0e15",
+    "bg_2": "#080c12",
+    # Charts take a literal, so this is the one border that has to be opaque;
+    # the stylesheet's --border is the same line expressed as an alpha over the
+    # ground, which a chart library cannot composite against.
+    "border": "#1b2230",
 })
 
 
@@ -99,25 +102,30 @@ def apply_global_style():
                 "Cascadia Mono", Consolas, monospace;
 
             /* surfaces: one ladder, four rungs */
-            --bg: #0b1220;
-            --bg-2: #0e1729;
-            --surface: #131c30;
-            --surface-2: #17223b;
-            --surface-3: #18243c;        /* subtle highlight: nav hover */
-            --surface-well: #0f182a;     /* recessed: inputs, code, wells */
+            --bg: #0a0e15;
+            --bg-2: #080c12;
+            --surface: #0d121b;
+            --surface-2: #121826;
+            --surface-3: #161d2c;        /* subtle highlight: nav hover */
+            --surface-well: #080c12;     /* recessed: inputs, code, wells */
             --sidebar-width: 280px;
-            --border: #223049;
-            --border-active: #334769;
-            --border-focus: #476291;
+            /* Hairlines, not borders. A terminal separates panes with a rule
+               a pixel wide at low opacity; a 1px #223049 box around every
+               element is what made this read as a page of cards. */
+            --border: rgba(255,255,255,.075);
+            --border-active: rgba(255,255,255,.15);
+            --border-focus: rgba(255,255,255,.26);
 
             /* text: three tiers, not two */
-            --text: #e6edf7;
-            --muted: #8ea1bd;
-            --text-low: #5a6f8c;         /* metadata, provenance, timestamps */
+            --text: #dfe6f0;
+            --muted: #8b97aa;
+            --text-low: #5a6577;         /* metadata, provenance, timestamps */
 
             /* semantic state */
-            --green: #34d399; --amber: #fbbf24; --red: #f87171;
-            --blue: #60a5fa; --gray: #94a3b8;
+            /* At 11px a desaturated state colour disappears. These carry
+               more chroma than the page-scale palette they replace. */
+            --green: #3ddc97; --amber: #ffb020; --red: #ff5c6c;
+            --blue: #6f9eff; --gray: #8b97aa;
             --green-bg: rgba(52,211,153,.08); --red-bg: rgba(248,113,113,.08);
             --amber-bg: rgba(251,191,36,.08); --blue-bg: rgba(96,165,250,.08);
             --gray-bg: rgba(148,163,184,.08);
@@ -135,15 +143,18 @@ def apply_global_style():
             /* 4px grid */
             --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s6:24px; --s8:32px;
             /* chips are 2px, panels 4px: no pills */
-            --r-chip:2px; --r-card:4px;
+            --r-chip:0px; --r-card:0px;
 
             /* The one action colour. Darker than --blue, which is a text and
                state colour and cannot carry white text as a fill. */
-            --accent: #2563eb; --accent-hover: #1d4ed8;
-            --border-hover: #33507a; --surface-hover: #1b2742;
-            --link: #93c5fd;
+            --accent: #2f5fd0; --accent-hover: #24499f;
+            --border-hover: rgba(255,255,255,.2); --surface-hover: #161d2c;
+            --link: #9dbcff;
         }
-        .stApp { background: var(--bg); color: var(--text); font-size:16px;
+        /* 12px, not 16. Sixteen is a reading size for prose on a website; this is
+   an instrument read by sweeping, and the size is what separates the two
+   before a single colour or border is chosen. */
+.stApp { background: var(--bg); color: var(--text); font-size:12px;
             font-family: var(--font-sans); }
         /* Digits that sit in a column must line up in that column. `zero` as
            well as `tnum`: a slashed zero is what separates 0 from O in a
@@ -181,7 +192,8 @@ def apply_global_style():
             }
         }
         /* clear the fixed Streamlit toolbar so the page title is never clipped */
-        .block-container { max-width: 1640px; padding-top: 3.4rem; padding-bottom: 2.4rem; }
+        .block-container { max-width: 1640px; padding-top: 2.4rem; padding-bottom: 1.2rem;
+            padding-left: 1.1rem; padding-right: 1.1rem; }
         header[data-testid="stHeader"] { background: transparent; }
         /* The sidebar is a fixed 280px and never collapses: it carries the
            health panel, and a panel that can be folded away is a panel that
@@ -202,8 +214,8 @@ def apply_global_style():
         [data-testid="stSidebarUserContent"] { order:1; padding-bottom:.35rem; }
         [data-testid="stSidebarNav"] { order:2; }
         [data-testid="stSidebarNav"] a {
-            border-radius: 0 var(--r-chip) var(--r-chip) 0; min-height:40px;
-            font-size:.93rem; border-left:2px solid transparent; padding-left:.55rem;
+            border-radius: 0; min-height:26px; font-size:.8rem;
+            border-left:2px solid transparent; padding-left:.5rem;
         }
         [data-testid="stSidebarNav"] a:hover {
             background: var(--surface-3); color: var(--text);
@@ -217,26 +229,26 @@ def apply_global_style():
             background: var(--surface-3); font-weight: 500;
             border-left-color: var(--blue); color: var(--text);
         }
-        [data-testid="stSidebarNav"] span { font-size:.93rem; }
+        [data-testid="stSidebarNav"] span { font-size:.8rem; }
         /* Bilingual group headings: Arabic, a quiet interpunct, then Latin
            uppercase. The separator is deliberately faint -- it joins two
            labels, it is not a third one. */
         [data-testid="stSidebarNav"] > ul > li > div,
         [data-testid="stSidebarNavSeparator"] ~ div,
         .egx-navgroup {
-            font-size:.68rem; font-weight:600; letter-spacing:.05em;
+            font-size:.62rem; font-weight:600; letter-spacing:.14em;
             color: var(--text-low) !important; text-transform:uppercase;
-            padding:.55rem .1rem .2rem;
+            padding:.65rem .1rem .15rem;
         }
 
         /* --- the health panel above the navigation ------------------------ */
-        .egx-health { border:1px solid var(--border); border-radius:10px;
-            padding:.6rem .7rem; margin:.1rem 0 .8rem; background:var(--surface); }
-        .egx-health .t { display:flex; align-items:center; gap:.45rem;
-            font-size:.8rem; font-weight:600; }
+        .egx-health { border:1px solid var(--border); border-radius:0;
+            padding:.45rem .55rem; margin:.1rem 0 .6rem; background:var(--surface); }
+        .egx-health .t { display:flex; align-items:center; gap:.4rem;
+            font-size:.72rem; font-weight:600; letter-spacing:.03em; }
         .egx-health .t i { width:7px; height:7px; border-radius:50%; display:block; flex-shrink:0; }
-        .egx-health .d { font-family:var(--font-mono); font-size:.72rem;
-            color:var(--muted) !important; margin-top:.35rem; line-height:1.6; }
+        .egx-health .d { font-family:var(--font-mono); font-size:.66rem;
+            color:var(--text-low) !important; margin-top:.3rem; line-height:1.55; }
         .egx-health.ok { border-color:rgba(52,211,153,.28); background:rgba(52,211,153,.06); }
         .egx-health.ok .t i { background:var(--green); }
         .egx-health.warn { border-color:rgba(251,191,36,.32); background:rgba(251,191,36,.07); }
@@ -252,9 +264,9 @@ def apply_global_style():
             background:var(--unknown-hatch); }
         .egx-health.unknown .t { color:var(--unknown); }
         .egx-health.unknown .t i { background:transparent; border:1px solid var(--unknown); }
-        h1,h2,h3,h4 { color: var(--text); letter-spacing: -.01em; }
-        h1 { font-size: 1.75rem !important; }
-        p, label, .stMarkdown { color: var(--text); font-size:1rem; line-height:1.65; }
+        h1,h2,h3,h4 { color: var(--text); letter-spacing: -.015em; }
+        h1 { font-size: 1.3rem !important; }
+        p, label, .stMarkdown { color: var(--text); font-size:.88rem; line-height:1.6; }
         .stCaption, [data-testid="stCaptionContainer"] { color: var(--muted) !important; }
 
         /* Metrics. The label is set small and quiet and the value large and
@@ -262,20 +274,21 @@ def apply_global_style():
            and values that do not share a digit width cannot be scanned. */
         [data-testid="stMetric"] {
             background: var(--surface); border: 1px solid var(--border);
-            border-radius: 10px; padding: .65rem .8rem; min-height: 0;
+            border-radius: 0; padding: .45rem .6rem; min-height: 0;
         }
-        [data-testid="stMetricLabel"] { color: var(--muted); font-weight: 600;
-            font-size: .74rem; letter-spacing:.035em; text-transform:uppercase; }
+        [data-testid="stMetricLabel"] { color: var(--text-low); font-weight: 600;
+            font-size: .68rem; letter-spacing:.1em; text-transform:uppercase; }
         [data-testid="stMetricValue"] { color: var(--text); font-weight: 600;
-            font-size: 1.45rem; letter-spacing:-.01em; }
+            font-size: 1.2rem; letter-spacing:-.015em; }
         [data-testid="stMetricDelta"] { font-size: .74rem; }
 
         /* One accent, flat. The blue-to-cyan gradient this replaces competed
            with the semantic greens and reds it sat beside, which are the only
            colours on these pages that carry a fact. */
         .stButton > button, .stDownloadButton > button {
-            border-radius: 8px; min-height: 46px; font-weight: 600;
-            font-size:1rem; padding:.55rem 1rem;
+            border-radius: 0; min-height: 28px; font-weight: 500;
+            font-size:.82rem; padding:.25rem .8rem; letter-spacing:.06em;
+            text-transform:uppercase; font-family:var(--font-mono);
             background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
         }
         .stButton > button:hover, .stDownloadButton > button:hover {
@@ -293,14 +306,17 @@ def apply_global_style():
            in cf3898f, not a default. The header is the one thing set smaller:
            it is a label you learn once, while the cells are read every day. */
         [data-testid="stDataFrame"] {
-            border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
-            font-size:15px;
+            border: 1px solid var(--border); border-radius: 0; overflow: hidden;
+            font-size:11.5px;
         }
         [data-testid="stDataFrame"] [role="columnheader"] {
-            font-size:13px; font-weight:600; letter-spacing:.03em;
-            text-transform:uppercase; color:var(--muted);
+            font-size:9.5px; font-weight:600; letter-spacing:.1em;
+            text-transform:uppercase; color:var(--text-low);
         }
-        [data-testid="stDataFrame"] [role="gridcell"] { font-size:15px; min-height:40px; }
+        /* 26px rows. Forty was a floor set for a 16px page; at 11.5px it is two
+   lines of air around one line of type, and it is why a scan of 209 names
+   needed eight screens. */
+[data-testid="stDataFrame"] [role="gridcell"] { font-size:11.5px; min-height:26px; }
 
         /* Tabs as an underlined rail. The pills-in-a-box they replace read as
            a second, competing navigation next to the sidebar's. */
@@ -309,9 +325,9 @@ def apply_global_style():
             border-bottom: 1px solid var(--border); border-radius: 0; padding: 0;
         }
         [data-baseweb="tab"] {
-            border-radius: 0; padding: .55rem .9rem; color: var(--muted);
-            font-size:.96rem; font-weight:600; border-bottom:2px solid transparent;
-            margin-bottom:-1px;
+            border-radius: 0; padding: .35rem .75rem; color: var(--muted);
+            font-size:.78rem; font-weight:600; border-bottom:2px solid transparent;
+            margin-bottom:-1px; letter-spacing:.05em; text-transform:uppercase;
         }
         [data-baseweb="tab"]:hover { color: var(--text); }
         [data-baseweb="tab"][aria-selected="true"] {
@@ -320,13 +336,14 @@ def apply_global_style():
         [data-baseweb="tab-highlight"] { background: transparent; }
 
         [data-testid="stExpander"] { background: var(--surface); border: 1px solid var(--border);
-            border-radius: 10px; }
-        [data-testid="stExpander"] summary { font-size:.9rem; font-weight:600; }
+            border-radius: 0; }
+        [data-testid="stExpander"] summary { font-size:.82rem; font-weight:600;
+            letter-spacing:.04em; }
 
         /* Alerts carry their state on the left edge, the same place the signal
            cards carry theirs, so severity reads in one consistent position. */
-        div[data-testid="stAlert"] { border-radius: 8px; border-left-width: 3px;
-            border-left-style: solid; font-size:.92rem; }
+        div[data-testid="stAlert"] { border-radius: 0; border-left-width: 2px;
+            border-left-style: solid; font-size:.84rem; padding:.45rem .7rem; }
         div[data-testid="stAlert"]:has([data-testid="stAlertContentSuccess"]) { border-left-color: var(--green); }
         div[data-testid="stAlert"]:has([data-testid="stAlertContentWarning"]) { border-left-color: var(--amber); }
         div[data-testid="stAlert"]:has([data-testid="stAlertContentError"]) { border-left-color: var(--red); }
@@ -342,11 +359,11 @@ def apply_global_style():
            and left nothing for the numbers underneath. */
         .egx-hero { display:flex; align-items:flex-end; justify-content:space-between;
             gap:1rem; border-bottom:1px solid var(--border);
-            padding: 0 .15rem .7rem; margin-bottom: 1rem; }
-        .egx-hero h1 { margin:0 !important; font-size:1.5rem !important; font-weight:600;
-            letter-spacing:-.025em; }
-        .egx-hero p { margin:.3rem 0 0; color: var(--muted); font-size:.86rem;
-            max-width:78ch; line-height:1.55; }
+            padding: 0 .1rem .45rem; margin-bottom: .6rem; }
+        .egx-hero h1 { margin:0 !important; font-size:1.15rem !important; font-weight:600;
+            letter-spacing:-.02em; }
+        .egx-hero p { margin:.2rem 0 0; color: var(--muted); font-size:.78rem;
+            max-width:92ch; line-height:1.5; }
         .egx-hero .egx-badge { background:transparent; border:1px solid var(--border);
             color:var(--muted); padding:.2rem .55rem; border-radius:5px;
             font-family:var(--font-mono); font-size:.66rem; font-weight:500;
@@ -360,8 +377,9 @@ def apply_global_style():
         .egx-chip .k { color: var(--muted); font-weight:600; }
         .egx-sep { width:1px; height:16px; background: var(--border); margin:0 .1rem; }
 
-        .egx-badge-pill { display:inline-block; padding:.16rem .5rem; border-radius:999px;
-            font-size:.74rem; font-weight:700; line-height:1.3; }
+        .egx-badge-pill { display:inline-block; padding:.08rem .35rem; border-radius:0;
+            font-size:.65rem; font-weight:600; line-height:1.4;
+            font-family:var(--font-mono); letter-spacing:.04em; }
 
         /* --- the three-state gate ----------------------------------------
            PASS, FAIL, and UNAVAILABLE. Never two. A gate that could not run
@@ -412,7 +430,7 @@ def apply_global_style():
            was ever computed -- the same distinction as everywhere else. */
         .egx-act { background:var(--surface); border:1px solid var(--border);
             border-left:3px solid var(--gray); border-radius:var(--r-card);
-            padding:.8rem 1rem; margin-bottom:.55rem; }
+            padding:.5rem .7rem; margin-bottom:.3rem; }
         .egx-act.k-act.t-red { border-left-color:var(--red); }
         .egx-act.k-act.t-amber { border-left-color:var(--amber); }
         .egx-act.k-act.t-green { border-left-color:var(--green); }
@@ -425,20 +443,21 @@ def apply_global_style():
             background:var(--unknown-hatch), var(--surface); }
         .egx-act .top { display:flex; justify-content:space-between; align-items:center;
             gap:.6rem; flex-wrap:wrap; }
-        .egx-act .tick { font-size:1.05rem; font-weight:600; letter-spacing:-.01em; }
-        .egx-act .name { font-size:.76rem; color:var(--muted); font-weight:400;
-            margin-right:.45rem; }
+        .egx-act .tick { font-size:.92rem; font-weight:600; letter-spacing:-.01em; }
+        .egx-act .name { font-size:.7rem; color:var(--muted); font-weight:400;
+            margin-right:.4rem; }
         .egx-act .badges { display:flex; gap:.3rem; flex-wrap:wrap; }
-        .egx-act .why { margin-top:.5rem; line-height:1.75; color:var(--text); }
+        .egx-act .why { margin-top:.3rem; line-height:1.6; color:var(--text);
+            font-size:.82rem; }
         /* The figures a decision is actually made on, in one row, monospaced
            so two cards can be compared down the column rather than read. */
-        .egx-act .nums { display:flex; flex-wrap:wrap; gap:.15rem 1.4rem;
-            margin-top:.55rem; padding-top:.5rem; border-top:1px solid var(--border);
+        .egx-act .nums { display:flex; flex-wrap:wrap; gap:.1rem 1.2rem;
+            margin-top:.35rem; padding-top:.3rem; border-top:1px solid var(--border);
             font-family:var(--font-mono); font-variant-numeric:tabular-nums;
-            font-size:.78rem; }
+            font-size:.72rem; }
         .egx-act .nums div { display:flex; gap:.4rem; }
         .egx-act .nums .k { color:var(--text-low); font-family:var(--font-sans);
-            font-size:.72rem; }
+            font-size:.66rem; }
         .egx-act .nums .v { color:var(--text); }
         .egx-act .nums .v.pos { color:var(--green); }
         .egx-act .nums .v.neg { color:var(--red); }
@@ -576,21 +595,27 @@ def apply_global_style():
             padding:.12rem .4rem; border-radius:var(--r-chip); white-space:nowrap; }
 
         .egx-metric { background: var(--surface); border:1px solid var(--border);
-            border-radius:11px; padding:.55rem .8rem; }
-        .egx-metric .v { font-size:1.45rem; font-weight:780; line-height:1.0; }
-        .egx-metric .lar { color: var(--text); font-size:.84rem; font-weight:700; margin-top:.1rem; direction:rtl; }
-        .egx-metric .len { color: var(--muted); font-size:.66rem; font-weight:600; text-transform:uppercase;
-            letter-spacing:.04em; margin-top:.02rem; }
-        .egx-metric .s { color: var(--muted); font-size:.68rem; margin-top:.18rem; }
+            border-radius:0; padding:.4rem .6rem; }
+        .egx-metric .v { font-size:1.15rem; font-weight:600; line-height:1.05;
+            font-family:var(--font-mono); letter-spacing:-.015em; }
+        .egx-metric .lar { color: var(--muted); font-size:.74rem; font-weight:500;
+            margin-top:.15rem; direction:rtl; }
+        .egx-metric .len { color: var(--text-low); font-size:.6rem; font-weight:600;
+            text-transform:uppercase; letter-spacing:.1em; margin-top:.02rem; }
+        .egx-metric .s { color: var(--text-low); font-size:.63rem; margin-top:.15rem; }
         .egx-metric .tag { display:inline-block; font-size:.57rem; font-weight:700; padding:.03rem .3rem;
             border-radius:5px; background:rgba(148,163,184,.14); color:var(--muted); margin-top:.2rem;
             text-transform:uppercase; letter-spacing:.03em; }
 
-        .egx-section { display:flex; align-items:baseline; justify-content:space-between; margin:.9rem 0 .45rem; }
-        .egx-section h3 { margin:0; font-size:1.02rem; }
-        .egx-section span { color: var(--muted); font-size:.8rem; }
-        .egx-empty { text-align:center; padding:1.6rem 1rem; border:1px dashed var(--border);
-            border-radius:12px; background: var(--surface); color: var(--muted); }
+        .egx-section { display:flex; align-items:baseline; justify-content:space-between;
+            margin:.7rem 0 .3rem; border-bottom:1px solid var(--border);
+            padding-bottom:.25rem; }
+        .egx-section h3 { margin:0; font-size:.78rem; font-weight:600;
+            letter-spacing:.13em; text-transform:uppercase; color:var(--muted); }
+        .egx-section span { color: var(--text-low); font-size:.72rem; }
+        .egx-empty { text-align:center; padding:1rem .8rem; border:1px dashed var(--border);
+            border-radius:0; background: var(--surface); color: var(--muted);
+            font-size:.8rem; }
         .egx-empty strong { display:block; color: var(--text); margin-bottom:.25rem; }
 
         /* --- a rule that ran and correctly produced nothing ----------------
@@ -601,9 +626,8 @@ def apply_global_style():
            the commonest state on the page look like a fault every day until
            the reader stops believing either. Solid, bordered, and carrying its
            own count. */
-        .egx-quiet { border:1px solid var(--border); border-left:3px solid var(--green);
-            border-radius:var(--r-card); background:var(--surface);
-            padding:1rem 1.15rem; }
+        .egx-quiet { border:1px solid var(--border); border-left:2px solid var(--green);
+            border-radius:0; background:var(--surface); padding:.6rem .75rem; }
         .egx-quiet .h { display:flex; align-items:baseline; gap:.6rem;
             flex-wrap:wrap; }
         .egx-quiet .h strong { font-size:1.02rem; color:var(--text); font-weight:600; }
@@ -628,8 +652,7 @@ def apply_global_style():
            enough data yet", which is the unknown state of a whole panel --
            so it wears the same violet hatch a single unmeasured value does. */
         .egx-unavailable { border:1px solid var(--unknown-border);
-            border-radius:var(--r-card); background:var(--unknown-hatch);
-            padding:1rem 1.15rem; }
+            border-radius:0; background:var(--unknown-hatch); padding:.6rem .75rem; }
         .egx-unavailable strong { display:block; color:var(--unknown);
             font-size:.98rem; font-weight:600; }
         .egx-unavailable p { margin:.45rem 0 0; color:var(--muted);
@@ -727,12 +750,21 @@ def apply_global_style():
 # --- reusable components ----------------------------------------------------
 
 
-def page_header(title, subtitle, icon="📈", badge=None):
-    badge_html = f'<span class="egx-badge">{html.escape(str(badge))}</span>' if badge else ""
+def page_header(title, subtitle, icon="", badge=None):
+    """The page's name and what it is for.
+
+    ``icon`` is accepted and ignored. Every page passed one -- 📊 📈 🔭 🚀 🌊 ⭐
+    🔎 🤖 🩺 ⚙️ -- and a row of emoji down a navigation is the single clearest
+    tell that a screen is a consumer app rather than an instrument. The
+    parameter stays so twenty call sites do not have to change in a pass about
+    how the application looks; nothing renders it.
+    """
+    badge_markup = (f'<span class="egx-badge">{html.escape(str(badge))}</span>'
+                    if badge else "")
     st.markdown(
         f"""<div class="egx-hero"><div>
-            <h1>{html.escape(icon)}&nbsp;{html.escape(title)}</h1>
-            <p>{html.escape(subtitle)}</p></div>{badge_html}</div>""",
+            <h1>{html.escape(title)}</h1>
+            <p>{html.escape(subtitle)}</p></div>{badge_markup}</div>""",
         unsafe_allow_html=True)
 
 

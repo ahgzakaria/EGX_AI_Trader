@@ -183,5 +183,5 @@ def test_the_palette_is_available_to_python_as_literal_hex():
 
     for name, rgb in _TONE_COLOUR.items():
         assert COLOURS[name] == "#{:02x}{:02x}{:02x}".format(*rgb)
-    assert COLOURS["green"] == "#34d399"
-    assert COLOURS["red"] == "#f87171"
+    assert COLOURS["green"] == "#3ddc97"
+    assert COLOURS["red"] == "#ff5c6c"

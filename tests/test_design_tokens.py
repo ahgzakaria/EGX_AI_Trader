@@ -40,11 +40,15 @@ def stylesheet(monkeypatch_module=None):
 #: The design system's semantic palette, and the Tailwind default each
 #: generated screen drifted to. The spec's values win: they were derived from
 #: this app's own palette, and the substitution was the generator's.
+#: Raised in chroma for the terminal pass: at 11-12px a desaturated state
+#: colour stops reading as a state at all. The drift values are still the
+#: Tailwind defaults the generated screens substituted, and still must not
+#: appear -- what changed is the spec side, deliberately, not the rule.
 SPEC_VS_DRIFT = [
-    ("--green", "#34d399", "#10b981"),
-    ("--red", "#f87171", "#f43f5e"),
-    ("--blue", "#60a5fa", "#3b82f6"),
-    ("--amber", "#fbbf24", "#f59e0b"),
+    ("--green", "#3ddc97", "#10b981"),
+    ("--red", "#ff5c6c", "#f43f5e"),
+    ("--blue", "#6f9eff", "#3b82f6"),
+    ("--amber", "#ffb020", "#f59e0b"),
 ]
 
 
@@ -197,3 +201,22 @@ def test_advisory_is_blue_not_green(stylesheet):
 ])
 def test_nothing_injects_markup(render):
     assert "<script>" not in render('<script>alert(1)</script>')
+
+
+def test_the_python_palette_and_the_css_tokens_cannot_drift_apart(stylesheet):
+    """Two hand-kept copies of one palette is how they stop agreeing.
+
+    `COLOURS` exists because a chart library takes a literal and cannot read a
+    CSS variable. That makes it a second copy, and on 2026-09-12 the terminal
+    pass changed the stylesheet's greens and reds and left the Python dict on
+    the old ones -- caught only because a test happened to assert both.
+    """
+    css = _declarations(stylesheet)
+    for name in ("green", "amber", "red", "blue", "gray", "accent",
+                 "text", "muted", "surface", "bg"):
+        token = {"bg": "--bg", "text": "--text", "muted": "--muted",
+                 "surface": "--surface", "accent": "--accent"}.get(name, f"--{name}")
+        declared = re.search(rf"{token}\s*:\s*(#[0-9a-fA-F]{{6}})\b", css)
+        assert declared, f"{token} is not declared as a literal hex"
+        assert ui.COLOURS[name].lower() == declared.group(1).lower(), (
+            f"COLOURS[{name!r}]={ui.COLOURS[name]} but {token}={declared.group(1)}")

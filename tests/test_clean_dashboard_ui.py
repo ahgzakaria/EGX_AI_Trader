@@ -81,13 +81,28 @@ def test_comparisons_charts_and_developer_fields_are_advanced_only():
     assert "Developer metrics and attribution" in advanced_source
 
 
-def test_global_style_meets_readability_targets():
+def test_global_style_is_set_at_terminal_density():
+    """The floors this replaces were deliberate, and were replaced deliberately.
+
+    cf3898f ("style: improve dashboard readability", 2026-07-30) raised the app
+    to a 16px body, 15px table cells and 46px controls. Those were the right
+    numbers for a page that is read. They are the wrong ones for an instrument
+    that is swept: at 16px a 209-row scan needs eight screens, and the request
+    on 2026-09-12 was explicitly for a dense terminal that does not scroll.
+
+    The floors are not gone, they moved. Nothing here goes below 9.5px, which
+    is the label size, and table cells stay at 11.5px.
+    """
+    import re
+
     source = Path("dashboard/ui.py").read_text(encoding="utf-8")
-    assert "font-size:16px" in source
-    assert "[data-testid=\"stDataFrame\"]" in source
-    assert "font-size:15px" in source
-    assert "min-height: 46px" in source
+    assert "font-size:12px" in source                       # body
+    assert "font-size:11.5px" in source                     # table cells
+    assert "min-height: 28px" in source                     # controls
     assert "@media (max-width: 900px)" in source
+    smallest = min(float(size) for size in
+                   re.findall(r"font-size:\s*([\d.]+)px", source))
+    assert smallest >= 9.5, f"{smallest}px is below the label floor"
 
 
 def test_system_health_owns_developer_diagnostics_language():

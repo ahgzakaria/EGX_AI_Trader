@@ -34,8 +34,11 @@ def test_the_strip_puts_every_reading_on_one_line():
 
 
 def test_a_reading_carries_its_tone_on_the_dot_and_the_value():
+    """Against the palette, not a literal: the hex moved once already."""
+    from dashboard.ui import COLOURS
+
     markup = context_strip([("شراء BUY", "3", "green", "")])
-    assert "#34d399" in markup
+    assert markup.count(COLOURS["green"]) == 2      # the dot and the value
 
 
 def test_a_sub_value_is_optional():

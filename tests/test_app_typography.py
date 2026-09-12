@@ -69,12 +69,12 @@ def test_the_faces_are_actually_loaded_by_the_stylesheet(stylesheet):
 
 def test_the_theme_ground_matches_the_stylesheet_ground(theme, stylesheet):
     """Two sources of truth for one background is how a page ends up striped."""
-    assert theme["backgroundColor"] == "#0b1220"
-    assert "--bg: #0b1220" in stylesheet
-    assert theme["secondaryBackgroundColor"] == "#131c30"
-    assert "--surface: #131c30" in stylesheet
-    assert theme["textColor"] == "#e6edf7"
-    assert "--text: #e6edf7" in stylesheet
+    assert theme["backgroundColor"] == "#0a0e15"
+    assert "--bg: #0a0e15" in stylesheet
+    assert theme["secondaryBackgroundColor"] == "#0d121b"
+    assert "--surface: #0d121b" in stylesheet
+    assert theme["textColor"] == "#dfe6f0"
+    assert "--text: #dfe6f0" in stylesheet
 
 
 def test_digits_that_line_up_in_columns_are_set_in_tabular_figures(stylesheet):
