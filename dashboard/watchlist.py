@@ -6,8 +6,23 @@ import streamlit as st
 from core.scanner import scan_symbols
 from dashboard.freshness_panel import withheld_badge
 from core.watchlist import Watchlist
-from dashboard.formatting import NAME_COLUMN, with_company_name_column
-from dashboard.ui import empty_state, page_header, section_header
+from core.symbols import load_approved_symbol_options
+from dashboard.formatting import (NAME_COLUMN, symbol_option_label,
+                                  with_company_name_column)
+from dashboard.ui import (badge_html, empty_state, page_header, quiet_state,
+                          section_header)
+
+#: The same sentence the Daily Dashboard carries under its own table. It was
+#: missing here, on the page that sorted by the score and drew it as a progress
+#: bar -- the strongest visual weight available -- so the one number this
+#: project has measured NOT to rank by was promoted on one screen and
+#: caveated on the other.
+SCORE_CAVEAT = (
+    "الترتيب ثابت وليس تقييمًا للجودة · **The order is stable, not a quality "
+    "ranking.** Measured among the candidates that reach it, the score's rank "
+    "correlation with the outcome is +0.15 in 2016–2022 and **+0.01 "
+    "(p = 0.76)** in 2023–2026. Read the gates, not the position in the table."
+)
 
 
 def render_data_update_required(symbols, results):
@@ -54,6 +69,40 @@ def render_data_update_required(symbols, results):
     )
 
 
+def _manage(watchlist, symbols):
+    """Add and remove names, on the page whose whole subject is the list.
+
+    There was no way to do either from here: the empty state told the reader to
+    go to another page and come back. A list you can only edit somewhere else
+    is not a list you curate.
+    """
+    section_header("إدارة القائمة · The list",
+                   f"{len(symbols)} of your own choosing" if symbols
+                   else "Nothing tracked yet")
+    add_col, remove_col = st.columns(2)
+    with add_col:
+        try:
+            options = [s for s in load_approved_symbol_options()
+                       if str(getattr(s, "canonical_symbol", s)) not in set(symbols)]
+        except Exception:                       # noqa: BLE001 - never lose the page
+            options = []
+        chosen = st.selectbox(
+            "أضف سهماً · Add a symbol", [None, *options],
+            format_func=lambda s: "—" if s is None else symbol_option_label(s),
+            key="watchlist_add",
+        )
+        if chosen is not None and st.button("أضف · Add", key="watchlist_add_go"):
+            watchlist.add(str(getattr(chosen, "canonical_symbol", chosen)))
+            st.rerun()
+    with remove_col:
+        drop = st.multiselect("أزل · Remove", symbols, key="watchlist_remove")
+        if drop and st.button("أزل المحدد · Remove selected",
+                              key="watchlist_remove_go"):
+            for symbol in drop:
+                watchlist.remove(symbol)
+            st.rerun()
+
+
 def show_watchlist():
     page_header(
         "Watchlist",
@@ -61,11 +110,14 @@ def show_watchlist():
         icon="⭐",
         badge="MARKET",
     )
-    symbols = Watchlist().load()
+    watchlist = Watchlist()
+    symbols = watchlist.load()
+    _manage(watchlist, symbols)
+    symbols = watchlist.load()
     if not symbols:
         empty_state(
             "Your watchlist is empty",
-            "Open a stock from the Dashboard and add it to the watchlist.",
+            "Add a symbol above, or open one from the Dashboard.",
             icon="☆",
         )
         return
@@ -91,7 +143,14 @@ def show_watchlist():
         )
         return
     if not results:
-        empty_state("No results", "No watchlist market data was returned.", icon="⚠️")
+        # The scan ran. Nothing came back is an answer, not a missing page.
+        quiet_state(
+            "لا توجد نتائج · The scan returned nothing",
+            "Every tracked symbol was excluded before the decision engine, so "
+            "no row carries a current decision. The panel above names each one "
+            "and why.",
+            count=f"0 / {len(symbols)}",
+        )
         return
 
     frame = pd.DataFrame(results).sort_values(
@@ -103,12 +162,18 @@ def show_watchlist():
     metrics[0].metric("BUY", int((frame["Signal"] == "BUY").sum()))
     metrics[1].metric("WATCH", int((frame["Signal"] == "WATCH").sum()))
     metrics[2].metric("AVOID", int((frame["Signal"] == "AVOID").sum()))
-    metrics[3].metric("Average Score", f"{frame['Score'].mean():.1f}")
+    # Not "Average Score". Averaging a number whose rank correlation with the
+    # outcome is +0.01 produces a number with no meaning at all, sat in a tile
+    # beside three that count real decisions.
+    metrics[3].metric("لم تُقيَّم · Withheld",
+                      max(0, len(symbols) - len(frame)))
 
     render_data_update_required(symbols, results)
 
-    section_header("Current Opportunities",
-                   f"{len(frame)} symbols with current daily data")
+    section_header(
+        "Current Opportunities",
+        f"{len(frame)} of your {len(symbols)} tracked symbols, with current "
+        f"daily data — the same rule the Daily Dashboard runs, on your subset")
     st.dataframe(
         with_company_name_column(frame[[
             "Rank", "Ticker", "Rating", "Regime", "Signal", "Confidence",
@@ -128,3 +193,4 @@ def show_watchlist():
             "RR": st.column_config.NumberColumn("R/R", format="%.2f"),
         },
     )
+    st.caption(SCORE_CAVEAT)

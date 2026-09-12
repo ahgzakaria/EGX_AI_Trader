@@ -433,8 +433,11 @@ def test_the_watchlist_separates_current_from_update_required():
     source = inspect.getsource(watchlist)
     assert "Current Opportunities" in source
     assert "Data Update Required" in source
+    # Withheld symbols are rendered before the results they were withheld
+    # from. Matched on the heading rather than on the whole `section_header(`
+    # call, which is wrapped across lines.
     assert source.index("render_data_update_required(symbols, results)") < \
-        source.index('section_header("Current Opportunities"')
+        source.index('"Current Opportunities"')
 
 
 def test_watchlist_badge_counts_come_from_current_rows_only():
