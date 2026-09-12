@@ -405,20 +405,42 @@ def resolve_font_family(preferred: str | None = None) -> tuple[str, str]:
 # 3. Palette — the approved dark terminal theme, as RGB
 # --------------------------------------------------------------------------- #
 
-PALETTE = {
-    "bg": (11, 18, 32),
-    "bg_2": (14, 23, 41),
-    "surface": (19, 28, 48),
-    "surface_2": (23, 34, 59),
-    "border": (34, 48, 73),
-    "text": (230, 237, 247),
-    "muted": (142, 161, 189),
-    "green": (52, 211, 153),
-    "amber": (251, 191, 36),
-    "red": (248, 113, 113),
-    "blue": (96, 165, 250),
-    "gray": (148, 163, 184),
-}
+#: A third copy of the palette, and the one that cannot read a CSS variable:
+#: PIL takes RGB tuples. It is derived from `dashboard.ui.COLOURS` rather than
+#: retyped -- this dict held the pre-2026-09-12 values for the whole terminal
+#: pass because nothing tied it to the other two.
+#:
+#: The card is the one surface here that is *exported*: it leaves the app as a
+#: PNG and is read on a phone, next to other people's cards. So it does not
+#: inherit the terminal's hairlines and 11px type, which exist for a 1640px
+#: screen being swept. It is set darker, bigger and with visible edges -- a
+#: black ground, a border on every box, and headings in the accent -- because
+#: at phone size a hairline is invisible and a 9px label is unreadable.
+def _rgb(value: str):
+    value = value.lstrip("#")
+    return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _palette():
+    from dashboard.ui import COLOURS
+
+    return {
+        "bg": (0, 0, 0),                    # pure black: the card is exported
+        "bg_2": (8, 10, 14),
+        "surface": (13, 17, 23),
+        "surface_2": (20, 26, 36),
+        "border": (37, 63, 112),            # a border that is meant to be seen
+        "text": (255, 255, 255),
+        "muted": _rgb(COLOURS["muted"]),
+        "green": _rgb(COLOURS["green"]),
+        "amber": _rgb(COLOURS["amber"]),
+        "red": _rgb(COLOURS["red"]),
+        "blue": (59, 130, 246),             # the chrome colour, not a state
+        "gray": _rgb(COLOURS["gray"]),
+    }
+
+
+PALETTE = _palette()
 _TONES = ("green", "amber", "red", "blue", "gray")
 
 
@@ -564,13 +586,22 @@ class _Canvas:
         return lines
 
     # --- shapes ---
-    def panel(self, box, fill=None, outline=None, radius=18, accent=None):
+    def panel(self, box, fill=None, outline=None, radius=14, accent=None):
+        """A box with an edge you can see.
+
+        The outline was `border` at 2px over a `surface` almost the same value
+        as the ground: on a phone the boxes did not read as boxes at all, and
+        the card looked like one slab of text. It is drawn at 3px in a blue
+        that carries against black, which is what every card this one sits
+        beside does.
+        """
         self.draw.rounded_rectangle(box, radius=radius,
                                     fill=fill or PALETTE["surface"],
-                                    outline=outline or PALETTE["border"], width=2)
+                                    outline=outline or PALETTE["border"], width=3)
         if accent:
             x0, y0, x1, y1 = box
-            self.draw.rounded_rectangle((x1 - 6, y0 + 8, x1 - 2, y1 - 8), radius=3, fill=accent)
+            self.draw.rounded_rectangle((x1 - 7, y0 + 10, x1 - 2, y1 - 10),
+                                        radius=3, fill=accent)
 
     def pill_size(self, text: str, size: int) -> tuple[int, int]:
         pad_x, pad_y = int(size * 0.7), int(size * 0.42)
@@ -823,10 +854,10 @@ def render_card_png(payload, chart: CardChartData | None = None, *,
     content_width = right - left
     footer = _footer_geometry(height, margin)
 
-    # A soft top glow so the card does not read as a flat slab.
-    for row in range(260):
-        canvas.draw.line((0, row, width, row),
-                         fill=_tint(PALETTE["surface_2"], (1.0 - row / 260.0) * 0.9))
+    # No top gradient. It was there so the card "does not read as a flat slab",
+    # but it lifts the top 260 rows toward the panel fill, which is exactly
+    # where the header's own boxes have to separate from the ground. Flat black
+    # is what makes a bordered box read as a box.
 
     # ----- measure --------------------------------------------------------- #
     price_rows = tuple(payload.price_rows)[:8]
@@ -837,7 +868,9 @@ def render_card_png(payload, chart: CardChartData | None = None, *,
 
     header_h = 110
     identity_h = 140
-    price_row_h, side_row_h = 46, 40
+    # Row heights grew with the type they hold: 32px figures in a 46px row had
+    # no air, and the side panels gained a heading rule.
+    price_row_h, side_row_h = 52, 44
     chart_h = 195 if size == "POST" else 270
     min_chart_h = 160
     min_gap = 16
@@ -855,10 +888,18 @@ def render_card_png(payload, chart: CardChartData | None = None, *,
     def _price_h():
         return (((len(price_rows) + 1) // 2) * price_row_h + 24) if price_rows else 0
 
+    #: What `_row_panel` adds to its rows: the heading, the rule under it, and
+    #: the padding above the first row. Measure and draw read the same constant
+    #: -- they were 66 and 70 respectively, and the six pixels of disagreement
+    #: put the narrative box over the footer as soon as the rows grew.
+    SIDE_PANEL_CHROME = 76
+
     def _side_h():
         return max([0]
-                   + ([len(level_rows) * side_row_h + 66] if level_rows else [])
-                   + ([len(scenario_rows) * side_row_h + 66] if scenario_rows else []))
+                   + ([len(level_rows) * side_row_h + SIDE_PANEL_CHROME]
+                      if level_rows else [])
+                   + ([len(scenario_rows) * side_row_h + SIDE_PANEL_CHROME]
+                      if scenario_rows else []))
 
     def _narrative_h():
         if not (headline_lines or summary_lines):
@@ -890,6 +931,21 @@ def render_card_png(payload, chart: CardChartData | None = None, *,
         summary_lines.pop()
     while _overflow() > 0 and summary_lines:
         summary_lines.pop()
+
+    # Every shedding step above has a floor -- four level rows, one narrative
+    # line -- so a card can reach here still too tall, and nothing stopped it:
+    # the blocks simply drew over the pinned footer. The docstring promised the
+    # opposite. Raising the row heights for the 2026-09-12 card pass was enough
+    # to trigger it, which is how it was found.
+    #
+    # The rows give back their own padding before anything is drawn over
+    # anything, one pixel at a time from whichever row type has the most to
+    # spare, down to the heights they had before that pass.
+    while _overflow() > 0 and (price_row_h > 46 or side_row_h > 40):
+        if price_row_h - 46 >= side_row_h - 40 and price_row_h > 46:
+            price_row_h -= 1
+        else:
+            side_row_h -= 1
 
     price_h, side_h, narrative_h = _price_h(), _side_h(), _narrative_h()
     natural = sum(h for h in _heights() if h)
@@ -938,8 +994,10 @@ def render_card_png(payload, chart: CardChartData | None = None, *,
             column, row = index % 2, index // 2
             cell_right = right - 26 - column * column_width
             y = cursor + 15 + row * price_row_h
-            canvas.text_rtl(cell_right, y + 6, str(label), 23, PALETTE["muted"])
-            canvas.text_ltr(cell_right - column_width + 34, y, str(value), 28,
+            canvas.text_rtl(cell_right, y + 8, str(label), 23, PALETTE["muted"])
+            # The session's own figures are the first thing read on a shared
+            # card, and were set two points above their own labels.
+            canvas.text_ltr(cell_right - column_width + 34, y, str(value), 32,
                             PALETTE["text"], bold=True)
         cursor += price_h + gap
 
@@ -954,17 +1012,23 @@ def render_card_png(payload, chart: CardChartData | None = None, *,
         block_top = cursor
 
         def _row_panel(panel_right, panel_left, rows, heading, accent):
-            panel_h = len(rows) * side_row_h + 70
+            panel_h = len(rows) * side_row_h + SIDE_PANEL_CHROME
             canvas.panel((panel_left, block_top, panel_right, block_top + panel_h),
                          accent=accent)
-            canvas.text_rtl(panel_right - 24, block_top + 16, heading, 24, PALETTE["text"],
-                            bold=True)
+            # The heading in the accent and underlined, so a reader finds the
+            # section before reading a word of it. It was the same white as the
+            # values under it, at a size two points apart.
+            canvas.text_rtl(panel_right - 24, block_top + 14, heading, 27,
+                            PALETTE["blue"], bold=True)
+            canvas.draw.line((panel_left + 20, block_top + 50,
+                              panel_right - 20, block_top + 50),
+                             fill=PALETTE["border"], width=2)
             value_width = (panel_right - panel_left) // 2 - 24
             for index, (label, value) in enumerate(rows):
-                y = block_top + 58 + index * side_row_h
-                canvas.text_rtl(panel_right - 24, y, str(label), 22, PALETTE["muted"])
+                y = block_top + 62 + index * side_row_h
+                canvas.text_rtl(panel_right - 24, y, str(label), 23, PALETTE["muted"])
                 canvas.text_ltr(panel_left + 24, y - 2,
-                                canvas.fit_rtl(value, 24, value_width), 24,
+                                canvas.fit_rtl(value, 26, value_width), 26,
                                 PALETTE["text"], bold=True)
 
         if level_rows:

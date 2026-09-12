@@ -185,3 +185,42 @@ def test_the_palette_is_available_to_python_as_literal_hex():
         assert COLOURS[name] == "#{:02x}{:02x}{:02x}".format(*rgb)
     assert COLOURS["green"] == "#3ddc97"
     assert COLOURS["red"] == "#ff5c6c"
+
+
+# --- the exported card's palette and its layout guard --------------------------
+
+def test_the_card_palette_is_derived_from_the_one_python_palette():
+    """A third copy of the colours, in RGB tuples for PIL. It held the
+    pre-terminal values through the whole 2026-09-12 pass because nothing tied
+    it to the other two."""
+    from core.analysis_card_generator import PALETTE
+    from dashboard.ui import COLOURS
+
+    def rgb(value):
+        value = value.lstrip("#")
+        return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+
+    for name in ("green", "amber", "red", "gray", "muted"):
+        assert PALETTE[name] == rgb(COLOURS[name]), f"card {name} has drifted"
+
+
+def test_the_exported_card_is_on_a_black_ground():
+    """It is read on a phone beside other people's cards, not on the terminal."""
+    from core.analysis_card_generator import PALETTE
+
+    assert PALETTE["bg"] == (0, 0, 0)
+
+
+def test_a_card_that_cannot_fit_shrinks_its_rows_instead_of_drawing_on_the_footer():
+    """Every shedding step has a floor -- four level rows, one narrative line --
+    so a card could reach the draw phase still too tall and simply paint over
+    the pinned safety badges. Raising the row heights found it.
+    """
+    import inspect
+
+    from core.analysis_card_generator import render_card_png
+
+    source = inspect.getsource(render_card_png)
+    guard = source.split("while _overflow() > 0 and summary_lines:")[1]
+    assert "price_row_h > 46 or side_row_h > 40" in guard
+    assert guard.index("price_row_h -= 1") < guard.index("price_h, side_h")

@@ -1375,8 +1375,16 @@ def range_position_bar(position_percent, low_label="", high_label=""):
 
 
 def sidebar_brand():
+    """The mark, in the terminal's own voice.
+
+    It carried a 📈 and two hardcoded hexes that no longer exist in the palette
+    -- the last emoji left in the chrome after the navigation lost twelve.
+    """
     st.sidebar.markdown(
-        """<div style="padding:.4rem .35rem .9rem">
-          <div style="font-size:1.12rem;font-weight:800;color:#e6edf7">📈 متداول البورصة المصرية</div>
-          <div style="font-size:.82rem;color:#8ea1bd;margin-top:.2rem">بحث كمي ومتابعة آمنة</div>
+        """<div style="padding:.5rem .35rem .7rem;border-bottom:1px solid var(--border);
+             margin-bottom:.5rem">
+          <div style="font-family:var(--font-mono);font-size:.72rem;font-weight:600;
+             letter-spacing:.22em;color:var(--text)">EGX AI TRADER</div>
+          <div style="font-family:var(--font-ar);font-size:.72rem;color:var(--text-low);
+             margin-top:.25rem">متداول البورصة المصرية · بحث كمي ومتابعة آمنة</div>
         </div>""", unsafe_allow_html=True)
