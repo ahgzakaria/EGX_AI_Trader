@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>تفاصيل السهم · Stock Details — EGX AI Trader Terminal</title>
+<!-- BEGIN: External Fonts & Tailwind CDN -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&amp;family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&amp;family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- END: External Fonts & Tailwind CDN -->
+<!-- BEGIN: Tailwind Configuration -->
+<script data-purpose="tailwind-config">
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            terminal: {
+              base: '#0b1220',
+              sidebar: '#0e1729',
+              card: '#131c30',
+              elevated: '#17223b',
+              well: '#0f182a',
+              border: '#223049',
+              borderActive: '#334769',
+              borderHeavy: '#476291'
+            },
+            fin: {
+              bull: '#34d399',
+              bear: '#f87171',
+              warn: '#fbbf24',
+              info: '#60a5fa',
+              neutral: '#94a3b8',
+              unknown: '#c084fc'
+            }
+          },
+          fontFamily: {
+            sans: ['"IBM Plex Sans"', '"IBM Plex Sans Arabic"', 'sans-serif'],
+            arabic: ['"IBM Plex Sans Arabic"', 'sans-serif'],
+            mono: ['"IBM Plex Mono"', 'monospace']
+          }
+        }
+      }
+    };
+  </script>
+<!-- END: Tailwind Configuration -->
+<!-- BEGIN: Custom Terminal Component Styles -->
+<style data-purpose="custom-theme-styles">
+    /* Tabular numeric rendering */
+    .num-tabular {
+      font-variant-numeric: tabular-nums;
+      font-feature-settings: "tnum" 1, "zero" 1;
+    }
+
+    /* Custom scrollbar for dense financial tables */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0b1220;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #223049;
+      border-radius: 2px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334769;
+    }
+
+    /* Diagonal warning pattern for UNAVAILABLE state */
+    .pattern-unavailable-stripe {
+      background: repeating-linear-gradient(
+        45deg,
+        rgba(192, 132, 252, 0.08),
+        rgba(192, 132, 252, 0.08) 6px,
+        rgba(19, 28, 48, 0.95) 6px,
+        rgba(19, 28, 48, 0.95) 12px
+      );
+    }
+
+    /* Diagnostic banner amber hatched bar pattern */
+    .pattern-archive-hatch {
+      background: repeating-linear-gradient(
+        -45deg,
+        rgba(251, 191, 36, 0.12),
+        rgba(251, 191, 36, 0.12) 8px,
+        rgba(19, 28, 48, 0.9) 8px,
+        rgba(19, 28, 48, 0.9) 16px
+      );
+    }
+
+    /* Frosted cryogenic vault styling for frozen parameters */
+    .frozen-vault-glow {
+      box-shadow: inset 0 0 12px rgba(6, 182, 212, 0.08);
+    }
+  </style>
+<!-- END: Custom Terminal Component Styles -->
+</head>
+<body class="bg-terminal-base text-[#e6edf7] font-sans antialiased selection:bg-cyan-500/20 selection:text-cyan-200">
+<!-- BEGIN: Persistent Diagnostic Top Strip -->
+<header class="w-full h-8 bg-terminal-sidebar border-b border-terminal-border px-4 flex items-center justify-between text-[11px] font-mono tracking-tight select-none">
+<!-- Left telemetry status group -->
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-1.5 text-slate-300">
+<span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+<span class="font-semibold text-amber-400">EGX CLOSED</span>
+<span class="text-terminal-border">|</span>
+<span class="text-slate-400">14:30:00 CLT</span>
+</div>
+<span class="text-terminal-border">/</span>
+<div class="flex items-center gap-1.5 text-slate-400">
+<span class="text-emerald-400 font-medium">EOD SYNCED 15:02</span>
+<span class="text-slate-500">·</span>
+<span class="text-slate-400">OK [HASH: 9e4f1a]</span>
+</div>
+<span class="text-terminal-border">/</span>
+<div class="flex items-center gap-1.5 text-slate-400">
+<span class="text-cyan-400 font-mono">T+0 AUDITED</span>
+<span class="text-slate-500">(100% Deterministic)</span>
+</div>
+</div>
+<!-- Right bilingual system identification -->
+<div class="flex items-center gap-4 text-[10px]">
+<span class="text-slate-500 font-mono">TERMINAL v4.8.2-PROD</span>
+<span class="text-terminal-border">|</span>
+<span class="text-slate-300 font-arabic" dir="rtl">نظام التداول الكمي المصري — المحطة القياسية</span>
+<span class="px-1.5 py-0.5 rounded-[2px] bg-blue-500/10 text-blue-400 border border-blue-500/30 font-mono font-bold">DESK: PRO</span>
+</div>
+</header>
+<!-- END: Persistent Diagnostic Top Strip -->
+<!-- BEGIN: Main Terminal App Frame -->
+<div class="flex min-h-[calc(100vh-2rem)] w-full">
+<!-- BEGIN: Left Rail Navigation -->
+<aside class="w-64 bg-terminal-sidebar border-r border-terminal-border flex flex-col justify-between shrink-0 select-none">
+<div>
+<!-- Workspace brand label -->
+<div class="p-4 border-b border-terminal-border flex items-center justify-between">
+<div>
+<div class="text-xs font-bold font-mono tracking-wider text-slate-100 uppercase">EGX AI TRADER</div>
+<div class="text-[10px] text-slate-400 font-arabic" dir="rtl">منظومة اتخاذ القرار الآلي</div>
+</div>
+<span class="px-1.5 py-0.5 text-[9px] font-mono bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-[2px]">SYNCED</span>
+</div>
+<!-- System Health Mini-strip inside Sidebar -->
+<div class="px-3 py-2 bg-terminal-well border-b border-terminal-border flex items-center justify-between text-[10px] font-mono">
+<span class="text-slate-400">PIPELINE RUN:</span>
+<span class="text-emerald-400 font-semibold flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> ALL GATES OK
+          </span>
+</div>
+<!-- Navigation Sections -->
+<nav class="p-2 space-y-4">
+<!-- Section 1: Portfolio -->
+<div>
+<div class="px-2 py-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+<span>PORTFOLIO · المحفظة</span>
+<span class="text-[9px] font-mono text-slate-600">3 POS</span>
+</div>
+<div class="mt-1 space-y-0.5">
+<a class="flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-terminal-card hover:text-white rounded-[2px]" href="#">
+<span class="text-slate-400">📁</span>
+<span>My Portfolio</span>
+</a>
+</div>
+</div>
+<!-- Section 2: Swing Execution -->
+<div>
+<div class="px-2 py-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+<span>SWING · سوينج</span>
+</div>
+<div class="mt-1 space-y-0.5">
+<a class="flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-terminal-card hover:text-white rounded-[2px]" href="#">
+<span class="text-slate-400">📊</span>
+<span>Daily Dashboard</span>
+</a>
+<a class="flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-terminal-card hover:text-white rounded-[2px]" href="#">
+<span class="text-slate-400">📈</span>
+<span>Swing Breakout</span>
+</a>
+<a class="flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-terminal-card hover:text-white rounded-[2px]" href="#">
+<span class="text-slate-400">🔭</span>
+<span>Breakout Watch</span>
+</a>
+<a class="flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-terminal-card hover:text-white rounded-[2px]" href="#">
+<span class="text-slate-400">🚀</span>
+<span>Confirmed Breakout</span>
+</a>
+<a class="flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-terminal-card hover:text-white rounded-[2px]" href="#">
+<span class="text-slate-400">🌊</span>
+<span>Sector Liquidity</span>
+</a>
+<a class="flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-terminal-card hover:text-white rounded-[2px]" href="#">
+<span class="text-amber-400">★</span>
+<span>Watchlist</span>
+<span class="ml-auto text-[10px] font-mono text-slate-400 bg-terminal-card px-1 rounded">14</span>
+</a>
+<!-- Active Item: Stock Details -->
+<a class="flex items-center gap-2 px-2.5 py-1.5 text-xs bg-terminal-elevated text-cyan-300 border-l-2 border-cyan-400 font-medium rounded-r-[2px]" href="#">
+<span class="text-cyan-400">🔍</span>
+<div class="flex items-center justify-between w-full">
+<span>Stock Details</span>
+<span class="text-[9px] font-mono text-cyan-400 bg-cyan-950/40 px-1 border border-cyan-800 rounded">ACAP</span>
+</div>
+</a>
+</div>
+</div>
+<!-- Section 3: AI Analysis -->
+<div>
+<div class="px-2 py-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+<span>AI ANALYSIS · تحليل</span>
+</div>
+<div class="mt-1 space-y-0.5">
+<a class="flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-terminal-card hover:text-white rounded-[2px]" href="#">
+<span class="text-slate-400">🧠</span>
+<span>AI Advisory Trace</span>
+</a>
+</div>
+</div>
+<!-- Section 4: System -->
+<div>
+<div class="px-2 py-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+<span>SYSTEM · النظام</span>
+</div>
+<div class="mt-1 space-y-0.5">
+<a class="flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-terminal-card hover:text-white rounded-[2px]" href="#">
+<span class="text-slate-400">🩺</span>
+<span>Engine Diagnostics</span>
+</a>
+<a class="flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-terminal-card hover:text-white rounded-[2px]" href="#">
+<span class="text-slate-400">⚙️</span>
+<span>Strategy Settings</span>
+</a>
+</div>
+</div>
+</nav>
+</div>
+<!-- Left Sidebar Footer Status -->
+<div class="p-3 border-t border-terminal-border bg-terminal-card text-[11px]">
+<div class="flex items-center justify-between text-slate-400">
+<span class="font-arabic" dir="rtl">تداول البورصة المصرية</span>
+<span class="font-mono text-[10px] text-emerald-400">LIVE FEED</span>
+</div>
+<div class="mt-1 text-[10px] text-slate-500 font-mono truncate">EODHD API: CONNECTED (2ms)</div>
+</div>
+</aside>
+<!-- END: Left Rail Navigation -->
+<!-- BEGIN: Central Workspace Canvas (1640px Max Width) -->
+<main class="flex-1 min-w-0 bg-terminal-base overflow-y-auto">
+<div class="max-w-[1640px] mx-auto p-4 sm:p-6 space-y-4">
+<!-- BEGIN: Institutional Vault / Historical Freeze Banner -->
+<!-- Addresses the Historical Snapshot Frame challenge with an unmistakable institutional treatment -->
+<section class="border border-amber-500/40 bg-terminal-card relative overflow-hidden rounded-[4px]" data-purpose="historical-vault-frame">
+<div class="pattern-archive-hatch border-b border-amber-500/30 px-4 py-2 flex flex-wrap items-center justify-between gap-2">
+<div class="flex items-center gap-2">
+<span class="px-1.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/50 font-mono text-[10px] font-bold tracking-wider rounded-[2px] flex items-center gap-1">
+<span>🔒</span> HISTORICAL SNAPSHOT · لقطة تاريخية مجمدة
+              </span>
+<span class="font-mono text-xs text-amber-200 font-semibold tracking-wide uppercase">NOT A CURRENT LIVE DECISION</span>
+</div>
+<!-- Immutability Diagnostic Badge -->
+<div class="flex items-center gap-2 text-[11px] font-mono">
+<span class="text-slate-400">DIAGNOSTIC STATUS:</span>
+<span class="px-2 py-0.5 bg-terminal-well border border-amber-400/40 text-amber-300 font-mono text-[10px] font-bold rounded-[2px]">
+                IMMUTABLE HISTORICAL ARTIFACT (FROZEN STATE)
+              </span>
+</div>
+</div>
+<div class="p-3 bg-terminal-well/80 flex flex-wrap items-center justify-between gap-4 text-xs font-mono">
+<div class="space-y-0.5">
+<div class="text-slate-300">
+<span class="text-slate-400">Snapshot Recorded:</span>
+<span class="text-cyan-300 font-semibold">2026-09-10 · 14:30 CLT</span>
+<span class="text-slate-400">(EGX Session #5,287)</span>
+</div>
+<div class="text-[11px] text-slate-400">
+<span class="text-slate-400">Rubix Real-Time Quote Overlay:</span>
+<span class="text-amber-400 font-medium">INACTIVE (Market Weekend / Off-Hours)</span>
+<span class="text-slate-400">· Observations locked to session close</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<div class="text-right">
+<div class="text-[10px] text-slate-400 font-mono">QUANTITATIVE DECISION ENGINE</div>
+<div class="text-xs text-slate-300 font-semibold">FinModel Core v4.8.2 [Deterministic]</div>
+</div>
+<div class="h-6 w-px bg-terminal-border"></div>
+<div class="text-right">
+<div class="text-[10px] text-slate-400 font-mono">HASH CHECK</div>
+<div class="text-xs font-mono text-cyan-400">SHA-256:df22...44f4</div>
+</div>
+</div>
+</div>
+</section>
+<!-- END: Institutional Vault / Historical Freeze Banner -->
+<!-- BEGIN: Stock Symbol Header & Quick Triage -->
+<section class="bg-terminal-card border border-terminal-border p-4 rounded-[4px] space-y-4" data-purpose="stock-header">
+<!-- Top row: Symbol switcher, Ticker info, Action buttons -->
+<div class="flex flex-wrap items-center justify-between gap-4">
+<!-- Left Symbol Identity Group -->
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 bg-terminal-well border border-terminal-borderHeavy flex items-center justify-center font-mono font-bold text-lg text-cyan-400 rounded-[2px]">
+                ACAP
+              </div>
+<div>
+<div class="flex items-center gap-2">
+<h1 class="text-xl font-bold font-mono text-white tracking-tight">ACAP.CA</h1>
+<span class="text-slate-400 font-mono text-sm">— A Capital Holding</span>
+<!-- Quality Tier Badge -->
+<span class="px-1.5 py-0.5 bg-blue-500/10 border border-blue-500/30 text-blue-400 font-mono text-[10px] font-bold rounded-[2px]">
+                    TIER A+
+                  </span>
+<!-- Decision Status Pill -->
+<span class="px-2 py-0.5 bg-blue-500/10 border border-blue-500/40 text-blue-300 font-mono text-xs font-bold rounded-[2px] flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span> WATCH
+                  </span>
+</div>
+<!-- Arabic Subtitle adhering to Bilingual Stacking Rule -->
+<div class="text-xs text-slate-400 font-arabic mt-0.5" dir="rtl">
+                  القاهرة للاستثمارات والتنمية / أيه كابيتال القابضة · قطاع الخدمات المالية غير المصرفية
+                </div>
+</div>
+</div>
+<!-- Right: Quick Watchlist + Symbol Selector Tool -->
+<div class="flex items-center gap-3">
+<!-- Watchlist Toggle Action Button -->
+<button class="px-3 py-1.5 bg-amber-500/10 border border-amber-500/40 text-amber-300 hover:bg-amber-500/20 text-xs font-mono font-medium rounded-[2px] flex items-center gap-1.5 transition-colors">
+<span>★</span>
+<span>Watchlist (Active)</span>
+<span class="text-slate-400">|</span>
+<span class="text-slate-300">14 Total</span>
+</button>
+<!-- Symbol Switcher Input Combobox -->
+<div class="relative">
+<label class="sr-only" for="symbol-search">Switch Symbol</label>
+<div class="flex items-center bg-terminal-well border border-terminal-border rounded-[2px] px-2.5 py-1">
+<span class="text-slate-400 text-xs mr-2 font-mono">EGX:</span>
+<input class="bg-transparent text-xs font-mono text-slate-200 border-0 p-0 focus:ring-0 w-52 placeholder-slate-500" id="symbol-search" readonly="" type="text" value="ACAP — A Capital Holding"/>
+<span class="text-slate-500 text-xs ml-1">▼</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom Row: Navigation Tabs (Tab 2 Active: Decision Engine Trace) -->
+<div class="border-t border-terminal-border pt-3 flex items-center justify-between">
+<nav aria-label="Tabs" class="flex items-center space-x-1 sm:space-x-2">
+<!-- Tab 1 -->
+<button class="px-3 py-1.5 text-xs font-mono text-slate-400 hover:text-slate-200 hover:bg-terminal-well rounded-[2px] flex items-center gap-1.5 transition-colors">
+<span>Overview</span>
+<span class="text-[10px] font-arabic text-slate-500">(نظرة عامة)</span>
+</button>
+<!-- Tab 2: ACTIVE (Decision Logic) -->
+<button class="px-3 py-1.5 text-xs font-mono font-bold text-cyan-300 bg-terminal-elevated border-b-2 border-cyan-400 rounded-t-[2px] flex items-center gap-1.5 shadow-sm">
+<span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+<span>★ Decision Trace</span>
+<span class="text-[10px] font-arabic text-cyan-300">(منطق القرار والقواعد الكمية)</span>
+</button>
+<!-- Tab 3 -->
+<button class="px-3 py-1.5 text-xs font-mono text-slate-400 hover:text-slate-200 hover:bg-terminal-well rounded-[2px] flex items-center gap-1.5 transition-colors">
+<span>Position Sizing</span>
+<span class="text-[10px] font-arabic text-slate-500">(إدارة المخاطر)</span>
+</button>
+<!-- Tab 4 -->
+<button class="px-3 py-1.5 text-xs font-mono text-slate-400 hover:text-slate-200 hover:bg-terminal-well rounded-[2px] flex items-center gap-1.5 transition-colors">
+<span>Chart &amp; Indicators</span>
+<span class="text-[10px] font-arabic text-slate-500">(الرسم البياني)</span>
+</button>
+</nav>
+<!-- Mode metadata -->
+<div class="hidden sm:flex items-center gap-2 text-[10px] font-mono text-slate-400">
+<span class="px-1.5 py-0.5 bg-terminal-well border border-terminal-border text-slate-400">MODE: SWING / DAILY CLOSE</span>
+<span class="px-1.5 py-0.5 bg-terminal-well border border-terminal-border text-slate-400">T+2 SETTLEMENT</span>
+</div>
+</div>
+</section>
+<!-- END: Stock Symbol Header & Quick Triage -->
+<!-- BEGIN: Critical Challenge 1: FROZEN VS LIVE COMPARISON VAULT -->
+<!-- Visual separation solving the confusion between historical frozen evidence and current quotes -->
+<section class="grid grid-cols-1 xl:grid-cols-12 gap-4" data-purpose="frozen-vs-live-vault">
+<!-- LEFT 8-COLS: The Cryogenic Frozen Decision Vault -->
+<div class="xl:col-span-8 bg-[#0a1626] border-2 border-cyan-500/40 p-4 rounded-[4px] frozen-vault-glow relative">
+<!-- Watermark Header for Frozen Evidence -->
+<div class="flex items-center justify-between pb-3 border-b border-cyan-500/20">
+<div class="flex items-center gap-2">
+<span class="text-base text-cyan-400">❄</span>
+<div>
+<div class="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wide flex items-center gap-2">
+<span>FROZEN DECISION BASELINE</span>
+<span class="px-1.5 py-0.2 bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 text-[9px] rounded-[2px]">IMMUTABLE EVIDENCE</span>
+</div>
+<div class="text-[11px] text-slate-400 font-arabic" dir="rtl">
+                    القيم والحدود السعرية المحسوبة لحظة انطلاق الإشارة — غير قابلة للتعديل
+                  </div>
+</div>
+</div>
+<!-- Monospace Timestamp Tag -->
+<div class="text-right">
+<span class="px-2 py-0.5 bg-cyan-950/60 border border-cyan-600/40 text-cyan-200 font-mono text-[10px] font-bold rounded-[2px]">
+                  [FROZEN: 2026-09-10 · 14:30 CLT]
+                </span>
+</div>
+</div>
+<!-- 4-Metric Grid for Frozen Values -->
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+<!-- Metric 1: Frozen Signal Price -->
+<div class="bg-terminal-well/90 border border-cyan-500/30 p-2.5 rounded-[2px]">
+<div class="text-[10px] font-mono text-cyan-300/80 uppercase">Frozen Signal Price</div>
+<div class="text-lg font-mono font-bold text-white num-tabular mt-0.5">
+<bdi dir="ltr">9.25 EGP</bdi>
+</div>
+<div class="text-[10px] text-slate-400 font-mono mt-0.5">At Bar Close</div>
+</div>
+<!-- Metric 2: Frozen Buy Range -->
+<div class="bg-terminal-well/90 border border-cyan-500/30 p-2.5 rounded-[2px]">
+<div class="text-[10px] font-mono text-cyan-300/80 uppercase">Frozen Buy Range</div>
+<div class="text-lg font-mono font-bold text-cyan-200 num-tabular mt-0.5">
+<bdi dir="ltr">9.15 — 9.25</bdi>
+</div>
+<div class="text-[10px] text-emerald-400 font-mono mt-0.5">Tolerance: 1.08%</div>
+</div>
+<!-- Metric 3: Frozen Stop Loss -->
+<div class="bg-terminal-well/90 border border-red-500/30 p-2.5 rounded-[2px]">
+<div class="text-[10px] font-mono text-red-300/80 uppercase">Frozen Stop Loss</div>
+<div class="text-lg font-mono font-bold text-red-400 num-tabular mt-0.5">
+<bdi dir="ltr">8.66 EGP</bdi>
+</div>
+<div class="text-[10px] text-red-400/80 font-mono mt-0.5">-6.38% Distance</div>
+</div>
+<!-- Metric 4: Frozen R:R -->
+<div class="bg-terminal-well/90 border border-cyan-500/30 p-2.5 rounded-[2px]">
+<div class="text-[10px] font-mono text-cyan-300/80 uppercase">Original R / R</div>
+<div class="text-lg font-mono font-bold text-white num-tabular mt-0.5">
+<bdi dir="ltr">1 : 2.40</bdi>
+</div>
+<div class="text-[10px] text-emerald-400 font-mono mt-0.5">Satisfies &gt;= 2.0x</div>
+</div>
+</div>
+<!-- Operational Rule 3 Explanatory Footnote -->
+<div class="mt-3 pt-2 border-t border-cyan-500/20 flex items-center justify-between text-[11px]">
+<div class="text-slate-400 flex items-center gap-1.5">
+<span class="text-cyan-400 font-bold">OPERATING RULE 3:</span>
+<span class="font-sans">Frozen evidence is immutable and never recalculated with later data; decision trace remains anchored to generation bar.</span>
+</div>
+<span class="text-[10px] font-mono text-cyan-400/80">ANCHOR: #BAR-8942</span>
+</div>
+</div>
+<!-- RIGHT 4-COLS: Live / Rubix EOD Overlay Comparison -->
+<div class="xl:col-span-4 bg-terminal-card border border-terminal-borderActive p-4 rounded-[4px] flex flex-col justify-between">
+<div>
+<!-- Live State Header -->
+<div class="flex items-center justify-between pb-3 border-b border-terminal-border">
+<div>
+<div class="text-xs font-mono font-bold text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-slate-400"></span>
+<span>CURRENT SESSION CLOSE (RUBIX)</span>
+</div>
+<div class="text-[11px] text-slate-400 font-arabic" dir="rtl">آخر سعر مسجل عند إغلاق الجلسة</div>
+</div>
+<span class="px-1.5 py-0.5 bg-terminal-well border border-terminal-border text-slate-400 font-mono text-[10px] rounded-[2px]">
+                  [EODHD · EOD]
+                </span>
+</div>
+<!-- Comparison Table Rows -->
+<div class="mt-3 space-y-2 text-xs font-mono">
+<div class="flex items-center justify-between p-2 bg-terminal-well rounded-[2px] border border-terminal-border">
+<span class="text-slate-400">Rubix Observed Price:</span>
+<div class="text-right">
+<span class="text-white font-bold text-sm"><bdi dir="ltr">9.15 EGP</bdi></span>
+<span class="text-red-400 text-[11px] ml-1.5"><bdi dir="ltr">▼ -1.08%</bdi></span>
+</div>
+</div>
+<div class="flex items-center justify-between p-2 bg-terminal-well rounded-[2px] border border-terminal-border">
+<span class="text-slate-400">Dynamic Floor (Trailing):</span>
+<div class="text-right">
+<span class="text-slate-200 font-semibold"><bdi dir="ltr">8.76 EGP</bdi></span>
+<span class="text-slate-500 text-[10px] ml-1">(Support)</span>
+</div>
+</div>
+<div class="flex items-center justify-between p-2 bg-terminal-well rounded-[2px] border border-terminal-border">
+<span class="text-slate-400">Target 1 (Promotion):</span>
+<div class="text-right">
+<span class="text-emerald-400 font-semibold"><bdi dir="ltr">10.00 EGP</bdi></span>
+<span class="text-emerald-400 text-[10px] ml-1">(+9.29%)</span>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-3 pt-2 border-t border-terminal-border text-[10px] text-slate-500 font-mono flex items-center justify-between">
+<span>MARKET BASIS: COMPLETED_SESSION_CLOSE</span>
+<span class="text-amber-400">LIVE FEED PAUSED</span>
+</div>
+</div>
+</section>
+<!-- END: Critical Challenge 1: FROZEN VS LIVE COMPARISON VAULT -->
+<!-- BEGIN: Critical Challenge 2: HERO COMPONENT — THE 7 STRATEGY GATES -->
+<!-- Centerpiece of the Decision screen: Strict adherence to 3 states (PASS, FAIL, UNAVAILABLE) -->
+<section class="bg-terminal-card border border-terminal-border p-5 rounded-[4px] space-y-4" data-purpose="seven-gates-hero">
+<!-- Gates Header & Summary Verdict -->
+<div class="flex flex-wrap items-center justify-between gap-4 border-b border-terminal-border pb-4">
+<div>
+<div class="flex items-center gap-2.5">
+<span class="px-2 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/30 text-[10px] font-mono font-bold uppercase rounded-[2px]">
+                  STAGE 1 VERIFICATION
+                </span>
+<h2 class="text-base font-bold font-mono text-white tracking-wide uppercase">
+                  نتائج البوابات السبع · THE 7 STRATEGY EXECUTION GATES
+                </h2>
+</div>
+<p class="text-xs text-slate-400 mt-1">
+                Deterministic filter pipeline. Every trade candidate must pass all operational gates before capital allocation.
+              </p>
+</div>
+<!-- Quantitative Pipeline Status Tally -->
+<div class="flex items-center gap-3">
+<div class="flex items-center gap-2 bg-terminal-well border border-terminal-border px-3 py-1.5 rounded-[2px] text-xs font-mono">
+<span class="flex items-center gap-1 text-emerald-400 font-bold">
+<span class="w-2 h-2 rounded-full bg-emerald-400"></span> 5 PASS
+                </span>
+<span class="text-terminal-border">|</span>
+<span class="flex items-center gap-1 text-red-400 font-bold">
+<span class="w-2 h-2 rounded-full bg-red-400"></span> 1 FAIL
+                </span>
+<span class="text-terminal-border">|</span>
+<span class="flex items-center gap-1 text-purple-400 font-bold">
+<span class="w-2 h-2 rounded-full bg-purple-400"></span> 1 UNAVAIL
+                </span>
+</div>
+<!-- Output Verdict -->
+<div class="px-3 py-1.5 bg-blue-500/15 border border-blue-400/40 text-blue-300 font-mono text-xs font-bold rounded-[2px]">
+                GATE VERDICT: WATCH (BLOCKED BY GATE 3)
+              </div>
+</div>
+</div>
+<!-- The 7 Gates Cards Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-3">
+<!-- Gate 1: PASS -->
+<div class="bg-terminal-well border border-emerald-500/50 p-3 rounded-[3px] flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between text-[10px] font-mono text-slate-400 mb-1">
+<span>GATE 01</span>
+<span class="px-1.5 py-0.2 bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 font-bold rounded-[2px]">PASS</span>
+</div>
+<div class="text-xs font-bold text-slate-100 font-mono">Liquidity &amp; Turnover</div>
+<div class="text-[11px] text-slate-400 font-arabic mt-0.5" dir="rtl">السيولة ومعدل الدوران</div>
+</div>
+<div class="mt-3 pt-2 border-t border-terminal-border text-[11px] font-mono">
+<div class="text-slate-400 text-[10px]">THRESHOLD: &gt;= 500k EGP</div>
+<div class="text-emerald-400 font-semibold mt-0.5"><bdi dir="ltr">1.48M EGP ✓</bdi></div>
+<div class="text-[9px] text-slate-500 mt-1">Status: Passed cleanly</div>
+</div>
+</div>
+<!-- Gate 2: PASS -->
+<div class="bg-terminal-well border border-emerald-500/50 p-3 rounded-[3px] flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between text-[10px] font-mono text-slate-400 mb-1">
+<span>GATE 02</span>
+<span class="px-1.5 py-0.2 bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 font-bold rounded-[2px]">PASS</span>
+</div>
+<div class="text-xs font-bold text-slate-100 font-mono">Long-Term Regime</div>
+<div class="text-[11px] text-slate-400 font-arabic mt-0.5" dir="rtl">فلتر الاتجاه العام طويل الأجل</div>
+</div>
+<div class="mt-3 pt-2 border-t border-terminal-border text-[11px] font-mono">
+<div class="text-slate-400 text-[10px]">THRESHOLD: Price &gt; EMA200</div>
+<div class="text-emerald-400 font-semibold mt-0.5"><bdi dir="ltr">9.15 &gt; 8.42 EGP ✓</bdi></div>
+<div class="text-[9px] text-slate-500 mt-1">Status: Bullish regime confirmed</div>
+</div>
+</div>
+<!-- Gate 3: FAIL (Heroic Warning Cross) -->
+<div class="bg-terminal-well border-2 border-red-500/70 p-3 rounded-[3px] flex flex-col justify-between bg-red-950/10">
+<div>
+<div class="flex items-center justify-between text-[10px] font-mono text-slate-400 mb-1">
+<span class="text-red-400 font-bold">GATE 03</span>
+<span class="px-1.5 py-0.2 bg-red-500/20 text-red-300 border border-red-500/50 font-bold rounded-[2px]">✕ FAIL</span>
+</div>
+<div class="text-xs font-bold text-white font-mono">Short-Term Momentum</div>
+<div class="text-[11px] text-slate-400 font-arabic mt-0.5" dir="rtl">قوة الزخم واختراق السقف</div>
+</div>
+<div class="mt-3 pt-2 border-t border-red-500/30 text-[11px] font-mono">
+<div class="text-red-300/80 text-[10px]">SHORTFALL RECORDED:</div>
+<div class="text-red-400 font-bold mt-0.5"><bdi dir="ltr">9.15 &lt; 9.30 (-1.6%)</bdi></div>
+<div class="text-[9px] text-red-300/70 mt-1">Ceiling unbreached on close</div>
+</div>
+</div>
+<!-- Gate 4: PASS -->
+<div class="bg-terminal-well border border-emerald-500/50 p-3 rounded-[3px] flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between text-[10px] font-mono text-slate-400 mb-1">
+<span>GATE 04</span>
+<span class="px-1.5 py-0.2 bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 font-bold rounded-[2px]">PASS</span>
+</div>
+<div class="text-xs font-bold text-slate-100 font-mono">ATR Compression</div>
+<div class="text-[11px] text-slate-400 font-arabic mt-0.5" dir="rtl">ضغط التذبذب والنطاق السعري</div>
+</div>
+<div class="mt-3 pt-2 border-t border-terminal-border text-[11px] font-mono">
+<div class="text-slate-400 text-[10px]">THRESHOLD: ATR(14) &lt;= 4.5%</div>
+<div class="text-emerald-400 font-semibold mt-0.5"><bdi dir="ltr">3.82% &lt;= 4.5% ✓</bdi></div>
+<div class="text-[9px] text-slate-500 mt-1">Status: Low risk volatility</div>
+</div>
+</div>
+<!-- Gate 5: PASS -->
+<div class="bg-terminal-well border border-emerald-500/50 p-3 rounded-[3px] flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between text-[10px] font-mono text-slate-400 mb-1">
+<span>GATE 05</span>
+<span class="px-1.5 py-0.2 bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 font-bold rounded-[2px]">PASS</span>
+</div>
+<div class="text-xs font-bold text-slate-100 font-mono">Volume Surge Multiple</div>
+<div class="text-[11px] text-slate-400 font-arabic mt-0.5" dir="rtl">مضاعف انفجار أحجام التداول</div>
+</div>
+<div class="mt-3 pt-2 border-t border-terminal-border text-[11px] font-mono">
+<div class="text-slate-400 text-[10px]">THRESHOLD: Vol &gt;= 2.0x 20SMA</div>
+<div class="text-emerald-400 font-semibold mt-0.5"><bdi dir="ltr">3.40x &gt;= 2.0x ✓</bdi></div>
+<div class="text-[9px] text-slate-500 mt-1">Surge detected on trigger</div>
+</div>
+</div>
+<!-- Gate 6: UNAVAILABLE / UNMEASURED (Operating Rule 1 & 5) -->
+<div class="pattern-unavailable-stripe border-2 border-dashed border-purple-500/60 p-3 rounded-[3px] flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between text-[10px] font-mono text-purple-300 mb-1">
+<span>GATE 06</span>
+<span class="px-1.5 py-0.2 bg-purple-950/80 text-purple-300 border border-purple-400/50 font-bold rounded-[2px]">
+                    —·— UNMEASURED
+                  </span>
+</div>
+<div class="text-xs font-bold text-purple-200 font-mono">Round-Trip Friction</div>
+<div class="text-[11px] text-purple-300/80 font-arabic mt-0.5" dir="rtl">تكلفة التداول والانزلاق السعري</div>
+</div>
+<div class="mt-3 pt-2 border-t border-purple-500/30 text-[11px] font-mono">
+<div class="text-purple-300 text-[10px]">TICK SPREAD SAMPLE:</div>
+<div class="text-purple-300 font-bold mt-0.5">—·— UNAVAILABLE</div>
+<div class="text-[9px] text-purple-300/80 mt-1">Low auction data; never 0.00</div>
+</div>
+</div>
+<!-- Gate 7: PASS -->
+<div class="bg-terminal-well border border-emerald-500/50 p-3 rounded-[3px] flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between text-[10px] font-mono text-slate-400 mb-1">
+<span>GATE 07</span>
+<span class="px-1.5 py-0.2 bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 font-bold rounded-[2px]">PASS</span>
+</div>
+<div class="text-xs font-bold text-slate-100 font-mono">EGX Regime Guard</div>
+<div class="text-[11px] text-slate-400 font-arabic mt-0.5" dir="rtl">حماية اتجاه مؤشر EGX30</div>
+</div>
+<div class="mt-3 pt-2 border-t border-terminal-border text-[11px] font-mono">
+<div class="text-slate-400 text-[10px]">THRESHOLD: EGX30 &gt; 50SMA</div>
+<div class="text-emerald-400 font-semibold mt-0.5"><bdi dir="ltr">30,420 &gt; 29,800 ✓</bdi></div>
+<div class="text-[9px] text-slate-500 mt-1">Macro environment permissive</div>
+</div>
+</div>
+</div>
+<!-- Bottom Operational Note -->
+<div class="bg-terminal-well p-2.5 rounded-[2px] border border-terminal-border flex flex-wrap items-center justify-between text-xs text-slate-400 font-mono">
+<div class="flex items-center gap-2">
+<span class="text-amber-400 font-bold">OPERATING RULE 5 ENFORCED:</span>
+<span>All rules evaluate to PASS, FAIL, or UNAVAILABLE. Unknown data is blocked from default-passing.</span>
+</div>
+<div class="text-slate-500 text-[11px]">Next evaluation cycle: Sunday Open 10:00 CLT</div>
+</div>
+</section>
+<!-- END: Critical Challenge 2: HERO COMPONENT — THE 7 STRATEGY GATES -->
+<!-- BEGIN: Strategy Decision Rationale & Advisory Layer (Operating Rule 4) -->
+<section class="grid grid-cols-1 lg:grid-cols-12 gap-4" data-purpose="decision-rationale-panels">
+<!-- LEFT 7-COLS: Rule Engine vs AI Advisory Separation -->
+<div class="lg:col-span-7 bg-terminal-card border border-terminal-border p-4 rounded-[4px] space-y-3">
+<div class="flex items-center justify-between border-b border-terminal-border pb-2.5">
+<div class="flex items-center gap-2">
+<span class="text-slate-300 font-mono text-xs font-bold uppercase">DECISION ENGINE SUMMARY</span>
+<span class="text-slate-500">·</span>
+<span class="text-slate-400 font-arabic text-xs" dir="rtl">ملخص قرار النموذج الاستثماري</span>
+</div>
+<!-- Taxonomy Advisory Rule 4 -->
+<span class="px-2 py-0.5 bg-blue-500/10 border border-blue-400/40 text-blue-300 font-mono text-[10px] font-bold rounded-[2px]">
+                [ADVISORY / بحث استرشادي]
+              </span>
+</div>
+<!-- Primary Strategy Rule Verdict Banner -->
+<div class="p-3 bg-amber-500/10 border-l-4 border-amber-400 border-y border-r border-amber-500/30 rounded-[2px]">
+<div class="flex items-center justify-between text-xs font-mono">
+<span class="font-bold text-amber-300 tracking-wider">STRATEGY RULE VERDICT: WATCHLIST ONLY</span>
+<span class="text-amber-400 text-[10px]">[QUANT-HARD-RULE]</span>
+</div>
+<div class="text-xs text-slate-200 mt-1 font-sans">
+                Promising technical setup, but the frozen strategy requires breakout confirmation above <span class="font-mono font-bold text-white"><bdi dir="ltr">9.25 EGP</bdi></span> with sustained volume before capital execution.
+              </div>
+</div>
+<!-- Advisory AI Layer (Framed in Distinct Blue-Grey) -->
+<div class="p-3 bg-slate-900/60 border border-slate-700/60 rounded-[2px] space-y-1.5">
+<div class="flex items-center justify-between text-[11px] font-mono">
+<span class="text-blue-300 font-semibold flex items-center gap-1.5">
+<span>🤖</span> AI ADVISORY LAYER (SYNTHESIS)
+                </span>
+<span class="text-slate-500 text-[10px]">NEVER OVERRIDES QUANT RULES</span>
+</div>
+<div class="text-xs text-slate-300 font-sans leading-relaxed">
+                Liquidity accumulation patterns in ACAP over the prior 3 trading sessions show institutional absorption at 9.00 - 9.15 EGP. However, lack of confirmed breakout past weekly resistance (10.00 EGP) limits risk/reward expansion. Maintain Watch state.
+              </div>
+<div class="text-[11px] text-slate-400 font-arabic" dir="rtl">
+                النموذج الآلي يوصي بالانتظار حتى ثبات التداول أعلى 9.25 ج.م مع تنفيذ حجم تداول يفوق 2 مليون سهم.
+              </div>
+</div>
+<!-- Key Reasons / Signals Badges -->
+<div class="pt-2">
+<div class="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-2">Key Strategy Signals Detected:</div>
+<div class="flex flex-wrap gap-1.5">
+<span class="px-2 py-0.5 bg-terminal-well border border-emerald-500/40 text-emerald-300 font-mono text-[10px] rounded-[2px]">
+                  TRENDING BULLISH
+                </span>
+<span class="px-2 py-0.5 bg-terminal-well border border-emerald-500/40 text-emerald-300 font-mono text-[10px] rounded-[2px]">
+                  Above EMA200 (8.42 EGP)
+                </span>
+<span class="px-2 py-0.5 bg-terminal-well border border-emerald-500/40 text-emerald-300 font-mono text-[10px] rounded-[2px]">
+                  Inside Upper Bollinger Band
+                </span>
+<span class="px-2 py-0.5 bg-terminal-well border border-cyan-500/40 text-cyan-300 font-mono text-[10px] rounded-[2px]">
+                  RSI(14): 58.4 Healthy
+                </span>
+<span class="px-2 py-0.5 bg-terminal-well border border-amber-500/40 text-amber-300 font-mono text-[10px] rounded-[2px]">
+                  Pending Resistance Breach
+                </span>
+<span class="px-2 py-0.5 bg-terminal-well border border-emerald-500/40 text-emerald-300 font-mono text-[10px] rounded-[2px]">
+                  OBV Accumulation Positive
+                </span>
+</div>
+</div>
+</div>
+<!-- RIGHT 5-COLS: Confidence Breakdown & Pillar Contributions -->
+<div class="lg:col-span-5 bg-terminal-card border border-terminal-border p-4 rounded-[4px] flex flex-col justify-between space-y-4">
+<div>
+<div class="flex items-center justify-between border-b border-terminal-border pb-2.5">
+<div>
+<div class="text-xs font-mono font-bold text-slate-200 uppercase">PILLAR CONFIDENCE BREAKDOWN</div>
+<div class="text-[11px] text-slate-400 font-arabic" dir="rtl">توزيع أوزان الاستراتيجية الكمية</div>
+</div>
+<!-- Net Strategy Score -->
+<div class="text-right">
+<div class="text-lg font-mono font-bold text-cyan-400 num-tabular">88 <span class="text-xs text-slate-400">/ 100</span></div>
+<div class="text-[9px] font-mono text-emerald-400">HIGH FIDELITY</div>
+</div>
+</div>
+<!-- Horizontal Progress Bars for Strategy Factors -->
+<div class="mt-4 space-y-3 font-mono text-xs">
+<!-- Factor 1 -->
+<div>
+<div class="flex justify-between text-[11px] mb-1">
+<span class="text-slate-300">Technical Trend Alignment</span>
+<span class="text-emerald-400 font-bold">92%</span>
+</div>
+<div class="w-full h-1.5 bg-terminal-well rounded-full overflow-hidden">
+<div class="bg-emerald-400 h-full rounded-full" style="width: 92%"></div>
+</div>
+</div>
+<!-- Factor 2 -->
+<div>
+<div class="flex justify-between text-[11px] mb-1">
+<span class="text-slate-300">Volume Structure &amp; Pressure</span>
+<span class="text-emerald-400 font-bold">85%</span>
+</div>
+<div class="w-full h-1.5 bg-terminal-well rounded-full overflow-hidden">
+<div class="bg-emerald-400 h-full rounded-full" style="width: 85%"></div>
+</div>
+</div>
+<!-- Factor 3 -->
+<div>
+<div class="flex justify-between text-[11px] mb-1">
+<span class="text-slate-300">Market Macro Permissiveness</span>
+<span class="text-blue-400 font-bold">80%</span>
+</div>
+<div class="w-full h-1.5 bg-terminal-well rounded-full overflow-hidden">
+<div class="bg-blue-400 h-full rounded-full" style="width: 80%"></div>
+</div>
+</div>
+<!-- Factor 4 -->
+<div>
+<div class="flex justify-between text-[11px] mb-1">
+<span class="text-slate-300">Order Book Depth &amp; Friction</span>
+<span class="text-amber-400 font-bold">78%</span>
+</div>
+<div class="w-full h-1.5 bg-terminal-well rounded-full overflow-hidden">
+<div class="bg-amber-400 h-full rounded-full" style="width: 78%"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Operating Rule 4 Watermark Tag -->
+<div class="p-2.5 bg-terminal-well rounded-[2px] border border-terminal-border text-[10px] font-mono text-slate-400 flex items-center justify-between">
+<span>OPERATING RULE 4: Advisory is Not Instruction</span>
+<span class="text-cyan-400 font-bold">PASS-THROUGH ONLY</span>
+</div>
+</div>
+</section>
+<!-- END: Strategy Decision Rationale & Advisory Layer -->
+<!-- BEGIN: Institutional Risk Calculator & Execution Rail -->
+<section class="grid grid-cols-1 lg:grid-cols-12 gap-4" data-purpose="risk-and-sizing-section">
+<!-- LEFT 7-COLS: Risk & Execution Rail -->
+<div class="lg:col-span-7 bg-terminal-card border border-terminal-border p-4 rounded-[4px] space-y-4">
+<div class="flex items-center justify-between border-b border-terminal-border pb-2.5">
+<div>
+<div class="text-xs font-mono font-bold text-slate-200 uppercase">PROPORTIONAL EXECUTION RAIL</div>
+<div class="text-[11px] text-slate-400 font-arabic" dir="rtl">نطاق السعر والوقف والأهداف المتوقعة</div>
+</div>
+<div class="text-xs font-mono text-emerald-400 font-bold">
+                PROMOTED R:R · 1 : 2.40
+              </div>
+</div>
+<!-- Proportional Visual Execution Rail -->
+<div class="py-4 px-2">
+<!-- Price labels above track -->
+<div class="flex justify-between text-[11px] font-mono mb-2">
+<div class="text-red-400">
+<div class="font-bold">STOP LOSS</div>
+<div><bdi dir="ltr">8.66 EGP</bdi></div>
+<div class="text-[9px] text-red-400/80">(-6.38%)</div>
+</div>
+<div class="text-cyan-300 text-center">
+<div class="font-bold">ENTRY RANGE</div>
+<div><bdi dir="ltr">9.15 — 9.25 EGP</bdi></div>
+<div class="text-[9px] text-slate-400">Target Entry Base</div>
+</div>
+<div class="text-emerald-400 text-right">
+<div class="font-bold">TARGET 1</div>
+<div><bdi dir="ltr">10.00 EGP</bdi></div>
+<div class="text-[9px] text-emerald-400/80">(+8.11%)</div>
+</div>
+<div class="text-emerald-300 text-right">
+<div class="font-bold">TARGET 2</div>
+<div><bdi dir="ltr">10.67 EGP</bdi></div>
+<div class="text-[9px] text-emerald-400/80">(+15.35%)</div>
+</div>
+</div>
+<!-- Continuous Multi-Segment Bar -->
+<div class="h-3 w-full bg-terminal-well rounded-full overflow-hidden flex relative border border-terminal-border">
+<div class="bg-red-500/80 h-full" style="width: 25%" title="Risk Zone"></div>
+<div class="bg-cyan-500/80 h-full" style="width: 15%" title="Entry Zone"></div>
+<div class="bg-emerald-500/80 h-full" style="width: 35%" title="Reward Zone T1"></div>
+<div class="bg-emerald-400/60 h-full" style="width: 25%" title="Extended Zone T2"></div>
+</div>
+<!-- Sub-rail Legend -->
+<div class="flex items-center justify-between text-[10px] font-mono text-slate-400 mt-2">
+<span>RISK DISTANCE: 0.59 EGP</span>
+<span>REWARD TO T1: 0.75 EGP</span>
+<span>REWARD TO T2: 1.42 EGP</span>
+</div>
+</div>
+<!-- Price Geometry Details Matrix -->
+<div class="grid grid-cols-3 gap-2 text-xs font-mono pt-2 border-t border-terminal-border">
+<div class="bg-terminal-well p-2 rounded-[2px]">
+<span class="text-slate-500 text-[10px]">NEXT ACTIVE TARGET</span>
+<div class="font-bold text-white mt-0.5"><bdi dir="ltr">Target 1 · 10.00</bdi></div>
+</div>
+<div class="bg-terminal-well p-2 rounded-[2px]">
+<span class="text-slate-500 text-[10px]">ROOM TO NEXT TARGET</span>
+<div class="font-bold text-emerald-400 mt-0.5"><bdi dir="ltr">+8.11%</bdi></div>
+</div>
+<div class="bg-terminal-well p-2 rounded-[2px]">
+<span class="text-slate-500 text-[10px]">REMAINING R/R</span>
+<div class="font-bold text-cyan-300 mt-0.5"><bdi dir="ltr">1 : 1.27</bdi></div>
+</div>
+</div>
+</div>
+<!-- RIGHT 5-COLS: Institutional Risk Sizing Calculator Preview -->
+<!-- Institutional calculator design (clearly marked NOT an order ticket) -->
+<div class="lg:col-span-5 bg-terminal-card border border-terminal-border p-4 rounded-[4px] flex flex-col justify-between space-y-3">
+<div>
+<div class="flex items-center justify-between border-b border-terminal-border pb-2.5">
+<div>
+<div class="text-xs font-mono font-bold text-slate-200 uppercase">POSITION SIZING CALCULATOR</div>
+<div class="text-[11px] text-slate-400 font-arabic" dir="rtl">حاسبة تحديد الحجم وفق نموذج المخاطر</div>
+</div>
+<span class="px-1.5 py-0.5 bg-terminal-well border border-terminal-border text-slate-400 font-mono text-[9px] rounded">
+                  MODEL: FIXED RISK
+                </span>
+</div>
+<!-- Clear Discretionary Calculator Watermark -->
+<div class="my-2.5 py-1 px-2 bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[10px] font-mono text-center rounded-[2px]">
+                [ CALCULATION ONLY — NOT AN ORDER TICKET / أداة حسابية وليست أمر تداول ]
+              </div>
+<!-- Input Fields Mockup -->
+<div class="space-y-2 text-xs font-mono">
+<div class="flex items-center justify-between p-2 bg-terminal-well rounded-[2px] border border-terminal-border">
+<span class="text-slate-400">Total Portfolio Equity:</span>
+<span class="text-white font-bold"><bdi dir="ltr">2,000,000 EGP</bdi></span>
+</div>
+<div class="flex items-center justify-between p-2 bg-terminal-well rounded-[2px] border border-terminal-border">
+<span class="text-slate-400">Max Risk Allocation Heat:</span>
+<span class="text-cyan-300 font-bold"><bdi dir="ltr">1.50% (30,000 EGP)</bdi></span>
+</div>
+<div class="flex items-center justify-between p-2 bg-terminal-well rounded-[2px] border border-terminal-border">
+<span class="text-slate-400">Stop Loss Distance:</span>
+<span class="text-red-400 font-bold"><bdi dir="ltr">6.38% (0.59 EGP/share)</bdi></span>
+</div>
+</div>
+</div>
+<!-- Calculator Output Box -->
+<div class="p-3 bg-terminal-well border border-cyan-500/40 rounded-[2px]">
+<div class="text-[10px] font-mono text-cyan-300 uppercase">MAX SUGGESTED ALLOCATION:</div>
+<div class="flex items-baseline justify-between mt-1">
+<div class="text-lg font-mono font-bold text-white num-tabular">
+<bdi dir="ltr">50,847 Shares</bdi>
+</div>
+<div class="text-xs font-mono text-emerald-400 font-bold">
+<bdi dir="ltr">≈ 467,792 EGP</bdi>
+</div>
+</div>
+<div class="text-[10px] text-slate-400 mt-1">
+                Portfolio Exposure: <span class="text-slate-200 font-mono">23.38%</span> · Within single-name risk ceiling (&lt;= 25%)
+              </div>
+</div>
+</div>
+</section>
+<!-- END: Institutional Risk Calculator & Execution Rail -->
+<!-- BEGIN: System Provenance & Raw Audit Hash Accordion -->
+<section class="bg-terminal-card border border-terminal-border rounded-[4px] overflow-hidden" data-purpose="provenance-audit">
+<div class="p-3 bg-terminal-elevated/50 flex items-center justify-between cursor-pointer border-b border-terminal-border">
+<div class="flex items-center gap-2">
+<span class="text-cyan-400 text-xs font-mono">▼</span>
+<span class="text-xs font-mono font-bold text-slate-200">DATA PROVENANCE &amp; ENGINE TELEMETRY AUDIT</span>
+<span class="text-[11px] text-slate-400 font-arabic" dir="rtl">مصدر الأرقام وسلسلة التوثيق الرقمي</span>
+</div>
+<span class="text-[10px] font-mono text-slate-500">CLICK TO COLLAPSE</span>
+</div>
+<div class="p-4 grid grid-cols-1 md:grid-cols-4 gap-4 text-xs font-mono">
+<div class="bg-terminal-well p-2.5 rounded-[2px] border border-terminal-border">
+<div class="text-[10px] text-slate-400">ENGINE RUNTIME VERSION</div>
+<div class="text-slate-200 font-semibold mt-0.5">FinModel Quantitative v4.8.2</div>
+<div class="text-[10px] text-emerald-400 mt-1">Status: Passed Audit</div>
+</div>
+<div class="bg-terminal-well p-2.5 rounded-[2px] border border-terminal-border">
+<div class="text-[10px] text-slate-400">SNAPSHOT UUID HASH</div>
+<div class="text-cyan-400 font-mono truncate mt-0.5">df22bdd44f448c90</div>
+<div class="text-[10px] text-slate-500 mt-1">Immutable session record</div>
+</div>
+<div class="bg-terminal-well p-2.5 rounded-[2px] border border-terminal-border">
+<div class="text-[10px] text-slate-400">PRIMARY DATA INGESTION</div>
+<div class="text-slate-200 font-semibold mt-0.5">EODHD Egypt Real-Time Feed</div>
+<div class="text-[10px] text-slate-500 mt-1">Raw File CRC: 0x8FA21</div>
+</div>
+<div class="bg-terminal-well p-2.5 rounded-[2px] border border-terminal-border">
+<div class="text-[10px] text-slate-400">RUBIX STREAMING OVERLAY</div>
+<div class="text-amber-400 font-semibold mt-0.5">DISCONNECTED (Market Close)</div>
+<div class="text-[10px] text-slate-500 mt-1">Fallback to EOD Session Close</div>
+</div>
+</div>
+</section>
+<!-- END: System Provenance & Raw Audit Hash Accordion -->
+</div>
+</main>
+<!-- END: Central Workspace Canvas -->
+</div>
+<!-- END: Main Terminal App Frame -->
+</body></html>

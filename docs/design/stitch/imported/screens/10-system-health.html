@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+
+<html class="dark" dir="rtl" lang="ar"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>صحة النظام والتشخيصات الفنية · EGX AI Trader Terminal</title>
+<!-- Fonts: IBM Plex Sans Arabic & IBM Plex Mono -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&amp;family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS v3 with plugins -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            terminal: {
+              base: '#0b1220',
+              sidebar: '#0e1729',
+              card: '#131c30',
+              elevated: '#17223b',
+              border: '#223049',
+              borderSubtle: '#1b263b',
+              emerald: '#10b981',
+              emeraldGlow: '#059669',
+              crimson: '#f43f5e',
+              amber: '#f59e0b',
+              cyan: '#06b6d4',
+              violetSandbox: '#3b2d54',
+              violetBorder: '#5b4582',
+            }
+          },
+          fontFamily: {
+            sans: ['"IBM Plex Sans Arabic"', 'sans-serif'],
+            mono: ['"IBM Plex Mono"', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+<!-- BEGIN: Custom Styles -->
+<style data-purpose="custom-scrollbars">
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0b1220;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #223049;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334466;
+    }
+  </style>
+<style data-purpose="terminal-grid-utilities">
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+    .sandbox-stripes {
+      background: repeating-linear-gradient(
+        -45deg,
+        rgba(91, 69, 130, 0.05),
+        rgba(91, 69, 130, 0.05) 10px,
+        rgba(23, 34, 59, 0.4) 10px,
+        rgba(23, 34, 59, 0.4) 20px
+      );
+    }
+    @keyframes pulse-subtle {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.45; }
+    }
+    .animate-pulse-subtle {
+      animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+  </style>
+<!-- END: Custom Styles -->
+</head>
+<body class="bg-terminal-base text-slate-200 font-sans antialiased overflow-x-hidden selection:bg-cyan-500 selection:text-white text-xs leading-normal min-h-screen">
+<!-- BEGIN: Global Top Health Strip -->
+<!-- 32px institutional high-contrast global tick bar -->
+<aside class="h-8 bg-terminal-sidebar border-b border-terminal-border flex items-center justify-between px-4 fixed top-0 left-0 right-0 z-50 select-none" data-purpose="global-status-strip">
+<!-- Left technical telemetry / versioning -->
+<div class="flex items-center gap-3 font-mono text-[11px] text-slate-400" dir="ltr">
+<span class="inline-flex items-center gap-1.5 text-emerald-400 font-medium">
+<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse-subtle"></span>
+        EGX CLOSED <bdi class="text-slate-300">14:30 CLT</bdi>
+</span>
+<span class="text-slate-600">|</span>
+<span>EOD SYNCED <bdi class="text-slate-200">15:02</bdi> · <span class="text-emerald-400 font-semibold">OK</span></span>
+<span class="text-slate-600">|</span>
+<span class="text-slate-300">PIPELINE <bdi class="text-emerald-400">100% CLEAN</bdi></span>
+<span class="text-slate-600">|</span>
+<span class="text-slate-500">FinModel Core v4.8.2-rev9</span>
+</div>
+<!-- Right Controls: Active Profile & Mode Toggle Demo -->
+<div class="flex items-center gap-4">
+<!-- Live Simulation Toggle for Verification of Degraded vs Healthy State -->
+<div class="flex items-center bg-terminal-base border border-terminal-border rounded p-0.5" dir="ltr">
+<span class="text-[10px] uppercase font-mono text-slate-500 px-2">Simulate UI:</span>
+<button class="px-2 py-0.5 rounded text-[11px] font-mono transition-colors bg-emerald-950/80 text-emerald-400 border border-emerald-700/60 font-medium" id="btn-toggle-healthy" onclick="setTerminalState('healthy')">
+          HEALTHY STATE
+        </button>
+<button class="px-2 py-0.5 rounded text-[11px] font-mono transition-colors text-slate-400 hover:text-slate-200" id="btn-toggle-degraded" onclick="setTerminalState('degraded')">
+          DEGRADED ALERT
+        </button>
+</div>
+<div class="flex items-center gap-2 border-r border-terminal-border pr-3 mr-1 text-[11px] text-slate-400">
+<span class="font-mono" dir="ltr">NODE: <bdi class="text-slate-300">cai-srv-prdm01</bdi></span>
+<span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+</div>
+</div>
+</aside>
+<!-- END: Global Top Health Strip -->
+<!-- BEGIN: Screen Layout Shell -->
+<div class="pt-8 flex min-h-screen">
+<!-- BEGIN: Left Navigation Sidebar -->
+<!-- 280px wide terminal navigation as per EGX AI Trader Design System -->
+<nav class="w-[280px] bg-terminal-sidebar border-l border-terminal-border flex-shrink-0 flex flex-col justify-between fixed top-8 bottom-0 right-0 z-40 overflow-y-auto" data-purpose="primary-sidebar">
+<div class="p-3 space-y-4">
+<!-- Logo / App Header -->
+<div class="px-3 py-2.5 bg-terminal-card/60 border border-terminal-border rounded-lg flex items-center justify-between">
+<div>
+<h1 class="text-sm font-bold text-white tracking-wide flex items-center gap-1.5">
+<span>متداول البورصة المصرية</span>
+<span class="text-[10px] bg-cyan-950 border border-cyan-700/50 text-cyan-300 px-1.5 py-0.2 rounded font-mono font-normal">AI v4.8</span>
+</h1>
+<p class="text-[10px] text-slate-400 mt-0.5">البحث الكمي والتحليل اللحظي المتقدم</p>
+</div>
+<div class="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50"></div>
+</div>
+<!-- Section: PORTFOLIO -->
+<div>
+<div class="px-3 text-[10px] font-mono uppercase tracking-wider text-slate-400 flex items-center justify-between mb-1.5">
+<span>المحفظة · PORTFOLIO</span>
+<span class="text-[9px] text-slate-400 font-mono">1</span>
+</div>
+<ul class="space-y-0.5">
+<li>
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-slate-400 hover:text-slate-200 hover:bg-terminal-card transition-colors" href="#">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg>
+<span class="text-xs">المحفظة الحية (My Portfolio)</span>
+</a>
+</li>
+</ul>
+</div>
+<!-- Section: SWING -->
+<div>
+<div class="px-3 text-[10px] font-mono uppercase tracking-wider text-slate-400 flex items-center justify-between mb-1.5">
+<span>سويـنج · SWING TRADING</span>
+<span class="text-[9px] text-slate-400 font-mono">6</span>
+</div>
+<ul class="space-y-0.5">
+<li>
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-slate-400 hover:text-slate-200 hover:bg-terminal-card transition-colors" href="#">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg>
+<span class="text-xs">لوحة التحكم اليومية (Daily Dashboard)</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-slate-400 hover:text-slate-200 hover:bg-terminal-card transition-colors" href="#">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg>
+<span class="text-xs">اختراق سويـنج (Swing Breakout)</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-slate-400 hover:text-slate-200 hover:bg-terminal-card transition-colors" href="#">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg>
+<span class="text-xs">مراقبة الاختراق (Breakout Watch)</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-slate-400 hover:text-slate-200 hover:bg-terminal-card transition-colors" href="#">
+<svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg>
+<span class="text-xs">اختراق مؤكد (Confirmed Breakout)</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-slate-400 hover:text-slate-200 hover:bg-terminal-card transition-colors" href="#">
+<svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg>
+<span class="text-xs">سيولة القطاعات (Sector Liquidity)</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-slate-400 hover:text-slate-200 hover:bg-terminal-card transition-colors" href="#">
+<svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg>
+<span class="text-xs">قائمة المتابعة (Watchlist)</span>
+</a>
+</li>
+</ul>
+</div>
+<!-- Section: AI ANALYSIS -->
+<div>
+<div class="px-3 text-[10px] font-mono uppercase tracking-wider text-slate-400 flex items-center justify-between mb-1.5">
+<span>تحليل ذكي · AI ANALYSIS</span>
+</div>
+<ul class="space-y-0.5">
+<li>
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-slate-400 hover:text-slate-200 hover:bg-terminal-card transition-colors" href="#">
+<svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg>
+<span class="text-xs">نماذج التنبؤ (AI Models)</span>
+</a>
+</li>
+</ul>
+</div>
+<!-- Section: SYSTEM (Active Screen Highlighted) -->
+<div>
+<div class="px-3 text-[10px] font-mono uppercase tracking-wider text-slate-400 flex items-center justify-between mb-1.5">
+<span>النظام · SYSTEM</span>
+<span class="text-[9px] text-emerald-400 font-mono">LIVE</span>
+</div>
+<ul class="space-y-0.5">
+<li>
+<!-- ACTIVE ITEM: صحة النظام · System Health -->
+<a class="flex items-center justify-between px-3 py-2 rounded-md bg-terminal-elevated text-white border-r-2 border-cyan-400 font-semibold shadow-inner shadow-cyan-950/20" href="#">
+<div class="flex items-center gap-2.5">
+<svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>صحة النظام (System Health)</span>
+</div>
+<span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-slate-400 hover:text-slate-200 hover:bg-terminal-card transition-colors" href="#">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg>
+<span class="text-xs">إعدادات المحطة (Settings)</span>
+</a>
+</li>
+</ul>
+</div>
+</div>
+<!-- Footer Telemetry in Sidebar -->
+<div class="p-3 border-t border-terminal-border bg-terminal-base/50 text-[11px] font-mono text-slate-400 space-y-1">
+<div class="flex justify-between items-center" dir="ltr">
+<span class="text-slate-400">UPTIME:</span>
+<span class="text-slate-300 font-semibold tabular-nums">14d 06h 22m 18s</span>
+</div>
+<div class="flex justify-between items-center" dir="ltr">
+<span class="text-slate-400">DAEMON PID:</span>
+<span class="text-slate-300 tabular-nums">398402 (Active)</span>
+</div>
+<div class="flex justify-between items-center" dir="ltr">
+<span class="text-slate-400">HEARTBEAT:</span>
+<span class="text-emerald-400 flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+            1.00 Hz
+          </span>
+</div>
+</div>
+</nav>
+<!-- END: Left Navigation Sidebar -->
+<!-- BEGIN: Main Content Area -->
+<!-- Content container max width 1640px pinned with offset for right sidebar -->
+<main class="mr-[280px] w-full min-w-0 p-5 bg-terminal-base" data-purpose="system-health-main">
+<div class="max-w-[1640px] mx-auto space-y-5">
+<!-- BEGIN: Screen Title & Header Bar -->
+<header class="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-terminal-border" data-purpose="screen-header">
+<div class="space-y-1">
+<div class="flex items-center gap-3">
+<span class="p-2 rounded-lg bg-terminal-card border border-terminal-border text-cyan-400">
+<svg class="w-5 h-5" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</span>
+<div>
+<h2 class="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+<span>صحة النظام والتشخيصات الفنية</span>
+<span class="text-slate-400 font-mono text-xs font-normal">/ System Health &amp; Diagnostics</span>
+</h2>
+<p class="text-xs text-slate-400">مراقبة الجريان اللحظي للمهام المجدولة، وفحص مسارات البيانات التشغيلية، ومؤشرات الذاكرة لمحطة التداول</p>
+</div>
+</div>
+</div>
+<!-- Quick Action Buttons -->
+<div class="flex items-center gap-2">
+<button class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-terminal-card hover:bg-terminal-elevated text-slate-200 border border-terminal-border rounded text-xs font-mono transition" onclick="pingAllProviders()">
+<svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>فحص المزودين (Ping All)</span>
+</button>
+<button class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-xs font-medium shadow-sm transition" onclick="runManualIntegrityCheck()">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>إعادة مراجعة التكاملية الآن</span>
+</button>
+</div>
+</header>
+<!-- END: Screen Title & Header Bar -->
+<!-- BEGIN: Cross-The-Room 10-Second Recognition Hero Card -->
+<!-- Solves the "Silent Failure" problem: Instantly obvious from 5 meters away -->
+<section class="transition-all duration-300" data-purpose="cross-the-room-status-hero" id="hero-status-container">
+<!-- STATE 1: HEALTHY HERO (Default Visible) -->
+<div class="bg-terminal-card border-2 border-emerald-500/30 rounded-xl p-5 shadow-lg shadow-emerald-950/20 relative overflow-hidden" id="hero-healthy-card">
+<!-- Subtle backdrop glow -->
+<div class="absolute -right-20 -top-20 w-80 h-80 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none"></div>
+<div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+<!-- Left side / Status summary -->
+<div class="flex items-center gap-5">
+<div class="w-16 h-16 rounded-xl bg-emerald-950/80 border border-emerald-500/40 flex items-center justify-center flex-shrink-0 text-emerald-400">
+<svg class="w-9 h-9" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2"></path></svg>
+</div>
+<div>
+<div class="flex items-center gap-2 mb-1">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                      ALL 6 PIPELINES OPERATIONAL
+                    </span>
+<span class="text-xs text-slate-400 font-mono" dir="ltr">[EXIT 0: SUCCESS]</span>
+</div>
+<h3 class="text-xl font-bold text-white">جميع مسارات البيانات والمهام المجدولة تعمل بكفاءة تامة</h3>
+<p class="text-xs text-slate-300 mt-1">
+                    تم تدقيق ومطابقة أسعار الإغلاق للبورصة المصرية (<bdi class="font-mono text-emerald-300" dir="ltr">224 سهم نشط</bdi>) وتوليد مصفوفة السيولة وتدفقات سويـنج بدون أي انقطاع.
+                  </p>
+</div>
+</div>
+<!-- Right side / Timer & metrics -->
+<div class="grid grid-cols-3 gap-3 bg-terminal-elevated/70 border border-terminal-border p-3.5 rounded-lg font-mono text-center min-w-[340px]">
+<div class="border-l border-terminal-border pl-2">
+<div class="text-[10px] text-slate-400 uppercase">آخر إغلاق مكتمل</div>
+<div class="text-sm font-bold text-emerald-400 mt-0.5 tabular-nums" dir="ltr">15:02:14 CLT</div>
+<div class="text-[10px] text-slate-400 mt-0.5">مطابق للبورصة</div>
+</div>
+<div class="border-l border-terminal-border px-2">
+<div class="text-[10px] text-slate-400 uppercase">المهمة القادمة</div>
+<div class="text-sm font-bold text-white mt-0.5 tabular-nums" dir="ltr">22:00:00 CLT</div>
+<div class="text-[10px] text-slate-400 mt-0.5">Hash Integrity</div>
+</div>
+<div class="pr-2">
+<div class="text-[10px] text-slate-400 uppercase">معدل الخطأ اليوم</div>
+<div class="text-sm font-bold text-emerald-400 mt-0.5 tabular-nums" dir="ltr">0.00% (0/6)</div>
+<div class="text-[10px] text-slate-400 mt-0.5">حالة مثالية</div>
+</div>
+</div>
+</div>
+</div>
+<!-- STATE 2: DEGRADED HERO (Initially Hidden via style/class, toggled by tester) -->
+<div class="hidden bg-terminal-card border-2 border-rose-500 rounded-xl p-5 shadow-2xl shadow-rose-950/40 relative overflow-hidden border-r-8 border-r-rose-600" id="hero-degraded-card">
+<div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+<div class="flex items-center gap-5">
+<div class="w-16 h-16 rounded-xl bg-rose-950/90 border border-rose-500 flex items-center justify-center flex-shrink-0 text-rose-400 animate-pulse">
+<svg class="w-10 h-10" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path></svg>
+</div>
+<div>
+<div class="flex items-center gap-2 mb-1">
+<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500">
+<span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
+                      CRITICAL SILENT FAILURE: EVENING EOD INGESTION MISSED BY 42 MINUTES
+                    </span>
+<span class="text-xs text-rose-300 font-mono" dir="ltr">[EXIT CODE: 137 OOM]</span>
+</div>
+<h3 class="text-xl font-bold text-white">انقطاع صامت في مجدول البيانات المسائي — تعطل معالجة تسوية الإغلاق</h3>
+<p class="text-xs text-slate-300 mt-1">
+                    توقفت مهمة الجلب التلقائي <bdi class="font-mono text-rose-300">Official EOD Clearing</bdi> في تمام <bdi class="font-mono">14:30 CLT</bdi> بسبب تجاوز حد الذاكرة المخصصة. تم حظر محرك سويـنج بالتبعية.
+                  </p>
+</div>
+</div>
+<!-- Immediate Triage Actions -->
+<div class="flex flex-col sm:flex-row items-center gap-3 bg-rose-950/40 border border-rose-800/60 p-3 rounded-lg">
+<div class="text-right sm:text-left">
+<div class="text-[10px] font-mono text-rose-300 uppercase">إجراء عاجل مطلوب</div>
+<div class="text-xs text-slate-300">المهمة متأخرة منذ <span class="font-mono font-bold text-rose-400 tabular-nums" dir="ltr">+42m 18s</span></div>
+</div>
+<button class="w-full sm:w-auto px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded shadow-lg shadow-rose-950/50 flex items-center justify-center gap-2 transition whitespace-nowrap" onclick="simulateJobRecovery()">
+<svg class="w-4 h-4 animate-spin text-white" fill="none" viewbox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" fill="currentColor"></path></svg>
+<span>إعادة تشغيل المهمة فوراً (FORCE RETRY JOB)</span>
+</button>
+</div>
+</div>
+<!-- Root Cause Monospace Bar -->
+<div class="mt-3.5 pt-3 border-t border-rose-900/60 flex items-center justify-between font-mono text-[11px]" dir="ltr">
+<span class="text-rose-300 truncate max-w-2xl">
+<span class="text-rose-400 font-bold">[DIAGNOSTIC LOG]:</span> Task `eod_settle_sync` terminated unexpectedly at PID 398412. Kernel invoked oom-killer (score 842).
+              </span>
+<a class="text-rose-300 underline hover:text-white flex-shrink-0" href="#technical-diagnostics-section">عرض مخرجات Traceback</a>
+</div>
+</div>
+</section>
+<!-- END: Cross-The-Room 10-Second Recognition Hero Card -->
+<!-- BEGIN: Automated Jobs Run Summary -->
+<!-- Dense telemetry for the 6 core automated pipeline jobs -->
+<section class="bg-terminal-card border border-terminal-border rounded-xl p-4 space-y-3" data-purpose="automated-jobs-summary">
+<div class="flex items-center justify-between border-b border-terminal-border pb-3">
+<div class="flex items-center gap-2">
+<span class="w-2.5 h-2.5 rounded-sm bg-cyan-400"></span>
+<h3 class="text-sm font-bold text-white tracking-wide">ملخص تشغيل المهام المجدولة للبورصة المصرية (Automated Jobs Telemetry)</h3>
+</div>
+<div class="text-xs font-mono text-slate-400" dir="ltr">
+              CYCLE DATE: <bdi class="text-slate-200">2026-09-12</bdi> | SESSION: <bdi class="text-emerald-400">POST-MARKET CLOSED</bdi>
+</div>
+</div>
+<!-- Jobs Table / Dense rows -->
+<div class="overflow-x-auto">
+<table class="w-full text-right border-collapse text-xs">
+<thead>
+<tr class="text-[11px] font-mono text-slate-400 border-b border-terminal-border/80 bg-terminal-elevated/40">
+<th class="py-2.5 px-3">المهمة المجدولة (Job Identifier)</th>
+<th class="py-2.5 px-3">الوقت المجدول (CLT)</th>
+<th class="py-2.5 px-3">الحالة التنفيذية (Status)</th>
+<th class="py-2.5 px-3">زمن الاستغراق (Duration)</th>
+<th class="py-2.5 px-3">نطاق التغطية (Payload)</th>
+<th class="py-2.5 px-3">رمز الخروج (Exit Code)</th>
+<th class="py-2.5 px-3 text-left">التفاصيل الفنية (Execution Message)</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-terminal-border/50 font-mono">
+<!-- Job 1: Pre-Market -->
+<tr class="hover:bg-terminal-elevated/30 transition-colors">
+<td class="py-2.5 px-3 font-sans font-semibold text-slate-200 flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+<span>فحص ما قبل الافتتاح (Morning Pre-Market Scan)</span>
+</td>
+<td class="py-2.5 px-3 text-slate-300" dir="ltr">09:30:00 CLT</td>
+<td class="py-2.5 px-3">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-700/60">
+                      PASS · ناجحة
+                    </span>
+</td>
+<td class="py-2.5 px-3 text-slate-300" dir="ltr">18.42s</td>
+<td class="py-2.5 px-3 text-slate-300 font-sans">230 رمز وبنك</td>
+<td class="py-2.5 px-3 text-emerald-400" dir="ltr">0 (CLEAN)</td>
+<td class="py-2.5 px-3 text-left text-slate-400 text-[11px]" dir="ltr">Fetched initial order-book depth &amp; auction ranges</td>
+</tr>
+<!-- Job 2: Liquidity Sampler -->
+<tr class="hover:bg-terminal-elevated/30 transition-colors">
+<td class="py-2.5 px-3 font-sans font-semibold text-slate-200 flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+<span>أخذ عينات السيولة اللحظية (Intraday Liquidity Sampler)</span>
+</td>
+<td class="py-2.5 px-3 text-slate-300" dir="ltr">11:30 &amp; 13:00 CLT</td>
+<td class="py-2.5 px-3">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-700/60">
+                      PASS · ناجحة
+                    </span>
+</td>
+<td class="py-2.5 px-3 text-slate-300" dir="ltr">31.05s</td>
+<td class="py-2.5 px-3 text-slate-300 font-sans">EGP 3.82B سيولة</td>
+<td class="py-2.5 px-3 text-emerald-400" dir="ltr">0 (CLEAN)</td>
+<td class="py-2.5 px-3 text-left text-slate-400 text-[11px]" dir="ltr">Turnover matched EGX published aggregate bounds</td>
+</tr>
+<!-- Job 3: EOD Clearing (Subject to degraded simulation) -->
+<tr class="hover:bg-terminal-elevated/30 transition-colors bg-emerald-950/10" id="job-row-eod">
+<td class="py-2.5 px-3 font-sans font-semibold text-slate-200 flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400" id="job-status-dot-eod"></span>
+<span>تسوية إغلاق الجلسة الرسمي (Official EOD Clearing Ingest)</span>
+</td>
+<td class="py-2.5 px-3 text-slate-300" dir="ltr">14:30:00 CLT</td>
+<td class="py-2.5 px-3" id="job-status-cell-eod">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-700/60">
+                      PASS · ناجحة (14:31:05)
+                    </span>
+</td>
+<td class="py-2.5 px-3 text-slate-300" dir="ltr" id="job-duration-eod">65.12s</td>
+<td class="py-2.5 px-3 text-slate-300 font-sans" id="job-payload-eod">224 سهم مؤكد</td>
+<td class="py-2.5 px-3 text-emerald-400" dir="ltr" id="job-exit-eod">0 (CLEAN)</td>
+<td class="py-2.5 px-3 text-left text-slate-300 text-[11px]" dir="ltr" id="job-msg-eod">Bulletin delta reconciled. SHA-256 verified.</td>
+</tr>
+<!-- Job 4: Swing Engine -->
+<tr class="hover:bg-terminal-elevated/30 transition-colors" id="job-row-swing">
+<td class="py-2.5 px-3 font-sans font-semibold text-slate-200 flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400" id="job-status-dot-swing"></span>
+<span>محرك سويـنج ذو الـ 7 بوابات (7-Gate Daily Swing Engine)</span>
+</td>
+<td class="py-2.5 px-3 text-slate-300" dir="ltr">14:40:00 CLT</td>
+<td class="py-2.5 px-3" id="job-status-cell-swing">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-700/60">
+                      PASS · ناجحة
+                    </span>
+</td>
+<td class="py-2.5 px-3 text-slate-300" dir="ltr">44.80s</td>
+<td class="py-2.5 px-3 text-slate-300 font-sans" id="job-payload-swing">14 اختراق مطابق</td>
+<td class="py-2.5 px-3 text-emerald-400" dir="ltr" id="job-exit-swing">0 (CLEAN)</td>
+<td class="py-2.5 px-3 text-left text-slate-400 text-[11px]" dir="ltr" id="job-msg-swing">All 7 gates passed. No floating point anomalies.</td>
+</tr>
+<!-- Job 5: Liquidity Matrix -->
+<tr class="hover:bg-terminal-elevated/30 transition-colors">
+<td class="py-2.5 px-3 font-sans font-semibold text-slate-200 flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+<span>مصفوفة دوران سيولة القطاعات (Sector Liquidity Matrix)</span>
+</td>
+<td class="py-2.5 px-3 text-slate-300" dir="ltr">14:45:00 CLT</td>
+<td class="py-2.5 px-3">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-700/60">
+                      PASS · ناجحة
+                    </span>
+</td>
+<td class="py-2.5 px-3 text-slate-300" dir="ltr">12.19s</td>
+<td class="py-2.5 px-3 text-slate-300 font-sans">18 قطاع معتمد</td>
+<td class="py-2.5 px-3 text-emerald-400" dir="ltr">0 (CLEAN)</td>
+<td class="py-2.5 px-3 text-left text-slate-400 text-[11px]" dir="ltr">Banking &amp; Real Estate rotation confirmed leading</td>
+</tr>
+<!-- Job 6: Nightly Audit -->
+<tr class="hover:bg-terminal-elevated/30 transition-colors">
+<td class="py-2.5 px-3 font-sans font-semibold text-slate-200 flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+<span>تدقيق سلامة قواعد البيانات والتجزئة (Nightly DB Integrity)</span>
+</td>
+<td class="py-2.5 px-3 text-slate-300" dir="ltr">22:00:00 CLT</td>
+<td class="py-2.5 px-3">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                      SCHEDULED · مجدولة
+                    </span>
+</td>
+<td class="py-2.5 px-3 text-slate-500" dir="ltr">--</td>
+<td class="py-2.5 px-3 text-slate-500 font-sans">WAL &amp; Parquet files</td>
+<td class="py-2.5 px-3 text-slate-500" dir="ltr">PENDING</td>
+<td class="py-2.5 px-3 text-left text-slate-500 text-[11px]" dir="ltr">Awaiting window (approx in 6h 58m)</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<!-- END: Automated Jobs Run Summary -->
+<!-- BEGIN: Split Section (Technical Detail Box & Provider Diagnostics) -->
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-5">
+<!-- Technical Detail Box (5 Cols) -->
+<section class="xl:col-span-5 bg-terminal-card border border-terminal-border rounded-xl p-4 space-y-3.5" data-purpose="technical-runtime-diagnostics" id="technical-diagnostics-section">
+<div class="flex items-center justify-between border-b border-terminal-border pb-2.5">
+<div class="flex items-center gap-2">
+<svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono">التشخيصات الفنية وذاكرة التشغيل (Runtime Audit)</h3>
+</div>
+<span class="text-[10px] font-mono text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded border border-emerald-800/60">KERNEL: LINUX x86_64</span>
+</div>
+<!-- Resource Gauges Grid -->
+<div class="grid grid-cols-2 gap-3 text-xs">
+<!-- Memory Box -->
+<div class="bg-terminal-elevated p-3 rounded-lg border border-terminal-border">
+<div class="flex justify-between items-center text-slate-400 text-[11px] font-mono mb-1.5" dir="ltr">
+<span>RAM (RSS Usage)</span>
+<span class="text-white font-bold tabular-nums">1.42 GB / 4.00 GB</span>
+</div>
+<!-- Progress Bar -->
+<div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+<div class="bg-cyan-500 h-full rounded-full transition-all duration-500" style="width: 35.5%"></div>
+</div>
+<div class="flex justify-between text-[10px] text-slate-400 mt-1.5 font-mono" dir="ltr">
+<span>Peak: 2.11 GB</span>
+<span class="text-emerald-400">Headroom: 2.58 GB</span>
+</div>
+</div>
+<!-- CPU Box -->
+<div class="bg-terminal-elevated p-3 rounded-lg border border-terminal-border">
+<div class="flex justify-between items-center text-slate-400 text-[11px] font-mono mb-1.5" dir="ltr">
+<span>CPU LOAD (8 Cores)</span>
+<span class="text-emerald-400 font-bold tabular-nums">7.8%</span>
+</div>
+<div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+<div class="bg-emerald-500 h-full rounded-full transition-all duration-500" style="width: 8%"></div>
+</div>
+<div class="flex justify-between text-[10px] text-slate-400 mt-1.5 font-mono" dir="ltr">
+<span>Load Avg: 0.24, 0.18</span>
+<span class="text-slate-400">Throttling: 0</span>
+</div>
+</div>
+</div>
+<!-- Monospace Runtime Log Box -->
+<div class="bg-terminal-base border border-terminal-border rounded-lg p-3 font-mono text-[11px] text-slate-300 space-y-1.5 overflow-y-auto max-h-[190px]" dir="ltr">
+<div class="text-slate-400 border-b border-terminal-border/60 pb-1 flex justify-between">
+<span>// ENVIRONMENT TELEMETRY &amp; SUBSYSTEMS</span>
+<span>DAEMON: HEALTHY</span>
+</div>
+<div class="flex justify-between"><span class="text-slate-400">Python Interpreter:</span> <span class="text-slate-200">v3.11.9 (CPython, 64-bit GCC)</span></div>
+<div class="flex justify-between"><span class="text-slate-400">Streamlit Process:</span> <span class="text-slate-200">PID 398402 (Port 8501)</span></div>
+<div class="flex justify-between"><span class="text-slate-400">DB Connection Pool:</span> <span class="text-emerald-400">4 / 10 Active (SQLite WAL enabled)</span></div>
+<div class="flex justify-between"><span class="text-slate-400">SQLite State Size:</span> <span class="text-slate-200">214.8 MB (WAL: 1.4 MB, Zero locks)</span></div>
+<div class="flex justify-between"><span class="text-slate-400">Vector Cache Index:</span> <span class="text-slate-200">HNSW 4,096 nodes (Cosine L2)</span></div>
+<div class="flex justify-between"><span class="text-slate-400">Garbage Collector:</span> <span class="text-slate-400">Gen 0: 42 | Gen 1: 3 | Gen 2: 1</span></div>
+</div>
+<!-- Heartbeat verification line -->
+<div class="flex items-center justify-between text-[11px] font-mono bg-terminal-elevated/40 px-3 py-2 rounded border border-terminal-border text-slate-400" dir="ltr">
+<span class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+<span>WATCHDOG DAEMON: OK</span>
+</span>
+<span>PULSE SEQUENCE: #892,109 (PASS)</span>
+</div>
+</section>
+<!-- Provider Diagnostics Grid (7 Cols) -->
+<section class="xl:col-span-7 bg-terminal-card border border-terminal-border rounded-xl p-4 space-y-3.5" data-purpose="provider-diagnostics">
+<div class="flex items-center justify-between border-b border-terminal-border pb-2.5">
+<div class="flex items-center gap-2">
+<svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono">تشخيص مصادر البيانات المعتمدة (Provider Feeds &amp; Endpoints)</h3>
+</div>
+<span class="text-[11px] text-slate-400 font-mono">4 SOURCES ACTIVE</span>
+</div>
+<!-- Providers Detailed Rows -->
+<div class="space-y-2.5">
+<!-- Provider 1: EODHD -->
+<div class="p-3 bg-terminal-elevated/60 border border-terminal-border rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-3">
+<div class="space-y-0.5">
+<div class="flex items-center gap-2">
+<span class="font-bold text-slate-200">EODHD Egypt Dedicated Feed</span>
+<span class="px-1.5 py-0.2 text-[10px] font-mono bg-cyan-950 text-cyan-300 border border-cyan-800 rounded">Primary EOD</span>
+<span class="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400 font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> CONNECTED
+                    </span>
+</div>
+<p class="text-[11px] text-slate-400">بيانات الأسعار التاريخية والإغلاقات المرجحة وقوائم الأسهم النشطة</p>
+</div>
+<!-- Telemetry Metrics -->
+<div class="flex items-center gap-4 text-xs font-mono text-left" dir="ltr">
+<div class="border-r border-terminal-border pr-3">
+<div class="text-[10px] text-slate-400">LATENCY</div>
+<div class="text-slate-200 font-bold tabular-nums">142 ms</div>
+</div>
+<div class="border-r border-terminal-border pr-3">
+<div class="text-[10px] text-slate-400">QUOTA TODAY</div>
+<div class="text-slate-200 tabular-nums">4,120 / 100k</div>
+</div>
+<div class="border-r border-terminal-border pr-3">
+<div class="text-[10px] text-slate-400">LAST SYNC</div>
+<div class="text-emerald-400 tabular-nums">14:30 CLT</div>
+</div>
+<div>
+<button class="px-2 py-1 bg-terminal-base hover:bg-cyan-950 text-cyan-400 border border-terminal-border rounded text-[11px] transition" onclick="pingProvider('EODHD', this)">Ping</button>
+</div>
+</div>
+</div>
+<!-- Provider 2: Rubix Quote Stream -->
+<div class="p-3 bg-terminal-elevated/60 border border-terminal-border rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-3">
+<div class="space-y-0.5">
+<div class="flex items-center gap-2">
+<span class="font-bold text-slate-200">Rubix Quote Stream</span>
+<span class="px-1.5 py-0.2 text-[10px] font-mono bg-purple-950 text-purple-300 border border-purple-800 rounded">Intraday WSS</span>
+<span class="inline-flex items-center gap-1 text-[10px] font-mono text-slate-400 font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span> IDLE (WEEKEND)
+                    </span>
+</div>
+<p class="text-[11px] text-slate-400">بث الصفقات اللحظية وعمق أوامر دفتر التداول (Order-Book Level 2)</p>
+</div>
+<div class="flex items-center gap-4 text-xs font-mono text-left" dir="ltr">
+<div class="border-r border-terminal-border pr-3">
+<div class="text-[10px] text-slate-400">SOCKET STATE</div>
+<div class="text-slate-300">Clean Close</div>
+</div>
+<div class="border-r border-terminal-border pr-3">
+<div class="text-[10px] text-slate-400">DROPPED FRAMES</div>
+<div class="text-emerald-400 tabular-nums">0 (0.0%)</div>
+</div>
+<div class="border-r border-terminal-border pr-3">
+<div class="text-[10px] text-slate-400">LAST TICK</div>
+<div class="text-slate-300 tabular-nums">14:32:01 CLT</div>
+</div>
+<div>
+<button class="px-2 py-1 bg-terminal-base hover:bg-cyan-950 text-cyan-400 border border-terminal-border rounded text-[11px] transition" onclick="pingProvider('Rubix', this)">Ping</button>
+</div>
+</div>
+</div>
+<!-- Provider 3: Official EGX Settlement Bulletin -->
+<div class="p-3 bg-terminal-elevated/60 border border-terminal-border rounded-lg flex flex-col md:flex-row md:md:items-center justify-between gap-3">
+<div class="space-y-0.5">
+<div class="flex items-center gap-2">
+<span class="font-bold text-slate-200">Official EGX Bulletin Parser</span>
+<span class="px-1.5 py-0.2 text-[10px] font-mono bg-amber-950 text-amber-300 border border-amber-800 rounded">Regulatory Scraping</span>
+<span class="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400 font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> VALIDATED
+                    </span>
+</div>
+<p class="text-[11px] text-slate-400">استخراج ومطابقة نشرة التسوية الرسمية اليومية الصادرة عن البورصة</p>
+</div>
+<div class="flex items-center gap-4 text-xs font-mono text-left" dir="ltr">
+<div class="border-r border-terminal-border pr-3">
+<div class="text-[10px] text-slate-400">PDF HASH</div>
+<div class="text-slate-300 font-mono">a81f...9b2</div>
+</div>
+<div class="border-r border-terminal-border pr-3">
+<div class="text-[10px] text-slate-400">PARSED SYMBOLS</div>
+<div class="text-emerald-400 tabular-nums">224 / 224</div>
+</div>
+<div class="border-r border-terminal-border pr-3">
+<div class="text-[10px] text-slate-400">INTEGRITY</div>
+<div class="text-emerald-400">100% MATCH</div>
+</div>
+<div>
+<button class="px-2 py-1 bg-terminal-base hover:bg-cyan-950 text-cyan-400 border border-terminal-border rounded text-[11px] transition" onclick="pingProvider('EGX_Bulletin', this)">Ping</button>
+</div>
+</div>
+</div>
+<!-- Provider 4: Local Vector Cache -->
+<div class="p-3 bg-terminal-elevated/60 border border-terminal-border rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-3">
+<div class="space-y-0.5">
+<div class="flex items-center gap-2">
+<span class="font-bold text-slate-200">Local Vector Cache &amp; State Store</span>
+<span class="px-1.5 py-0.2 text-[10px] font-mono bg-emerald-950 text-emerald-300 border border-emerald-800 rounded">Embedded NVMe</span>
+<span class="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400 font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> OPTIMAL
+                    </span>
+</div>
+<p class="text-[11px] text-slate-400">مخزن المتجهات المحلي لتشغيل نماذج الفرز السريع وحساب المسافات</p>
+</div>
+<div class="flex items-center gap-4 text-xs font-mono text-left" dir="ltr">
+<div class="border-r border-terminal-border pr-3">
+<div class="text-[10px] text-slate-400">I/O LATENCY</div>
+<div class="text-emerald-400 font-bold tabular-nums">0.18 ms</div>
+</div>
+<div class="border-r border-terminal-border pr-3">
+<div class="text-[10px] text-slate-400">JOURNAL MODE</div>
+<div class="text-slate-300">WAL (Clean)</div>
+</div>
+<div class="border-r border-terminal-border pr-3">
+<div class="text-[10px] text-slate-400">LOCK WAIT</div>
+<div class="text-slate-300 tabular-nums">0.00 ms</div>
+</div>
+<div>
+<button class="px-2 py-1 bg-terminal-base hover:bg-cyan-950 text-cyan-400 border border-terminal-border rounded text-[11px] transition" onclick="pingProvider('VectorStore', this)">Ping</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- END: Split Section -->
+<!-- BEGIN: Sandboxed Legacy / Research Tools -->
+<!-- Strict perimeter quarantine: Will NOT look like live operational diagnostics -->
+<section class="bg-terminal-card border-2 border-dashed border-terminal-violetBorder/80 rounded-xl p-5 sandbox-stripes relative overflow-hidden" data-purpose="sandboxed-research-archive">
+<!-- Quarantine Watermark Badge -->
+<div class="flex flex-wrap items-center justify-between gap-3 border-b border-terminal-violetBorder/50 pb-3 mb-4">
+<div class="flex items-center gap-3">
+<span class="px-2.5 py-1 bg-purple-950/80 border border-purple-500/50 text-purple-300 font-mono text-[11px] font-bold rounded flex items-center gap-1.5">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                بيئة معزولة للأبحاث التاريخية · SANDBOX RESEARCH
+              </span>
+<div>
+<h3 class="text-sm font-bold text-purple-100">أدوات البحث القديمة — للاستخدام البحثي والرجوع التاريخي فقط</h3>
+<p class="text-[11px] text-purple-300/80">هذه الأدوات معزولة بالكامل للقراءة فقط ولا تكتب أو تعدل على قواعد البيانات الحية للمحطة</p>
+</div>
+</div>
+<!-- Prominent Warning Banner -->
+<div class="text-[11px] font-mono text-purple-300 bg-purple-950/90 border border-purple-800/80 px-3 py-1.5 rounded" dir="ltr">
+              SECURITY: READ ONLY · WILL NOT WRITE TO LIVE DATABASE
+            </div>
+</div>
+<!-- 4 Sandboxed Utility Cards Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+<!-- Utility 1: Legacy Strategy v2.4 -->
+<div class="bg-terminal-base/90 border border-terminal-violetBorder/60 rounded-lg p-3.5 flex flex-col justify-between space-y-3 hover:border-purple-400/60 transition">
+<div>
+<div class="flex items-center justify-between mb-1.5">
+<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">RETIRED · متقاعدة</span>
+<span class="text-[10px] font-mono text-purple-400">AUG 2026</span>
+</div>
+<h4 class="text-xs font-bold text-slate-200">استراتيجية سويـنج القديمة v2.4 (ATR Trailing)</h4>
+<p class="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                  تم إيقافها بسبب انزلاق التنفيذ (Slippage) في أسهم السيولة المنخفضة. متاحة لإعادة التدقيق المقارن فقط.
+                </p>
+</div>
+<button class="w-full py-1.5 px-2.5 bg-terminal-elevated hover:bg-purple-950 text-purple-300 border border-terminal-violetBorder rounded text-xs font-mono text-center transition" onclick="alert('جارٍ تشغيل بيئة العزل للاستراتيجية القديمة v2.4...')">
+                فتح بيئة البحث (Open Sandbox)
+              </button>
+</div>
+<!-- Utility 2: Historical Run Comparator -->
+<div class="bg-terminal-base/90 border border-terminal-violetBorder/60 rounded-lg p-3.5 flex flex-col justify-between space-y-3 hover:border-purple-400/60 transition">
+<div>
+<div class="flex items-center justify-between mb-1.5">
+<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800">DIFF VIEWER</span>
+<span class="text-[10px] font-mono text-slate-400">2 RUNS COMPARISON</span>
+</div>
+<h4 class="text-xs font-bold text-slate-200">مقارن الدورات التنفيذية السابقة (Run Comparator)</h4>
+<p class="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                  مقارنة مخرجات إشارتين تاريخيتين سابقتين جنباً إلى جنب لاكتشاف الفروق وتطابق المعاملات الكمية.
+                </p>
+</div>
+<button class="w-full py-1.5 px-2.5 bg-terminal-elevated hover:bg-purple-950 text-purple-300 border border-terminal-violetBorder rounded text-xs font-mono text-center transition" onclick="alert('تشغيل أداة مقارنة تشغيل المحرك التاريخي (Diff Tool)...')">
+                تشغيل عارض الفروق (Diff Viewer)
+              </button>
+</div>
+<!-- Utility 3: Batch Experiment Run History -->
+<div class="bg-terminal-base/90 border border-terminal-violetBorder/60 rounded-lg p-3.5 flex flex-col justify-between space-y-3 hover:border-purple-400/60 transition">
+<div>
+<div class="flex items-center justify-between mb-1.5">
+<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">5,287 LOGS</span>
+<span class="text-[10px] font-mono text-emerald-400">INDEXED</span>
+</div>
+<h4 class="text-xs font-bold text-slate-200">أرشيف تجارب الاختبار الخلفي (Backtest Archive)</h4>
+<p class="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                  قاعدة بيانات تاريخية لنتائج معايرة النماذج وفترات التقلب القصوى في السوق المصري منذ عام 2022.
+                </p>
+</div>
+<button class="w-full py-1.5 px-2.5 bg-terminal-elevated hover:bg-purple-950 text-purple-300 border border-terminal-violetBorder rounded text-xs font-mono text-center transition" onclick="alert('فتح أرشيف سجلات الاختبار الخلفي (Backtest Archive)...')">
+                استعراض الأرشيف (Explore Logs)
+              </button>
+</div>
+<!-- Utility 4: Deterministic Session Replay -->
+<div class="bg-terminal-base/90 border border-terminal-violetBorder/60 rounded-lg p-3.5 flex flex-col justify-between space-y-3 hover:border-purple-400/60 transition">
+<div>
+<div class="flex items-center justify-between mb-1.5">
+<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">DRY REPLAY</span>
+<span class="text-[10px] font-mono text-slate-400">FinModel v4.8</span>
+</div>
+<h4 class="text-xs font-bold text-slate-200">أداة إعادة محاكاة الجلسات السابقة (Session Replay)</h4>
+<p class="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                  إعادة تشغيل جلسة تداول مسجلة ثانية بثانية لاختبار قرارات المحرك الجديد دون المساس بحسابات المحفظة.
+                </p>
+</div>
+<button class="w-full py-1.5 px-2.5 bg-terminal-elevated hover:bg-purple-950 text-purple-300 border border-terminal-violetBorder rounded text-xs font-mono text-center transition" onclick="alert('تهيئة جلسة إعادة المحاكاة الافتراضية (Dry-Run Replay)...')">
+                بدء إعادة الجلسة (Configure Replay)
+              </button>
+</div>
+</div>
+</section>
+<!-- END: Sandboxed Legacy / Research Tools -->
+</div>
+</main>
+<!-- END: Main Content Area -->
+</div>
+<!-- END: Screen Layout Shell -->
+<!-- BEGIN: Interactive Simulator & Diagnostic Scripts -->
+<script data-purpose="terminal-state-machine">
+    /**
+     * Toggles between Healthy State and Degraded State
+     * Allows demonstration of the cross-the-room 10-second silent-failure alerting
+     */
+    function setTerminalState(state) {
+      const healthyCard = document.getElementById('hero-healthy-card');
+      const degradedCard = document.getElementById('hero-degraded-card');
+      const btnHealthy = document.getElementById('btn-toggle-healthy');
+      const btnDegraded = document.getElementById('btn-toggle-degraded');
+
+      // Table row elements
+      const rowEod = document.getElementById('job-row-eod');
+      const statusDotEod = document.getElementById('job-status-dot-eod');
+      const cellStatusEod = document.getElementById('job-status-cell-eod');
+      const cellDurationEod = document.getElementById('job-duration-eod');
+      const cellPayloadEod = document.getElementById('job-payload-eod');
+      const cellExitEod = document.getElementById('job-exit-eod');
+      const cellMsgEod = document.getElementById('job-msg-eod');
+
+      const statusDotSwing = document.getElementById('job-status-dot-swing');
+      const cellStatusSwing = document.getElementById('job-status-cell-swing');
+      const cellPayloadSwing = document.getElementById('job-payload-swing');
+      const cellExitSwing = document.getElementById('job-exit-swing');
+      const cellMsgSwing = document.getElementById('job-msg-swing');
+
+      if (state === 'degraded') {
+        // Switch Hero
+        healthyCard.classList.add('hidden');
+        degradedCard.classList.remove('hidden');
+
+        // Switch Buttons Style
+        btnHealthy.className = 'px-2 py-0.5 rounded text-[11px] font-mono transition-colors text-slate-400 hover:text-slate-200';
+        btnDegraded.className = 'px-2 py-0.5 rounded text-[11px] font-mono transition-colors bg-rose-950/90 text-rose-400 border border-rose-600 font-bold';
+
+        // Update EOD Row to FAILED
+        rowEod.className = 'hover:bg-terminal-elevated/30 transition-colors bg-rose-950/25 border-r-4 border-r-rose-600';
+        statusDotEod.className = 'w-2 h-2 rounded-full bg-rose-500 animate-ping';
+        cellStatusEod.innerHTML = `<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950 text-rose-400 border border-rose-600">FAILED · انقطاع صامت (+42m)</span>`;
+        cellDurationEod.innerText = 'TIMEOUT (180s limit)';
+        cellPayloadEod.innerText = '0 / 224 سهم (لم تكتمل)';
+        cellExitEod.className = 'py-2.5 px-3 text-rose-400 font-bold';
+        cellExitEod.innerText = '137 (OOM KILLED)';
+        cellMsgEod.className = 'py-2.5 px-3 text-left text-rose-300 text-[11px] font-semibold';
+        cellMsgEod.innerText = 'Task exceeded 4.0GB RAM quota. Upstream pipeline stalled.';
+
+        // Update Swing Row to BLOCKED
+        statusDotSwing.className = 'w-1.5 h-1.5 rounded-full bg-amber-500';
+        cellStatusSwing.innerHTML = `<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-600">BLOCKED · محظور بالتبعية</span>`;
+        cellPayloadSwing.innerText = '0 (بانتظار أسعار الإغلاق)';
+        cellExitSwing.className = 'py-2.5 px-3 text-amber-400';
+        cellExitSwing.innerText = 'WAIT_DEPENDENCY';
+        cellMsgSwing.innerText = 'Halted: Upstream job `eod_settle_sync` did not produce valid bars.';
+      } else {
+        // Revert to Healthy State
+        degradedCard.classList.add('hidden');
+        healthyCard.classList.remove('hidden');
+
+        btnHealthy.className = 'px-2 py-0.5 rounded text-[11px] font-mono transition-colors bg-emerald-950/80 text-emerald-400 border border-emerald-700/60 font-medium';
+        btnDegraded.className = 'px-2 py-0.5 rounded text-[11px] font-mono transition-colors text-slate-400 hover:text-slate-200';
+
+        rowEod.className = 'hover:bg-terminal-elevated/30 transition-colors bg-emerald-950/10';
+        statusDotEod.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400';
+        cellStatusEod.innerHTML = `<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-700/60">PASS · ناجحة (14:31:05)</span>`;
+        cellDurationEod.innerText = '65.12s';
+        cellPayloadEod.innerText = '224 سهم مؤكد';
+        cellExitEod.className = 'py-2.5 px-3 text-emerald-400';
+        cellExitEod.innerText = '0 (CLEAN)';
+        cellMsgEod.className = 'py-2.5 px-3 text-left text-slate-300 text-[11px]';
+        cellMsgEod.innerText = 'Bulletin delta reconciled. SHA-256 verified.';
+
+        statusDotSwing.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400';
+        cellStatusSwing.innerHTML = `<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-700/60">PASS · ناجحة</span>`;
+        cellPayloadSwing.innerText = '14 اختراق مطابق';
+        cellExitSwing.className = 'py-2.5 px-3 text-emerald-400';
+        cellExitSwing.innerText = '0 (CLEAN)';
+        cellMsgSwing.innerText = 'All 7 gates passed. No floating point anomalies.';
+      }
+    }
+
+    /**
+     * Simulated job recovery action for degraded banner
+     */
+    function simulateJobRecovery() {
+      alert('جارٍ إعادة إطلاق مهمة تسوية الإغلاق (Force Ingest PID 398419) مع زيادة سقف الذاكرة إلى 6.0GB...');
+      setTimeout(() => {
+        setTerminalState('healthy');
+        alert('تمت استعادة المهمة بنجاح! تم استيراد 224 سهماً واكتمال محرك سويـنج.');
+      }, 700);
+    }
+
+    /**
+     * Provider ping simulation
+     */
+    function pingProvider(name, btnElement) {
+      const origText = btnElement.innerText;
+      btnElement.innerText = '...';
+      setTimeout(() => {
+        btnElement.innerText = '138ms OK';
+        btnElement.classList.add('text-emerald-400');
+        setTimeout(() => {
+          btnElement.innerText = origText;
+          btnElement.classList.remove('text-emerald-400');
+        }, 2000);
+      }, 300);
+    }
+
+    function pingAllProviders() {
+      alert('تم إرسال حزم الفحص التشخيصية لجميع المزودين (Ping Packets Sent). جميع القنوات تستجيب في أقل من 150ms.');
+    }
+
+    function runManualIntegrityCheck() {
+      alert('تم تشغيل فحص تكاملية التجزئة وقواعد البيانات (Integrity Check Run). كافة جداول الأسعار متطابقة مع السجلات الرسمية.');
+    }
+  </script>
+<!-- END: Interactive Simulator & Diagnostic Scripts -->
+</body></html>

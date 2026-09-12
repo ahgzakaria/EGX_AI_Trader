@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+
+<html class="dark" dir="rtl" lang="ar"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>محفظتي — EGX AI Trader Terminal</title>
+<!-- Tailwind CSS v3 with Forms & Container Queries -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Fonts: IBM Plex Sans, IBM Plex Sans Arabic, IBM Plex Mono -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&amp;family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind Configuration -->
+<script data-purpose="tailwind-config">
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            bg: '#0b1220',
+            sidebar: '#0e1729',
+            surface: '#131c30',
+            'surface-elevated': '#17223b',
+            'surface-well': '#0f182a',
+            border: '#223049',
+            'border-focus': '#334769',
+            terminal: {
+              red: '#f43f5e',
+              redBg: 'rgba(244, 63, 94, 0.08)',
+              green: '#10b981',
+              greenBg: 'rgba(16, 185, 129, 0.08)',
+              amber: '#f59e0b',
+              amberBg: 'rgba(245, 158, 11, 0.08)',
+              purple: '#c084fc',
+              purpleBg: 'rgba(192, 132, 252, 0.08)',
+              blue: '#3b82f6',
+              blueBg: 'rgba(59, 130, 246, 0.08)'
+            }
+          },
+          fontFamily: {
+            sans: ['"IBM Plex Sans"', 'sans-serif'],
+            arabic: ['"IBM Plex Sans Arabic"', 'sans-serif'],
+            mono: ['"IBM Plex Mono"', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+<!-- Base Custom Terminal Styling -->
+<style data-purpose="custom-terminal-rules">
+    body {
+      background-color: #0b1220;
+      color: #cbd5e1;
+      font-feature-settings: "tnum" 1, "zero" 1;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+    }
+    .font-mono {
+      font-feature-settings: "tnum" 1, "zero" 1;
+      letter-spacing: -0.02em;
+    }
+    /* Diagonal hatch patterns for alerts */
+    .hatch-purple {
+      background-image: repeating-linear-gradient(45deg, rgba(192, 132, 252, 0.06), rgba(192, 132, 252, 0.06) 10px, transparent 10px, transparent 20px);
+    }
+    .hatch-amber {
+      background-image: repeating-linear-gradient(45deg, rgba(245, 158, 11, 0.06), rgba(245, 158, 11, 0.06) 10px, transparent 10px, transparent 20px);
+    }
+    .hatch-red {
+      background-image: repeating-linear-gradient(45deg, rgba(244, 63, 94, 0.04), rgba(244, 63, 94, 0.04) 10px, transparent 10px, transparent 20px);
+    }
+    /* Scrollbar styling */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0b1220;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #223049;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334769;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-row overflow-x-hidden font-arabic select-none bg-bg text-slate-300">
+<!-- BEGIN: LeftSidebar (280px fixed width, left aligned physically via dir="ltr" wrapper) -->
+<aside class="w-[280px] bg-sidebar border-r border-border shrink-0 flex flex-col justify-between fixed top-0 bottom-0 left-0 z-30 select-none" data-purpose="terminal-sidebar" dir="ltr">
+<div class="flex flex-col h-full">
+<!-- App Header / Branding -->
+<div class="p-4 border-b border-border flex items-center justify-between">
+<div class="flex items-center gap-2.5">
+<div class="w-8 h-8 rounded bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-mono font-bold text-white text-sm shadow-inner">
+            EGX
+          </div>
+<div>
+<div class="font-sans font-bold text-slate-100 text-sm tracking-wide">EGX AI TRADER</div>
+<div class="text-[10px] text-slate-400 font-mono tracking-tight">v4.2.0 · CORE-PRO</div>
+</div>
+</div>
+<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">LIVE</span>
+</div>
+<!-- Navigation Links -->
+<nav class="p-3 space-y-6 overflow-y-auto flex-1 font-sans text-xs">
+<div>
+<div class="px-2 mb-2 text-[10px] font-semibold tracking-wider text-slate-400 uppercase font-mono">PORTFOLIO · المحفظة</div>
+<a class="flex items-center gap-3 px-3 py-2 rounded bg-surface text-blue-400 border border-border font-medium shadow-sm transition" href="#">
+<svg class="w-4 h-4 text-blue-400 shrink-0" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="flex-1 text-slate-100">My Portfolio</span>
+<span class="text-[9px] bg-blue-500/20 text-blue-300 font-mono px-1.5 py-0.5 rounded font-bold">10 POS</span>
+</a>
+</div>
+<div>
+<div class="px-2 mb-2 text-[10px] font-semibold tracking-wider text-slate-400 uppercase font-mono">SWING ENGINE · سوينج</div>
+<ul class="space-y-1">
+<li>
+<a class="flex items-center gap-3 px-3 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-surface/50 transition" href="#">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Daily Dashboard</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-surface/50 transition" href="#">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Swing Breakout</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-surface/50 transition" href="#">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Breakout Watch</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-surface/50 transition" href="#">
+<svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Confirmed Breakout</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-surface/50 transition" href="#">
+<svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Sector Liquidity</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-surface/50 transition" href="#">
+<svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Watchlist</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-surface/50 transition" href="#">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Stock Details</span>
+</a>
+</li>
+</ul>
+</div>
+<div>
+<div class="px-2 mb-2 text-[10px] font-semibold tracking-wider text-slate-400 uppercase font-mono">ANALYSIS · تحليلات ذكية</div>
+<ul class="space-y-1">
+<li>
+<a class="flex items-center gap-3 px-3 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-surface/50 transition" href="#">
+<svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>AI Analysis</span>
+</a>
+</li>
+</ul>
+</div>
+<div>
+<div class="px-2 mb-2 text-[10px] font-semibold tracking-wider text-slate-400 uppercase font-mono">SYSTEM · النظام</div>
+<ul class="space-y-1">
+<li>
+<a class="flex items-center gap-3 px-3 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-surface/50 transition" href="#">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>System Health</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-surface/50 transition" href="#">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Settings</span>
+</a>
+</li>
+</ul>
+</div>
+</nav>
+<!-- Sidebar Footer Status -->
+<div class="p-3 border-t border-border bg-surface-well/50 text-[11px] font-mono">
+<div class="flex items-center justify-between text-slate-400 mb-1">
+<span class="inline-flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            EOD Engine
+          </span>
+<span class="text-slate-300">Ready</span>
+</div>
+<div class="text-[10px] text-slate-400">Next Sync: 15:30 CLT</div>
+</div>
+</div>
+</aside>
+<!-- END: LeftSidebar -->
+<!-- BEGIN: MainContentWrapper (Offset by 280px left sidebar) -->
+<div class="flex-1 ml-[280px] min-w-0 flex flex-col bg-bg">
+<!-- BEGIN: TopSessionHealthStrip -->
+<header class="sticky top-0 z-20 h-10 bg-surface-well/95 backdrop-blur border-b border-border px-6 flex items-center justify-between text-xs font-mono text-slate-400" data-purpose="session-header-strip">
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-rose-500"></span>
+<span class="text-slate-200 font-semibold">EGX CLOSED</span>
+<span class="text-slate-400">14:30 CLT</span>
+</div>
+<span class="text-border">|</span>
+<div class="flex items-center gap-1.5 text-slate-300">
+<span class="text-slate-400">EOD SYNCED:</span>
+<span>15:02:14</span>
+</div>
+<span class="text-border">|</span>
+<div class="flex items-center gap-1.5 text-emerald-400">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="font-medium">PORTFOLIO VALUATION: T+0 POST-COST BASIS</span>
+</div>
+</div>
+<div class="flex items-center gap-4 text-[11px]">
+<span class="text-slate-400">EODHD FEED: <span class="text-emerald-400">ACTIVE (45m lag)</span></span>
+<span class="text-border">|</span>
+<span class="text-slate-400">LOCAL SEED: <span class="text-blue-400">VALIDATED</span></span>
+<div class="flex items-center gap-1 bg-surface px-2 py-0.5 rounded border border-border text-slate-300">
+<span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+<span>10 Positions</span>
+</div>
+</div>
+</header>
+<!-- END: TopSessionHealthStrip -->
+<!-- BEGIN: WorkbenchContainer (1640px Max Width Fluid Center) -->
+<main class="w-full max-w-[1640px] mx-auto p-6 space-y-6">
+<!-- BEGIN: PageHeader & Command Bar -->
+<section class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-2 border-b border-border" data-purpose="page-title-actions">
+<div class="flex items-start gap-4">
+<div class="w-11 h-11 rounded-lg bg-surface-elevated border border-border flex items-center justify-center text-blue-400 shadow-sm mt-0.5">
+<svg class="w-6 h-6" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+<div>
+<div class="flex items-center gap-3">
+<h1 class="text-2xl font-bold text-slate-100 tracking-tight">محفظتي</h1>
+<span class="text-[11px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-semibold tracking-wide">PORTFOLIO · المحفظة</span>
+</div>
+<p class="text-xs text-slate-400 mt-1 font-sans">
+              Your real positions, and how to leave each one well — محسوبة بخصم العمولات والدمغات ورسوم الخروج
+            </p>
+</div>
+</div>
+<!-- Action Buttons -->
+<div class="flex items-center gap-3">
+<div class="text-left font-mono text-[11px] text-slate-400 hidden sm:block">
+<div>LAST RECOMPUTE</div>
+<div class="text-slate-200 font-medium">14:30:00 CLT</div>
+</div>
+<button class="inline-flex items-center gap-2 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-medium text-xs shadow-sm transition" type="button">
+<svg class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>تحديث الأسعار</span>
+<span class="text-[10px] font-mono opacity-80">(Quotes)</span>
+</button>
+<button class="inline-flex items-center gap-2 px-3.5 py-2 bg-surface-elevated hover:bg-surface border border-border text-slate-200 rounded font-medium text-xs shadow-sm transition" type="button">
+<svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>إعادة حساب الخطط</span>
+<span class="text-[10px] font-mono text-slate-400">(Recompute)</span>
+</button>
+</div>
+</section>
+<!-- END: PageHeader & Command Bar -->
+<!-- BEGIN: SummaryMetricsBar (الملخص) -->
+<section aria-label="ملخص المحفظة" data-purpose="portfolio-metrics-summary">
+<div class="flex items-center justify-between mb-2">
+<div class="text-xs font-semibold text-slate-300 flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+<span>الملخص</span>
+<span class="text-slate-400 font-normal">| What the account is worth, after the cost of leaving it</span>
+</div>
+<span class="text-[11px] font-mono text-slate-400">FEE MATRIX: EGX STANDARD (0.00175 + STAMP)</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+<!-- Metric 1: Market Value -->
+<div class="bg-surface border border-border rounded-lg p-4 relative overflow-hidden flex flex-col justify-between">
+<div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+<span class="font-medium">القيمة السوقية الإجمالية</span>
+<span class="text-[10px] font-mono uppercase text-slate-400">Market Value</span>
+</div>
+<div class="my-1">
+<div class="text-2xl font-bold font-mono text-slate-100 tracking-tight">
+<bdi dir="ltr">3,826,769.00 EGP</bdi>
+</div>
+</div>
+<div class="pt-2 border-t border-border/50 text-[11px] flex items-center justify-between text-slate-400">
+<span>نسبة التعرض للأسهم:</span>
+<span class="font-mono text-slate-200 font-semibold">100.0%</span>
+</div>
+</div>
+<!-- Metric 2: Net Unrealized P&L After Exit Costs -->
+<div class="bg-surface border border-emerald-500/30 rounded-lg p-4 relative overflow-hidden flex flex-col justify-between bg-gradient-to-b from-surface to-emerald-950/10">
+<div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+<span class="font-medium text-emerald-400">صافي الربح غير المحقق (بعد الرسوم)</span>
+<span class="text-[10px] font-mono uppercase text-emerald-400">Unrealized Net</span>
+</div>
+<div class="my-1 flex items-baseline gap-2">
+<span class="text-2xl font-bold font-mono text-emerald-400 tracking-tight">
+<bdi dir="ltr">+10,113.00 EGP</bdi>
+</span>
+<span class="text-xs font-mono text-emerald-400 font-medium">(+0.26%)</span>
+</div>
+<div class="pt-2 border-t border-border/50 text-[10px] text-slate-400 truncate" title="Gross P&amp;L minus broker fees, stamp duty &amp; slippage">
+              مخصوم مقدماً: عمولة السمسار، الدمغة، والانزلاق
+            </div>
+</div>
+<!-- Metric 3: Capital At Risk To Stop -->
+<div class="bg-surface border border-rose-500/40 rounded-lg p-4 relative overflow-hidden flex flex-col justify-between bg-gradient-to-b from-surface to-rose-950/10">
+<div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+<span class="font-medium text-rose-400">المخاطرة حتى الوقف (Stop Exposure)</span>
+<span class="text-[10px] font-mono uppercase text-rose-400">Total Capital at Risk</span>
+</div>
+<div class="my-1 flex items-baseline gap-2">
+<span class="text-2xl font-bold font-mono text-rose-400 tracking-tight">
+<bdi dir="ltr">49,544.00 EGP</bdi>
+</span>
+<span class="text-xs font-mono text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20">1.30% رأس المال</span>
+</div>
+<div class="pt-2 border-t border-border/50 text-[10px] text-slate-400">
+              الحد الأقصى المسموح به في الباك-تست: <span class="font-mono text-slate-200">10.0%</span>
+</div>
+</div>
+<!-- Metric 4: Cash & Margin Alert -->
+<div class="bg-surface border border-amber-500/30 rounded-lg p-4 relative overflow-hidden flex flex-col justify-between bg-gradient-to-b from-surface to-amber-950/10">
+<div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+<span class="font-medium text-amber-300">الكاش المتاح والقوة الشرائية</span>
+<span class="text-[10px] font-mono uppercase text-amber-400">Available Cash</span>
+</div>
+<div class="my-1 flex items-baseline justify-between">
+<span class="text-2xl font-bold font-mono text-amber-400 tracking-tight">
+<bdi dir="ltr">-1,634.00 EGP</bdi>
+</span>
+<span class="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold">
+                MARGIN OVERDRAWN
+              </span>
+</div>
+<div class="pt-2 border-t border-border/50 text-[11px] flex items-center justify-between text-slate-400">
+<span>الأرباح المحققة (YTD):</span>
+<span class="font-mono text-emerald-400 font-semibold"><bdi dir="ltr">+117,768 EGP</bdi></span>
+</div>
+</div>
+</div>
+</section>
+<!-- END: SummaryMetricsBar -->
+<!-- BEGIN: CoreActionStack ("ماذا أفعل الآن" / Ordered by urgency) -->
+<section class="space-y-3" data-purpose="core-action-stack">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+<div class="flex items-center gap-2">
+<span class="w-2.5 h-2.5 rounded-sm bg-rose-500"></span>
+<h2 class="text-base font-bold text-slate-100">ماذا أفعل الآن؟</h2>
+<span class="text-xs text-slate-400 font-sans">| Ordered by urgency, priced strictly after exit costs</span>
+</div>
+<div class="flex items-center gap-3 text-xs font-mono">
+<span class="text-slate-400">URGENCY FILTER:</span>
+<span class="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 font-semibold">1 IMMEDIATE</span>
+<span class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">1 UNVALIDATED</span>
+<span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">1 WITHHELD</span>
+<span class="px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-border">1 STRUCTURAL</span>
+</div>
+</div>
+<!-- STACK CARDS -->
+<div class="space-y-3">
+<!-- State A: IMMEDIATE ACTION / تجاوز حد الوقف (Red 4px leading edge) -->
+<div class="bg-surface rounded-lg border border-rose-500/40 relative overflow-hidden flex flex-col md:flex-row items-stretch justify-between shadow-lg shadow-rose-950/20" data-purpose="action-card-immediate">
+<div class="w-1.5 bg-rose-500 self-stretch shrink-0"></div>
+<div class="p-4 flex-1 space-y-2">
+<div class="flex flex-wrap items-center gap-2">
+<span class="font-mono text-base font-bold text-white bg-slate-900/80 px-2.5 py-0.5 rounded border border-border">AMES</span>
+<span class="text-xs font-semibold text-slate-200">Alexandria New Medical Center · الإسكندرية للخدمات الطبية</span>
+<span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500 text-white animate-pulse">URGENT · فوري</span>
+<span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500/20 text-rose-400 border border-rose-500/40">EXIT · بيع كلي</span>
+<span class="px-2 py-0.5 rounded text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20">LIVE TICK 14:29:55</span>
+</div>
+<div class="text-sm text-rose-300 font-medium flex items-center gap-2">
+<svg class="w-4 h-4 text-rose-400 shrink-0" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>السعر الحالي <bdi class="font-mono font-bold" dir="ltr">60.250 EGP</bdi> كسر وقف الخسارة الصارم <bdi class="font-mono font-bold" dir="ltr">108.842 EGP</bdi> — خروج كامل لحماية رأس المال فوراً.</span>
+</div>
+<div class="flex flex-wrap gap-4 text-xs font-mono text-slate-400 pt-1">
+<span>الكمية: <bdi class="text-slate-200 font-semibold" dir="ltr">4,500</bdi> سهم</span>
+<span>قيمة التسييل: <bdi class="text-slate-200 font-semibold" dir="ltr">271,125.00 EGP</bdi></span>
+<span>الصافي بعد الرسوم: <bdi class="text-rose-400 font-bold" dir="ltr">-71,227.02 EGP (-20.84%)</bdi></span>
+<span>سعر التعادل: <bdi class="text-slate-300" dir="ltr">76.107 EGP</bdi></span>
+</div>
+</div>
+<div class="p-4 bg-surface-well/60 border-t md:border-t-0 md:border-r border-border flex flex-col justify-center items-end gap-2 shrink-0 min-w-[200px]">
+<button class="w-full px-4 py-2 rounded bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs tracking-wide uppercase transition shadow" type="button">
+                تنفيذ الخروج السريع
+              </button>
+<span class="text-[10px] font-mono text-slate-400 text-center w-full">ROUTED TO BROKER OMS</span>
+</div>
+</div>
+<!-- State B: UNVALIDATED RULE ALERT (Purple diagonal hatch) -->
+<div class="bg-surface rounded-lg border border-purple-500/40 relative overflow-hidden hatch-purple flex flex-col md:flex-row items-stretch justify-between" data-purpose="action-card-unvalidated">
+<div class="w-1.5 bg-purple-500 self-stretch shrink-0"></div>
+<div class="p-4 flex-1 space-y-2">
+<div class="flex flex-wrap items-center gap-2">
+<span class="font-mono text-base font-bold text-white bg-slate-900/80 px-2.5 py-0.5 rounded border border-border">BONY</span>
+<span class="text-xs font-semibold text-slate-200">Bonyan for Development and Trade · بنيان للتنمية</span>
+<span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40">RULE UNVALIDATED · قاعدة غير مُقاسة بعد</span>
+<span class="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-surface-elevated text-slate-300 border border-border">EXIT · بيع كلي تجريبي</span>
+</div>
+<div class="text-sm text-purple-200 font-medium">
+                إشارة خروج عند <bdi class="font-mono font-bold" dir="ltr">4.540 EGP</bdi> مقابل وقف <bdi class="font-mono font-bold" dir="ltr">4.689 EGP</bdi> — 
+                <span class="text-purple-300">الخروج مبني على شرط خوارزمي قيد التجربة ولم يُعتمد في نتائج الباك-تست التراكمي (Forward Test Only).</span>
+</div>
+<div class="flex flex-wrap gap-4 text-xs font-mono text-slate-400 pt-1">
+<span>الكمية: <bdi class="text-slate-200" dir="ltr">21,000</bdi></span>
+<span>سعر الشراء: <bdi class="text-slate-200" dir="ltr">4.770 EGP</bdi></span>
+<span>الصافي بعد التكاليف: <bdi class="text-rose-400 font-bold" dir="ltr">-5,007.42 EGP (-5.00%)</bdi></span>
+</div>
+</div>
+<div class="p-4 bg-surface-well/60 border-t md:border-t-0 md:border-r border-border flex flex-col justify-center items-end gap-2 shrink-0 min-w-[200px]">
+<button class="w-full px-4 py-2 rounded bg-surface-elevated hover:bg-slate-700 border border-purple-500/50 text-purple-200 font-medium text-xs transition" type="button">
+                مراجعة شروط القاعدة
+              </button>
+<span class="text-[10px] font-mono text-purple-400/80 text-center w-full">RULE-01 UNVERIFIED</span>
+</div>
+</div>
+<!-- State C: WITHHELD DUE TO STALE DATA (Amber diagonal hatch) -->
+<div class="bg-surface rounded-lg border border-amber-500/40 relative overflow-hidden hatch-amber flex flex-col md:flex-row items-stretch justify-between" data-purpose="action-card-withheld">
+<div class="w-1.5 bg-amber-500 self-stretch shrink-0"></div>
+<div class="p-4 flex-1 space-y-2">
+<div class="flex flex-wrap items-center gap-2">
+<span class="font-mono text-base font-bold text-white bg-slate-900/80 px-2.5 py-0.5 rounded border border-border">MTIE</span>
+<span class="text-xs font-semibold text-slate-200">MM Group for Industry and Trade · إم إم جروب</span>
+<span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">WITHHELD · توصية محجوبة</span>
+<span class="px-2 py-0.5 rounded text-[10px] font-mono text-slate-400 bg-surface-elevated border border-border">EODHD LATENCY +45m</span>
+</div>
+<div class="text-sm text-amber-200 font-medium">
+                لا توجد خطة خروج نشطة — السعر الحالي غير متزامن مع إغلاق البورصة الرسمي. محرك الأمان يمنع إصدار توصية على بيانات قديمة.
+              </div>
+<div class="text-xs font-mono text-slate-400 pt-1">
+                سبب الحجب: <span class="text-slate-300">DATA_UNAVAILABLE no validated local seed and EODHD unsupported ticker state.</span>
+</div>
+</div>
+<div class="p-4 bg-surface-well/60 border-t md:border-t-0 md:border-r border-border flex flex-col justify-center items-end gap-2 shrink-0 min-w-[200px]">
+<button class="w-full px-4 py-2 rounded bg-surface-elevated hover:bg-slate-700 border border-amber-500/40 text-amber-300 font-medium text-xs transition" type="button">
+                مزامنة التيكر يدوياً
+              </button>
+<span class="text-[10px] font-mono text-amber-400/80 text-center w-full">STALE DATA LOCK</span>
+</div>
+</div>
+<!-- State D: STRUCTURAL GAP / مركز بدون خطة خروج (Dashed slate border) -->
+<div class="bg-surface rounded-lg border-2 border-dashed border-slate-700 p-4 flex flex-col md:flex-row items-stretch justify-between gap-4" data-purpose="action-card-structural">
+<div class="space-y-2">
+<div class="flex flex-wrap items-center gap-2">
+<span class="font-mono text-base font-bold text-white bg-slate-900/80 px-2.5 py-0.5 rounded border border-border">CCAP</span>
+<span class="text-xs font-semibold text-slate-200">Qalaa Holdings · القلعة للاستشارات المالية</span>
+<span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-700 text-slate-200 border border-slate-600">NO EXIT PLAN · بدون خطة</span>
+<span class="px-2 py-0.5 rounded text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20">MANUAL ENTRY DISCOVERY</span>
+</div>
+<p class="text-xs text-slate-400 leading-relaxed">
+                مركز مسجل يدوياً بدون تحديد مسبق لمستويات الوقف وهدف الربح ومخاطرة المحفظة. النظام يتطلب ربط المركز بخطة خروج فنية معتمدة.
+              </p>
+<div class="flex flex-wrap gap-4 text-xs font-mono text-slate-400">
+<span>الكمية: <bdi class="text-slate-200" dir="ltr">19,500</bdi></span>
+<span>متوسط التكلفة: <bdi class="text-slate-200" dir="ltr">5.150 EGP</bdi></span>
+<span>السعر الحالي: <bdi class="text-emerald-400 font-bold" dir="ltr">6.210 EGP</bdi></span>
+<span>الربح العائم: <bdi class="text-emerald-400" dir="ltr">+20,445.73 EGP (+20.36%)</bdi></span>
+</div>
+</div>
+<div class="flex flex-col justify-center items-end gap-2 shrink-0 min-w-[200px]">
+<button class="w-full px-4 py-2 rounded bg-blue-600/80 hover:bg-blue-600 text-white font-semibold text-xs transition" type="button">
+                تعيين خطة خروج الآن
+              </button>
+<span class="text-[10px] font-mono text-slate-400 text-center w-full">AWAITING DEFINITION</span>
+</div>
+</div>
+</div>
+</section>
+<!-- END: CoreActionStack -->
+<!-- BEGIN: OpenPositionsTable ("المراكز" / 11-column data table) -->
+<section class="space-y-2" data-purpose="open-positions-table-section">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+<div class="flex items-center gap-2">
+<span class="w-2.5 h-2.5 rounded-sm bg-blue-500"></span>
+<h2 class="text-base font-bold text-slate-100">المراكز المفتوحة</h2>
+<span class="text-xs text-slate-400 font-sans">| Average, breakeven, and the quantitative plan for each</span>
+</div>
+<div class="text-[11px] font-mono text-slate-400 flex items-center gap-2">
+<span>SHOWING: 10 POSITIONS</span>
+<span>·</span>
+<span class="text-emerald-400">PRICED AFTER FEES (0.175% ROUND-TRIP)</span>
+</div>
+</div>
+<div class="w-full overflow-x-auto rounded-lg border border-border bg-surface shadow-sm">
+<table class="w-full text-right border-collapse text-xs" data-purpose="positions-datatable">
+<thead>
+<tr class="bg-surface-elevated text-slate-400 border-b border-border font-medium text-[11px]">
+<th class="py-2.5 px-3 font-mono text-right">Ticker</th>
+<th class="py-2.5 px-3 text-right">اسم السهم</th>
+<th class="py-2.5 px-3 font-mono text-left">الكمية</th>
+<th class="py-2.5 px-3 font-mono text-left">متوسط الشراء</th>
+<th class="py-2.5 px-3 font-mono text-left">سعر التعادل</th>
+<th class="py-2.5 px-3 font-mono text-left">السعر الحي</th>
+<th class="py-2.5 px-3 font-mono text-left">الربح الصافي (بعد الرسوم)</th>
+<th class="py-2.5 px-3 font-mono text-left">الوقف الصارم</th>
+<th class="py-2.5 px-3 font-mono text-left">المخاطرة للوقف</th>
+<th class="py-2.5 px-3 font-mono text-left">هدف 1 / هدف 2</th>
+<th class="py-2.5 px-3 text-center">التوصية</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-border/60 font-mono text-xs">
+<!-- Row 1: AMES (Stop Hit / Danger) -->
+<tr class="bg-rose-950/15 hover:bg-surface-elevated/80 transition-colors">
+<td class="py-2.5 px-3 font-bold text-rose-400 flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                  AMES
+                </td>
+<td class="py-2.5 px-3 font-sans text-slate-200">الإسكندرية للخدمات الطبية</td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">4,500</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">75.968</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">76.107</bdi></td>
+<td class="py-2.5 px-3 text-left font-bold text-rose-400"><bdi dir="ltr">60.250</bdi></td>
+<td class="py-2.5 px-3 text-left font-bold text-rose-400">
+<bdi dir="ltr">-71,227.02 (-20.84%)</bdi>
+</td>
+<td class="py-2.5 px-3 text-left text-rose-300 font-semibold"><bdi dir="ltr">108.842</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">0 EGP</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">173.78 / 198.61</bdi></td>
+<td class="py-2.5 px-3 text-center">
+<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">بيع كلي</span>
+</td>
+</tr>
+<!-- Row 2: BONY -->
+<tr class="hover:bg-surface-elevated/80 transition-colors">
+<td class="py-2.5 px-3 font-bold text-purple-300 flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+                  BONY
+                </td>
+<td class="py-2.5 px-3 font-sans text-slate-200">بنيان للتنمية والتجارة</td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">21,000</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">4.770</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">4.779</bdi></td>
+<td class="py-2.5 px-3 text-left font-semibold text-slate-200"><bdi dir="ltr">4.540</bdi></td>
+<td class="py-2.5 px-3 text-left text-rose-400">
+<bdi dir="ltr">-5,007.42 (-5.00%)</bdi>
+</td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">4.689</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">0 EGP</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">4.920 / 5.221</bdi></td>
+<td class="py-2.5 px-3 text-center">
+<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40">بيع كلي</span>
+</td>
+</tr>
+<!-- Row 3: BTFH -->
+<tr class="hover:bg-surface-elevated/80 transition-colors">
+<td class="py-2.5 px-3 font-bold text-slate-200 flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+                  BTFH
+                </td>
+<td class="py-2.5 px-3 font-sans text-slate-200">بلتون المالية القابضة</td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">32,000</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">3.230</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">3.236</bdi></td>
+<td class="py-2.5 px-3 text-left font-semibold text-slate-200"><bdi dir="ltr">2.950</bdi></td>
+<td class="py-2.5 px-3 text-left text-rose-400">
+<bdi dir="ltr">-9,135.71 (-8.84%)</bdi>
+</td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">3.037</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">0 EGP</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">3.140 / 3.245</bdi></td>
+<td class="py-2.5 px-3 text-center">
+<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">بيع كلي</span>
+</td>
+</tr>
+<!-- Row 4: CAED -->
+<tr class="hover:bg-surface-elevated/80 transition-colors">
+<td class="py-2.5 px-3 font-bold text-slate-200 flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+                  CAED
+                </td>
+<td class="py-2.5 px-3 font-sans text-slate-200">القاهرة للخدمات التعليمية</td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">1,400</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">145.879</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">146.147</bdi></td>
+<td class="py-2.5 px-3 text-left font-semibold text-slate-200"><bdi dir="ltr">130.000</bdi></td>
+<td class="py-2.5 px-3 text-left text-rose-400">
+<bdi dir="ltr">-22,565.26 (-11.05%)</bdi>
+</td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">140.396</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">0 EGP</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">185.70 / 210.30</bdi></td>
+<td class="py-2.5 px-3 text-center">
+<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">بيع كلي</span>
+</td>
+</tr>
+<!-- Row 5: CCAP (Manual/No Stop) -->
+<tr class="hover:bg-surface-elevated/80 transition-colors">
+<td class="py-2.5 px-3 font-bold text-emerald-400 flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  CCAP
+                </td>
+<td class="py-2.5 px-3 font-sans text-slate-200">القلعة للاستثمارات المالية</td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">19,500</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">5.150</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">5.160</bdi></td>
+<td class="py-2.5 px-3 text-left font-bold text-emerald-400"><bdi dir="ltr">6.210</bdi></td>
+<td class="py-2.5 px-3 text-left font-bold text-emerald-400">
+<bdi dir="ltr">+20,445.73 (+20.36%)</bdi>
+</td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">5.840</bdi></td>
+<td class="py-2.5 px-3 text-left text-amber-400 font-semibold"><bdi dir="ltr">7,215 EGP</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">6.250 / 6.603</bdi></td>
+<td class="py-2.5 px-3 text-center">
+<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">احتفاظ / جني جزئي</span>
+</td>
+</tr>
+<!-- Row 6: CLHO -->
+<tr class="hover:bg-surface-elevated/80 transition-colors">
+<td class="py-2.5 px-3 font-bold text-slate-200 flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+                  CLHO
+                </td>
+<td class="py-2.5 px-3 font-sans text-slate-200">مستشفى كليوباترا</td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">7,700</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">18.180</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">18.214</bdi></td>
+<td class="py-2.5 px-3 text-left font-semibold text-slate-200"><bdi dir="ltr">16.130</bdi></td>
+<td class="py-2.5 px-3 text-left text-rose-400">
+<bdi dir="ltr">-16,014.92 (-11.44%)</bdi>
+</td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">17.523</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">0 EGP</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">18.450 / 19.665</bdi></td>
+<td class="py-2.5 px-3 text-center">
+<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">بيع كلي</span>
+</td>
+</tr>
+<!-- Row 7: EALR -->
+<tr class="hover:bg-surface-elevated/80 transition-colors">
+<td class="py-2.5 px-3 font-bold text-slate-200 flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+                  EALR
+                </td>
+<td class="py-2.5 px-3 font-sans text-slate-200">العربية لاستصلاح الأراضي</td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">353</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">390.930</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">391.654</bdi></td>
+<td class="py-2.5 px-3 text-left font-semibold text-slate-200"><bdi dir="ltr">375.650</bdi></td>
+<td class="py-2.5 px-3 text-left text-rose-400">
+<bdi dir="ltr">-5,639.05 (-4.09%)</bdi>
+</td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">395.333</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">0 EGP</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">471.18 / 511.07</bdi></td>
+<td class="py-2.5 px-3 text-center">
+<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">بيع كلي</span>
+</td>
+</tr>
+<!-- Row 8: EFID -->
+<tr class="hover:bg-surface-elevated/80 transition-colors">
+<td class="py-2.5 px-3 font-bold text-slate-200 flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+                  EFID
+                </td>
+<td class="py-2.5 px-3 font-sans text-slate-200">إيديتا للصناعات الغذائية</td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">3,200</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">31.708</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">31.767</bdi></td>
+<td class="py-2.5 px-3 text-left font-semibold text-slate-200"><bdi dir="ltr">31.250</bdi></td>
+<td class="py-2.5 px-3 text-left text-rose-400">
+<bdi dir="ltr">-1,650.93 (-1.63%)</bdi>
+</td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">31.216</bdi></td>
+<td class="py-2.5 px-3 text-left text-amber-400 font-semibold"><bdi dir="ltr">109 EGP</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">34.940 / 37.150</bdi></td>
+<td class="py-2.5 px-3 text-center">
+<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">مراقبة الوقف</span>
+</td>
+</tr>
+<!-- Row 9: EFIH -->
+<tr class="hover:bg-surface-elevated/80 transition-colors">
+<td class="py-2.5 px-3 font-bold text-emerald-400 flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  EFIH
+                </td>
+<td class="py-2.5 px-3 font-sans text-slate-200">إي فاينانس للاستثمارات</td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">6,864</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">23.370</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">23.413</bdi></td>
+<td class="py-2.5 px-3 text-left font-bold text-emerald-400"><bdi dir="ltr">23.930</bdi></td>
+<td class="py-2.5 px-3 text-left font-bold text-emerald-400">
+<bdi dir="ltr">+3,541.06 (+2.21%)</bdi>
+</td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">23.759</bdi></td>
+<td class="py-2.5 px-3 text-left text-amber-400 font-semibold"><bdi dir="ltr">1,174 EGP</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">25.400 / 26.747</bdi></td>
+<td class="py-2.5 px-3 text-center">
+<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">احتفاظ</span>
+</td>
+</tr>
+<!-- Row 10: ETEL -->
+<tr class="hover:bg-surface-elevated/80 transition-colors">
+<td class="py-2.5 px-3 font-bold text-emerald-400 flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  ETEL
+                </td>
+<td class="py-2.5 px-3 font-sans text-slate-200">المصرية للاتصالات</td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">1,700</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">117.940</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-400"><bdi dir="ltr">118.157</bdi></td>
+<td class="py-2.5 px-3 text-left font-bold text-emerald-400"><bdi dir="ltr">126.450</bdi></td>
+<td class="py-2.5 px-3 text-left font-bold text-emerald-400">
+<bdi dir="ltr">+14,071.98 (+7.02%)</bdi>
+</td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">117.195</bdi></td>
+<td class="py-2.5 px-3 text-left text-amber-400 font-semibold"><bdi dir="ltr">15,734 EGP</bdi></td>
+<td class="py-2.5 px-3 text-left text-slate-300"><bdi dir="ltr">126.400 / 134.361</bdi></td>
+<td class="py-2.5 px-3 text-center">
+<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">تحقيق هدف 1</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="text-[10px] text-slate-400 font-mono flex items-center justify-between px-1">
+<span>* قاعدة الوقف: الدعم - (0.3 × ATR)، سعر التعادل يشمل عمولة التداول والدمغات ذهاباً وإياباً.</span>
+<span>SYSTEM RISK POLICY: NEVER MOVE A STOP LOWER</span>
+</div>
+</section>
+<!-- END: OpenPositionsTable -->
+<!-- BEGIN: TwoColumnBottomWorkbench (Sector Allocation & Invoices/Modals) -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+<!-- Sector Liquidity & Allocation (5 Cols) -->
+<section class="lg:col-span-5 bg-surface border border-border rounded-lg p-4 space-y-4" data-purpose="sector-liquidity-allocation">
+<div class="flex items-center justify-between border-b border-border pb-2.5">
+<div>
+<h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+<span class="w-2 h-2 rounded-sm bg-indigo-500"></span>
+<span>التركيز القطاعي</span>
+</h3>
+<p class="text-[11px] text-slate-400 font-sans mt-0.5">
+                "Four names in one sector is one big position"
+              </p>
+</div>
+<span class="px-2 py-0.5 rounded text-[10px] font-mono bg-rose-500/15 text-rose-300 border border-rose-500/30">
+              CONCENTRATION RISK
+            </span>
+</div>
+<div class="space-y-3 font-mono text-xs">
+<!-- Sector 1 (Concentration Alert > 25%) -->
+<div class="space-y-1">
+<div class="flex justify-between text-slate-300 text-[11px]">
+<span class="font-sans flex items-center gap-1.5 font-semibold text-rose-400">
+<svg class="w-3 h-3 text-rose-500" fill="currentColor" viewbox="0 0 20 20"><path clip-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" fill-rule="evenodd"></path></svg>
+                  الرعاية الصحية والأدوية (Health Care)
+                </span>
+<span class="text-rose-400 font-bold">36.2% <span class="text-[10px] text-slate-400">(1,384,169 EGP)</span></span>
+</div>
+<div class="w-full h-2 bg-surface-well rounded-full overflow-hidden border border-border">
+<div class="h-full bg-rose-500 rounded-full" style="width: 36.2%;"></div>
+</div>
+</div>
+<!-- Sector 2 -->
+<div class="space-y-1">
+<div class="flex justify-between text-slate-300 text-[11px]">
+<span class="font-sans">العقارات (Real Estate)</span>
+<span>17.4% <span class="text-[10px] text-slate-400">(665,280 EGP)</span></span>
+</div>
+<div class="w-full h-2 bg-surface-well rounded-full overflow-hidden border border-border">
+<div class="h-full bg-blue-500 rounded-full" style="width: 17.4%;"></div>
+</div>
+</div>
+<!-- Sector 3 -->
+<div class="space-y-1">
+<div class="flex justify-between text-slate-300 text-[11px]">
+<span class="font-sans">تكنولوجيا واتصالات (IT &amp; Telecom)</span>
+<span>12.2% <span class="text-[10px] text-slate-400">(468,321 EGP)</span></span>
+</div>
+<div class="w-full h-2 bg-surface-well rounded-full overflow-hidden border border-border">
+<div class="h-full bg-cyan-500 rounded-full" style="width: 12.2%;"></div>
+</div>
+</div>
+<!-- Sector 4 -->
+<div class="space-y-1">
+<div class="flex justify-between text-slate-300 text-[11px]">
+<span class="font-sans">خدمات مالية غير مصرفية (Non-bank Finance)</span>
+<span>10.8% <span class="text-[10px] text-slate-400">(414,821 EGP)</span></span>
+</div>
+<div class="w-full h-2 bg-surface-well rounded-full overflow-hidden border border-border">
+<div class="h-full bg-indigo-500 rounded-full" style="width: 10.8%;"></div>
+</div>
+</div>
+<!-- Sector 5 -->
+<div class="space-y-1">
+<div class="flex justify-between text-slate-300 text-[11px]">
+<span class="font-sans">تشييد ومواد بناء (Construction)</span>
+<span>9.3% <span class="text-[10px] text-slate-400">(355,409 EGP)</span></span>
+</div>
+<div class="w-full h-2 bg-surface-well rounded-full overflow-hidden border border-border">
+<div class="h-full bg-slate-400 rounded-full" style="width: 9.3%;"></div>
+</div>
+</div>
+<!-- Sector 6 -->
+<div class="space-y-1">
+<div class="flex justify-between text-slate-300 text-[11px]">
+<span class="font-sans">أغذية ومشروبات (Food &amp; Bev)</span>
+<span>6.8% <span class="text-[10px] text-slate-400">(258,330 EGP)</span></span>
+</div>
+<div class="w-full h-2 bg-surface-well rounded-full overflow-hidden border border-border">
+<div class="h-full bg-emerald-500 rounded-full" style="width: 6.8%;"></div>
+</div>
+</div>
+<!-- Sector 7 -->
+<div class="space-y-1">
+<div class="flex justify-between text-slate-300 text-[11px]">
+<span class="font-sans">خدمات تعليمية (Education)</span>
+<span>4.8% <span class="text-[10px] text-slate-400">(182,000 EGP)</span></span>
+</div>
+<div class="w-full h-2 bg-surface-well rounded-full overflow-hidden border border-border">
+<div class="h-full bg-yellow-500 rounded-full" style="width: 4.8%;"></div>
+</div>
+</div>
+<!-- Sector 8 -->
+<div class="space-y-1">
+<div class="flex justify-between text-slate-300 text-[11px]">
+<span class="font-sans">تجارة وموزعون (Trade)</span>
+<span>2.6% <span class="text-[10px] text-slate-400">(98,440 EGP)</span></span>
+</div>
+<div class="w-full h-2 bg-surface-well rounded-full overflow-hidden border border-border">
+<div class="h-full bg-purple-500 rounded-full" style="width: 2.6%;"></div>
+</div>
+</div>
+</div>
+<div class="p-2.5 rounded bg-surface-well border border-border text-[11px] text-slate-400 leading-relaxed font-sans">
+<span class="font-semibold text-rose-400">تحذير أمان:</span> قطاع الرعاية الصحية يتجاوز حاجز التركيز الأقصى (25.0%). تصفية مركز AMES ستعيد توازن المحفظة تلقائياً إلى 26.5%.
+          </div>
+</section>
+<!-- Data Entry & Invoices & Diagnostics Drawer (7 Cols) -->
+<section class="lg:col-span-7 space-y-4" data-purpose="data-entry-and-accordions">
+<!-- Invoices & Transaction Tab Shell -->
+<div class="bg-surface border border-border rounded-lg overflow-hidden">
+<div class="flex items-center justify-between border-b border-border bg-surface-elevated px-4 py-2 text-xs">
+<span class="font-bold text-slate-200">تسجيل وتعديل (Data Entry &amp; Invoices)</span>
+<div class="flex gap-1">
+<button class="px-2.5 py-1 rounded bg-blue-600 text-white font-medium text-[11px]">فواتير اليوم</button>
+<button class="px-2.5 py-1 rounded hover:bg-surface text-slate-400 text-[11px]">أول مرة (ملف)</button>
+<button class="px-2.5 py-1 rounded hover:bg-surface text-slate-400 text-[11px]">صفقة يدوية</button>
+<button class="px-2.5 py-1 rounded hover:bg-surface text-slate-400 text-[11px]">كاش</button>
+<button class="px-2.5 py-1 rounded hover:bg-surface text-slate-400 text-[11px]">تجزئة / مجانية</button>
+<button class="px-2.5 py-1 rounded hover:bg-surface text-slate-400 text-[11px]">السجل</button>
+</div>
+</div>
+<!-- PDF Invoice Upload Area -->
+<div class="p-4 space-y-3">
+<p class="text-xs text-slate-300 leading-relaxed font-sans">
+                الكمية والسعر والعمولة تُقرأ مباشرة من الفاتورة الرسمية — لا تخمين ولا قراءة صور تقريبية. يُرفض أي ملف لا تتطابق عملياته حسابياً مع الرصيد الدفتري.
+              </p>
+<div class="border-2 border-dashed border-border hover:border-blue-500/50 rounded-lg p-5 flex flex-col items-center justify-center gap-2.5 bg-surface-well/50 cursor-pointer transition">
+<div class="w-10 h-10 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center">
+<svg class="w-5 h-5" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+<div class="text-xs font-semibold text-slate-200">
+                  اسحب ملف فاتورة السمسار (PDF) هنا أو انقر للاختيار
+                </div>
+<div class="text-[10px] font-mono text-slate-400">
+                  يدعم: هيرميس · ثندر (Thndr) · أرقام · مباشر · بايونيرز (Up to 200MB)
+                </div>
+</div>
+<!-- Integration Settings -->
+<div class="flex items-center justify-between pt-2 text-xs">
+<label class="flex items-center gap-2 text-slate-300 cursor-pointer">
+<input checked="" class="rounded border-border bg-surface-well text-blue-600 focus:ring-0 focus:ring-offset-0 w-4 h-4" type="checkbox"/>
+<span>كزحركة كاش (مثل Thndr Savings) سجل صناديق النقد يومياً</span>
+</label>
+<span class="text-[11px] font-mono text-emerald-400">AUTO-POST ACTIVE</span>
+</div>
+</div>
+</div>
+<!-- Bottom Diagnostic Accordions -->
+<div class="space-y-2">
+<!-- Accordion 1: Recommendation Log -->
+<details class="group bg-surface border border-border rounded-lg overflow-hidden transition">
+<summary class="flex items-center justify-between p-3 cursor-pointer text-xs font-semibold text-slate-200 hover:bg-surface-elevated select-none">
+<div class="flex items-center gap-2">
+<svg class="w-4 h-4 text-slate-400 group-open:rotate-90 transition-transform" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>سجل التوصيات وقرارات المحرك (Recommendation Audit Log)</span>
+</div>
+<span class="text-[10px] font-mono text-slate-400">4 AUDITS TODAY</span>
+</summary>
+<div class="p-3 border-t border-border bg-surface-well/60 text-xs font-mono space-y-1.5 text-slate-300">
+<div class="flex justify-between py-1 border-b border-border/40">
+<span class="text-rose-400 font-bold">[14:30:02 CLT] AMES</span>
+<span>EXIT triggered at 60.25 EGP (Stop: 108.84 EGP) — Breached by -44.6%</span>
+</div>
+<div class="flex justify-between py-1 border-b border-border/40">
+<span class="text-purple-400 font-bold">[14:28:10 CLT] BONY</span>
+<span>UNVALIDATED rule-check warning emitted. Signal not committed to ledger.</span>
+</div>
+<div class="flex justify-between py-1">
+<span class="text-emerald-400 font-bold">[13:45:00 CLT] ETEL</span>
+<span>TARGET 1 hit at 126.40 EGP (+7.02% net). Trailing stop locked at 117.19 EGP.</span>
+</div>
+</div>
+</details>
+<!-- Accordion 2: Plan Versions -->
+<details class="group bg-surface border border-border rounded-lg overflow-hidden transition">
+<summary class="flex items-center justify-between p-3 cursor-pointer text-xs font-semibold text-slate-200 hover:bg-surface-elevated select-none">
+<div class="flex items-center gap-2">
+<svg class="w-4 h-4 text-slate-400 group-open:rotate-90 transition-transform" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>تاريخ خطط الخروج ومستويات الوقف (Plan Versions History)</span>
+</div>
+<span class="text-[10px] font-mono text-slate-400">v14.9 COMMITTED</span>
+</summary>
+<div class="p-3 border-t border-border bg-surface-well/60 text-xs font-mono space-y-1 text-slate-400">
+<div>Plan Hash: <span class="text-slate-200">9f84bc12a0e4 · Computed against Close 14:30:00</span></div>
+<div>Parameters: <span class="text-slate-200">ATR_Period=14, ATR_Multiplier=0.3, SlippageBuffer=0.15%</span></div>
+</div>
+</details>
+<!-- Accordion 3: Data Provenance -->
+<details class="group bg-surface border border-border rounded-lg overflow-hidden transition">
+<summary class="flex items-center justify-between p-3 cursor-pointer text-xs font-semibold text-slate-200 hover:bg-surface-elevated select-none">
+<div class="flex items-center gap-2">
+<svg class="w-4 h-4 text-slate-400 group-open:rotate-90 transition-transform" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>من أين تأتي هذه الأرقام؟ (Data Provenance &amp; Cost Accounting)</span>
+</div>
+<span class="text-[10px] font-mono text-emerald-400">AUDITED</span>
+</summary>
+<div class="p-3 border-t border-border bg-surface-well/60 text-xs text-slate-300 font-sans leading-relaxed space-y-2">
+<p>
+                  يتم حساب جميع أسعار التعادل والأرباح الصافية بعد استقطاع كامل مصاريف التداول المعيارية للبورصة المصرية: عمولة السمسار (0.125%)، عمولة البورصة والهيئة (0.025%)، صندوق حماية المستثمر (0.005%)، والدمغة النسبية (0.05%).
+                </p>
+<div class="font-mono text-[11px] text-slate-400">
+                  Formula: Net_P&amp;L = (Current_Price × Qty × (1 - ExitFeeRate)) - (Avg_Cost × Qty)
+                </div>
+</div>
+</details>
+</div>
+</section>
+</div>
+<!-- END: TwoColumnBottomWorkbench -->
+<!-- BEGIN: TerminalFooterNotes -->
+<footer class="pt-4 pb-8 border-t border-border/60 flex flex-col sm:flex-row items-center justify-between text-[11px] font-mono text-slate-400 gap-2" data-purpose="terminal-footer">
+<div>
+          EGX AI TRADER · HIGH-PRECISION PORTFOLIO RISK GOVERNANCE · ALL EQUITIES DENOMINATED IN EGP
+        </div>
+<div class="flex items-center gap-4">
+<span>LATENCY: 12ms</span>
+<span>UI RENDER: 1640px WORKBENCH</span>
+<span class="text-emerald-400 font-semibold">TERMINAL INTEGRITY: 100% OK</span>
+</div>
+</footer>
+<!-- END: TerminalFooterNotes -->
+</main>
+<!-- END: WorkbenchContainer -->
+</div>
+<!-- END: MainContentWrapper -->
+</body></html>

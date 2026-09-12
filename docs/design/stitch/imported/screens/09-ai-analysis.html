@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+
+<html class="dark" dir="rtl" lang="ar"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>EGX AI Trader · تحليل سهم بالذكاء الاصطناعي (ABUK)</title>
+<!-- Fonts: IBM Plex Sans Arabic & IBM Plex Mono -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&amp;family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS v3 with Forms & Container Queries -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              950: '#070b14',
+              900: '#0b1220',
+              850: '#0e1729',
+              800: '#131c30',
+              750: '#17223b',
+              700: '#1f2e4d',
+              border: '#223049',
+              subtle: '#2d3f60'
+            },
+            egx: {
+              cyan: '#38bdf8',
+              emerald: '#10b981',
+              amber: '#f59e0b',
+              rose: '#f43f5e',
+              indigo: '#6366f1'
+            }
+          },
+          fontFamily: {
+            arabic: ['"IBM Plex Sans Arabic"', 'sans-serif'],
+            mono: ['"IBM Plex Mono"', 'monospace']
+          },
+          fontSize: {
+            'xxs': '0.68rem',
+            'base-ar': ['0.95rem', '1.85']
+          }
+        }
+      }
+    }
+  </script>
+<style data-purpose="custom-scrollbar">
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0b1220;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #223049;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #33486d;
+    }
+  </style>
+<style data-purpose="typography-bidi">
+    .ar-prose {
+      font-family: 'IBM Plex Sans Arabic', sans-serif;
+      line-height: 1.95;
+      text-align: justify;
+      text-justify: inter-word;
+      letter-spacing: normal;
+    }
+    .num-tabular {
+      font-variant-numeric: tabular-nums;
+      font-feature-settings: "tnum";
+    }
+  </style>
+</head>
+<body class="bg-[#070b14] text-slate-200 font-arabic min-h-screen overflow-x-hidden antialiased flex flex-col selection:bg-cyan-500/20 selection:text-cyan-300">
+<!-- BEGIN: TerminalGlobalHeader -->
+<header class="h-10 border-b border-[#223049] bg-[#0b1220] flex items-center justify-between px-4 text-xs select-none sticky top-0 z-50">
+<div class="flex items-center gap-3">
+<!-- Status Badge -->
+<div class="flex items-center gap-2 bg-[#131c30] border border-[#223049] px-2 py-0.5 rounded text-xxs font-mono">
+<span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+<span class="text-amber-300 font-semibold">EGX CLOSED</span>
+<span class="text-slate-400">|</span>
+<span class="text-slate-300">SESSION: 2026-09-10 EOD</span>
+</div>
+<!-- Provenance Engine Hash -->
+<div class="hidden lg:flex items-center gap-1.5 text-slate-400 text-xxs">
+<svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>FinModel Core v4.8.2</span>
+<span class="text-slate-600 font-mono">#SHA-256:7f9a88...c14e</span>
+</div>
+</div>
+<!-- Center Message -->
+<div class="hidden md:flex items-center gap-2 text-xxs text-slate-400 font-mono">
+<span class="px-1.5 py-0.5 rounded bg-emerald-950/60 border border-emerald-700/40 text-emerald-400 font-bold">100% Deterministic Evidence</span>
+<span class="text-slate-500">·</span>
+<span>No Live Execution · Decision Support Mode</span>
+</div>
+<!-- Left Controls (RTL aligns to left) -->
+<div class="flex items-center gap-3 text-xs">
+<div class="flex items-center gap-1.5 bg-[#17223b] border border-[#223049] rounded px-2 py-0.5 text-xxs text-slate-300">
+<span class="text-slate-400">CLT Sync:</span>
+<span class="font-mono text-cyan-300">14:30:00</span>
+</div>
+<button class="bg-[#17223b] hover:bg-[#1f2e4d] border border-[#223049] text-slate-300 hover:text-white px-2.5 py-1 rounded text-xxs transition flex items-center gap-1">
+<span>Rerun Model</span>
+<svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</button>
+</div>
+</header>
+<!-- END: TerminalGlobalHeader -->
+<div class="flex-1 flex overflow-hidden">
+<!-- BEGIN: LeftSidebar -->
+<aside class="w-64 bg-[#0b1220] border-l border-[#223049] hidden xl:flex flex-col justify-between select-none">
+<div class="p-3">
+<!-- Brand & App Identity -->
+<div class="flex items-center justify-between pb-3 mb-3 border-b border-[#223049]">
+<div class="flex items-center gap-2">
+<div class="w-8 h-8 rounded bg-gradient-to-br from-cyan-600 to-indigo-900 border border-cyan-400/30 flex items-center justify-center font-bold text-cyan-200 font-mono text-sm shadow-inner">
+              EGX
+            </div>
+<div>
+<div class="font-bold text-sm tracking-tight text-white flex items-center gap-1">
+                EGX AI Trader
+                <span class="text-xxs px-1 py-0.2 bg-cyan-500/10 text-cyan-400 rounded border border-cyan-500/30 font-mono">PRO</span>
+</div>
+<div class="text-xxs text-slate-400">منصة الاستدلال الكمي المالي</div>
+</div>
+</div>
+</div>
+<!-- Navigation Groups -->
+<div class="space-y-4 text-xs">
+<div>
+<div class="text-xxs font-semibold uppercase text-slate-500 px-2 mb-1.5 tracking-wider font-mono">PORTFOLIO · المحفظة</div>
+<nav class="space-y-0.5">
+<a class="flex items-center gap-2 px-2 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-[#131c30] transition" href="#">
+<svg class="w-4 h-4 opacity-70" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>My Portfolio · محفظتي</span>
+</a>
+</nav>
+</div>
+<div>
+<div class="text-xxs font-semibold uppercase text-slate-500 px-2 mb-1.5 tracking-wider font-mono">SWING · سوينج وموجات</div>
+<nav class="space-y-0.5">
+<a class="flex items-center gap-2 px-2 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-[#131c30] transition" href="#">
+<svg class="w-4 h-4 opacity-70" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Daily Dashboard</span>
+</a>
+<a class="flex items-center gap-2 px-2 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-[#131c30] transition" href="#">
+<svg class="w-4 h-4 opacity-70" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Swing Breakout</span>
+</a>
+<a class="flex items-center gap-2 px-2 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-[#131c30] transition" href="#">
+<svg class="w-4 h-4 opacity-70" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Breakout Watch</span>
+</a>
+<a class="flex items-center gap-2 px-2 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-[#131c30] transition" href="#">
+<svg class="w-4 h-4 opacity-70" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Confirmed Breakout</span>
+</a>
+<a class="flex items-center gap-2 px-2 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-[#131c30] transition" href="#">
+<svg class="w-4 h-4 opacity-70" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Sector Liquidity</span>
+</a>
+<a class="flex items-center gap-2 px-2 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-[#131c30] transition" href="#">
+<svg class="w-4 h-4 opacity-70" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Watchlist · قائمة المتابعة</span>
+</a>
+</nav>
+</div>
+<div>
+<div class="text-xxs font-semibold uppercase text-cyan-400 px-2 mb-1.5 tracking-wider font-mono">AI ANALYSIS · محرك الذكاء الاصطناعي</div>
+<nav class="space-y-0.5">
+<!-- Active Route -->
+<a class="flex items-center justify-between px-3 py-2 rounded-md bg-[#17223b] border-r-4 border-cyan-400 text-cyan-300 font-semibold shadow-sm" href="#">
+<div class="flex items-center gap-2">
+<svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>AI Analysis · التحليل الذكي</span>
+</div>
+<span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+</a>
+<a class="flex items-center gap-2 px-2 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-[#131c30] transition" href="#">
+<svg class="w-4 h-4 opacity-70" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Stock Details · تفاصيل السهم</span>
+</a>
+</nav>
+</div>
+<div>
+<div class="text-xxs font-semibold uppercase text-slate-500 px-2 mb-1.5 tracking-wider font-mono">SYSTEM · النظام</div>
+<nav class="space-y-0.5">
+<a class="flex items-center gap-2 px-2 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-[#131c30] transition" href="#">
+<svg class="w-4 h-4 opacity-70" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>System Health · حالة النظام</span>
+</a>
+<a class="flex items-center gap-2 px-2 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-[#131c30] transition" href="#">
+<svg class="w-4 h-4 opacity-70" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Settings · الإعدادات</span>
+</a>
+</nav>
+</div>
+</div>
+</div>
+<!-- Sidebar Footer Badge -->
+<div class="p-3 border-t border-[#223049] bg-[#0e1729]">
+<div class="text-xxs text-slate-400 font-mono mb-1">DATA REFRESH STATUS</div>
+<div class="flex items-center justify-between text-xs">
+<span class="text-emerald-400 flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+            EODHD Feed OK
+          </span>
+<span class="text-slate-500 font-mono text-xxs">2026-09-10</span>
+</div>
+<div class="mt-2 text-xxs text-slate-500 text-center">
+          متداول البورصة المصرية · بحث كمي ومتابعة آمنة
+        </div>
+</div>
+</aside>
+<!-- END: LeftSidebar -->
+<!-- BEGIN: MainContentContainer -->
+<main class="flex-1 flex flex-col min-w-0 bg-[#070b14] overflow-y-auto">
+<!-- Top Context Banner & Stock Selector Bar -->
+<section class="bg-[#0b1220] border-b border-[#223049] p-4 sticky top-0 z-40 shadow-lg" data-purpose="stock-selector-ribbon">
+<div class="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
+<!-- Symbol & State Summary -->
+<div class="flex items-center gap-3">
+<div class="w-12 h-12 rounded-lg bg-[#17223b] border border-[#223049] flex flex-col items-center justify-center text-cyan-300 font-mono font-bold text-lg shadow-sm">
+<span>ABUK</span>
+<span class="text-[9px] text-slate-400 font-normal">EGX30</span>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<h1 class="text-xl font-bold text-white tracking-tight">أبو قير للأسمدة والصناعات الكيماوية</h1>
+<span class="text-xs font-mono text-slate-400">Abou Kir Fertilizers</span>
+<span class="px-2 py-0.5 rounded text-xxs font-semibold bg-amber-500/10 border border-amber-500/30 text-amber-300">
+                  قريب من التفعيل · Near Activation
+                </span>
+</div>
+<div class="flex items-center gap-3 text-xs text-slate-400 mt-1">
+<span>المزود: <bdi class="font-mono text-slate-300">EODHD Egypt</bdi></span>
+<span>•</span>
+<span>آخر جلسة مكتملة: <bdi class="font-mono text-slate-300">2026-09-10</bdi></span>
+<span>•</span>
+<span class="text-cyan-400">نطاق التذبذب اليومي: 93.13 – 94.50 EGP</span>
+</div>
+</div>
+</div>
+<!-- Symbol Input / Dropdown Selector & Execution Mode -->
+<div class="flex items-center gap-2.5">
+<div class="relative w-72">
+<label class="sr-only" for="stock-input">اختر أو ابحث عن سهم</label>
+<input class="w-full bg-[#131c30] border border-[#223049] text-xs text-white rounded-md px-3 py-2 pr-9 focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 font-medium" id="stock-input" type="text" value="ABUK — Abou Kir Fertilizers"/>
+<div class="absolute left-3 top-2.5 pointer-events-none text-slate-400">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M19 9l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+<div class="absolute right-3 top-2.5 text-cyan-400">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+</div>
+<button class="bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 text-white font-medium text-xs px-4 py-2 rounded-md shadow flex items-center gap-1.5 transition">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>تحليل السهم</span>
+</button>
+</div>
+</div>
+</section>
+<!-- Sticky Section Jump Anchors (Solves Problem #1: Workbench organization) -->
+<nav class="bg-[#0e1729] border-b border-[#223049] px-4 sticky top-[73px] z-30 flex items-center justify-between overflow-x-auto text-xs" data-purpose="workbench-tabs">
+<div class="max-w-7xl mx-auto w-full flex items-center gap-1 py-1">
+<a class="px-3 py-1.5 rounded text-cyan-300 bg-[#17223b] border border-cyan-500/30 font-medium whitespace-nowrap flex items-center gap-1.5" href="#section-pricing-core">
+<span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+            1. ملخص السعر والمستويات
+          </a>
+<a class="px-3 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-[#131c30] transition whitespace-nowrap" href="#section-scenarios">
+            2. السيناريوهات المقارنة (3 مسارات)
+          </a>
+<a class="px-3 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-[#131c30] transition whitespace-nowrap" href="#section-narrative-evidence">
+            3. السرد التحليلي والتحقق الكمي
+          </a>
+<a class="px-3 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-[#131c30] transition whitespace-nowrap" href="#section-pullback-health">
+            4. فحص جودة التصحيح (Pullback Health)
+          </a>
+<a class="px-3 py-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-[#131c30] transition whitespace-nowrap flex items-center gap-1" href="#section-shareable-card">
+<svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+            5. بطاقة المشاركة والاعتماد
+          </a>
+</div>
+</nav>
+<!-- Workbench Core Body -->
+<div class="max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
+<!-- Provenance Notice Strip -->
+<div class="flex items-center justify-between text-xxs bg-[#0e1729] border border-[#223049] rounded-md px-3 py-1.5 text-slate-400 font-mono">
+<div class="flex items-center gap-2">
+<span class="text-cyan-400 font-bold font-arabic">مصدر الأرقام:</span>
+<span>All values displayed as supplied by deterministic FinModel v4.8.2 engine — never recalculated on render.</span>
+</div>
+<span class="text-slate-500">Hash: 8a1f49e0c7...b109</span>
+</div>
+<!-- BEGIN: Section 1: Price Summary & Levels Workbench -->
+<section class="space-y-4" id="section-pricing-core">
+<!-- Live Metrics Grid -->
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+<!-- Current Price Hero Card -->
+<div class="col-span-2 bg-[#0e1729] border border-[#223049] rounded-lg p-3.5 flex flex-col justify-between">
+<div class="flex items-center justify-between text-xs text-slate-400">
+<span>آخر إغلاق مؤكد · Close</span>
+<span class="px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-400 font-mono text-xxs">-1.06%</span>
+</div>
+<div class="my-1.5 flex items-baseline gap-2">
+<span class="text-3xl font-bold font-mono text-white num-tabular">93.50</span>
+<span class="text-xs text-slate-400 font-mono">EGP</span>
+<span class="text-xs font-mono text-rose-400 num-tabular">-1.00</span>
+</div>
+<div class="flex items-center justify-between text-xxs text-slate-500 border-t border-[#1a263d] pt-1.5">
+<span>جلسة: 2026-09-10</span>
+<span class="text-amber-400 font-semibold">ثقة النموذج: 87%</span>
+</div>
+</div>
+<!-- Metric: Open -->
+<div class="bg-[#0e1729] border border-[#223049] rounded-lg p-3 flex flex-col justify-between">
+<span class="text-xxs text-slate-400">الافتتاح · OPEN</span>
+<span class="text-lg font-bold font-mono text-slate-200 num-tabular mt-1">94.50</span>
+<span class="text-xxs text-slate-500">إغلاق سابق: 94.50</span>
+</div>
+<!-- Metric: High / Low -->
+<div class="bg-[#0e1729] border border-[#223049] rounded-lg p-3 flex flex-col justify-between">
+<span class="text-xxs text-slate-400">أعلى / أدنى الجلسة</span>
+<div class="flex items-center gap-2 mt-1">
+<span class="text-sm font-bold font-mono text-emerald-400 num-tabular">94.50</span>
+<span class="text-slate-600">/</span>
+<span class="text-sm font-bold font-mono text-rose-400 num-tabular">93.13</span>
+</div>
+<span class="text-xxs text-slate-500">مدى التذبذب: 1.46%</span>
+</div>
+<!-- Metric: Volume -->
+<div class="bg-[#0e1729] border border-[#223049] rounded-lg p-3 flex flex-col justify-between">
+<span class="text-xxs text-slate-400">حجم التداول · VOLUME</span>
+<span class="text-lg font-bold font-mono text-slate-200 num-tabular mt-1">994.67K</span>
+<span class="text-xxs text-slate-500 font-mono">RVOL: 1.73x (مرتفع)</span>
+</div>
+<!-- Metric: Turnover -->
+<div class="bg-[#0e1729] border border-[#223049] rounded-lg p-3 flex flex-col justify-between">
+<span class="text-xxs text-slate-400">قيمة التداول · TURNOVER</span>
+<span class="text-lg font-bold font-mono text-slate-200 num-tabular mt-1">93.00M</span>
+<span class="text-xxs text-slate-500">جنيه مصري</span>
+</div>
+<!-- Metric: Closing Auction Block -->
+<div class="bg-[#0e1729] border border-[#223049] rounded-lg p-3 flex flex-col justify-between">
+<span class="text-xxs text-amber-300 flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                مزاد الإغلاق · Auction
+              </span>
+<span class="text-lg font-bold font-mono text-cyan-300 num-tabular mt-1">93.50</span>
+<span class="text-xxs text-slate-400 font-mono">حجم المزاد: 48.2K سهم</span>
+</div>
+</div>
+<!-- Key Pivot & Structural Levels Bar -->
+<div class="bg-[#0e1729] border border-[#223049] rounded-lg p-4">
+<div class="flex items-center justify-between text-xs mb-3 pb-2 border-b border-[#1f2e4d]">
+<span class="font-semibold text-slate-200">المستويات السعرية الهيكلية المعتمدة (Pivots &amp; Moving Averages)</span>
+<span class="text-xxs text-slate-400 font-mono">محسوبة بناءً على آخر 90 جلسة تداول</span>
+</div>
+<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-center">
+<div class="p-2.5 rounded bg-[#131c30] border border-[#223049]">
+<div class="text-xxs text-rose-400">مستوى الإبطال (Stop/Invalidation)</div>
+<div class="text-base font-bold font-mono text-white num-tabular mt-0.5">88.43</div>
+<div class="text-[10px] text-slate-400 mt-0.5">كسر بإغلاق يومي</div>
+</div>
+<div class="p-2.5 rounded bg-[#131c30] border border-[#223049]">
+<div class="text-xxs text-emerald-400">الدعم الثاني (Support 2)</div>
+<div class="text-base font-bold font-mono text-slate-200 num-tabular mt-0.5">83.14</div>
+<div class="text-[10px] text-slate-400 mt-0.5">قاع سابق رئيسي</div>
+</div>
+<div class="p-2.5 rounded bg-[#131c30] border border-[#223049]">
+<div class="text-xxs text-emerald-400">الدعم الأول (Support 1)</div>
+<div class="text-base font-bold font-mono text-slate-200 num-tabular mt-0.5">84.86</div>
+<div class="text-[10px] text-slate-400 mt-0.5">منطقة ارتداد سابقة</div>
+</div>
+<div class="p-2.5 rounded bg-[#131c30] border border-cyan-500/40 bg-cyan-950/20">
+<div class="text-xxs text-cyan-300">نقطة الاختراق (Trigger / Breakout)</div>
+<div class="text-base font-bold font-mono text-cyan-200 num-tabular mt-0.5">94.50</div>
+<div class="text-[10px] text-cyan-400/80 mt-0.5">فارق +1.07% فقط</div>
+</div>
+<div class="p-2.5 rounded bg-[#131c30] border border-[#223049]">
+<div class="text-xxs text-indigo-300">الهدف الأول (Target 1)</div>
+<div class="text-base font-bold font-mono text-indigo-200 num-tabular mt-0.5">101.74</div>
+<div class="text-[10px] text-slate-400 mt-0.5">المساحة المتبقية +8.81%</div>
+</div>
+<div class="p-2.5 rounded bg-[#131c30] border border-[#223049]">
+<div class="text-xxs text-slate-400">المتوسطات السريعة (EMAs)</div>
+<div class="text-xs font-mono text-slate-300 mt-1 flex justify-center gap-2">
+<span>EMA20: <bdi class="text-cyan-400 font-bold">84.86</bdi></span>
+<span>EMA50: <bdi class="text-amber-400 font-bold">79.91</bdi></span>
+</div>
+<div class="text-[10px] text-emerald-400 mt-0.5">ترتيب صاعد إيجابي (Golden Alignment)</div>
+</div>
+</div>
+</div>
+</section>
+<!-- END: Section 1 -->
+<!-- BEGIN: Section 2: Scenarios as Side-by-Side Set (Solves Problem #3) -->
+<section class="space-y-3" id="section-scenarios">
+<div class="flex items-center justify-between">
+<div>
+<h2 class="text-base font-bold text-white flex items-center gap-2">
+<svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                السيناريوهات والمسارات المشروطة المقارنة (Parallel Actionable Scenarios)
+              </h2>
+<p class="text-xxs text-slate-400">
+                مقارنة مباشرة جنباً إلى جنب للشروط الرقمية، نسبة المخاطرة للعائد، ونقاط التفعيل والإبطال دون تحيز مسبق.
+              </p>
+</div>
+<span class="text-xxs font-mono bg-[#17223b] border border-[#223049] text-slate-300 px-2.5 py-1 rounded">
+              3 Structured Paths Available
+            </span>
+</div>
+<!-- 3-Column Parallel Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+<!-- Scenario A: Bullish Breakout Continuation (Primary / Near Activation) -->
+<div class="bg-[#0e1729] border-2 border-emerald-500/50 rounded-lg overflow-hidden flex flex-col justify-between relative shadow-lg">
+<div class="bg-gradient-to-r from-emerald-950/60 to-[#131c30] p-3.5 border-b border-emerald-900/40">
+<div class="flex items-center justify-between mb-1.5">
+<span class="px-2 py-0.5 rounded text-xxs font-bold bg-emerald-500 text-slate-950">
+                    سيناريو A · صاعد رئيسي
+                  </span>
+<span class="px-2 py-0.5 rounded text-xxs font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                    قريب من التفعيل · Near Activation
+                  </span>
+</div>
+<h3 class="text-sm font-bold text-emerald-300">Breakout continuation above 94.50</h3>
+<div class="text-xxs text-slate-400 mt-0.5">استمرار الانطلاق باختراق المقاومة المحورية</div>
+</div>
+<div class="p-4 space-y-3.5 flex-1">
+<!-- Direct Metric Comparators -->
+<div class="grid grid-cols-2 gap-2 text-xs">
+<div class="bg-[#131c30] p-2 rounded border border-[#223049]">
+<div class="text-xxs text-slate-400">سعر التفعيل (Trigger)</div>
+<div class="text-base font-bold font-mono text-emerald-300 num-tabular">94.50</div>
+</div>
+<div class="bg-[#131c30] p-2 rounded border border-[#223049]">
+<div class="text-xxs text-slate-400">نطاق الدخول (Entry)</div>
+<div class="text-sm font-bold font-mono text-slate-200 num-tabular">94.50 – 95.95</div>
+</div>
+<div class="bg-[#131c30] p-2 rounded border border-[#223049]">
+<div class="text-xxs text-slate-400">الهدف السعري (Target)</div>
+<div class="text-base font-bold font-mono text-cyan-300 num-tabular">101.74</div>
+</div>
+<div class="bg-[#131c30] p-2 rounded border border-[#223049]">
+<div class="text-xxs text-slate-400">وقف الخسارة (Stop)</div>
+<div class="text-sm font-bold font-mono text-rose-400 num-tabular">88.43</div>
+</div>
+</div>
+<!-- Ratios & Room -->
+<div class="bg-[#131c30]/70 p-3 rounded border border-[#223049] space-y-2">
+<div class="flex items-center justify-between text-xs">
+<span class="text-slate-400">المساحة المتبقية للهدف:</span>
+<span class="font-mono text-emerald-400 font-bold">+8.81%</span>
+</div>
+<div class="flex items-center justify-between text-xs">
+<span class="text-slate-400">العائد إلى المخاطرة (R:R):</span>
+<span class="font-mono text-cyan-300 font-bold">1:1.19</span>
+</div>
+<div class="flex items-center justify-between text-xs">
+<span class="text-slate-400">ثقة السيناريو المحسوبة:</span>
+<span class="font-mono text-amber-300 font-bold">55 / 100</span>
+</div>
+<!-- Mini Progress Bar -->
+<div class="w-full bg-[#17223b] h-1.5 rounded-full overflow-hidden">
+<div class="bg-gradient-to-r from-amber-400 to-emerald-400 h-full w-[55%]"></div>
+</div>
+</div>
+<!-- Conditions Checklist -->
+<div class="space-y-2 text-xxs text-slate-300">
+<div class="font-semibold text-slate-200">شروط التأكيد (Confirmation):</div>
+<ul class="space-y-1 list-disc list-inside text-slate-400">
+<li>إغلاق يومي مؤكد أعلى <bdi class="font-mono text-cyan-300" dir="ltr">94.50</bdi></li>
+<li>حجم تنفيذ يتجاوز المتوسط <bdi class="font-mono text-cyan-300" dir="ltr">vol &gt;= 20MA</bdi></li>
+</ul>
+<div class="font-semibold text-rose-300 pt-1">شروط الإبطال (Invalidation):</div>
+<div class="text-slate-400">
+                    إغلاق يومي دون مستوى <bdi class="font-mono text-rose-400" dir="ltr">88.43</bdi> يلغي المسار تماماً.
+                  </div>
+</div>
+</div>
+<div class="p-3 bg-[#131c30] border-t border-[#223049] text-center">
+<span class="text-xs text-emerald-400 font-medium flex items-center justify-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                  المسار الأكثر ترجيحاً مع ترقب الإغلاق
+                </span>
+</div>
+</div>
+<!-- Scenario B: Breakdown Below Invalidation (Defensive / Wait) -->
+<div class="bg-[#0e1729] border border-[#223049] rounded-lg overflow-hidden flex flex-col justify-between relative opacity-90 hover:opacity-100 transition shadow-md">
+<div class="bg-[#131c30] p-3.5 border-b border-[#223049]">
+<div class="flex items-center justify-between mb-1.5">
+<span class="px-2 py-0.5 rounded text-xxs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                    سيناريو B · هابط سلبي
+                  </span>
+<span class="px-2 py-0.5 rounded text-xxs font-bold bg-slate-700 text-slate-300">
+                    انتظار · Wait
+                  </span>
+</div>
+<h3 class="text-sm font-bold text-rose-300">Breakdown below 88.4334</h3>
+<div class="text-xxs text-slate-400 mt-0.5">كسر منطقة الدعم والدخول في تصحيح عميق</div>
+</div>
+<div class="p-4 space-y-3.5 flex-1">
+<!-- Direct Metric Comparators -->
+<div class="grid grid-cols-2 gap-2 text-xs">
+<div class="bg-[#131c30] p-2 rounded border border-[#223049]">
+<div class="text-xxs text-slate-400">سعر التفعيل (Trigger)</div>
+<div class="text-base font-bold font-mono text-rose-400 num-tabular">88.43</div>
+</div>
+<div class="bg-[#131c30] p-2 rounded border border-[#223049]">
+<div class="text-xxs text-slate-400">نطاق الدخول (Entry)</div>
+<div class="text-sm font-bold font-mono text-slate-400 num-tabular">— غير متاح —</div>
+</div>
+<div class="bg-[#131c30] p-2 rounded border border-[#223049]">
+<div class="text-xxs text-slate-400">الهدف الهابط (Target)</div>
+<div class="text-base font-bold font-mono text-rose-400 num-tabular">83.14</div>
+</div>
+<div class="bg-[#131c30] p-2 rounded border border-[#223049]">
+<div class="text-xxs text-slate-400">وقف الإبطال (Invalidation)</div>
+<div class="text-sm font-bold font-mono text-slate-300 num-tabular">88.43</div>
+</div>
+</div>
+<!-- Ratios & Room -->
+<div class="bg-[#131c30]/70 p-3 rounded border border-[#223049] space-y-2">
+<div class="flex items-center justify-between text-xs">
+<span class="text-slate-400">مخاطر الهبوط المحتمل:</span>
+<span class="font-mono text-rose-400 font-bold">-6.00%</span>
+</div>
+<div class="flex items-center justify-between text-xs">
+<span class="text-slate-400">العائد إلى المخاطرة (R:R):</span>
+<span class="font-mono text-slate-400 font-bold">— (وضع دفاعي)</span>
+</div>
+<div class="flex items-center justify-between text-xs">
+<span class="text-slate-400">ثقة السيناريو المحسوبة:</span>
+<span class="font-mono text-slate-300 font-bold">35 / 100</span>
+</div>
+<div class="w-full bg-[#17223b] h-1.5 rounded-full overflow-hidden">
+<div class="bg-rose-500/50 h-full w-[35%]"></div>
+</div>
+</div>
+<!-- Conditions Checklist -->
+<div class="space-y-2 text-xxs text-slate-300">
+<div class="font-semibold text-slate-200">شروط التفعيل السلبي:</div>
+<ul class="space-y-1 list-disc list-inside text-slate-400">
+<li>إغلاق شمعة كاملة دون <bdi class="font-mono text-rose-300" dir="ltr">88.4334</bdi></li>
+<li>تسارع تدفقات البيع وزيادة العروض</li>
+</ul>
+<div class="font-semibold text-slate-300 pt-1">الإجراء الموصى به:</div>
+<div class="text-slate-400">
+                    تجميد طلبات الشراء، تفعيل وقف الخسارة للمضارب، وانتظار تشكل قاع جديد عند <bdi class="font-mono text-emerald-300" dir="ltr">83.14</bdi>.
+                  </div>
+</div>
+</div>
+<div class="p-3 bg-[#131c30] border-t border-[#223049] text-center">
+<span class="text-xs text-slate-400 font-medium">
+                  حالة السيناريو: غير نشط حالياً (بعيد بنسبة 5.4%)
+                </span>
+</div>
+</div>
+<!-- Scenario C: Range Consolidation (Neutral Base Accumulation) -->
+<div class="bg-[#0e1729] border border-[#223049] rounded-lg overflow-hidden flex flex-col justify-between relative opacity-85 hover:opacity-100 transition shadow-md">
+<div class="bg-[#131c30] p-3.5 border-b border-[#223049]">
+<div class="flex items-center justify-between mb-1.5">
+<span class="px-2 py-0.5 rounded text-xxs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                    سيناريو C · نطاق عرضي
+                  </span>
+<span class="px-2 py-0.5 rounded text-xxs font-bold bg-slate-700 text-slate-300">
+                    مراقبة تذبذب
+                  </span>
+</div>
+<h3 class="text-sm font-bold text-indigo-300">Consolidation within 88.43 – 94.50</h3>
+<div class="text-xxs text-slate-400 mt-0.5">تذبذب جانبي لتجميع الزخم وتصريف التشبعات</div>
+</div>
+<div class="p-4 space-y-3.5 flex-1">
+<!-- Direct Metric Comparators -->
+<div class="grid grid-cols-2 gap-2 text-xs">
+<div class="bg-[#131c30] p-2 rounded border border-[#223049]">
+<div class="text-xxs text-slate-400">حد التذبذب الأعلى</div>
+<div class="text-base font-bold font-mono text-slate-200 num-tabular">94.50</div>
+</div>
+<div class="bg-[#131c30] p-2 rounded border border-[#223049]">
+<div class="text-xxs text-slate-400">حد التذبذب الأدنى</div>
+<div class="text-base font-bold font-mono text-slate-200 num-tabular">88.43</div>
+</div>
+<div class="bg-[#131c30] p-2 rounded border border-[#223049]">
+<div class="text-xxs text-slate-400">مركز السيولة المحوري</div>
+<div class="text-base font-bold font-mono text-cyan-300 num-tabular">91.46</div>
+</div>
+<div class="bg-[#131c30] p-2 rounded border border-[#223049]">
+<div class="text-xxs text-slate-400">طبيعة التداول</div>
+<div class="text-xs font-bold text-amber-300">مضاربة سريعة</div>
+</div>
+</div>
+<!-- Ratios & Room -->
+<div class="bg-[#131c30]/70 p-3 rounded border border-[#223049] space-y-2">
+<div class="flex items-center justify-between text-xs">
+<span class="text-slate-400">سعة القناة العرضية:</span>
+<span class="font-mono text-slate-200 font-bold">~6.86%</span>
+</div>
+<div class="flex items-center justify-between text-xs">
+<span class="text-slate-400">استراتيجية التعامل:</span>
+<span class="font-mono text-cyan-300 font-bold">شراء قرب 89 / بيع قرب 94</span>
+</div>
+<div class="flex items-center justify-between text-xs">
+<span class="text-slate-400">احتمالية الاستمرار:</span>
+<span class="font-mono text-indigo-300 font-bold">40 / 100</span>
+</div>
+<div class="w-full bg-[#17223b] h-1.5 rounded-full overflow-hidden">
+<div class="bg-indigo-500/50 h-full w-[40%]"></div>
+</div>
+</div>
+<!-- Conditions Checklist -->
+<div class="space-y-2 text-xxs text-slate-300">
+<div class="font-semibold text-slate-200">دلالات النمط العرضي:</div>
+<ul class="space-y-1 list-disc list-inside text-slate-400">
+<li>تناقص تدريجي في أحجام التداول اليومية</li>
+<li>فشل متكرر في اختراق 94.50 دون هبوط حاد</li>
+</ul>
+<div class="font-semibold text-slate-300 pt-1">شرط الخروج من النمط:</div>
+<div class="text-slate-400">
+                    حدوث شمعة كميات ذات مدى واسع تخترق أحد الحدين 94.50 أو 88.43.
+                  </div>
+</div>
+</div>
+<div class="p-3 bg-[#131c30] border-t border-[#223049] text-center">
+<span class="text-xs text-indigo-300 font-medium">
+                  حالة النطاق: السعر حالياً عند السقف العلوي للقناة
+                </span>
+</div>
+</div>
+</div>
+</section>
+<!-- END: Section 2 -->
+<!-- BEGIN: Section 3 & 4: Two-Column Workbench (Prose Typography & Pullback Health) -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+<!-- Column A (7 Cols): Methodology Prose & Deterministic Narrative (Solves Problem #2) -->
+<section class="lg:col-span-7 space-y-4" id="section-narrative-evidence">
+<div class="bg-[#0e1729] border border-[#223049] rounded-lg p-5">
+<!-- Narrative Header -->
+<div class="flex items-center justify-between border-b border-[#223049] pb-3 mb-4">
+<div>
+<h2 class="text-base font-bold text-white flex items-center gap-2">
+<svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                    السرد التحليلي المنهجي · AI Narrative &amp; Quant Evidence
+                  </h2>
+<div class="text-xxs text-slate-400 mt-0.5">
+                    تحليل لغوي دقيق يعتمد صرامة القياس، يفصل بين الأدلة القطعية والاستنتاج الاستشاري.
+                  </div>
+</div>
+<div class="flex items-center gap-1.5 text-xxs font-mono bg-[#131c30] border border-cyan-500/30 text-cyan-300 px-2 py-1 rounded">
+<span>Confidence:</span>
+<span class="font-bold">100 / 97</span>
+</div>
+</div>
+<!-- Visual Separation: Deterministic Evidence vs Advisory Narrative -->
+<div class="space-y-4">
+<!-- Callout 1: Deterministic Evidence (أدلة قطعية مثبتة بالأرقام) -->
+<div class="bg-[#131c30] border-r-4 border-emerald-500 rounded p-4">
+<div class="flex items-center gap-2 text-xs font-bold text-emerald-400 mb-2 font-mono">
+<svg class="w-4 h-4" fill="currentColor" viewbox="0 0 20 20"><path clip-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fill-rule="evenodd"></path></svg>
+<span>أدلة قطعية مثبتة (Deterministic Engine Evidence):</span>
+</div>
+<!-- Arabic Typography with Protected Inline BDI Elements -->
+<div class="ar-prose text-slate-300 text-sm max-w-prose">
+                    أغلقت جلسة سهم <bdi class="font-mono text-xs px-1.5 py-0.5 rounded bg-[#17223b] border border-[#223049] text-sky-300 inline-block align-middle font-semibold" dir="ltr">ABUK</bdi> بتاريخ <bdi class="font-mono text-xs px-1.5 py-0.5 rounded bg-[#17223b] border border-[#223049] text-slate-200 inline-block align-middle" dir="ltr">2026-09-10</bdi> عند سعر <bdi class="font-mono text-xs px-1.5 py-0.5 rounded bg-[#17223b] border border-[#223049] text-emerald-300 inline-block align-middle font-bold" dir="ltr">93.50 EGP</bdi> بتراجع طفيف بلغ <bdi class="font-mono text-xs px-1.5 py-0.5 rounded bg-[#17223b] border border-[#223049] text-rose-300 inline-block align-middle" dir="ltr">-1.06%</bdi>. يقف السهم حالياً على مسافة <bdi class="font-mono text-xs px-1.5 py-0.5 rounded bg-[#17223b] border border-[#223049] text-cyan-300 inline-block align-middle" dir="ltr">1.07%</bdi> من نقطة الاختراق المسجلة عند <bdi class="font-mono text-xs px-1.5 py-0.5 rounded bg-[#17223b] border border-[#223049] text-cyan-300 inline-block align-middle font-bold" dir="ltr">94.50 EGP</bdi>. سجل مؤشر الحجم النسبي <bdi class="font-mono text-xs px-1.5 py-0.5 rounded bg-[#17223b] border border-[#223049] text-amber-300 inline-block align-middle" dir="ltr">RVOL 1.73x</bdi> بإجمالي قيمة تداول بلغت <bdi class="font-mono text-xs px-1.5 py-0.5 rounded bg-[#17223b] border border-[#223049] text-slate-200 inline-block align-middle font-bold" dir="ltr">93.00M EGP</bdi>، مما يؤكد بقاء السيولة المؤسسية نشطة ومحافظة على تموضعها أعلى متوسط <bdi class="font-mono text-xs px-1.5 py-0.5 rounded bg-[#17223b] border border-[#223049] text-sky-300 inline-block align-middle font-bold" dir="ltr">EMA20 = 84.86</bdi> ومتوسط <bdi class="font-mono text-xs px-1.5 py-0.5 rounded bg-[#17223b] border border-[#223049] text-sky-300 inline-block align-middle font-bold" dir="ltr">EMA50 = 79.91</bdi>.
+                  </div>
+</div>
+<!-- Callout 2: Advisory Narrative & Risk Assessment (استنتاج تحليلي وإرشاد نوعي) -->
+<div class="bg-[#131c30] border-r-4 border-cyan-500 rounded p-4">
+<div class="flex items-center gap-2 text-xs font-bold text-cyan-400 mb-2 font-mono">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>استنتاج تحليلي ومنهجية التداول (Advisory Narrative &amp; Plan):</span>
+</div>
+<div class="ar-prose text-slate-300 text-sm max-w-prose space-y-2.5">
+<p>
+                      يُظهر السهم هيكل حركة صاعد قوي (<bdi class="font-mono text-xs px-1 py-0.2 text-cyan-300" dir="ltr">Strong Uptrend</bdi>) مع تمسك واضح بمناطق القمم الأخيرة. ومع ذلك، وبما أن سعر الإغلاق الحالي <bdi class="font-mono text-xs px-1 py-0.2 text-white font-bold" dir="ltr">93.50</bdi> لم يغلق بعد بأعلى مقاومة <bdi class="font-mono text-xs px-1 py-0.2 text-cyan-300 font-bold" dir="ltr">94.50 EGP</bdi>، فإن وضع السيناريو الصاعد يصنف كـ <bdi class="font-mono text-xs px-1 py-0.2 text-amber-300 font-semibold" dir="ltr">Near Activation</bdi> وليس اختراقاً مكتملاً.
+                    </p>
+<p>
+                      نسبة العائد إلى المخاطرة المحسوبة هي <bdi class="font-mono text-xs px-1.5 py-0.5 rounded bg-[#17223b] border border-[#223049] text-cyan-300 inline-block align-middle" dir="ltr">1:1.19</bdi> قياساً بمستهدف أول عند <bdi class="font-mono text-xs px-1.5 py-0.5 rounded bg-[#17223b] border border-[#223049] text-emerald-300 inline-block align-middle font-bold" dir="ltr">101.74 EGP</bdi> مقابل حد إبطال ملزم عند <bdi class="font-mono text-xs px-1.5 py-0.5 rounded bg-[#17223b] border border-[#223049] text-rose-300 inline-block align-middle font-bold" dir="ltr">88.43 EGP</bdi>. يُنصح بالانتظار حتى تؤكد شمعة اليوم التالي الإغلاق فوق مستوى المقاومة بحجم لا يقل عن <bdi class="font-mono text-xs px-1 py-0.2 text-slate-200" dir="ltr">990K سهم</bdi> قبل الشروع في بناء مراكز شراء سوينج كاملة.
+                    </p>
+</div>
+</div>
+<!-- Technical Indicators Audit Table -->
+<div class="border border-[#223049] rounded overflow-hidden">
+<table class="w-full text-xs text-right">
+<thead class="bg-[#17223b] text-slate-400 font-mono text-xxs">
+<tr>
+<th class="p-2.5">المؤشر الفني</th>
+<th class="p-2.5 text-center">القيمة الحالية</th>
+<th class="p-2.5 text-center">الحالة الإشارية</th>
+<th class="p-2.5">التأثير على السرد</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-[#223049] text-slate-300 font-mono text-xxs">
+<tr>
+<td class="p-2.5 font-sans font-medium text-slate-200">الاتجاه (Trend Structure)</td>
+<td class="p-2.5 text-center text-emerald-400 font-bold">Uptrend</td>
+<td class="p-2.5 text-center"><span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">إيجابي قوي</span></td>
+<td class="p-2.5 font-sans">تمركز السعر أعلى جميع المتوسطات 20 و 50 و 200</td>
+</tr>
+<tr>
+<td class="p-2.5 font-sans font-medium text-slate-200">زخم الحركة (Momentum)</td>
+<td class="p-2.5 text-center text-cyan-400 font-bold">Positive (70/100)</td>
+<td class="p-2.5 text-center"><span class="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">زخم صاعد</span></td>
+<td class="p-2.5 font-sans">لا توجد دايفرجنس سلبي حتى تاريخ الجلسة</td>
+</tr>
+<tr>
+<td class="p-2.5 font-sans font-medium text-slate-200">السيولة والحجم (RVOL)</td>
+<td class="p-2.5 text-center text-amber-400 font-bold">1.73x</td>
+<td class="p-2.5 text-center"><span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800">تراكم سيولة</span></td>
+<td class="p-2.5 font-sans">ارتفاع ملحوظ بقيمة التداول 93 مليون جنيه</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</section>
+<!-- Column B (5 Cols): Pullback Health & Reliability Flags (IMAGE_3) -->
+<section class="lg:col-span-5 space-y-4" id="section-pullback-health">
+<div class="bg-[#0e1729] border border-[#223049] rounded-lg p-5 flex flex-col justify-between">
+<div>
+<!-- Header with Warning Badge -->
+<div class="flex items-center justify-between border-b border-[#223049] pb-3 mb-3">
+<div>
+<h3 class="text-sm font-bold text-white flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                      تحليل جودة التصحيح · Pullback Health Analysis
+                    </h3>
+<div class="text-xxs text-slate-400">فحص ارتداد النبضة وموثوقية الدخول</div>
+</div>
+<span class="px-2 py-0.5 rounded text-xxs font-mono bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                    Research Only — وضع بحثي
+                  </span>
+</div>
+<!-- Red/Amber Model Calibration Notice (Strictly as seen in screenshot IMAGE_3) -->
+<div class="bg-amber-950/30 border border-amber-500/40 rounded p-3 mb-4 text-xs">
+<div class="flex items-start gap-2">
+<svg class="w-4 h-4 text-amber-400 mt-0.5 shrink-0" fill="currentColor" viewbox="0 0 20 20"><path clip-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" fill-rule="evenodd"></path></svg>
+<div class="space-y-1">
+<div class="text-amber-300 font-bold">تنبيه المعايرة التاريخية (Calibration Notice):</div>
+<p class="text-slate-300 text-xxs leading-relaxed">
+                        لم تثبت المعايرة التاريخية أفضلية إيجابية بعد تطبيق الوقف والأهداف. هذا التحليل يصف جودة التصحيح فقط ولا يمثل إشارة شراء منفردة.
+                      </p>
+<div class="font-mono text-xxs text-slate-400">
+                        Historical calibration did not demonstrate a positive managed-trade edge.
+                      </div>
+</div>
+</div>
+</div>
+<!-- Structured Metric Grid for Pullback Properties -->
+<div class="grid grid-cols-2 gap-2 text-xxs">
+<div class="p-2 rounded bg-[#131c30] border border-[#223049]">
+<div class="text-slate-400">جودة الاتجاه (Trend Quality):</div>
+<div class="font-mono text-slate-300 font-bold mt-1">لم يتم التحقق · Not validated</div>
+</div>
+<div class="p-2 rounded bg-[#131c30] border border-[#223049]">
+<div class="text-slate-400">آخر قمة مؤكدة (Confirmed High):</div>
+<div class="font-mono text-cyan-300 font-bold mt-1">94.50 EGP</div>
+</div>
+<div class="p-2 rounded bg-[#131c30] border border-[#223049]">
+<div class="text-slate-400">قاع بداية الموجة (Impulse Start):</div>
+<div class="font-mono text-slate-300 font-bold mt-1">— لم يُقفل —</div>
+</div>
+<div class="p-2 rounded bg-[#131c30] border border-[#223049]">
+<div class="text-slate-400">نسبة التصحيح (Pullback %):</div>
+<div class="font-mono text-slate-300 font-bold mt-1">— غير متاح —</div>
+</div>
+<div class="p-2 rounded bg-[#131c30] border border-[#223049]">
+<div class="text-slate-400">عمق التصحيح (Pullback ATR):</div>
+<div class="font-mono text-slate-300 font-bold mt-1">— Unavailable —</div>
+</div>
+<div class="p-2 rounded bg-[#131c30] border border-[#223049]">
+<div class="text-slate-400">هل وصل للدعم؟ (Support Reached):</div>
+<div class="font-mono text-rose-400 font-bold mt-1">لا · No</div>
+</div>
+</div>
+<!-- Detailed Pullback Evidence Rows -->
+<div class="mt-3 space-y-2 text-xxs border-t border-[#1f2e4d] pt-3 text-slate-300">
+<div class="flex items-center justify-between">
+<span class="text-slate-400">سلوك حجم التداول عند الارتداد:</span>
+<span class="font-mono text-slate-300 font-semibold">غير متاح · Unavailable</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-slate-400">دليل الارتداد (Reversal Evidence):</span>
+<span class="text-amber-300 font-semibold">لم يظهر تأكيد ارتداد حتى الآن</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-slate-400">سبب الإبطال أو الفشل:</span>
+<span class="text-slate-300">لا توجد قمة محورية مؤكدة داخل النافذة</span>
+</div>
+<div class="flex items-center justify-between font-mono">
+<span class="text-slate-400">تجميد البيانات (Cutoff):</span>
+<span class="text-slate-200">2026-09-10</span>
+</div>
+</div>
+</div>
+<!-- Collapsible Diagnostic Internal Accordions (IMAGE_3) -->
+<div class="mt-4 pt-3 border-t border-[#223049] space-y-1.5">
+<button class="w-full flex items-center justify-between p-2 rounded bg-[#131c30] text-xxs text-slate-300 hover:text-white transition">
+<span class="flex items-center gap-1">
+<svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                    Research simulation levels · مستويات المحاكاة البحثية
+                  </span>
+<span class="font-mono text-slate-500">v4.8</span>
+</button>
+<button class="w-full flex items-center justify-between p-2 rounded bg-[#131c30] text-xxs text-slate-300 hover:text-white transition">
+<span class="flex items-center gap-1">
+<svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                    Diagnostic details (internal codes) · تفاصيل تشخيصية
+                  </span>
+<span class="font-mono text-slate-500">SYS_OK</span>
+</button>
+</div>
+</div>
+</section>
+</div>
+<!-- END: Section 3 & 4 -->
+<!-- BEGIN: Section 5: Shareable Analysis Card (Solves Problem #4) -->
+<section class="space-y-4 pt-2" id="section-shareable-card">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#223049] pb-3">
+<div>
+<h2 class="text-base font-bold text-white flex items-center gap-2">
+<svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                بطاقة التحليل المعتمدة للنشر والمشاركة · Standalone Shareable Card
+              </h2>
+<p class="text-xxs text-slate-400">
+                بطاقة موثقة رقمياً بـ Hash تشمل كافة أبعاد التداول وتتحمل التصدير عالي الدقة للشبكات الاجتماعية وتطبيقات المراسلة.
+              </p>
+</div>
+<!-- Export / Generate Action -->
+<div class="flex items-center gap-2">
+<button class="bg-[#17223b] hover:bg-[#1f2e4d] text-slate-200 border border-[#223049] px-3 py-1.5 rounded text-xs flex items-center gap-1.5 transition">
+<svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>تصدير PNG (1080x2400)</span>
+</button>
+<button class="bg-cyan-600 hover:bg-cyan-500 text-white font-medium px-4 py-1.5 rounded text-xs flex items-center gap-1.5 shadow transition">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>نسخ البطاقة كصورة</span>
+</button>
+</div>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+<!-- Left Sub-panel: Card Configuration Controls (IMAGE_1) -->
+<div class="lg:col-span-4 bg-[#0e1729] border border-[#223049] rounded-lg p-4 space-y-4 text-xs">
+<div class="font-bold text-slate-200 border-b border-[#223049] pb-2">
+                إعدادات بطاقة التحليل · Card Controls
+              </div>
+<!-- 1. Card Type Selector -->
+<div>
+<label class="block text-xxs font-semibold text-slate-400 mb-1.5">نوع البطاقة · Card type</label>
+<div class="space-y-1.5">
+<label class="flex items-center gap-2 p-2 rounded bg-[#131c30] border border-[#223049] cursor-pointer hover:border-slate-500 transition">
+<input class="text-cyan-500 focus:ring-0 bg-[#070b14] border-[#223049]" name="card_type" type="radio"/>
+<span class="text-slate-300 text-xs">Compact · بطاقة مختصرة</span>
+</label>
+<label class="flex items-center gap-2 p-2 rounded bg-[#131c30] border border-[#223049] cursor-pointer hover:border-slate-500 transition">
+<input class="text-cyan-500 focus:ring-0 bg-[#070b14] border-[#223049]" name="card_type" type="radio"/>
+<span class="text-slate-300 text-xs">Infographic · إنفوجرافيك تفصيلي</span>
+</label>
+<label class="flex items-center gap-2 p-2 rounded bg-[#17223b] border border-cyan-500/50 cursor-pointer">
+<input checked="" class="text-cyan-500 focus:ring-0 bg-[#070b14] border-cyan-500" name="card_type" type="radio"/>
+<span class="text-cyan-200 font-semibold text-xs">Extended Infographic · إنفوجرافيك ممتد</span>
+</label>
+</div>
+</div>
+<!-- 2. Language Selector -->
+<div>
+<label class="block text-xxs font-semibold text-slate-400 mb-1.5">اللغة · Language</label>
+<div class="grid grid-cols-3 gap-1 text-center font-medium">
+<button class="p-1.5 rounded bg-[#131c30] border border-[#223049] text-slate-400 hover:text-white">العربية</button>
+<button class="p-1.5 rounded bg-[#131c30] border border-[#223049] text-slate-400 hover:text-white">English</button>
+<button class="p-1.5 rounded bg-[#17223b] border border-cyan-500/50 text-cyan-300">ثنائي اللغة</button>
+</div>
+</div>
+<!-- 3. Resolution Selector -->
+<div>
+<label class="block text-xxs font-semibold text-slate-400 mb-1.5">الدقة والأبعاد · Resolution</label>
+<div class="space-y-1.5">
+<label class="flex items-center gap-2 p-2 rounded bg-[#17223b] border border-cyan-500/40 cursor-pointer">
+<input checked="" class="text-cyan-500 focus:ring-0 bg-[#070b14] border-[#223049]" name="resolution" type="radio"/>
+<span class="text-slate-200 font-mono text-xs">1080 × 2400 (Mobile &amp; Reels)</span>
+</label>
+<label class="flex items-center gap-2 p-2 rounded bg-[#131c30] border border-[#223049] cursor-pointer">
+<input class="text-cyan-500 focus:ring-0 bg-[#070b14] border-[#223049]" name="resolution" type="radio"/>
+<span class="text-slate-300 font-mono text-xs">1200 × 675 (X / Telegram / Web)</span>
+</label>
+</div>
+</div>
+<!-- Re-Generate Button -->
+<button class="w-full bg-[#131c30] hover:bg-[#17223b] border border-cyan-500/40 text-cyan-300 font-semibold p-2.5 rounded transition flex items-center justify-center gap-2">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>تحديث بطاقة التحليل · Generate</span>
+</button>
+<div class="text-[10px] text-slate-500 text-center leading-relaxed">
+                يتم تضمين ختم التشفير ورمز التدقيق تلقائياً داخل البطاقة لحفظ الموثوقية التاريخية.
+              </div>
+</div>
+<!-- Right Sub-panel: The Standalone Card Preview Canvas (High-Fidelity Frame) -->
+<div class="lg:col-span-8 flex justify-center">
+<!-- Standalone Card Component with dark luxury aesthetic -->
+<div class="w-full max-w-[620px] bg-gradient-to-b from-[#0b1220] via-[#0e1729] to-[#070b14] border-2 border-cyan-500/40 rounded-xl p-5 shadow-2xl space-y-4 relative overflow-hidden" id="exportable-card">
+<!-- Background Subtle Watermark -->
+<div class="absolute -right-8 -bottom-10 pointer-events-none opacity-5 font-mono text-8xl font-black text-cyan-200 select-none">
+                  EGX30
+                </div>
+<!-- Card Top Header with Brand & Snapshot Hash -->
+<div class="flex items-center justify-between border-b border-[#223049] pb-3">
+<div class="flex items-center gap-2.5">
+<div class="w-8 h-8 rounded bg-gradient-to-tr from-cyan-600 to-indigo-600 flex items-center justify-center text-white font-mono font-bold text-xs shadow">
+                      EGX
+                    </div>
+<div>
+<div class="font-bold text-sm text-white tracking-tight flex items-center gap-1.5">
+<span>EGX AI TRADER · بطاقة التحليل الفني</span>
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+</div>
+<div class="text-xxs font-mono text-slate-400">
+                        VERIFIED SNAPSHOT · CLT 2026-09-10 14:30
+                      </div>
+</div>
+</div>
+<div class="text-left font-mono text-[10px] text-slate-400 bg-[#131c30] border border-[#223049] px-2 py-1 rounded">
+<div>AUDIT: #df22...44f4</div>
+<div class="text-cyan-400">STATUS: AUDITED</div>
+</div>
+</div>
+<!-- Stock Identity & Main Price Block -->
+<div class="bg-[#131c30]/80 border border-[#223049] rounded-lg p-4 flex items-center justify-between">
+<div>
+<div class="flex items-center gap-2">
+<span class="text-xl font-bold text-white">أبو قير للأسمدة</span>
+<span class="font-mono text-cyan-300 font-bold bg-[#17223b] px-2 py-0.5 rounded text-xs border border-cyan-500/30">ABUK</span>
+</div>
+<div class="text-xs text-slate-400 mt-0.5">Abou Kir Fertilizers &amp; Chemical Industries</div>
+<div class="mt-2 inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded text-xxs font-semibold text-amber-300">
+<span>حالة النموذج:</span>
+<span>قريب من التفعيل (Near Activation)</span>
+</div>
+</div>
+<div class="text-left">
+<div class="text-3xl font-bold font-mono text-white num-tabular">93.50</div>
+<div class="text-xs font-mono text-rose-400 font-bold flex items-center justify-end gap-1">
+<span>-1.00</span>
+<span>(-1.06%)</span>
+</div>
+<div class="text-[10px] text-slate-500 font-mono mt-1">EGP · آخر إغلاق مؤكد</div>
+</div>
+</div>
+<!-- Visual Mini Levels & Simulated Sparkline Chart Canvas -->
+<div class="bg-[#131c30]/60 border border-[#223049] rounded-lg p-3 space-y-2">
+<div class="flex items-center justify-between text-xxs">
+<span class="text-slate-300 font-semibold">المستويات الحرجة ومسار الحركة (Technical Levels Map)</span>
+<span class="font-mono text-slate-400">آخر 90 جلسة تداول</span>
+</div>
+<!-- Simulated Candlestick / Level Visualizer -->
+<div class="h-28 w-full bg-[#0b1220] rounded border border-[#1f2e4d] relative overflow-hidden flex items-end p-2">
+<!-- Grid Lines & Reference Thresholds -->
+<div class="absolute inset-0 flex flex-col justify-between p-2 pointer-events-none opacity-25">
+<div class="border-b border-dashed border-rose-400 w-full flex justify-between text-[9px] text-rose-300 font-mono"><span>Target: 101.74</span></div>
+<div class="border-b border-cyan-400 w-full flex justify-between text-[9px] text-cyan-300 font-mono"><span>Breakout: 94.50</span></div>
+<div class="border-b border-dashed border-rose-500 w-full flex justify-between text-[9px] text-rose-400 font-mono"><span>Invalidation: 88.43</span></div>
+</div>
+<!-- Mini Bars Visualization -->
+<div class="w-full flex items-end justify-between gap-1 h-full z-10 pt-4">
+<!-- Bar series simulation -->
+<div class="w-1.5 bg-emerald-500/50 rounded-t h-[40%]"></div>
+<div class="w-1.5 bg-rose-500/50 rounded-t h-[35%]"></div>
+<div class="w-1.5 bg-emerald-500/60 rounded-t h-[48%]"></div>
+<div class="w-1.5 bg-rose-500/50 rounded-t h-[42%]"></div>
+<div class="w-1.5 bg-emerald-500/60 rounded-t h-[55%]"></div>
+<div class="w-1.5 bg-emerald-500/70 rounded-t h-[65%]"></div>
+<div class="w-1.5 bg-emerald-500/80 rounded-t h-[72%]"></div>
+<div class="w-1.5 bg-rose-500/60 rounded-t h-[60%]"></div>
+<div class="w-1.5 bg-emerald-500/70 rounded-t h-[78%]"></div>
+<div class="w-1.5 bg-emerald-500/90 rounded-t h-[86%]"></div>
+<div class="w-1.5 bg-rose-500/70 rounded-t h-[75%]"></div>
+<div class="w-1.5 bg-emerald-500 rounded-t h-[92%] border-t-2 border-cyan-300"></div>
+<div class="w-1.5 bg-rose-500 rounded-t h-[88%] border-t-2 border-rose-400"></div>
+</div>
+</div>
+<!-- Levels Footer Labels -->
+<div class="grid grid-cols-3 gap-2 text-center text-xxs font-mono">
+<div class="bg-[#0b1220] p-1.5 rounded border border-[#1f2e4d]">
+<span class="text-rose-400 block text-[9px]">وقف الإبطال</span>
+<span class="font-bold text-white num-tabular">88.43</span>
+</div>
+<div class="bg-[#0b1220] p-1.5 rounded border border-cyan-500/40">
+<span class="text-cyan-300 block text-[9px]">نقطة الاختراق</span>
+<span class="font-bold text-cyan-200 num-tabular">94.50</span>
+</div>
+<div class="bg-[#0b1220] p-1.5 rounded border border-emerald-500/40">
+<span class="text-emerald-400 block text-[9px]">الهدف الأول</span>
+<span class="font-bold text-emerald-200 num-tabular">101.74</span>
+</div>
+</div>
+</div>
+<!-- Core Thesis Summary in Perfect Arabic Typography -->
+<div class="bg-[#131c30]/50 border border-[#223049] rounded-lg p-3 text-xs">
+<div class="font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+<span>خلاصة التقرير (Quant Thesis Summary):</span>
+</div>
+<p class="ar-prose text-slate-300 text-xxs leading-relaxed">
+                    يتحرك سهم <bdi class="font-mono text-cyan-300" dir="ltr">ABUK</bdi> في مسار صاعد منظم مع زخم قوي (<bdi class="font-mono text-cyan-300" dir="ltr">Momentum 70</bdi>) وأحجام تداول تفوق المتوسط بـ <bdi class="font-mono text-amber-300" dir="ltr">1.73x</bdi>. التفعيل الإيجابي مرتبط حصرياً بإغلاق يومي أعلى <bdi class="font-mono text-white font-bold" dir="ltr">94.50 EGP</bdi> لتحقيق مستهدف <bdi class="font-mono text-emerald-300 font-bold" dir="ltr">101.74 EGP</bdi>، مع اعتبار كسر <bdi class="font-mono text-rose-400 font-bold" dir="ltr">88.43 EGP</bdi> إبطالاً حتمياً للفكرة.
+                  </p>
+</div>
+<!-- Metrics & Confidence Row -->
+<div class="grid grid-cols-3 gap-2 text-center text-xs">
+<div class="bg-[#131c30] p-2 rounded border border-[#223049]">
+<div class="text-[10px] text-slate-400">المساحة للهدف</div>
+<div class="font-mono font-bold text-emerald-400 text-sm mt-0.5">+8.81%</div>
+</div>
+<div class="bg-[#131c30] p-2 rounded border border-[#223049]">
+<div class="text-[10px] text-slate-400">العائد / المخاطرة</div>
+<div class="font-mono font-bold text-cyan-300 text-sm mt-0.5">1:1.19</div>
+</div>
+<div class="bg-[#131c30] p-2 rounded border border-cyan-500/30">
+<div class="text-[10px] text-slate-400">ثقة المحرك الكلي</div>
+<div class="font-mono font-bold text-amber-300 text-sm mt-0.5">87%</div>
+</div>
+</div>
+<!-- Provenance Watermark & Security Footer -->
+<div class="border-t border-[#223049] pt-2.5 flex items-center justify-between text-[9px] text-slate-500 font-mono">
+<div class="flex items-center gap-1.5">
+<svg class="w-3 h-3 text-cyan-400" fill="currentColor" viewbox="0 0 20 20"><path clip-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fill-rule="evenodd"></path></svg>
+<span>EGX AI Terminal · FinModel Engine v4.8.2</span>
+</div>
+<span>NO EXECUTION ADVICE · DECISION SUPPORT ONLY</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- END: Section 5 -->
+</div>
+<!-- END: Workbench Core Body -->
+<!-- Terminal Bottom Status Bar -->
+<footer class="bg-[#0b1220] border-t border-[#223049] p-3 text-xxs text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-2 mt-auto select-none">
+<div class="flex items-center gap-3">
+<span class="flex items-center gap-1 text-emerald-400">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+            نظام التحليل الكمي متصل وجاهز
+          </span>
+<span>•</span>
+<span>آخر مزامنة لقاعدة البيانات: 2026-09-10 14:30:00 CLT</span>
+</div>
+<div class="font-mono text-slate-500">
+          EGX Terminal Redesign · IBM Plex Sans Arabic + IBM Plex Mono · Single Screen Workbench
+        </div>
+</footer>
+</main>
+<!-- END: MainContentContainer -->
+</div>
+<script data-purpose="workbench-interactions">
+    // Smooth scroll for anchor jump tabs
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function (e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+          target.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+          });
+        }
+      });
+    });
+  </script>
+</body></html>

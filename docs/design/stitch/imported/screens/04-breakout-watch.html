@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<html lang="ar" dir="ltr" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EGX AI Trader — Breakout Watch (مراقبة الاختراق) Redesign</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            'bg-terminal': '#0b1220',
+            'bg-sidebar': '#0e1729',
+            'surface-base': '#131c30',
+            'surface-elevated': '#17223b',
+            'surface-well': '#0f182a',
+            'border-subtle': '#223049',
+            'border-active': '#334769',
+            'border-heavy': '#476291',
+            'text-high': '#e6edf7',
+            'text-med': '#8ea1bd',
+            'text-low': '#5a6f8c',
+            'green-bull': '#34d399',
+            'red-bear': '#f87171',
+            'amber-warn': '#fbbf24',
+            'blue-info': '#60a5fa',
+            'gray-neutral': '#94a3b8',
+            'purple-unknown': '#c084fc'
+          },
+          fontFamily: {
+            sans: ['"IBM Plex Sans"', '"IBM Plex Sans Arabic"', 'sans-serif'],
+            mono: ['"IBM Plex Mono"', 'monospace'],
+            arabic: ['"IBM Plex Sans Arabic"', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #0b1220;
+      color: #e6edf7;
+      font-family: 'IBM Plex Sans', 'IBM Plex Sans Arabic', sans-serif;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+    }
+    .tabular-nums {
+      font-feature-settings: "tnum" 1, "zero" 1;
+    }
+    .hatch-unknown {
+      background-image: repeating-linear-gradient(45deg, rgba(192, 132, 252, 0.08) 0px, rgba(192, 132, 252, 0.08) 4px, transparent 4px, transparent 8px);
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #223049;
+    }
+  </style>
+</head>
+<body class="bg-bg-terminal min-h-screen text-text-high flex antialiased selection:bg-blue-info/20 selection:text-blue-info">
+
+  <!-- ==================== LEFT SIDEBAR (280px FIXED) ==================== -->
+  <aside class="w-[280px] min-w-[280px] bg-bg-sidebar border-r border-border-subtle flex flex-col justify-between h-screen sticky top-0 z-30 select-none">
+    
+    <!-- Top Chrome & Navigation -->
+    <div class="flex flex-col">
+      <!-- 1. Brand Mark Strip -->
+      <div class="h-12 border-b border-border-subtle flex items-center justify-between px-4">
+        <div class="flex items-center gap-2">
+          <div class="w-6 h-6 bg-surface-elevated border border-border-active flex items-center justify-center text-[10px] font-mono font-bold text-blue-info">
+            EGX
+          </div>
+          <div class="flex flex-col leading-none">
+            <span class="text-[13px] font-semibold tracking-tight text-text-high font-mono">EGX AI TRADER</span>
+            <span class="text-[9px] text-text-low font-mono">v2.4.18 · RESEARCH</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-none bg-green-bull inline-block animate-pulse"></span>
+          <span class="text-[9.5px] font-mono text-green-bull uppercase tracking-wider">ONLINE</span>
+        </div>
+      </div>
+
+      <!-- 2. Diagnostic Health Strip (Operating Rule 6: Silent Failures Made Loud) -->
+      <div class="p-3 border-b border-border-subtle bg-surface-well/60">
+        <div class="border border-border-subtle bg-surface-base p-2.5 flex flex-col gap-1.5">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-1.5">
+              <span class="w-2 h-2 bg-green-bull inline-block"></span>
+              <span class="text-[11px] font-mono font-semibold text-green-bull">RAN CLEAN</span>
+            </div>
+            <span class="text-[10px] font-mono text-text-low tabular-nums">15:02:14 CLT</span>
+          </div>
+          <div class="grid grid-cols-2 gap-1 pt-1 border-t border-border-subtle text-[10px] font-mono text-text-low">
+            <div>EOD SYNC: <span class="text-text-med tabular-nums text-green-bull">224/224</span></div>
+            <div class="text-right">LATENCY: <span class="text-text-med tabular-nums">280ms</span></div>
+            <div>MICROSTRUCT: <span class="text-text-med">CLEAN</span></div>
+            <div class="text-right">SESSION: <span class="text-text-med tabular-nums">09-10</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Vertical Navigation -->
+      <nav class="p-2 space-y-4">
+        
+        <!-- Group 1: Portfolio -->
+        <div>
+          <div class="px-2 py-1 flex items-center justify-between text-[10px] text-text-low font-semibold border-b border-border-subtle/50 pb-1 mb-1">
+            <span dir="rtl" class="font-arabic">المحفظة</span>
+            <span class="opacity-30">·</span>
+            <span dir="ltr" class="font-mono tracking-widest text-[9px]">PORTFOLIO</span>
+          </div>
+          <a href="#" class="flex items-center justify-between px-2.5 py-1.5 text-xs text-text-med hover:text-text-high hover:bg-surface-elevated/40 border-l-2 border-transparent transition-all">
+            <div class="flex items-center gap-2">
+              <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+              <span>My Portfolio <span class="text-[11px] font-arabic opacity-70">(محفظتي)</span></span>
+            </div>
+            <span class="text-[10px] font-mono text-red-bear px-1 bg-red-bear/10">1 POS</span>
+          </a>
+        </div>
+
+        <!-- Group 2: Swing Strategies -->
+        <div>
+          <div class="px-2 py-1 flex items-center justify-between text-[10px] text-text-low font-semibold border-b border-border-subtle/50 pb-1 mb-1">
+            <span dir="rtl" class="font-arabic">سوينج</span>
+            <span class="opacity-30">·</span>
+            <span dir="ltr" class="font-mono tracking-widest text-[9px]">SWING</span>
+          </div>
+          <div class="space-y-0.5">
+            <a href="#" class="flex items-center justify-between px-2.5 py-1.5 text-xs text-text-med hover:text-text-high hover:bg-surface-elevated/40 border-l-2 border-transparent">
+              <div class="flex items-center gap-2">
+                <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 6h16M4 12h16M4 18h7"/></svg>
+                <span>Daily Dashboard</span>
+              </div>
+            </a>
+            <a href="#" class="flex items-center justify-between px-2.5 py-1.5 text-xs text-text-med hover:text-text-high hover:bg-surface-elevated/40 border-l-2 border-transparent">
+              <div class="flex items-center gap-2">
+                <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                <span>Swing Breakout</span>
+              </div>
+              <span class="text-[10px] font-mono text-text-low">1</span>
+            </a>
+
+            <!-- ACTIVE PAGE: Breakout Watch -->
+            <a href="#" class="flex items-center justify-between px-2.5 py-1.5 text-xs text-text-high bg-surface-elevated border-l-2 border-blue-info font-medium">
+              <div class="flex items-center gap-2">
+                <svg class="w-3.5 h-3.5 text-blue-info" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                <div class="flex flex-col">
+                  <span>Breakout Watch</span>
+                  <span class="text-[10px] font-arabic text-text-med leading-tight">مراقبة الاختراق</span>
+                </div>
+              </div>
+              <span class="text-[10px] font-mono font-semibold px-1.5 py-0.2 bg-blue-info/20 text-blue-info border border-blue-info/30">5</span>
+            </a>
+
+            <a href="#" class="flex items-center justify-between px-2.5 py-1.5 text-xs text-text-med hover:text-text-high hover:bg-surface-elevated/40 border-l-2 border-transparent">
+              <div class="flex items-center gap-2">
+                <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <div class="flex flex-col">
+                  <span>Confirmed Breakout</span>
+                  <span class="text-[9px] font-arabic text-text-low">الاختراق المؤكد</span>
+                </div>
+              </div>
+              <span class="text-[10px] font-mono text-green-bull px-1 bg-green-bull/10">3</span>
+            </a>
+
+            <a href="#" class="flex items-center justify-between px-2.5 py-1.5 text-xs text-text-med hover:text-text-high hover:bg-surface-elevated/40 border-l-2 border-transparent">
+              <div class="flex items-center gap-2">
+                <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                <span>Sector Liquidity</span>
+              </div>
+            </a>
+            <a href="#" class="flex items-center justify-between px-2.5 py-1.5 text-xs text-text-med hover:text-text-high hover:bg-surface-elevated/40 border-l-2 border-transparent">
+              <div class="flex items-center gap-2">
+                <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
+                <span>Watchlist</span>
+              </div>
+              <span class="text-[10px] font-mono text-text-low">32</span>
+            </a>
+            <a href="#" class="flex items-center justify-between px-2.5 py-1.5 text-xs text-text-med hover:text-text-high hover:bg-surface-elevated/40 border-l-2 border-transparent">
+              <div class="flex items-center gap-2">
+                <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                <span>Stock Details</span>
+              </div>
+            </a>
+          </div>
+        </div>
+
+        <!-- Group 3: AI Analysis -->
+        <div>
+          <div class="px-2 py-1 flex items-center justify-between text-[10px] text-text-low font-semibold border-b border-border-subtle/50 pb-1 mb-1">
+            <span dir="rtl" class="font-arabic">تحليل</span>
+            <span class="opacity-30">·</span>
+            <span dir="ltr" class="font-mono tracking-widest text-[9px]">AI ANALYSIS</span>
+          </div>
+          <a href="#" class="flex items-center justify-between px-2.5 py-1.5 text-xs text-text-med hover:text-text-high hover:bg-surface-elevated/40 border-l-2 border-transparent">
+            <div class="flex items-center gap-2">
+              <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+              <span>AI Multi-Model</span>
+            </div>
+            <span class="text-[9px] font-mono text-purple-unknown uppercase px-1 border border-purple-unknown/30">PROMPT</span>
+          </a>
+        </div>
+
+        <!-- Group 4: System -->
+        <div>
+          <div class="px-2 py-1 flex items-center justify-between text-[10px] text-text-low font-semibold border-b border-border-subtle/50 pb-1 mb-1">
+            <span dir="rtl" class="font-arabic">النظام</span>
+            <span class="opacity-30">·</span>
+            <span dir="ltr" class="font-mono tracking-widest text-[9px]">SYSTEM</span>
+          </div>
+          <div class="space-y-0.5">
+            <a href="#" class="flex items-center justify-between px-2.5 py-1.5 text-xs text-text-med hover:text-text-high hover:bg-surface-elevated/40 border-l-2 border-transparent">
+              <div class="flex items-center gap-2">
+                <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                <span>System Health</span>
+              </div>
+              <span class="w-1.5 h-1.5 bg-green-bull"></span>
+            </a>
+            <a href="#" class="flex items-center justify-between px-2.5 py-1.5 text-xs text-text-med hover:text-text-high hover:bg-surface-elevated/40 border-l-2 border-transparent">
+              <div class="flex items-center gap-2">
+                <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+                <span>Settings</span>
+              </div>
+            </a>
+          </div>
+        </div>
+
+      </nav>
+    </div>
+
+    <!-- Bottom Sidebar Benchmark Pin -->
+    <div class="p-3 border-t border-border-subtle bg-surface-well/40 text-[10px] font-mono">
+      <div class="flex items-center justify-between text-text-low mb-1">
+        <span>EGX30 INDEX</span>
+        <span class="text-green-bull font-semibold tabular-nums">30,482.10 ▲</span>
+      </div>
+      <div class="flex items-center justify-between text-text-low text-[9px]">
+        <span>CACHE: T+0 VALID</span>
+        <span class="tabular-nums">14:30 CLT</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ==================== MAIN WORKBENCH (1640px CONTAINER) ==================== -->
+  <main class="flex-1 max-w-[1640px] px-6 py-5 overflow-y-auto custom-scroll flex flex-col gap-5">
+    
+    <!-- ==================== 1. PAGE HEADER & TWIN ARCHETYPE STRIP ==================== -->
+    <header class="flex flex-col gap-2 pb-3 border-b border-border-subtle">
+      <div class="flex items-start justify-between">
+        <div>
+          <!-- Stacking Rule: Arabic headline stacked directly above English subtitle -->
+          <div class="flex items-center gap-2.5">
+            <h1 dir="rtl" class="font-arabic text-[21px] font-bold text-text-high tracking-tight">
+              مراقبة الاختراق
+            </h1>
+            <span class="text-text-low opacity-40 font-mono text-sm">/</span>
+            <span class="text-[17px] font-semibold text-text-high font-mono tracking-tight">BREAKOUT WATCH</span>
+            
+            <!-- Twin Screen Relationship Tag: Indicates set-up stage vs Confirmed Breakout -->
+            <div class="ml-3 px-2 py-0.5 border border-blue-info/40 bg-blue-info/10 text-blue-info text-[10px] font-mono uppercase flex items-center gap-1.5">
+              <span class="w-1.5 h-1.5 bg-blue-info"></span>
+              <span>PHASE 1: THE SET-UP (SESSION BEFORE TRIGGER)</span>
+            </div>
+          </div>
+          <p class="text-xs text-text-med mt-1 flex items-center gap-2">
+            <span>Names approaching the <code class="text-text-high font-mono bg-surface-well px-1 py-0.5 border border-border-subtle">CONFIRMED_VOLUME_BREAKOUT</code> trigger — the session immediately before Confirmed Breakout reports a live firing.</span>
+            <span class="text-text-low font-mono text-[11px] tabular-nums">· Strategy Target: Next-Session Close Entry</span>
+          </p>
+        </div>
+
+        <!-- Strategy Provenance & Session Calibration Pill -->
+        <div class="flex flex-col items-end gap-1">
+          <div class="flex items-center gap-2">
+            <a href="#" class="px-2.5 py-1 text-[11px] font-mono text-text-med bg-surface-base border border-border-subtle hover:border-border-active hover:text-text-high flex items-center gap-1.5">
+              <span>View Confirmed Breakout</span>
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+            </a>
+            <div class="px-2 py-1 bg-surface-well border border-border-subtle text-[11px] font-mono text-text-low">
+              RULE: <span class="text-text-high font-semibold">RULE_SWING_04</span>
+            </div>
+          </div>
+          <div class="text-[10px] font-mono text-text-low">
+            HISTORICAL LIFT: <span class="text-green-bull font-medium">+1.36%</span> (Out-of-sample valid era)
+          </div>
+        </div>
+      </div>
+
+      <!-- Strategy Twin Navigation Pill Strip -->
+      <div class="grid grid-cols-2 gap-3 mt-1 text-xs">
+        <div class="p-2 border border-blue-info/30 bg-blue-info/5 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 bg-blue-info"></span>
+            <span class="font-mono text-xs font-semibold text-blue-info">THIS SCREEN: BREAKOUT WATCH (مراقبة الاختراق)</span>
+          </div>
+          <span class="text-[11px] text-text-low font-mono">Status: Approaching Thresholds (Pre-trigger)</span>
+        </div>
+        <div class="p-2 border border-border-subtle bg-surface-base/50 flex items-center justify-between opacity-80 hover:opacity-100 transition-opacity">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 bg-text-low"></span>
+            <span class="font-mono text-xs text-text-med">ADJACENT TWIN: CONFIRMED BREAKOUT (الاختراق المؤكد)</span>
+          </div>
+          <span class="text-[11px] text-text-low font-mono">Status: Trigger Fired & Volume Validated (Actionable)</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- ==================== 2. FILTER & SESSION PROVENANCE BAR ==================== -->
+    <div class="grid grid-cols-12 gap-3 p-3 bg-surface-base border border-border-subtle items-center text-xs">
+      
+      <!-- Scan File / Dataset Dropdown -->
+      <div class="col-span-4 flex items-center gap-2">
+        <span class="text-text-low text-[11px] font-mono uppercase whitespace-nowrap">SAVED LIST:</span>
+        <select class="w-full bg-surface-well border border-border-subtle text-text-high font-mono text-xs px-2.5 py-1.5 focus:border-border-heavy outline-none">
+          <option>watchlist_20260911_2026-09-10.csv · session 2026-09-10 (LATEST)</option>
+          <option>watchlist_20260910_2026-09-09.csv · session 2026-09-09</option>
+        </select>
+      </div>
+
+      <!-- Proximity Filter Reach -->
+      <div class="col-span-2 flex items-center gap-2">
+        <span class="text-text-low text-[11px] font-mono uppercase whitespace-nowrap">REACH:</span>
+        <select class="w-full bg-surface-well border border-border-subtle text-text-high font-mono text-xs px-2 py-1.5 outline-none">
+          <option>1.00 × ATR (Strict)</option>
+          <option>1.50 × ATR (Broad)</option>
+          <option>0.50 × ATR (Immediate)</option>
+        </select>
+      </div>
+
+      <!-- Allocated Capital Formulation -->
+      <div class="col-span-3 flex items-center gap-2">
+        <span class="text-text-low text-[11px] font-mono uppercase whitespace-nowrap">CAPITAL:</span>
+        <div class="relative flex-1">
+          <input type="text" value="100,000.00" class="w-full bg-surface-well border border-border-subtle text-text-high font-mono text-xs px-2 py-1.5 text-right pr-9 tabular-nums">
+          <span class="absolute right-2 top-1.5 text-[10px] font-mono text-text-low">EGP</span>
+        </div>
+      </div>
+
+      <!-- Rescan Action -->
+      <div class="col-span-3 flex items-center justify-end gap-2">
+        <button class="px-3 py-1.5 bg-blue-info/10 text-blue-info hover:bg-blue-info/20 border border-blue-info/40 text-xs font-mono font-medium flex items-center gap-1.5 transition-colors">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          <span>Run Fresh Scan (فحص جديد)</span>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- ==================== 3. FOUR CONTEXT METRICS STRIP ==================== -->
+    <div class="grid grid-cols-4 gap-3">
+      
+      <!-- Metric 1: Candidates -->
+      <div class="p-3 bg-surface-base border border-border-subtle flex flex-col justify-between">
+        <div class="flex items-center justify-between text-text-low text-[11px]">
+          <span dir="rtl" class="font-arabic">المرشحون</span>
+          <span class="font-mono uppercase text-[10px]">CANDIDATES</span>
+        </div>
+        <div class="mt-1 flex items-baseline justify-between">
+          <span class="text-2xl font-mono font-bold text-text-high tabular-nums">5</span>
+          <span class="text-[10px] font-mono text-blue-info">Within 1.0× ATR Range</span>
+        </div>
+        <div class="mt-1 text-[10px] font-mono text-text-low border-t border-border-subtle/40 pt-1">
+          SURVIVAL RATE: <span class="text-text-med tabular-nums">2.17%</span> of universe
+        </div>
+      </div>
+
+      <!-- Metric 2: Scan Session Date -->
+      <div class="p-3 bg-surface-base border border-border-subtle flex flex-col justify-between">
+        <div class="flex items-center justify-between text-text-low text-[11px]">
+          <span dir="rtl" class="font-arabic">تاريخ الجلسة</span>
+          <span class="font-mono uppercase text-[10px]">SESSION</span>
+        </div>
+        <div class="mt-1 flex items-baseline justify-between">
+          <span class="text-2xl font-mono font-bold text-text-high tabular-nums">2026-09-10</span>
+          <span class="text-[10px] font-mono text-green-bull px-1 bg-green-bull/10">SETTLED</span>
+        </div>
+        <div class="mt-1 text-[10px] font-mono text-text-low border-t border-border-subtle/40 pt-1">
+          CLOSING RUN: <span class="text-text-med tabular-nums">14:30:00 CLT</span>
+        </div>
+      </div>
+
+      <!-- Metric 3: Proximity Multiplier -->
+      <div class="p-3 bg-surface-base border border-border-subtle flex flex-col justify-between">
+        <div class="flex items-center justify-between text-text-low text-[11px]">
+          <span dir="rtl" class="font-arabic">نطاق الاقتراب</span>
+          <span class="font-mono uppercase text-[10px]">REACH MULTIPLE</span>
+        </div>
+        <div class="mt-1 flex items-baseline justify-between">
+          <span class="text-2xl font-mono font-bold text-text-high tabular-nums">1.0 × ATR</span>
+          <span class="text-[10px] font-mono text-text-med">VOL-ADJUSTED</span>
+        </div>
+        <div class="mt-1 text-[10px] font-mono text-text-low border-t border-border-subtle/40 pt-1">
+          THRESHOLD: <span class="text-text-med tabular-nums">Distance &le; ATR(14)</span>
+        </div>
+      </div>
+
+      <!-- Metric 4: Sizing Capital Base -->
+      <div class="p-3 bg-surface-base border border-border-subtle flex flex-col justify-between">
+        <div class="flex items-center justify-between text-text-low text-[11px]">
+          <span dir="rtl" class="font-arabic">رأس المال الافتراضي</span>
+          <span class="font-mono uppercase text-[10px]">MODEL CAPITAL</span>
+        </div>
+        <div class="mt-1 flex items-baseline justify-between">
+          <span class="text-2xl font-mono font-bold text-text-high tabular-nums">100,000 <span class="text-xs font-normal text-text-low">EGP</span></span>
+          <span class="text-[10px] font-mono text-text-low">PROVISIONAL</span>
+        </div>
+        <div class="mt-1 text-[10px] font-mono text-text-low border-t border-border-subtle/40 pt-1">
+          RISK CAP: <span class="text-text-med tabular-nums">15% Max Total Heat</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ==================== 4. WHAT THE RULE WILL REQUIRE TOMORROW (CONDITIONS) ==================== -->
+    <section class="border border-border-subtle bg-surface-base p-4">
+      <div class="flex items-center justify-between border-b border-border-subtle pb-2 mb-3">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 bg-blue-info"></span>
+          <h2 dir="rtl" class="font-arabic text-sm font-bold text-text-high">عند الإغلاق يوم الزناد</h2>
+          <span class="text-text-low font-mono text-xs">/</span>
+          <span class="text-xs font-mono font-semibold text-text-med uppercase">AT THE CLOSE ON THE TRIGGER DAY — EXECUTION REQUIREMENTS</span>
+        </div>
+        <span class="text-[10px] font-mono text-blue-info bg-blue-info/10 px-2 py-0.5 border border-blue-info/30">
+          TOMORROW'S MANDATORY EVALUATION GATES
+        </span>
+      </div>
+
+      <!-- The 4 Tomorrow Firing Conditions (Bilingual, Explicit) -->
+      <div class="grid grid-cols-4 gap-3 text-xs">
+        
+        <!-- Condition 1 -->
+        <div class="p-2.5 bg-surface-well border border-border-subtle flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between font-mono text-[10px] text-text-low mb-1">
+              <span>CONDITION 01</span>
+              <span class="text-blue-info">PRICE</span>
+            </div>
+            <div dir="rtl" class="font-arabic text-text-high font-semibold mb-0.5 text-right">
+              إغلاق صريح فوق المقاومة
+            </div>
+            <div class="text-[11px] text-text-med font-mono">
+              Close &gt; 20-Day Pivot Level
+            </div>
+          </div>
+          <p class="text-[10px] text-text-low mt-2 border-t border-border-subtle/50 pt-1">
+            لا يُعتمد بالاختراق اللحظي. يجب أن تُغلق الشمعة بالكامل فوق الزناد.
+          </p>
+        </div>
+
+        <!-- Condition 2 -->
+        <div class="p-2.5 bg-surface-well border border-border-subtle flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between font-mono text-[10px] text-text-low mb-1">
+              <span>CONDITION 02</span>
+              <span class="text-blue-info">VOLUME</span>
+            </div>
+            <div dir="rtl" class="font-arabic text-text-high font-semibold mb-0.5 text-right">
+              حجم تداول استثنائي &ge; 2× المتوسط
+            </div>
+            <div class="text-[11px] text-text-med font-mono">
+              Volume &ge; 2.0 × SMA(Vol, 20)
+            </div>
+          </div>
+          <p class="text-[10px] text-text-low mt-2 border-t border-border-subtle/50 pt-1">
+            تأكيد تدفق السيولة المؤسسية. الاختراق بدون حجم تداول مرفوض تلقائياً.
+          </p>
+        </div>
+
+        <!-- Condition 3 -->
+        <div class="p-2.5 bg-surface-well border border-border-subtle flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between font-mono text-[10px] text-text-low mb-1">
+              <span>CONDITION 03</span>
+              <span class="text-blue-info">REGIME</span>
+            </div>
+            <div dir="rtl" class="font-arabic text-text-high font-semibold mb-0.5 text-right">
+              نظام السوق العام غير هابط
+            </div>
+            <div class="text-[11px] text-text-med font-mono">
+              EGX30 Regime &ne; STRONG_BEAR
+            </div>
+          </div>
+          <p class="text-[10px] text-text-low mt-2 border-t border-border-subtle/50 pt-1">
+            فترة حماية من السوق الهابط. لا تُفتح مراكز جديدة في أنظمة الانهيار.
+          </p>
+        </div>
+
+        <!-- Condition 4 -->
+        <div class="p-2.5 bg-surface-well border border-border-subtle flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between font-mono text-[10px] text-text-low mb-1">
+              <span>CONDITION 04</span>
+              <span class="text-blue-info">EXECUTION</span>
+            </div>
+            <div dir="rtl" class="font-arabic text-text-high font-semibold mb-0.5 text-right">
+              الدخول في جلسة اليوم التالي
+            </div>
+            <div class="text-[11px] text-text-med font-mono">
+              Entry: NEXT_CLOSE
+            </div>
+          </div>
+          <p class="text-[10px] text-text-low mt-2 border-t border-border-subtle/50 pt-1">
+            الدخول لا يتم في نفس يوم الزناد، بل عند إغلاق الجلسة التالية لإثبات الثبات.
+          </p>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ==================== 5. GATE FUNNEL COMPONENT (قمع البوابات) ==================== -->
+    <!-- Solves: Making the progressive narrowing visible without becoming an infographic. Works for 6 stages and 3 stages. -->
+    <section class="border border-border-subtle bg-surface-base p-4">
+      <div class="flex items-center justify-between border-b border-border-subtle pb-2 mb-3">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 bg-blue-info"></span>
+            <h2 dir="rtl" class="font-arabic text-sm font-bold text-text-high">قمع البوابات</h2>
+            <span class="text-text-low font-mono text-xs">/</span>
+            <span class="text-xs font-mono font-semibold text-text-med uppercase">GATE FUNNEL — PROGRESSIVE UNIVERSE ATTRITION</span>
+          </div>
+          <p class="text-[11px] text-text-low mt-0.5">
+            How 230 EGX stocks narrow through sequential survival gates. The narrowing is shown as proportional survival rails.
+          </p>
+        </div>
+        
+        <!-- Toggle Demo for 6-Stage vs 3-Stage Modes -->
+        <div class="flex items-center gap-2 text-xs font-mono">
+          <span class="text-[10px] text-text-low uppercase">VIEW MODE:</span>
+          <button class="px-2 py-0.5 bg-surface-elevated text-text-high border border-border-active text-[10px] font-semibold">6-STAGE FULL PIPELINE</button>
+          <button class="px-2 py-0.5 bg-surface-well text-text-low border border-border-subtle hover:text-text-med text-[10px]">3-STAGE SUMMARY</button>
+        </div>
+      </div>
+
+      <!-- THE 6-STAGE PROPORTIONAL FUNNEL CONTAINER -->
+      <div class="bg-surface-well border border-border-subtle p-3.5 space-y-2.5">
+        
+        <!-- Stage 1: Universe Baseline -->
+        <div class="grid grid-cols-12 gap-3 items-center text-xs font-mono">
+          <div class="col-span-3 flex items-center justify-between">
+            <span class="text-text-med font-medium">G1. Universe Base (عالم الأسهم)</span>
+            <span class="text-text-low text-[10px]">EOD Liquidity &ge; 500k</span>
+          </div>
+          <div class="col-span-7 flex items-center gap-2">
+            <!-- Proportional Survival Bar (100% width) -->
+            <div class="w-full bg-surface-base h-4 border border-border-subtle relative overflow-hidden flex">
+              <div class="bg-blue-info/30 h-full border-r border-blue-info/60" style="width: 100%;"></div>
+            </div>
+          </div>
+          <div class="col-span-2 text-right flex items-center justify-end gap-2">
+            <span class="text-text-high font-bold tabular-nums">230</span>
+            <span class="text-[10px] text-text-low">(100.0%)</span>
+            <span class="text-[9px] text-text-low border border-border-subtle px-1">IN</span>
+          </div>
+        </div>
+
+        <!-- Stage 2: Data Freshness Gate -->
+        <div class="grid grid-cols-12 gap-3 items-center text-xs font-mono">
+          <div class="col-span-3 flex items-center justify-between">
+            <span class="text-text-med font-medium">G2. Settled Data (اكتمال البيانات)</span>
+            <span class="text-text-low text-[10px]">Fresh Candle Present</span>
+          </div>
+          <div class="col-span-7 flex items-center gap-2">
+            <!-- Proportional Bar (209 / 230 = 90.8%) -->
+            <div class="w-full bg-surface-base h-4 border border-border-subtle relative overflow-hidden flex">
+              <div class="bg-blue-info/35 h-full border-r border-blue-info/70" style="width: 90.87%;"></div>
+              <div class="bg-amber-warn/15 h-full" style="width: 9.13%;" title="21 Excluded"></div>
+            </div>
+          </div>
+          <div class="col-span-2 text-right flex items-center justify-end gap-2">
+            <span class="text-text-high font-bold tabular-nums">209</span>
+            <span class="text-[10px] text-amber-warn tabular-nums">-21 stale</span>
+            <span class="text-[9px] text-green-bull border border-green-bull/40 px-1">PASS</span>
+          </div>
+        </div>
+
+        <!-- Stage 3: Trend & Regime Gate -->
+        <div class="grid grid-cols-12 gap-3 items-center text-xs font-mono">
+          <div class="col-span-3 flex items-center justify-between">
+            <span class="text-text-med font-medium">G3. Regime Filter (نظام الاتجاه)</span>
+            <span class="text-text-low text-[10px]">SMA20 &gt; SMA50 &amp; Above</span>
+          </div>
+          <div class="col-span-7 flex items-center gap-2">
+            <!-- Proportional Bar (74 / 230 = 32.17%) -->
+            <div class="w-full bg-surface-base h-4 border border-border-subtle relative overflow-hidden flex">
+              <div class="bg-blue-info/40 h-full border-r border-blue-info/80" style="width: 32.17%;"></div>
+              <div class="bg-red-bear/10 h-full" style="width: 58.7%;" title="135 Non-trending"></div>
+            </div>
+          </div>
+          <div class="col-span-2 text-right flex items-center justify-end gap-2">
+            <span class="text-text-high font-bold tabular-nums">74</span>
+            <span class="text-[10px] text-red-bear tabular-nums">-135 down</span>
+            <span class="text-[9px] text-green-bull border border-green-bull/40 px-1">PASS</span>
+          </div>
+        </div>
+
+        <!-- Stage 4: Consolidation & ATR Squeeze Gate -->
+        <div class="grid grid-cols-12 gap-3 items-center text-xs font-mono">
+          <div class="col-span-3 flex items-center justify-between">
+            <span class="text-text-med font-medium">G4. Tight Base (انضغاط السعر)</span>
+            <span class="text-text-low text-[10px]">ATR Volatility &le; 5.0%</span>
+          </div>
+          <div class="col-span-7 flex items-center gap-2">
+            <!-- Proportional Bar (28 / 230 = 12.17%) -->
+            <div class="w-full bg-surface-base h-4 border border-border-subtle relative overflow-hidden flex">
+              <div class="bg-blue-info/50 h-full border-r border-blue-info" style="width: 12.17%;"></div>
+              <div class="bg-red-bear/10 h-full" style="width: 20.0%;"></div>
+            </div>
+          </div>
+          <div class="col-span-2 text-right flex items-center justify-end gap-2">
+            <span class="text-text-high font-bold tabular-nums">28</span>
+            <span class="text-[10px] text-text-low tabular-nums">-46 loose</span>
+            <span class="text-[9px] text-green-bull border border-green-bull/40 px-1">PASS</span>
+          </div>
+        </div>
+
+        <!-- Stage 5: Proximity Reach Gate (&le; 1.0 ATR to Trigger) -->
+        <div class="grid grid-cols-12 gap-3 items-center text-xs font-mono">
+          <div class="col-span-3 flex items-center justify-between">
+            <span class="text-text-med font-medium">G5. Trigger Reach (الاقتراب من الزناد)</span>
+            <span class="text-text-low text-[10px]">Distance &le; 1.0 × ATR</span>
+          </div>
+          <div class="col-span-7 flex items-center gap-2">
+            <!-- Proportional Bar (12 / 230 = 5.21%) -->
+            <div class="w-full bg-surface-base h-4 border border-border-subtle relative overflow-hidden flex">
+              <div class="bg-blue-info/70 h-full border-r border-blue-info" style="width: 5.21%;"></div>
+              <div class="bg-red-bear/10 h-full" style="width: 6.96%;"></div>
+            </div>
+          </div>
+          <div class="col-span-2 text-right flex items-center justify-end gap-2">
+            <span class="text-text-high font-bold tabular-nums">12</span>
+            <span class="text-[10px] text-text-low tabular-nums">-16 far</span>
+            <span class="text-[9px] text-green-bull border border-green-bull/40 px-1">PASS</span>
+          </div>
+        </div>
+
+        <!-- Stage 6: Final Clean Candidates (Surviving Names) -->
+        <div class="grid grid-cols-12 gap-3 items-center text-xs font-mono bg-blue-info/10 border border-blue-info/30 p-1.5 -mx-1.5">
+          <div class="col-span-3 flex items-center justify-between">
+            <span class="text-blue-info font-bold">G6. Final Candidates (المرشحون النهائيون)</span>
+            <span class="text-blue-info text-[10px]">Valid Cost &amp; Geometry</span>
+          </div>
+          <div class="col-span-7 flex items-center gap-2">
+            <!-- Final Narrow Funnel Outlet (5 / 230 = 2.17%) -->
+            <div class="w-full bg-surface-base h-5 border border-blue-info/50 relative overflow-hidden flex">
+              <div class="bg-blue-info h-full flex items-center px-1" style="width: 2.17%; min-width: 28px;">
+                <span class="text-[9px] font-bold text-bg-terminal tabular-nums">5</span>
+              </div>
+              <div class="flex-1 flex items-center px-2 text-[10px] text-text-low">
+                <span>Narrowed to 5 names approaching trigger tomorrow</span>
+              </div>
+            </div>
+          </div>
+          <div class="col-span-2 text-right flex items-center justify-end gap-2">
+            <span class="text-blue-info font-bold text-sm tabular-nums">5</span>
+            <span class="text-[10px] text-text-med tabular-nums">SURVIVED</span>
+            <span class="text-[9px] text-blue-info border border-blue-info px-1 font-bold">OUT</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Funnel Narrative Micro-Note -->
+      <div class="flex items-center justify-between text-[11px] text-text-low mt-2 px-1 font-mono">
+        <div>Total Attrition: 230 &rarr; 209 &rarr; 74 &rarr; 28 &rarr; 12 &rarr; <span class="text-text-high font-bold">5 candidates</span></div>
+        <div>Funnel Efficiency: <span class="text-green-bull">97.83% of noise eliminated</span> prior to trigger evaluation</div>
+      </div>
+    </section>
+
+    <!-- ==================== 6. CANDIDATES SECTION (المرشحون) ==================== -->
+    <!-- Solves: "Approaching" is a distance, and distance is the only thing a trader wants to rank by. -->
+    <section class="border border-border-subtle bg-surface-base p-4">
+      <div class="flex items-center justify-between border-b border-border-subtle pb-3 mb-3">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 bg-blue-info"></span>
+            <h2 dir="rtl" class="font-arabic text-sm font-bold text-text-high">المرشحون</h2>
+            <span class="text-text-low font-mono text-xs">/</span>
+            <span class="text-xs font-mono font-semibold text-text-med uppercase">SURVIVING CANDIDATES — ORDERED NEAREST-TO-TRIGGER FIRST</span>
+          </div>
+          <p class="text-[11px] text-text-low mt-0.5">
+            Ordered nearest-to-trigger first. This is a reading order of proximity, not a ranking claim: nothing here has been measured to predict which set-up goes on to fire.
+          </p>
+        </div>
+
+        <div class="flex items-center gap-3 text-xs font-mono">
+          <span class="text-text-low">PROXIMITY METRIC:</span>
+          <span class="px-2 py-0.5 bg-surface-elevated text-blue-info border border-blue-info/40 text-[11px] font-semibold">
+            DISTANCE IN ATR &amp; %
+          </span>
+        </div>
+      </div>
+
+      <!-- CANDIDATE CARDS / TABLE GRID -->
+      <div class="space-y-3">
+        
+        <!-- Table Column Headers (Strict Right Alignment above Mono numbers) -->
+        <div class="grid grid-cols-12 gap-2 px-3 py-1.5 bg-surface-elevated border border-border-subtle text-[11px] font-mono font-semibold text-text-med uppercase tracking-wider items-center">
+          <div class="col-span-2">TICKER / NAME</div>
+          <div class="col-span-1 text-right">CLOSE (EGP)</div>
+          <div class="col-span-1 text-right">TRIGGER (EGP)</div>
+          <div class="col-span-3 text-center">DISTANCE TO TRIGGER (مسافة الاقتراب)</div>
+          <div class="col-span-1 text-right">STOP LOSS</div>
+          <div class="col-span-1 text-right">RISK %</div>
+          <div class="col-span-1 text-right">FRICTION</div>
+          <div class="col-span-2 text-right">PROVISIONAL SIZING</div>
+        </div>
+
+        <!-- ================= CANDIDATE ROW 1: CCAP (Closest at 0.23 ATR) ================= -->
+        <div class="grid grid-cols-12 gap-2 p-3 bg-surface-well hover:bg-surface-elevated/80 border-l-2 border-l-blue-info border-y border-r border-border-subtle items-center text-xs font-mono transition-all">
+          
+          <!-- Identity -->
+          <div class="col-span-2 flex flex-col">
+            <div class="flex items-center gap-1.5">
+              <span class="font-bold text-sm text-text-high">CCAP</span>
+              <span class="text-[10px] px-1 bg-blue-info/10 text-blue-info border border-blue-info/30 font-semibold">NEAREST</span>
+            </div>
+            <span dir="rtl" class="font-arabic text-text-med text-[11px] truncate text-left">القلعة للاستشارات المالية</span>
+          </div>
+
+          <!-- Close -->
+          <div class="col-span-1 text-right tabular-nums text-text-high font-semibold text-sm">
+            6.210
+          </div>
+
+          <!-- Trigger -->
+          <div class="col-span-1 text-right tabular-nums text-blue-info font-bold text-sm">
+            6.250
+          </div>
+
+          <!-- Proximity Visual Distance Rail (The Key Redesign!) -->
+          <div class="col-span-3 flex flex-col justify-center px-2">
+            <div class="flex items-center justify-between text-[11px] mb-1">
+              <span class="text-blue-info font-bold tabular-nums">0.23 × ATR</span>
+              <span class="text-text-med tabular-nums font-semibold">+0.64% to trigger</span>
+            </div>
+            <!-- Proximity Rail: Bar fills up as price approaches 100% (Trigger) -->
+            <div class="w-full bg-surface-base h-2.5 border border-border-subtle relative overflow-hidden flex">
+              <!-- Gap remaining to trigger -->
+              <div class="bg-blue-info h-full relative" style="width: 77%;">
+                <span class="absolute right-0 top-0 bottom-0 w-0.5 bg-white"></span>
+              </div>
+              <div class="bg-surface-base flex-1 h-full"></div>
+            </div>
+            <div class="flex items-center justify-between text-[9px] text-text-low mt-0.5">
+              <span>Current (6.21)</span>
+              <span class="text-blue-info">Trigger (6.25)</span>
+            </div>
+          </div>
+
+          <!-- Stop Today -->
+          <div class="col-span-1 text-right tabular-nums text-red-bear font-medium">
+            5.227
+            <div class="text-[9px] text-text-low">Low rolls</div>
+          </div>
+
+          <!-- Risk % -->
+          <div class="col-span-1 text-right tabular-nums text-text-med">
+            15.83%
+          </div>
+
+          <!-- Friction (Measured vs Unknown) -->
+          <div class="col-span-1 text-right tabular-nums">
+            <span class="text-text-high">0.5516%</span>
+            <div class="text-[9px] text-green-bull font-mono uppercase">MEASURED</div>
+          </div>
+
+          <!-- Provisional Sizing -->
+          <div class="col-span-2 text-right">
+            <div class="text-text-high font-semibold tabular-nums">977 shares · 6,106 EGP</div>
+            <div class="text-[10px] text-text-low tabular-nums">6.11% of model cap</div>
+          </div>
+
+        </div>
+
+        <!-- ================= CANDIDATE ROW 2: MIPH (0.32 ATR) ================= -->
+        <div class="grid grid-cols-12 gap-2 p-3 bg-surface-well hover:bg-surface-elevated/80 border-l-2 border-l-blue-info/70 border-y border-r border-border-subtle items-center text-xs font-mono transition-all">
+          
+          <!-- Identity -->
+          <div class="col-span-2 flex flex-col">
+            <div class="flex items-center gap-1.5">
+              <span class="font-bold text-sm text-text-high">MIPH</span>
+            </div>
+            <span dir="rtl" class="font-arabic text-text-med text-[11px] truncate text-left">مصر لإنتاج الأسمدة</span>
+          </div>
+
+          <!-- Close -->
+          <div class="col-span-1 text-right tabular-nums text-text-high font-semibold text-sm">
+            809.76
+          </div>
+
+          <!-- Trigger -->
+          <div class="col-span-1 text-right tabular-nums text-blue-info font-bold text-sm">
+            820.00
+          </div>
+
+          <!-- Proximity Visual Distance Rail -->
+          <div class="col-span-3 flex flex-col justify-center px-2">
+            <div class="flex items-center justify-between text-[11px] mb-1">
+              <span class="text-blue-info font-bold tabular-nums">0.32 × ATR</span>
+              <span class="text-text-med tabular-nums font-semibold">+1.26% to trigger</span>
+            </div>
+            <div class="w-full bg-surface-base h-2.5 border border-border-subtle relative overflow-hidden flex">
+              <div class="bg-blue-info/90 h-full relative" style="width: 68%;">
+                <span class="absolute right-0 top-0 bottom-0 w-0.5 bg-white"></span>
+              </div>
+              <div class="bg-surface-base flex-1 h-full"></div>
+            </div>
+            <div class="flex items-center justify-between text-[9px] text-text-low mt-0.5">
+              <span>Current (809.76)</span>
+              <span class="text-blue-info">Trigger (820.00)</span>
+            </div>
+          </div>
+
+          <!-- Stop Today -->
+          <div class="col-span-1 text-right tabular-nums text-red-bear font-medium">
+            690.67
+            <div class="text-[9px] text-text-low">Base roll</div>
+          </div>
+
+          <!-- Risk % -->
+          <div class="col-span-1 text-right tabular-nums text-text-med">
+            14.71%
+          </div>
+
+          <!-- Friction -->
+          <div class="col-span-1 text-right tabular-nums">
+            <span class="text-text-high">1.4855%</span>
+            <div class="text-[9px] text-green-bull font-mono uppercase">MEASURED</div>
+          </div>
+
+          <!-- Provisional Sizing -->
+          <div class="col-span-2 text-right">
+            <div class="text-text-high font-semibold tabular-nums">7 shares · 5,740 EGP</div>
+            <div class="text-[10px] text-text-low tabular-nums">5.74% of model cap</div>
+          </div>
+
+        </div>
+
+        <!-- ================= CANDIDATE ROW 3: ORHD (0.35 ATR) ================= -->
+        <div class="grid grid-cols-12 gap-2 p-3 bg-surface-well hover:bg-surface-elevated/80 border-l-2 border-l-blue-info/50 border-y border-r border-border-subtle items-center text-xs font-mono transition-all">
+          
+          <!-- Identity -->
+          <div class="col-span-2 flex flex-col">
+            <div class="flex items-center gap-1.5">
+              <span class="font-bold text-sm text-text-high">ORHD</span>
+            </div>
+            <span dir="rtl" class="font-arabic text-text-med text-[11px] truncate text-left">أوراسكوم للتنمية مصر</span>
+          </div>
+
+          <!-- Close -->
+          <div class="col-span-1 text-right tabular-nums text-text-high font-semibold text-sm">
+            43.200
+          </div>
+
+          <!-- Trigger -->
+          <div class="col-span-1 text-right tabular-nums text-blue-info font-bold text-sm">
+            43.590
+          </div>
+
+          <!-- Proximity Visual Distance Rail -->
+          <div class="col-span-3 flex flex-col justify-center px-2">
+            <div class="flex items-center justify-between text-[11px] mb-1">
+              <span class="text-blue-info font-bold tabular-nums">0.35 × ATR</span>
+              <span class="text-text-med tabular-nums font-semibold">+0.90% to trigger</span>
+            </div>
+            <div class="w-full bg-surface-base h-2.5 border border-border-subtle relative overflow-hidden flex">
+              <div class="bg-blue-info/80 h-full relative" style="width: 65%;">
+                <span class="absolute right-0 top-0 bottom-0 w-0.5 bg-white"></span>
+              </div>
+              <div class="bg-surface-base flex-1 h-full"></div>
+            </div>
+            <div class="flex items-center justify-between text-[9px] text-text-low mt-0.5">
+              <span>Current (43.20)</span>
+              <span class="text-blue-info">Trigger (43.59)</span>
+            </div>
+          </div>
+
+          <!-- Stop Today -->
+          <div class="col-span-1 text-right tabular-nums text-red-bear font-medium">
+            39.949
+            <div class="text-[9px] text-text-low">Swing low</div>
+          </div>
+
+          <!-- Risk % -->
+          <div class="col-span-1 text-right tabular-nums text-text-med">
+            7.53%
+          </div>
+
+          <!-- Friction -->
+          <div class="col-span-1 text-right tabular-nums">
+            <span class="text-text-high">0.4892%</span>
+            <div class="text-[9px] text-green-bull font-mono uppercase">MEASURED</div>
+          </div>
+
+          <!-- Provisional Sizing -->
+          <div class="col-span-2 text-right">
+            <div class="text-text-high font-semibold tabular-nums">274 shares · 11,943 EGP</div>
+            <div class="text-[10px] text-text-low tabular-nums">11.94% of model cap</div>
+          </div>
+
+        </div>
+
+        <!-- ================= CANDIDATE ROW 4: POUL (0.66 ATR) ================= -->
+        <div class="grid grid-cols-12 gap-2 p-3 bg-surface-well hover:bg-surface-elevated/80 border-l-2 border-l-blue-info/30 border-y border-r border-border-subtle items-center text-xs font-mono transition-all">
+          
+          <!-- Identity -->
+          <div class="col-span-2 flex flex-col">
+            <div class="flex items-center gap-1.5">
+              <span class="font-bold text-sm text-text-high">POUL</span>
+            </div>
+            <span dir="rtl" class="font-arabic text-text-med text-[11px] truncate text-left">القاهرة للدواجن</span>
+          </div>
+
+          <!-- Close -->
+          <div class="col-span-1 text-right tabular-nums text-text-high font-semibold text-sm">
+            39.890
+          </div>
+
+          <!-- Trigger -->
+          <div class="col-span-1 text-right tabular-nums text-blue-info font-bold text-sm">
+            40.690
+          </div>
+
+          <!-- Proximity Visual Distance Rail -->
+          <div class="col-span-3 flex flex-col justify-center px-2">
+            <div class="flex items-center justify-between text-[11px] mb-1">
+              <span class="text-blue-info font-medium tabular-nums">0.66 × ATR</span>
+              <span class="text-text-med tabular-nums font-semibold">+2.01% to trigger</span>
+            </div>
+            <div class="w-full bg-surface-base h-2.5 border border-border-subtle relative overflow-hidden flex">
+              <div class="bg-blue-info/60 h-full relative" style="width: 34%;">
+                <span class="absolute right-0 top-0 bottom-0 w-0.5 bg-white"></span>
+              </div>
+              <div class="bg-surface-base flex-1 h-full"></div>
+            </div>
+            <div class="flex items-center justify-between text-[9px] text-text-low mt-0.5">
+              <span>Current (39.89)</span>
+              <span class="text-blue-info">Trigger (40.69)</span>
+            </div>
+          </div>
+
+          <!-- Stop Today -->
+          <div class="col-span-1 text-right tabular-nums text-red-bear font-medium">
+            36.607
+            <div class="text-[9px] text-text-low">Support</div>
+          </div>
+
+          <!-- Risk % -->
+          <div class="col-span-1 text-right tabular-nums text-text-med">
+            8.23%
+          </div>
+
+          <!-- Friction -->
+          <div class="col-span-1 text-right tabular-nums">
+            <span class="text-text-high">0.6156%</span>
+            <div class="text-[9px] text-green-bull font-mono uppercase">MEASURED</div>
+          </div>
+
+          <!-- Provisional Sizing -->
+          <div class="col-span-2 text-right">
+            <div class="text-text-high font-semibold tabular-nums">244 shares · 9,928 EGP</div>
+            <div class="text-[10px] text-text-low tabular-nums">9.93% of model cap</div>
+          </div>
+
+        </div>
+
+        <!-- ================= CANDIDATE ROW 5: TMGH (0.94 ATR) ================= -->
+        <div class="grid grid-cols-12 gap-2 p-3 bg-surface-well hover:bg-surface-elevated/80 border-l-2 border-l-blue-info/20 border-y border-r border-border-subtle items-center text-xs font-mono transition-all">
+          
+          <!-- Identity -->
+          <div class="col-span-2 flex flex-col">
+            <div class="flex items-center gap-1.5">
+              <span class="font-bold text-sm text-text-high">TMGH</span>
+            </div>
+            <span dir="rtl" class="font-arabic text-text-med text-[11px] truncate text-left">مجموعة طلعت مصطفى القابضة</span>
+          </div>
+
+          <!-- Close -->
+          <div class="col-span-1 text-right tabular-nums text-text-high font-semibold text-sm">
+            99.050
+          </div>
+
+          <!-- Trigger -->
+          <div class="col-span-1 text-right tabular-nums text-blue-info font-bold text-sm">
+            100.90
+          </div>
+
+          <!-- Proximity Visual Distance Rail -->
+          <div class="col-span-3 flex flex-col justify-center px-2">
+            <div class="flex items-center justify-between text-[11px] mb-1">
+              <span class="text-blue-info font-medium tabular-nums">0.94 × ATR</span>
+              <span class="text-text-med tabular-nums font-semibold">+1.87% to trigger</span>
+            </div>
+            <div class="w-full bg-surface-base h-2.5 border border-border-subtle relative overflow-hidden flex">
+              <div class="bg-blue-info/40 h-full relative" style="width: 16%;">
+                <span class="absolute right-0 top-0 bottom-0 w-0.5 bg-white"></span>
+              </div>
+              <div class="bg-surface-base flex-1 h-full"></div>
+            </div>
+            <div class="flex items-center justify-between text-[9px] text-text-low mt-0.5">
+              <span>Current (99.05)</span>
+              <span class="text-blue-info">Trigger (100.90)</span>
+            </div>
+          </div>
+
+          <!-- Stop Today -->
+          <div class="col-span-1 text-right tabular-nums text-red-bear font-medium">
+            94.312
+            <div class="text-[9px] text-text-low">Channel low</div>
+          </div>
+
+          <!-- Risk % -->
+          <div class="col-span-1 text-right tabular-nums text-text-med">
+            4.78%
+          </div>
+
+          <!-- Friction -->
+          <div class="col-span-1 text-right tabular-nums">
+            <span class="text-text-high">0.4360%</span>
+            <div class="text-[9px] text-green-bull font-mono uppercase">MEASURED</div>
+          </div>
+
+          <!-- Provisional Sizing -->
+          <div class="col-span-2 text-right">
+            <div class="text-text-high font-semibold tabular-nums">151 shares · 15,235 EGP</div>
+            <div class="text-[10px] text-text-low tabular-nums">15.24% of model cap</div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- Strategy Footnote & Risk Discipline Rule -->
+      <div class="p-3 mt-3 bg-surface-well border border-border-subtle text-[11px] text-text-low font-mono space-y-1">
+        <div class="flex items-center gap-1.5 text-text-med font-semibold">
+          <span class="text-blue-info">ℹ EXECUTION RULE:</span>
+          <span>Entry on every row is strictly NEXT_CLOSE — the session AFTER the trigger closes.</span>
+        </div>
+        <p>
+          Exit condition: 20 sessions or stop-loss hit; this breakout strategy has no pre-defined target. The stop shown is computed on today's candle; because the base low rolls dynamically, it must be recomputed on the day the trigger actually closes.
+        </p>
+        <p class="text-[10px] text-text-low pt-1 border-t border-border-subtle/50">
+          Provisional shares are sized off the trigger level as a proxy for entry; real entry is the NEXT close. Portfolio risk management rule caps this model at <code class="text-text-high">max_open_positions = 15</code> concurrent names and <code class="text-text-high">max_portfolio_risk_percent = 15%</code> total heat.
+        </p>
+      </div>
+
+    </section>
+
+    <!-- ==================== 7. EMPTY STATE DEMONSTRATION (WHEN ZERO CANDIDATES SURVIVE) ==================== -->
+    <!-- Solves: Requirement for an empty state for a week with no candidates -->
+    <section class="border border-border-subtle bg-surface-base p-4">
+      <div class="flex items-center justify-between border-b border-border-subtle pb-2 mb-3">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 bg-text-low"></span>
+          <h2 dir="rtl" class="font-arabic text-sm font-bold text-text-med">حالة انعدام المرشحين (شاشة تجريبية)</h2>
+          <span class="text-text-low font-mono text-xs">/</span>
+          <span class="text-xs font-mono font-semibold text-text-low uppercase">SPECIFICATION STATE: ZERO CANDIDATES SURVIVED</span>
+        </div>
+        <span class="text-[10px] font-mono text-text-low bg-surface-well px-2 py-0.5 border border-border-subtle">
+          DISCIPLINE PROTOCOL: ZERO FORCED TRADES
+        </span>
+      </div>
+
+      <!-- The Non-Embarrassed, Statistically Honest Empty State Card -->
+      <div class="p-8 bg-surface-well border border-dashed border-border-subtle flex flex-col items-center justify-center text-center">
+        <div class="w-10 h-10 border border-border-active bg-surface-base flex items-center justify-center text-text-med mb-3">
+          <svg class="w-5 h-5 text-text-low" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+        </div>
+        <h3 dir="rtl" class="font-arabic text-base font-bold text-text-high mb-1">
+          لا يوجد مرشحون يقتربون من الزناد في هذه الجلسة
+        </h3>
+        <p class="font-mono text-xs text-text-med max-w-xl mb-2">
+          NO CANDIDATES WITHIN 1.0× ATR OF CONFIRMED_VOLUME_BREAKOUT
+        </p>
+        <p class="text-xs text-text-low max-w-2xl font-mono leading-relaxed">
+          The gate funnel rejected all 209 active EGX names. In low-volatility compression or prolonged market drift, weeks with zero qualifying set-ups are normal and expected. The strategy does not force marginal candidates. Capital remains 100% in cash or existing portfolio positions.
+        </p>
+        
+        <div class="mt-4 flex items-center gap-4 text-[11px] font-mono border-t border-border-subtle pt-3">
+          <div class="text-text-low">Last Qualifying Candidate: <span class="text-text-med">2026-09-08 (SWDY.CA)</span></div>
+          <span class="text-border-subtle">|</span>
+          <div class="text-text-low">Next Scheduled Scan: <span class="text-text-med">Tomorrow 14:30 CLT</span></div>
+          <span class="text-border-subtle">|</span>
+          <a href="#" class="text-blue-info hover:underline">Review Historical Funnel Logs &rarr;</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 8. RESEARCH ACCORDION: WHAT THIS RESTS ON ==================== -->
+    <details class="border border-border-subtle bg-surface-base p-3 text-xs">
+      <summary class="cursor-pointer font-mono text-text-med hover:text-text-high flex items-center justify-between select-none">
+        <div class="flex items-center gap-2">
+          <span class="font-bold text-blue-info">▸ INVESTIGATION_SUMMARY.md</span>
+          <span>· Empirical Statistical Validation of Breakout Watch (1,897 Signals Evaluated)</span>
+        </div>
+        <span class="text-[10px] text-text-low uppercase">Click to expand research notes</span>
+      </summary>
+      <div class="mt-3 pt-3 border-t border-border-subtle text-text-low font-mono space-y-2 text-[11px]">
+        <p>
+          Watchlist for manual monitoring. The rule behind it is the only one in this repo with surviving out-of-sample lift (+1.36% valid era). The automated system built on it captured 6% of bull-regime upside and lost to buy-and-hold — see INVESTIGATION_SUMMARY.md. This list allocates attention; it is not a claim of edge.
+        </p>
+        <div class="grid grid-cols-3 gap-2 bg-surface-well p-2.5 border border-border-subtle">
+          <div>TOTAL BACKTEST RUNS: <span class="text-text-high font-bold">1,897</span></div>
+          <div>WIN RATE POST-FRICTION: <span class="text-green-bull font-bold">48.2%</span></div>
+          <div>PROFIT FACTOR: <span class="text-text-high font-bold">1.34</span></div>
+        </div>
+      </div>
+    </details>
+
+  </main>
+
+</body>
+</html>

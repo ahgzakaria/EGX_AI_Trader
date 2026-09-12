@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+
+<html class="dark" dir="rtl" lang="ar"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>قائمة المتابعة الشخصية · Watchlist &amp; On-Demand Swing Scanner | EGX AI Trader</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&amp;family=IBM+Plex+Mono:wght@400;500;600;700&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS v3 with Plugins -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            terminal: {
+              bg: '#0b1220',
+              sidebar: '#0e1729',
+              card: '#131c30',
+              cardElevated: '#17223b',
+              border: '#223049',
+              borderLight: '#2c3e5d',
+              gold: '#f59e0b',
+              goldGlow: '#fbbf24',
+              buy: '#10b981',
+              watch: '#38bdf8',
+              avoid: '#94a3b8',
+              danger: '#ef4444'
+            }
+          },
+          fontFamily: {
+            cairo: ['Cairo', 'sans-serif'],
+            mono: ['IBM Plex Mono', 'monospace'],
+            sans: ['Inter', 'Cairo', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+<!-- Custom Styles: Typography & Scrollers -->
+<style data-purpose="typography">
+    body {
+      font-family: 'Cairo', 'Inter', sans-serif;
+      background-color: #0b1220;
+      color: #cbd5e1;
+      letter-spacing: -0.01em;
+      user-select: none;
+    }
+    .font-num {
+      font-family: 'IBM Plex Mono', monospace;
+      font-feature-settings: "tnum" 1, "zero" 1;
+    }
+  </style>
+<style data-purpose="scrollbar-and-effects">
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0e1729;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #223049;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334769;
+    }
+    .amber-glow-border {
+      box-shadow: 0 0 15px -3px rgba(245, 158, 11, 0.15);
+    }
+    .active-rail-indicator {
+      position: relative;
+    }
+    .active-rail-indicator::before {
+      content: '';
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: #f59e0b;
+      border-top-left-radius: 4px;
+      border-bottom-left-radius: 4px;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-terminal-bg text-slate-200 overflow-x-hidden">
+<!-- BEGIN: MasterTerminalLayout -->
+<div class="flex min-h-screen w-[1920px] max-w-full mx-auto" data-purpose="workbench-canvas">
+<!-- BEGIN: LeftInstitutionalSidebar -->
+<aside class="w-[280px] shrink-0 bg-terminal-sidebar border-l border-terminal-border flex flex-col justify-between select-none z-20" data-purpose="terminal-sidebar">
+<div>
+<!-- Top Terminal Health Telemetry Strip -->
+<div class="p-3 border-b border-terminal-border bg-[#080d17] text-[11px] font-mono space-y-1">
+<div class="flex items-center justify-between text-slate-400">
+<span class="flex items-center gap-1.5 text-emerald-400 font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              EGX CLOSED 14:30 CLT
+            </span>
+<span class="text-slate-500">2026-09-12</span>
+</div>
+<div class="flex items-center justify-between text-slate-400 pt-0.5">
+<span class="text-sky-400 font-semibold">EOD SYNCED 15:02 · OK</span>
+<span class="text-emerald-400 font-bold bg-emerald-950/60 px-1 py-0.2 rounded text-[9px] border border-emerald-800/60">PIPELINE 100%</span>
+</div>
+<div class="flex items-center justify-between border-t border-slate-800/80 pt-1 text-slate-300">
+<span class="font-sans font-medium text-slate-400">EGX30 المؤشر الرئيسي</span>
+<span class="text-emerald-400 font-num font-bold">30,482.10 ▲ (+0.44%)</span>
+</div>
+</div>
+<!-- Terminal Branding Brand Bar -->
+<div class="px-5 py-4 flex items-center gap-3 border-b border-terminal-border/60">
+<div class="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-white shadow-lg shadow-amber-900/30">
+<svg class="w-5 h-5" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2"></path>
+</svg>
+</div>
+<div>
+<div class="flex items-center gap-1.5">
+<span class="font-extrabold text-sm tracking-wide text-white font-sans">EGX AI TRADER</span>
+<span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold">PRO</span>
+</div>
+<p class="text-[10px] text-slate-400 font-mono">Terminal Engine v4.8.2</p>
+</div>
+</div>
+<!-- Sidebar Navigation -->
+<nav class="py-3 px-2 space-y-4 text-xs">
+<!-- Section 1: Portfolio -->
+<div>
+<span class="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">المحفظة · PORTFOLIO</span>
+<a class="flex items-center justify-between px-3 py-2 rounded-md text-slate-400 hover:text-white hover:bg-terminal-card transition-colors" href="#">
+<div class="flex items-center gap-2.5">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span>My Portfolio · محفظتي</span>
+</div>
+<span class="font-mono text-[10px] px-1.5 py-0.5 bg-slate-800 text-slate-300 rounded">10 POS</span>
+</a>
+</div>
+<!-- Section 2: Swing Engine -->
+<div class="space-y-0.5">
+<span class="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">محرك السوينج · SWING ENGINE</span>
+<a class="flex items-center justify-between px-3 py-2 rounded-md text-slate-400 hover:text-white hover:bg-terminal-card transition-colors" href="#">
+<div class="flex items-center gap-2.5">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M4 6h16M4 10h16M4 14h16M4 18h16" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span>لوحة التداول · Daily Dashboard</span>
+</div>
+</a>
+<a class="flex items-center justify-between px-3 py-2 rounded-md text-slate-400 hover:text-white hover:bg-terminal-card transition-colors" href="#">
+<div class="flex items-center gap-2.5">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span>Swing Breakout</span>
+</div>
+</a>
+<a class="flex items-center justify-between px-3 py-2 rounded-md text-slate-400 hover:text-white hover:bg-terminal-card transition-colors" href="#">
+<div class="flex items-center gap-2.5">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+<path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span>Breakout Watch</span>
+</div>
+<span class="font-mono text-[10px] px-1.5 py-0.5 bg-sky-950 text-sky-400 border border-sky-800 rounded font-semibold">5</span>
+</a>
+<a class="flex items-center justify-between px-3 py-2 rounded-md text-slate-400 hover:text-white hover:bg-terminal-card transition-colors" href="#">
+<div class="flex items-center gap-2.5">
+<svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span>Confirmed Breakout</span>
+</div>
+<span class="font-mono text-[9px] px-1.5 py-0.2 bg-emerald-950 text-emerald-400 border border-emerald-800 rounded font-bold">2 FIRED</span>
+</a>
+<a class="flex items-center justify-between px-3 py-2 rounded-md text-slate-400 hover:text-white hover:bg-terminal-card transition-colors" href="#">
+<div class="flex items-center gap-2.5">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span>سيولة القطاعات · Sector Liquidity</span>
+</div>
+</a>
+<!-- ACTIVE ITEM: Watchlist -->
+<a class="active-rail-indicator flex items-center justify-between px-3 py-2 rounded-md bg-terminal-cardElevated border border-amber-500/40 text-amber-400 font-semibold shadow-inner shadow-amber-500/5" href="#">
+<div class="flex items-center gap-2.5">
+<svg class="w-4 h-4 text-amber-400 fill-amber-400/20" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24">
+<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+</svg>
+<span class="text-white">قائمة المتابعة · Watchlist</span>
+</div>
+<span class="font-mono text-[10px] px-1.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded font-bold">[ 14 STOCKS ]</span>
+</a>
+<a class="flex items-center justify-between px-3 py-2 rounded-md text-slate-400 hover:text-white hover:bg-terminal-card transition-colors" href="#">
+<div class="flex items-center gap-2.5">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span>تفاصيل السهم · Stock Details</span>
+</div>
+</a>
+</div>
+<!-- Section 3: AI Analysis -->
+<div>
+<span class="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">التحليل الذكي · AI ANALYSIS</span>
+<a class="flex items-center justify-between px-3 py-2 rounded-md text-slate-400 hover:text-white hover:bg-terminal-card transition-colors" href="#">
+<div class="flex items-center gap-2.5">
+<svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span>Multi-Model Analysis</span>
+</div>
+<span class="text-[9px] font-mono text-purple-400 bg-purple-950/80 px-1 rounded">GPT-4o</span>
+</a>
+</div>
+<!-- Section 4: System -->
+<div>
+<span class="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">النظام · SYSTEM</span>
+<a class="flex items-center gap-2.5 px-3 py-1.5 text-slate-400 hover:text-white rounded-md" href="#">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span>System Health</span>
+</a>
+<a class="flex items-center gap-2.5 px-3 py-1.5 text-slate-400 hover:text-white rounded-md" href="#">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+<path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span>الإعدادات · Settings</span>
+</a>
+</div>
+</nav>
+</div>
+<!-- Sidebar Footer Safe Status -->
+<div class="p-3 border-t border-terminal-border bg-[#090e1a] text-[10px] space-y-1">
+<div class="flex items-center justify-between text-slate-300">
+<span class="font-bold">متداول البورصة المصرية</span>
+<span class="font-mono text-emerald-400 font-semibold text-[9px] bg-emerald-950 px-1 py-0.5 rounded border border-emerald-800">RUN IMMUTABLE</span>
+</div>
+<p class="text-slate-400 leading-tight">بحث كمي ومتابعة آمنة · لا يتم تخزين أوامر تداول أو تحريك أموال حقيقية</p>
+</div>
+</aside>
+<!-- END: LeftInstitutionalSidebar -->
+<!-- BEGIN: WorkbenchMainContainer -->
+<main class="flex-1 w-[1640px] flex flex-col min-w-0 bg-terminal-bg overflow-y-auto" data-purpose="workbench-content">
+<!-- BEGIN: TopBarAndModeSwitcher -->
+<header class="border-b border-terminal-border bg-[#0c1424]/90 sticky top-0 z-10 backdrop-blur px-8 py-3.5 flex items-center justify-between" data-purpose="workbench-header">
+<!-- Breadcrumbs & Scope Indicator -->
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 font-bold">
+            ★
+          </div>
+<div>
+<div class="flex items-center gap-2">
+<span class="text-xs text-slate-400 font-medium">قواعد السوينج المؤسسية · Institutional Swing Engine</span>
+<span class="text-slate-600">/</span>
+<span class="text-xs text-amber-400 font-semibold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+                USER CURATED SUBSET · قائمة مختارة شخصياً — 14 من 224
+              </span>
+</div>
+<h1 class="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+<span>قائمة المتابعة المخصصة</span>
+<span class="text-xs font-mono font-normal text-slate-400 border-r border-slate-700 pr-2 mr-2">User Watchlist &amp; On-Demand Swing Scanner</span>
+</h1>
+</div>
+</div>
+<!-- Mode Switcher Tabs (Addressing Problem 1: Two Distinct Lives) -->
+<div class="flex items-center gap-2 bg-[#090f1d] p-1 rounded-lg border border-terminal-border" data-purpose="lifecycle-controller">
+<button class="px-3 py-1.5 rounded-md text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1.5" type="button">
+<span class="font-mono text-[10px] text-slate-500">01</span>
+<span>إدارة القائمة والقراءة الأولية · List Curation</span>
+</button>
+<button class="px-3.5 py-1.5 rounded-md text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm flex items-center gap-2" type="button">
+<span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+<span class="font-mono text-[10px]">02</span>
+<span>نتائج الفحص والفرص الحالية · Scan Results (Active)</span>
+</button>
+<button class="px-3 py-1.5 rounded-md text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1.5" type="button">
+<span class="font-mono text-[10px] text-slate-500">03</span>
+<span>الحالات الفارغة والاستثنائية · Edge States</span>
+</button>
+</div>
+</header>
+<!-- END: TopBarAndModeSwitcher -->
+<!-- Content Workspace Area -->
+<div class="p-8 space-y-6">
+<!-- BEGIN: AmberWarningStrip -->
+<!-- Institutional Warning Banner: When data is behind today's close -->
+<div class="rounded-lg bg-amber-950/40 border-r-4 border-r-amber-500 border border-amber-500/30 p-4 flex items-center justify-between" data-purpose="data-freshness-warning">
+<div class="flex items-center gap-3.5">
+<div class="w-8 h-8 rounded-md bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<span class="font-mono text-xs font-bold text-amber-300 tracking-wider bg-amber-500/20 px-2 py-0.5 rounded">DATA UPDATE REQUIRED · تحديث البيانات مطلوب</span>
+<span class="text-xs text-amber-200 font-semibold">3 أسهم تحتوي على بيانات تاريخية سابقة للإغلاق الأخير (2026-09-10)</span>
+</div>
+<p class="text-xs text-slate-400 mt-0.5">
+                الرموز <span class="font-mono text-amber-200 font-semibold">SWDY.CA, MFPC.CA, ESRS.CA</span> لم يتم سحب شموع اليوم لها بعد. تشغيل الفحص الآن سيستخدم أسعار إغلاق الأمس لهذه الأسهم الثلاثة.
+              </p>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<button class="px-3.5 py-1.5 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-2 transition-all shadow-md">
+<svg class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span>تحديث بيانات EODHD للأسهم الثلاثة · Force Sync 3 Symbols</span>
+</button>
+</div>
+</div>
+<!-- END: AmberWarningStrip -->
+<!-- BEGIN: TelemetryAndExecutionHeader -->
+<div class="grid grid-cols-12 gap-4" data-purpose="telemetry-banner">
+<!-- Key Metrics Block (8 cols) -->
+<div class="col-span-8 bg-terminal-card border border-terminal-border rounded-xl p-5 flex flex-col justify-between">
+<div class="flex items-center justify-between pb-3 border-b border-terminal-border/80">
+<div class="flex items-center gap-2.5">
+<div class="w-3 h-3 rounded-full bg-amber-400"></div>
+<h2 class="font-bold text-sm text-white">معلومات تشغيل القائمة الشخصية · Curated Universe Telemetry</h2>
+</div>
+<span class="text-xs font-mono text-slate-400">Target Universe: 14 Selected EGX Securities</span>
+</div>
+<div class="grid grid-cols-4 gap-4 pt-4">
+<!-- Metric 1 -->
+<div class="bg-terminal-cardElevated/50 p-3 rounded-lg border border-terminal-border/60">
+<span class="text-[11px] text-slate-400 block mb-1">الأسهم المتابعة · Tracked</span>
+<div class="flex items-baseline gap-1.5">
+<span class="font-mono text-2xl font-bold text-white">14</span>
+<span class="text-[10px] font-mono text-slate-400">/ 224 EGX</span>
+</div>
+<div class="text-[10px] text-amber-400/80 font-mono mt-0.5">Custom Portfolio Subset</div>
+</div>
+<!-- Metric 2 -->
+<div class="bg-terminal-cardElevated/50 p-3 rounded-lg border border-terminal-border/60">
+<span class="text-[11px] text-slate-400 block mb-1">صلاحية البيانات · Freshness</span>
+<div class="flex items-baseline gap-1.5">
+<span class="font-mono text-2xl font-bold text-emerald-400">11</span>
+<span class="text-xs text-amber-400 font-mono">/ 3 Stale</span>
+</div>
+<div class="text-[10px] text-slate-400 mt-0.5">EOD Sync Status: 78.5%</div>
+</div>
+<!-- Metric 3 -->
+<div class="bg-terminal-cardElevated/50 p-3 rounded-lg border border-terminal-border/60">
+<span class="text-[11px] text-slate-400 block mb-1">آخر فحص سوينج · Last Scan</span>
+<div class="flex items-baseline gap-1.5">
+<span class="font-mono text-2xl font-bold text-sky-400">12:48</span>
+<span class="text-[10px] font-mono text-slate-400">CLT</span>
+</div>
+<div class="text-[10px] text-emerald-400 font-mono mt-0.5">Evaluated today · 7 Gates</div>
+</div>
+<!-- Metric 4 -->
+<div class="bg-terminal-cardElevated/50 p-3 rounded-lg border border-terminal-border/60">
+<span class="text-[11px] text-slate-400 block mb-1">قرارات النظام · Signals</span>
+<div class="flex items-center gap-2">
+<span class="font-mono text-lg font-bold text-emerald-400">2 BUY</span>
+<span class="text-xs text-slate-600">|</span>
+<span class="font-mono text-lg font-bold text-sky-400">5 WCH</span>
+<span class="text-xs text-slate-600">|</span>
+<span class="font-mono text-lg font-bold text-slate-400">7 AVD</span>
+</div>
+<div class="text-[10px] text-slate-400 mt-0.5">14% Actionable Readiness</div>
+</div>
+</div>
+</div>
+<!-- Primary Execution Action Block (4 cols) -->
+<div class="col-span-4 bg-gradient-to-br from-[#16233d] to-[#121c2e] border border-amber-500/30 rounded-xl p-5 flex flex-col justify-between shadow-lg relative overflow-hidden">
+<div class="absolute -left-6 -bottom-6 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none"></div>
+<div>
+<div class="flex items-center justify-between">
+<span class="text-[11px] font-mono text-amber-400 font-bold tracking-wider uppercase">On-Demand Pipeline Execution</span>
+<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[10px] border border-emerald-500/30 font-bold">READY</span>
+</div>
+<h3 class="text-white font-bold text-base mt-2">فحص فوري لقائمتك الخاصة</h3>
+<p class="text-xs text-slate-300 mt-1 leading-relaxed">
+                تطبيق البوابات السبع الصارمة (RSI, Liquidity, 20 EMA, Resistance, ADX, ATR, Breakout) حصرياً على الـ 14 سهماً المحددة.
+              </p>
+</div>
+<div class="pt-4 flex gap-2">
+<button class="flex-1 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-bold py-2.5 px-4 rounded-lg text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-amber-500/20 transition-all">
+<svg class="w-4 h-4 fill-current" viewbox="0 0 24 24">
+<path d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+</svg>
+<span>فحص قائمة المتابعة الآن · Scan Watchlist</span>
+</button>
+<button class="px-3 bg-terminal-card border border-terminal-border hover:border-slate-400 text-slate-300 rounded-lg" title="إعادة تعيين القواعد">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+<path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</button>
+</div>
+</div>
+</div>
+<!-- END: TelemetryAndExecutionHeader -->
+<!-- BEGIN: QuickSymbolManagementStrip -->
+<!-- Solving Problem 2: Inline Quick-Add, Chip Universe, Bulk Curation -->
+<section class="bg-terminal-card border border-terminal-border rounded-xl p-4 shadow-sm space-y-3" data-purpose="quick-management-station">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="w-2.5 h-2.5 rounded-sm bg-amber-400"></span>
+<h3 class="text-xs font-bold text-white uppercase tracking-wider">
+                إدارة الرموز وسلة المتابعة · Active Curated Universe Roster (14 Symbols)
+              </h3>
+<span class="text-[11px] text-slate-400">| انقر على رمز لإلغاء المتابعة أو استخدم شريط الإضافة السريع</span>
+</div>
+<!-- Bulk Management Tools -->
+<div class="flex items-center gap-2">
+<button class="px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:text-white bg-terminal-cardElevated border border-terminal-border rounded hover:border-slate-500 transition-colors flex items-center gap-1.5">
+<svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span>استيراد قائمة CSV</span>
+</button>
+<button class="px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:text-white bg-terminal-cardElevated border border-terminal-border rounded hover:border-slate-500 transition-colors flex items-center gap-1.5">
+<svg class="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span>مزامنة من المحفظة · Sync from Portfolio</span>
+</button>
+<button class="px-2.5 py-1 text-[11px] font-medium text-rose-400 hover:text-rose-300 bg-rose-950/30 border border-rose-800/40 rounded transition-colors flex items-center gap-1">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span>تفريغ القائمة · Clear</span>
+</button>
+</div>
+</div>
+<!-- Add Input Bar + Chips Area -->
+<div class="flex items-center gap-3 pt-1">
+<!-- Inline Search and Add Field -->
+<div class="relative w-80 shrink-0">
+<input class="w-full bg-[#0a101d] border border-terminal-border focus:border-amber-500 focus:ring-1 focus:ring-amber-500 rounded-lg text-xs py-2 px-3 pl-8 text-white placeholder-slate-500" placeholder="أضف سهم بالرمز أو الاسم... e.g. SWDY, COMI, EKHO" type="text"/>
+<button class="absolute left-2 top-2 text-slate-400 hover:text-amber-400">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M12 4v16m8-8H4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</button>
+</div>
+<!-- Chips of the 14 Curated Symbols -->
+<div class="flex-1 flex flex-wrap gap-1.5 items-center overflow-x-auto py-1">
+<!-- Chip 1 -->
+<span class="inline-flex items-center gap-1.5 bg-emerald-950/50 border border-emerald-500/40 rounded px-2 py-1 text-xs text-emerald-300 font-mono">
+<span class="font-bold">ETEL.CA</span>
+<span class="text-[9px] text-slate-400 font-sans">اتصالات</span>
+<button class="text-slate-400 hover:text-rose-400 ml-0.5" title="إزالة من القائمة">×</button>
+</span>
+<!-- Chip 2 -->
+<span class="inline-flex items-center gap-1.5 bg-emerald-950/50 border border-emerald-500/40 rounded px-2 py-1 text-xs text-emerald-300 font-mono">
+<span class="font-bold">CCAP.CA</span>
+<span class="text-[9px] text-slate-400 font-sans">القلعة</span>
+<button class="text-slate-400 hover:text-rose-400 ml-0.5" title="إزالة من القائمة">×</button>
+</span>
+<!-- Chip 3 -->
+<span class="inline-flex items-center gap-1.5 bg-sky-950/50 border border-sky-500/40 rounded px-2 py-1 text-xs text-sky-300 font-mono">
+<span class="font-bold">COMI.CA</span>
+<span class="text-[9px] text-slate-400 font-sans">التجاري د</span>
+<button class="text-slate-400 hover:text-rose-400 ml-0.5" title="إزالة من القائمة">×</button>
+</span>
+<!-- Chip 4 -->
+<span class="inline-flex items-center gap-1.5 bg-sky-950/50 border border-sky-500/40 rounded px-2 py-1 text-xs text-sky-300 font-mono">
+<span class="font-bold">AMOC.CA</span>
+<span class="text-[9px] text-slate-400 font-sans">أموك</span>
+<button class="text-slate-400 hover:text-rose-400 ml-0.5" title="إزالة من القائمة">×</button>
+</span>
+<!-- Chip 5 -->
+<span class="inline-flex items-center gap-1.5 bg-sky-950/50 border border-sky-500/40 rounded px-2 py-1 text-xs text-sky-300 font-mono">
+<span class="font-bold">TMGH.CA</span>
+<span class="text-[9px] text-slate-400 font-sans">طلعت مصطفى</span>
+<button class="text-slate-400 hover:text-rose-400 ml-0.5" title="إزالة من القائمة">×</button>
+</span>
+<!-- Chip 6 -->
+<span class="inline-flex items-center gap-1.5 bg-sky-950/50 border border-sky-500/40 rounded px-2 py-1 text-xs text-sky-300 font-mono">
+<span class="font-bold">EKHO.CA</span>
+<span class="text-[9px] text-slate-400 font-sans">كويتية</span>
+<button class="text-slate-400 hover:text-rose-400 ml-0.5" title="إزالة من القائمة">×</button>
+</span>
+<!-- Chip 7 -->
+<span class="inline-flex items-center gap-1.5 bg-sky-950/50 border border-sky-500/40 rounded px-2 py-1 text-xs text-sky-300 font-mono">
+<span class="font-bold">FWRY.CA</span>
+<span class="text-[9px] text-slate-400 font-sans">فوري</span>
+<button class="text-slate-400 hover:text-rose-400 ml-0.5" title="إزالة من القائمة">×</button>
+</span>
+<!-- Chip 8 (Stale tag) -->
+<span class="inline-flex items-center gap-1.5 bg-amber-950/40 border border-amber-500/40 rounded px-2 py-1 text-xs text-amber-300 font-mono">
+<span class="font-bold">SWDY.CA</span>
+<span class="text-[8px] bg-amber-500/30 text-amber-200 px-1 rounded">STALE</span>
+<button class="text-slate-400 hover:text-rose-400 ml-0.5" title="إزالة من القائمة">×</button>
+</span>
+<!-- Chip 9 (Stale tag) -->
+<span class="inline-flex items-center gap-1.5 bg-amber-950/40 border border-amber-500/40 rounded px-2 py-1 text-xs text-amber-300 font-mono">
+<span class="font-bold">MFPC.CA</span>
+<span class="text-[8px] bg-amber-500/30 text-amber-200 px-1 rounded">STALE</span>
+<button class="text-slate-400 hover:text-rose-400 ml-0.5" title="إزالة من القائمة">×</button>
+</span>
+<!-- Chip 10 (Stale tag) -->
+<span class="inline-flex items-center gap-1.5 bg-amber-950/40 border border-amber-500/40 rounded px-2 py-1 text-xs text-amber-300 font-mono">
+<span class="font-bold">ESRS.CA</span>
+<span class="text-[8px] bg-amber-500/30 text-amber-200 px-1 rounded">STALE</span>
+<button class="text-slate-400 hover:text-rose-400 ml-0.5" title="إزالة من القائمة">×</button>
+</span>
+<!-- Chip 11 -->
+<span class="inline-flex items-center gap-1.5 bg-slate-900 border border-slate-700/60 rounded px-2 py-1 text-xs text-slate-400 font-mono">
+<span>HRHO.CA</span>
+<button class="text-slate-500 hover:text-rose-400 ml-0.5" title="إزالة من القائمة">×</button>
+</span>
+<!-- Chip 12 -->
+<span class="inline-flex items-center gap-1.5 bg-slate-900 border border-slate-700/60 rounded px-2 py-1 text-xs text-slate-400 font-mono">
+<span>ORAS.CA</span>
+<button class="text-slate-500 hover:text-rose-400 ml-0.5" title="إزالة من القائمة">×</button>
+</span>
+<!-- Chip 13 -->
+<span class="inline-flex items-center gap-1.5 bg-slate-900 border border-slate-700/60 rounded px-2 py-1 text-xs text-slate-400 font-mono">
+<span>HELI.CA</span>
+<button class="text-slate-500 hover:text-rose-400 ml-0.5" title="إزالة من القائمة">×</button>
+</span>
+<!-- Chip 14 -->
+<span class="inline-flex items-center gap-1.5 bg-slate-900 border border-slate-700/60 rounded px-2 py-1 text-xs text-slate-400 font-mono">
+<span>ABUK.CA</span>
+<button class="text-slate-500 hover:text-rose-400 ml-0.5" title="إزالة من القائمة">×</button>
+</span>
+</div>
+</div>
+</section>
+<!-- END: QuickSymbolManagementStrip -->
+<!-- BEGIN: ScanOpportunitiesGrid -->
+<!-- Post-Scan Opportunities Grid (Distinct Amber/Gold Styling & User Intent Tracking) -->
+<section class="bg-terminal-card border border-terminal-border rounded-xl shadow-lg overflow-hidden amber-glow-border" data-purpose="scan-opportunities-table">
+<!-- Table Control Strip -->
+<div class="p-4 bg-terminal-cardElevated/40 border-b border-terminal-border flex items-center justify-between">
+<div class="flex items-center gap-3">
+<span class="w-3 h-3 rounded-sm bg-amber-400"></span>
+<h3 class="font-bold text-sm text-white">
+                نتائج تقييم القائمة المختارة · Evaluated Curated Universe (14 Symbols)
+              </h3>
+<span class="font-mono text-xs text-amber-400/90 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30 font-semibold">
+                ALL ROWS APPOINTED BY USER
+              </span>
+</div>
+<!-- Table Filters / Search -->
+<div class="flex items-center gap-3">
+<div class="flex items-center gap-1 bg-terminal-bg px-2.5 py-1 rounded border border-terminal-border text-xs">
+<span class="text-slate-400">تصفية حسب القرار:</span>
+<button class="font-bold text-white px-1.5 py-0.5 rounded bg-slate-800">الكل (14)</button>
+<button class="text-emerald-400 font-bold px-1.5 py-0.5 rounded hover:bg-slate-800">شراء (2)</button>
+<button class="text-sky-400 font-bold px-1.5 py-0.5 rounded hover:bg-slate-800">مراقبة (5)</button>
+<button class="text-slate-400 font-bold px-1.5 py-0.5 rounded hover:bg-slate-800">تجنب (7)</button>
+</div>
+<div class="text-xs text-slate-400 font-mono">
+                Order: <span class="text-amber-300 font-bold">Decision Readiness ▼</span>
+</div>
+</div>
+</div>
+<!-- Institutional Table -->
+<div class="overflow-x-auto">
+<table class="w-full text-right text-xs border-collapse">
+<thead>
+<tr class="bg-[#0e1626] text-slate-400 font-medium border-b border-terminal-border uppercase tracking-wider text-[11px]">
+<th class="py-3 px-4 text-right">السهم والرمز · Symbol</th>
+<th class="py-3 px-3 text-right">سبب المتابعة / مواءمة المحفظة · Curator's Intent &amp; Note</th>
+<th class="py-3 px-3 text-center">القرار · Decision</th>
+<th class="py-3 px-3 text-center">النظام السوقي · Regime</th>
+<th class="py-3 px-3 text-left font-mono">السعر الحالي · Price</th>
+<th class="py-3 px-3 text-center font-mono">نطاق الشراء · Buy Band</th>
+<th class="py-3 px-3 text-center font-mono">وقف الخسارة · Stop</th>
+<th class="py-3 px-3 text-center font-mono">الهدف 1 · Target 1</th>
+<th class="py-3 px-3 text-center font-mono">الهدف 2 · Target 2</th>
+<th class="py-3 px-2 text-center font-mono">R:R</th>
+<th class="py-3 px-4 text-center">المسافة للتفعيل · Distance to Trigger</th>
+<th class="py-3 px-4 text-center">إجراء سريع · Action</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-terminal-border/60">
+<!-- ROW 1: ETEL.CA (BUY) -->
+<tr class="hover:bg-slate-800/40 transition-colors bg-emerald-950/10 border-r-2 border-r-emerald-500">
+<td class="py-3 px-4">
+<div class="flex items-center gap-2.5">
+<button class="text-amber-400 hover:text-amber-300" title="حذف من المتابعة">★</button>
+<div>
+<span class="font-mono font-bold text-sm text-white">ETEL.CA</span>
+<div class="text-[10px] text-slate-400">المصرية للاتصالات · Telecom</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-3">
+<div class="space-y-0.5">
+<span class="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        Swing Setup Watch
+                      </span>
+<p class="text-[11px] text-slate-300">اختراق مقاومة 41.50 مع زخم فوليوم قوي</p>
+</div>
+</td>
+<td class="py-3 px-3 text-center">
+<span class="inline-flex items-center gap-1 font-mono font-bold text-[11px] px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      BUY NOW
+                    </span>
+</td>
+<td class="py-3 px-3 text-center">
+<span class="px-2 py-0.5 rounded font-mono text-[10px] bg-emerald-900/40 text-emerald-300 border border-emerald-700/50">
+                      BULLISH (ADX 28.4)
+                    </span>
+</td>
+<td class="py-3 px-3 text-left font-num font-bold text-sm text-white">41.80 EGP</td>
+<td class="py-3 px-3 text-center font-num text-emerald-300 font-semibold bg-emerald-950/30 rounded">
+                    41.50 – 42.00
+                  </td>
+<td class="py-3 px-3 text-center font-num text-rose-400 font-semibold">39.90</td>
+<td class="py-3 px-3 text-center font-num text-slate-200">45.00 <span class="text-[10px] text-slate-400">(+7.6%)</span></td>
+<td class="py-3 px-3 text-center font-num text-slate-200">48.20 <span class="text-[10px] text-slate-400">(+15.3%)</span></td>
+<td class="py-3 px-2 text-center font-num font-bold text-emerald-400">1:2.8</td>
+<td class="py-3 px-4">
+<div class="flex flex-col items-center">
+<div class="flex items-center justify-between w-32 text-[10px] font-mono text-emerald-400 mb-1">
+<span>INSIDE BAND</span>
+<span>0.0%</span>
+</div>
+<div class="w-32 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+<div class="h-full bg-emerald-400 rounded-full w-full"></div>
+</div>
+</div>
+</td>
+<td class="py-3 px-4 text-center">
+<div class="flex items-center justify-center gap-1.5">
+<button class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-medium text-[11px] shadow">
+                        تجهيز الأمر
+                      </button>
+<button class="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded" title="تفاصيل السهم">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</button>
+</div>
+</td>
+</tr>
+<!-- ROW 2: CCAP.CA (BUY) -->
+<tr class="hover:bg-slate-800/40 transition-colors bg-emerald-950/10 border-r-2 border-r-emerald-500">
+<td class="py-3 px-4">
+<div class="flex items-center gap-2.5">
+<button class="text-amber-400 hover:text-amber-300" title="حذف من المتابعة">★</button>
+<div>
+<span class="font-mono font-bold text-sm text-white">CCAP.CA</span>
+<div class="text-[10px] text-slate-400">القلعة للاستشارات المالية</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-3">
+<div class="space-y-0.5">
+<span class="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                        Targeting Dip Entry
+                      </span>
+<p class="text-[11px] text-slate-300">ارتداد نموذجي من متوسط متحرك 20 يوم</p>
+</div>
+</td>
+<td class="py-3 px-3 text-center">
+<span class="inline-flex items-center gap-1 font-mono font-bold text-[11px] px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      BUY NOW
+                    </span>
+</td>
+<td class="py-3 px-3 text-center">
+<span class="px-2 py-0.5 rounded font-mono text-[10px] bg-emerald-900/40 text-emerald-300 border border-emerald-700/50">
+                      BULLISH (ADX 24.1)
+                    </span>
+</td>
+<td class="py-3 px-3 text-left font-num font-bold text-sm text-white">3.48 EGP</td>
+<td class="py-3 px-3 text-center font-num text-emerald-300 font-semibold bg-emerald-950/30 rounded">
+                    3.45 – 3.52
+                  </td>
+<td class="py-3 px-3 text-center font-num text-rose-400 font-semibold">3.31</td>
+<td class="py-3 px-3 text-center font-num text-slate-200">3.85 <span class="text-[10px] text-slate-400">(+10.6%)</span></td>
+<td class="py-3 px-3 text-center font-num text-slate-200">4.15 <span class="text-[10px] text-slate-400">(+19.2%)</span></td>
+<td class="py-3 px-2 text-center font-num font-bold text-emerald-400">1:2.4</td>
+<td class="py-3 px-4">
+<div class="flex flex-col items-center">
+<div class="flex items-center justify-between w-32 text-[10px] font-mono text-emerald-400 mb-1">
+<span>INSIDE BAND</span>
+<span>0.0%</span>
+</div>
+<div class="w-32 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+<div class="h-full bg-emerald-400 rounded-full w-full"></div>
+</div>
+</div>
+</td>
+<td class="py-3 px-4 text-center">
+<div class="flex items-center justify-center gap-1.5">
+<button class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-medium text-[11px] shadow">
+                        تجهيز الأمر
+                      </button>
+<button class="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded" title="تفاصيل السهم">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</button>
+</div>
+</td>
+</tr>
+<!-- ROW 3: COMI.CA (WATCH) -->
+<tr class="hover:bg-slate-800/40 transition-colors bg-sky-950/5 border-r-2 border-r-sky-500">
+<td class="py-3 px-4">
+<div class="flex items-center gap-2.5">
+<button class="text-amber-400 hover:text-amber-300" title="حذف من المتابعة">★</button>
+<div>
+<span class="font-mono font-bold text-sm text-white">COMI.CA</span>
+<div class="text-[10px] text-slate-400">البنك التجاري الدولي · CIB</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-3">
+<div class="space-y-0.5">
+<span class="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                        Holding in Portfolio
+                      </span>
+<p class="text-[11px] text-slate-300">مراقبة كسر المقاومة التاريخية 88.00</p>
+</div>
+</td>
+<td class="py-3 px-3 text-center">
+<span class="inline-flex items-center gap-1 font-mono font-bold text-[11px] px-2.5 py-1 rounded bg-sky-500/20 text-sky-400 border border-sky-500/40">
+                      WATCH
+                    </span>
+</td>
+<td class="py-3 px-3 text-center">
+<span class="px-2 py-0.5 rounded font-mono text-[10px] bg-slate-800 text-slate-300 border border-slate-700">
+                      CONSOLIDATION
+                    </span>
+</td>
+<td class="py-3 px-3 text-left font-num font-bold text-sm text-white">86.40 EGP</td>
+<td class="py-3 px-3 text-center font-num text-slate-400">87.50 – 88.20</td>
+<td class="py-3 px-3 text-center font-num text-rose-400/80">83.50</td>
+<td class="py-3 px-3 text-center font-num text-slate-400">94.00</td>
+<td class="py-3 px-3 text-center font-num text-slate-400">99.50</td>
+<td class="py-3 px-2 text-center font-num text-slate-400">1:2.1</td>
+<td class="py-3 px-4">
+<div class="flex flex-col items-center">
+<div class="flex items-center justify-between w-32 text-[10px] font-mono text-sky-400 mb-1">
+<span>1.3% below trigger</span>
+<span>98.7%</span>
+</div>
+<div class="w-32 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+<div class="h-full bg-sky-400 rounded-full w-[85%]"></div>
+</div>
+</div>
+</td>
+<td class="py-3 px-4 text-center">
+<button class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded font-medium text-[11px]">
+                      تنبيه فوري
+                    </button>
+</td>
+</tr>
+<!-- ROW 4: AMOC.CA (WATCH) -->
+<tr class="hover:bg-slate-800/40 transition-colors bg-sky-950/5 border-r-2 border-r-sky-500">
+<td class="py-3 px-4">
+<div class="flex items-center gap-2.5">
+<button class="text-amber-400 hover:text-amber-300" title="حذف من المتابعة">★</button>
+<div>
+<span class="font-mono font-bold text-sm text-white">AMOC.CA</span>
+<div class="text-[10px] text-slate-400">الإسكندرية للزيوت المعدنية</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-3">
+<div class="space-y-0.5">
+<span class="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        Swing Setup Watch
+                      </span>
+<p class="text-[11px] text-slate-300">تجميع كميات ملحوظ في نطاق ضيق</p>
+</div>
+</td>
+<td class="py-3 px-3 text-center">
+<span class="inline-flex items-center gap-1 font-mono font-bold text-[11px] px-2.5 py-1 rounded bg-sky-500/20 text-sky-400 border border-sky-500/40">
+                      WATCH
+                    </span>
+</td>
+<td class="py-3 px-3 text-center">
+<span class="px-2 py-0.5 rounded font-mono text-[10px] bg-slate-800 text-slate-300 border border-slate-700">
+                      CONSOLIDATION
+                    </span>
+</td>
+<td class="py-3 px-3 text-left font-num font-bold text-sm text-white">9.82 EGP</td>
+<td class="py-3 px-3 text-center font-num text-slate-400">10.05 – 10.15</td>
+<td class="py-3 px-3 text-center font-num text-rose-400/80">9.40</td>
+<td class="py-3 px-3 text-center font-num text-slate-400">11.20</td>
+<td class="py-3 px-3 text-center font-num text-slate-400">12.00</td>
+<td class="py-3 px-2 text-center font-num text-slate-400">1:2.5</td>
+<td class="py-3 px-4">
+<div class="flex flex-col items-center">
+<div class="flex items-center justify-between w-32 text-[10px] font-mono text-sky-400 mb-1">
+<span>2.3% below trigger</span>
+<span>97.7%</span>
+</div>
+<div class="w-32 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+<div class="h-full bg-sky-400 rounded-full w-[78%]"></div>
+</div>
+</div>
+</td>
+<td class="py-3 px-4 text-center">
+<button class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded font-medium text-[11px]">
+                      تنبيه فوري
+                    </button>
+</td>
+</tr>
+<!-- ROW 5: SWDY.CA (WATCH / STALE DATA CAUTION) -->
+<tr class="hover:bg-slate-800/40 transition-colors bg-amber-950/10 border-r-2 border-r-amber-500">
+<td class="py-3 px-4">
+<div class="flex items-center gap-2.5">
+<button class="text-amber-400 hover:text-amber-300" title="حذف من المتابعة">★</button>
+<div>
+<div class="flex items-center gap-1.5">
+<span class="font-mono font-bold text-sm text-white">SWDY.CA</span>
+<span class="px-1.5 py-0.2 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded text-[9px] font-mono font-bold">STALE SNAPSHOT</span>
+</div>
+<div class="text-[10px] text-slate-400">السويدي إليكتريك · El Sewedy</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-3">
+<div class="space-y-0.5">
+<span class="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        Monitoring Q3 Earnings
+                      </span>
+<p class="text-[11px] text-slate-300">بانتظار تأكيد إغلاق شمعة اليوم لتحديث التنبيه</p>
+</div>
+</td>
+<td class="py-3 px-3 text-center">
+<span class="inline-flex items-center gap-1 font-mono font-bold text-[11px] px-2 py-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                      WATCH (SYNC REQ)
+                    </span>
+</td>
+<td class="py-3 px-3 text-center">
+<span class="px-2 py-0.5 rounded font-mono text-[10px] bg-slate-800 text-slate-300 border border-slate-700">
+                      STALE (09-10)
+                    </span>
+</td>
+<td class="py-3 px-3 text-left font-num font-bold text-sm text-amber-200">46.50 EGP*</td>
+<td class="py-3 px-3 text-center font-num text-slate-400">47.80 – 48.30</td>
+<td class="py-3 px-3 text-center font-num text-rose-400/80">44.80</td>
+<td class="py-3 px-3 text-center font-num text-slate-400">52.00</td>
+<td class="py-3 px-3 text-center font-num text-slate-400">56.00</td>
+<td class="py-3 px-2 text-center font-num text-slate-400">1:2.0</td>
+<td class="py-3 px-4">
+<div class="flex flex-col items-center">
+<div class="flex items-center justify-between w-32 text-[10px] font-mono text-amber-400 mb-1">
+<span>Requires Re-scan</span>
+<span>--</span>
+</div>
+<div class="w-32 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+<div class="h-full bg-amber-400/60 rounded-full w-[60%]"></div>
+</div>
+</div>
+</td>
+<td class="py-3 px-4 text-center">
+<button class="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded font-medium text-[10px]">
+                      مزامنة الشمعة
+                    </button>
+</td>
+</tr>
+<!-- ROW 6: HRHO.CA (AVOID) -->
+<tr class="hover:bg-slate-800/40 transition-colors opacity-70">
+<td class="py-3 px-4">
+<div class="flex items-center gap-2.5">
+<button class="text-amber-400 hover:text-amber-300" title="حذف من المتابعة">★</button>
+<div>
+<span class="font-mono font-bold text-sm text-slate-300">HRHO.CA</span>
+<div class="text-[10px] text-slate-500">إي إف جي القابضة · EFG Hermes</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-3">
+<div class="space-y-0.5">
+<span class="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                        Sector Macro Watch
+                      </span>
+<p class="text-[11px] text-slate-400">كسر المتوسط المتحرك 50 يوماً للأسفل</p>
+</div>
+</td>
+<td class="py-3 px-3 text-center">
+<span class="inline-flex items-center gap-1 font-mono font-semibold text-[11px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                      AVOID
+                    </span>
+</td>
+<td class="py-3 px-3 text-center">
+<span class="px-2 py-0.5 rounded font-mono text-[10px] bg-rose-950/30 text-rose-400 border border-rose-900/40">
+                      BEARISH (ADX 31.0)
+                    </span>
+</td>
+<td class="py-3 px-3 text-left font-num font-bold text-sm text-slate-400">19.10 EGP</td>
+<td class="py-3 px-3 text-center font-mono text-slate-600">--</td>
+<td class="py-3 px-3 text-center font-mono text-slate-600">--</td>
+<td class="py-3 px-3 text-center font-mono text-slate-600">--</td>
+<td class="py-3 px-3 text-center font-mono text-slate-600">--</td>
+<td class="py-3 px-2 text-center font-mono text-slate-600">--</td>
+<td class="py-3 px-4 text-center font-mono text-slate-500 text-[10px]">
+                    No Valid Setup (-4.8%)
+                  </td>
+<td class="py-3 px-4 text-center">
+<button class="px-2 py-1 text-slate-500 hover:text-rose-400 text-[11px]">
+                      إلغاء المتابعة
+                    </button>
+</td>
+</tr>
+<!-- ROW 7: ORAS.CA (AVOID) -->
+<tr class="hover:bg-slate-800/40 transition-colors opacity-70">
+<td class="py-3 px-4">
+<div class="flex items-center gap-2.5">
+<button class="text-amber-400 hover:text-amber-300" title="حذف من المتابعة">★</button>
+<div>
+<span class="font-mono font-bold text-sm text-slate-300">ORAS.CA</span>
+<div class="text-[10px] text-slate-500">أوراسكوم للإنشاءات</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-3">
+<div class="space-y-0.5">
+<span class="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                        Long Term Value
+                      </span>
+<p class="text-[11px] text-slate-400">سيولة ضعيفة جداً دون عتبة السوينج</p>
+</div>
+</td>
+<td class="py-3 px-3 text-center">
+<span class="inline-flex items-center gap-1 font-mono font-semibold text-[11px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                      AVOID
+                    </span>
+</td>
+<td class="py-3 px-3 text-center">
+<span class="px-2 py-0.5 rounded font-mono text-[10px] bg-slate-800 text-slate-400 border border-slate-700">
+                      LOW LIQUIDITY
+                    </span>
+</td>
+<td class="py-3 px-3 text-left font-num font-bold text-sm text-slate-400">242.00 EGP</td>
+<td class="py-3 px-3 text-center font-mono text-slate-600">--</td>
+<td class="py-3 px-3 text-center font-mono text-slate-600">--</td>
+<td class="py-3 px-3 text-center font-mono text-slate-600">--</td>
+<td class="py-3 px-3 text-center font-mono text-slate-600">--</td>
+<td class="py-3 px-2 text-center font-mono text-slate-600">--</td>
+<td class="py-3 px-4 text-center font-mono text-slate-500 text-[10px]">
+                    Below Gate 2 (Turnover)
+                  </td>
+<td class="py-3 px-4 text-center">
+<button class="px-2 py-1 text-slate-500 hover:text-rose-400 text-[11px]">
+                      إلغاء المتابعة
+                    </button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Table Footer Summary Pagination & Legend -->
+<div class="px-4 py-3 bg-[#0c1424] border-t border-terminal-border flex items-center justify-between text-xs text-slate-400 font-mono">
+<div class="flex items-center gap-4">
+<span>Showing 7 of 14 Stocks</span>
+<span class="text-slate-600">|</span>
+<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-400"></span> BUY: 2</span>
+<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-sky-400"></span> WATCH: 5</span>
+<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-slate-400"></span> AVOID: 7</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="text-[11px] text-amber-400 font-sans">★ تشير النجمة إلى سهم مُضاف يدويًا بواسطة المستخدم</span>
+<span class="text-slate-600">|</span>
+<button class="px-2 py-1 bg-slate-800 text-slate-300 rounded hover:bg-slate-700">عرض جميع الـ 14 سهماً</button>
+</div>
+</div>
+</section>
+<!-- END: ScanOpportunitiesGrid -->
+<!-- BEGIN: InstitutionalZeroStatesShowcase -->
+<!-- Demonstrating Problem 1 & 3: Clean Empty & Zero-Setup Demonstrations -->
+<div class="pt-4 space-y-4" data-purpose="edge-states-demonstration">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 bg-slate-500 rounded-full"></span>
+<h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">
+              معاينة حالات النظام المؤسسية الخاصة · Edge &amp; Zero States Demonstration
+            </h4>
+</div>
+<div class="grid grid-cols-2 gap-6">
+<!-- Edge State A: Watchlist is Completely Empty -->
+<div class="bg-terminal-card border border-dashed border-terminal-border rounded-xl p-6 text-center space-y-3">
+<div class="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 mx-auto flex items-center justify-center text-xl">
+                ★
+              </div>
+<div>
+<h5 class="font-bold text-white text-sm">قائمتك الشخصية فارغة · Your Watchlist is Empty</h5>
+<p class="text-xs text-slate-400 max-w-md mx-auto mt-1">
+                  لم تقم بإضافة أي أسهم بعد. محرك الفحص في هذه الشاشة يعمل فقط على سلتك الخاصة دون مسح الـ 224 سهماً عشوائياً.
+                </p>
+</div>
+<div class="pt-2 flex items-center justify-center gap-3">
+<button class="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold flex items-center gap-1.5">
+<span>+ إضافة أنشط 10 أسهم بالسيولة (EGX30)</span>
+</button>
+<button class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold flex items-center gap-1.5">
+<span>+ استيراد أسهم المحفظة الحالية</span>
+</button>
+</div>
+</div>
+<!-- Edge State B: Zero Actionable Setups (Market Discipline State) -->
+<div class="bg-terminal-card border border-terminal-border rounded-xl p-6 text-center space-y-3">
+<div class="w-12 h-12 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-400 mx-auto flex items-center justify-center">
+<svg class="w-6 h-6" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</div>
+<div>
+<h5 class="font-bold text-white text-sm">انضباط كمي: لا توجد فرص شراء اليوم · Zero Actionable Setups</h5>
+<p class="text-xs text-slate-400 max-w-md mx-auto mt-1">
+                  تم فحص الـ 14 سهماً بالكامل؛ لم يتجاوز أي سهم البوابات السبع الصارمة. الحفاظ على رأس المال هو القرار الكمي الصحيح اليوم.
+                </p>
+</div>
+<div class="pt-1 text-[11px] font-mono text-slate-400">
+                Next Evaluation: Tomorrow at EGX Close (14:30 CLT)
+              </div>
+</div>
+</div>
+</div>
+<!-- END: InstitutionalZeroStatesShowcase -->
+</div>
+</main>
+<!-- END: WorkbenchMainContainer -->
+</div>
+<!-- END: MasterTerminalLayout -->
+</body></html>

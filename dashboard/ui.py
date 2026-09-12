@@ -16,14 +16,32 @@ from dashboard.formatting import status_label, status_tone
 
 logger = logging.getLogger(__name__)
 
-# Semantic tone -> (background, border, text) for dark badges.
-_TONE = {
-    "green": ("rgba(16,185,129,.16)", "rgba(16,185,129,.45)", "#34d399"),
-    "amber": ("rgba(217,119,6,.16)", "rgba(245,158,11,.45)", "#fbbf24"),
-    "red": ("rgba(220,38,38,.16)", "rgba(248,113,113,.45)", "#f87171"),
-    "gray": ("rgba(100,116,139,.16)", "rgba(148,163,184,.35)", "#94a3b8"),
-    "blue": ("rgba(37,99,235,.16)", "rgba(59,130,246,.45)", "#60a5fa"),
+#: Semantic tone -> its one colour. Everything else a badge needs is derived
+#: from it, so a tone cannot drift into being three related-but-different hues.
+#: It could: before this, "green" was text #34d399 over a #10b981 background
+#: with a #10b981 border -- the design system's green wearing Tailwind's -- and
+#: the same was true of amber, red and blue (docs/design/stitch/AUDIT.md §3).
+_TONE_COLOUR = {
+    "green": (52, 211, 153),      # #34d399
+    "amber": (251, 191, 36),      # #fbbf24
+    "red": (248, 113, 113),       # #f87171
+    "gray": (148, 163, 184),      # #94a3b8
+    "blue": (96, 165, 250),       # #60a5fa
+    # Not a sixth shade of grey. "Never measured" has to be distinguishable
+    # from "measured and unremarkable", and grey already means the second.
+    "unknown": (192, 132, 252),   # #c084fc
 }
+
+
+def _tone(rgb):
+    """(background, border, text) for one tone, all from the same colour."""
+    r, g, b = rgb
+    return (f"rgba({r},{g},{b},.12)", f"rgba({r},{g},{b},.30)",
+            f"#{r:02x}{g:02x}{b:02x}")
+
+
+# Semantic tone -> (background, border, text) for dark badges.
+_TONE = {name: _tone(rgb) for name, rgb in _TONE_COLOUR.items()}
 
 
 def apply_global_style():
@@ -33,25 +51,117 @@ def apply_global_style():
         <style>
         /* Loaded over the network; every rule below names a full fallback
            stack, so the app is legible on the mornings the link fails. */
-        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+        /* ===== design tokens ==============================================
+           One source of truth, from docs/design/stitch/imported/screens/
+           00-design-system.html section 2. Where the generated screens drifted
+           to Tailwind's own defaults -- #10b981 for green, #f43f5e for red,
+           #3b82f6 for blue, #f59e0b for amber -- the spec's values win, because
+           the spec derived them from this app's existing palette and the
+           substitutions were Stitch's, not a decision. See
+           docs/design/stitch/AUDIT.md section 3.
+
+           No shadows anywhere. Depth is one step on the surface ladder plus a
+           border, which is what a dense table can carry without noise.
+           ================================================================== */
         :root {
-            --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-            --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+            /* Arabic is half of this interface and had no face loaded for it
+               at all until now. It is in the *base* stack rather than behind a
+               `[dir="rtl"]` rule, because this app writes Arabic and Latin
+               inside the same text node and marks neither -- so a selector for
+               Arabic matches nothing, and the first version of this rule was
+               exactly that and loaded no font. Font fallback is per glyph:
+               Latin resolves on Plex Sans, Arabic falls through to Plex Sans
+               Arabic, and one line of mixed text gets both. */
+            --font-sans: "IBM Plex Sans", "IBM Plex Sans Arabic", system-ui,
+                -apple-system, "Segoe UI", sans-serif;
+            --font-ar: "IBM Plex Sans Arabic", "Segoe UI", system-ui, sans-serif;
+            /* Same reason: an Arabic word inside a monospaced cell would
+               otherwise render in whatever the browser had. */
+            --font-mono: "IBM Plex Mono", "IBM Plex Sans Arabic", ui-monospace,
+                "Cascadia Mono", Consolas, monospace;
+
+            /* surfaces: one ladder, four rungs */
             --bg: #0b1220;
             --bg-2: #0e1729;
             --surface: #131c30;
             --surface-2: #17223b;
+            --surface-well: #0f182a;     /* recessed: inputs, code, wells */
             --border: #223049;
+            --border-active: #334769;
+            --border-focus: #476291;
+
+            /* text: three tiers, not two */
             --text: #e6edf7;
             --muted: #8ea1bd;
+            --text-low: #5a6f8c;         /* metadata, provenance, timestamps */
+
+            /* semantic state */
             --green: #34d399; --amber: #fbbf24; --red: #f87171;
             --blue: #60a5fa; --gray: #94a3b8;
+            --green-bg: rgba(52,211,153,.08); --red-bg: rgba(248,113,113,.08);
+            --amber-bg: rgba(251,191,36,.08); --blue-bg: rgba(96,165,250,.08);
+            --gray-bg: rgba(148,163,184,.08);
+
+            /* Unknown is a state of its own, and deliberately not a grey:
+               grey reads as "disabled" and this means "never measured". A
+               value that was never computed must not be able to pass for a
+               computed zero. */
+            --unknown: #c084fc;
+            --unknown-bg: rgba(192,132,252,.07);
+            --unknown-border: rgba(192,132,252,.45);
+            --unknown-hatch: repeating-linear-gradient(45deg,
+                rgba(192,132,252,.10) 0 3px, transparent 3px 6px);
+
+            /* 4px grid */
+            --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s6:24px; --s8:32px;
+            /* chips are 2px, panels 4px: no pills */
+            --r-chip:2px; --r-card:4px;
+
+            /* The one action colour. Darker than --blue, which is a text and
+               state colour and cannot carry white text as a fill. */
+            --accent: #2563eb; --accent-hover: #1d4ed8;
+            --border-hover: #33507a; --surface-hover: #1b2742;
+            --link: #93c5fd;
         }
         .stApp { background: var(--bg); color: var(--text); font-size:16px;
             font-family: var(--font-sans); }
-        /* Digits that sit in a column must line up in that column. */
+        /* Digits that sit in a column must line up in that column. `zero` as
+           well as `tnum`: a slashed zero is what separates 0 from O in a
+           ticker column read every day. */
         [data-testid="stMetricValue"], [data-testid="stDataFrame"],
-        code, kbd, pre { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+        code, kbd, pre { font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1, "zero" 1; }
+
+        /* Arabic runs on its own face at its own size. Arabic glyphs carry
+           taller ascenders and deeper descenders than Latin at the same point
+           size, so matching the number matches the wrong thing -- these are
+           the optical sizes from the design system's type table, which put the
+           two scripts on one baseline instead of one font-size. */
+        [dir="rtl"], .ar, .egx-metric .lar, .egx-hero h1:lang(ar) {
+            font-family: var(--font-ar); }
+        .egx-ar-prose { font-family: var(--font-ar); direction: rtl; text-align: right;
+            font-size: .845rem; line-height: 1.95; max-width: 62ch; color: var(--text); }
+
+        /* Keyboard focus is visible on everything, not only buttons. Four of
+           the twelve generated screens had no focus state at all, and the app
+           it replaces had one on buttons alone -- so tabbing through a table's
+           controls left no visible position. */
+        :where(a, button, input, select, textarea, summary,
+               [role="button"], [role="tab"], [tabindex]):focus-visible {
+            outline: 2px solid var(--blue); outline-offset: 2px; border-radius: var(--r-chip);
+        }
+
+        /* Nothing here animates -- Streamlit cannot carry motion and the
+           design bans it -- but Streamlit's own spinners and progress bars do.
+           A reader who asked the OS for less motion gets less of it. */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: .001ms !important; animation-iteration-count: 1 !important;
+                transition-duration: .001ms !important; scroll-behavior: auto !important;
+            }
+        }
         /* clear the fixed Streamlit toolbar so the page title is never clipped */
         .block-container { max-width: 1640px; padding-top: 3.4rem; padding-bottom: 2.4rem; }
         header[data-testid="stHeader"] { background: transparent; }
@@ -111,12 +221,12 @@ def apply_global_style():
             background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
         }
         .stButton > button:hover, .stDownloadButton > button:hover {
-            border-color: #33507a; background: #1b2742;
+            border-color: var(--border-hover); background: var(--surface-hover);
         }
         .stButton > button[kind="primary"] {
-            background: #2563eb; border: 1px solid #2563eb; color: #fff;
+            background: var(--accent); border: 1px solid var(--accent); color: #fff;
         }
-        .stButton > button[kind="primary"]:hover { background: #1d4ed8; border-color:#1d4ed8; }
+        .stButton > button[kind="primary"]:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
         :is(.stButton, .stDownloadButton) > button:focus-visible {
             outline: 2px solid var(--blue); outline-offset: 2px;
         }
@@ -195,6 +305,50 @@ def apply_global_style():
         .egx-badge-pill { display:inline-block; padding:.16rem .5rem; border-radius:999px;
             font-size:.74rem; font-weight:700; line-height:1.3; }
 
+        /* --- the three-state gate ----------------------------------------
+           PASS, FAIL, and UNAVAILABLE. Never two. A gate that could not run
+           reports UNAVAILABLE in its own colour and its own hatch, because
+           this program has already shipped a gate that could not fire while
+           reporting PASS -- `require_market_analyzer` read true for years over
+           an index no provider served (docs/audits/strategies/
+           DAILY_STRATEGY_DIAGNOSIS.md section 7). Two of the twelve generated
+           screens honoured this; the rest could not tell the two apart. */
+        .egx-gate { display:inline-flex; align-items:center; gap:.3rem;
+            font-family:var(--font-mono); font-size:.68rem; font-weight:600;
+            letter-spacing:.05em; text-transform:uppercase; padding:.15rem .4rem;
+            border-radius:var(--r-chip); border:1px solid transparent; white-space:nowrap; }
+        .egx-gate::before { content:""; width:5px; height:5px; flex-shrink:0; }
+        .egx-gate.pass { color:var(--green); border-color:var(--green); background:transparent; }
+        .egx-gate.pass::before { background:var(--green); }
+        .egx-gate.fail { color:var(--red); border-color:rgba(248,113,113,.5); background:var(--red-bg); }
+        .egx-gate.fail::before { background:var(--red); }
+        /* Hatched, not filled: it is an absence of a result, not a result. */
+        .egx-gate.na { color:var(--amber); border-color:rgba(251,191,36,.5);
+            background:repeating-linear-gradient(45deg, rgba(251,191,36,.13) 0 3px,
+                transparent 3px 6px); }
+        .egx-gate.na::before { background:transparent; border:1px solid var(--amber); }
+
+        /* --- unknown, which is not zero and not blank --------------------- */
+        .egx-unknown { display:inline-flex; align-items:center; gap:.25rem;
+            font-family:var(--font-mono); font-size:.78rem; color:var(--unknown);
+            border:1px dashed var(--unknown-border); background:var(--unknown-hatch);
+            padding:.05rem .35rem; border-radius:var(--r-chip); white-space:nowrap; }
+
+        /* --- where a number came from ------------------------------------- */
+        .egx-prov { font-family:var(--font-mono); font-size:.62rem; color:var(--text-low);
+            letter-spacing:.02em; white-space:nowrap; }
+        .egx-prov b { font-weight:500; color:var(--muted); }
+
+        /* --- evidence, not an instruction ---------------------------------
+           Worn by any panel whose output is research rather than a trade to
+           place. Blue, never green: green on this page means a position made
+           money, and an advisory card must not borrow that. */
+        .egx-advisory { display:inline-flex; align-items:center; gap:.35rem;
+            font-family:var(--font-mono); font-size:.63rem; font-weight:600;
+            letter-spacing:.06em; text-transform:uppercase; color:var(--blue);
+            border:1px solid rgba(96,165,250,.45); background:var(--blue-bg);
+            padding:.12rem .4rem; border-radius:var(--r-chip); white-space:nowrap; }
+
         .egx-metric { background: var(--surface); border:1px solid var(--border);
             border-radius:11px; padding:.55rem .8rem; }
         .egx-metric .v { font-size:1.45rem; font-weight:780; line-height:1.0; }
@@ -220,7 +374,7 @@ def apply_global_style():
         .egx-oppcard { background: var(--surface); border:1px solid var(--border);
             border-left:3px solid var(--green); border-radius:11px; padding:.7rem .85rem; height:100%; }
         .egx-system-link { display:inline-block; padding:.55rem .85rem; border-radius:9px;
-            background:var(--surface-2); border:1px solid var(--border); color:#93c5fd !important;
+            background:var(--surface-2); border:1px solid var(--border); color:var(--link) !important;
             font-weight:750; text-decoration:none; margin:.35rem 0 .65rem; }
         /* --- signal card: the trade drawn to scale ------------------------
            Stop, entry and target sit at their true relative distances, and the
@@ -496,6 +650,47 @@ def badge_html(text, tone="gray", title=""):
     t = f' title="{html.escape(str(title))}"' if title else ""
     return (f'<span class="egx-badge-pill"{t} style="background:{bg};'
             f'border:1px solid {border};color:{fg}">{html.escape(str(text))}</span>')
+
+
+#: The three states of any check, and the class each is drawn with. A caller
+#: with a boolean has two states and must say which of the three the third is;
+#: that is the point of the constant rather than a bare string.
+GATE_PASS, GATE_FAIL, GATE_UNAVAILABLE = "PASS", "FAIL", "UNAVAILABLE"
+_GATE_CLASS = {GATE_PASS: "pass", GATE_FAIL: "fail", GATE_UNAVAILABLE: "na"}
+
+
+def gate_html(state, label="", title=""):
+    """One check's outcome as PASS / FAIL / UNAVAILABLE -- never as two states.
+
+    ``state`` is one of the three constants. Anything else is drawn as
+    UNAVAILABLE rather than guessed at, because the failure this component
+    exists to prevent is a check whose result was unknown being shown as one
+    that passed.
+    """
+    key = str(state).strip().upper()
+    css = _GATE_CLASS.get(key)
+    if css is None:
+        css, key = "na", GATE_UNAVAILABLE
+    text = f"{label} {key}".strip() if label else key
+    tip = f' title="{html.escape(str(title))}"' if title else ""
+    return f'<span class="egx-gate {css}"{tip}>{html.escape(text)}</span>'
+
+
+def unknown_html(note="not measured"):
+    """The value that was never measured. Never a zero, never an empty cell."""
+    return (f'<span class="egx-unknown" title="{html.escape(str(note))}">'
+            f'—·— <span style="font-size:.85em;opacity:.8">?</span></span>')
+
+
+def provenance_html(source, label="src"):
+    """Where a number came from, small enough to sit under it."""
+    return (f'<span class="egx-prov"><b>{html.escape(str(label))}:</b> '
+            f'{html.escape(str(source))}</span>')
+
+
+def advisory_html(text="ADVISORY · بحث استرشادي"):
+    """Marks a panel as evidence to read, not an instruction to act on."""
+    return f'<span class="egx-advisory">{html.escape(str(text))}</span>'
 
 
 def status_badge(status):

@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+
+<html class="dark" dir="rtl" lang="ar"><head>
+<meta charset="utf-8"/>
+<meta content="width=1920, initial-scale=1.0" name="viewport"/>
+<title>لوحة التداول اليومي · Daily Swing Dashboard | EGX AI Trader CORE-PRO</title>
+<!-- BEGIN: Core Libraries & Fonts -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&amp;family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- END: Core Libraries & Fonts -->
+<!-- BEGIN: Tailwind Configuration -->
+<script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            terminal: {
+              base: '#080d16',
+              sidebar: '#0b111c',
+              container: '#0e1729',
+              card: '#131f36',
+              cardHover: '#182744',
+              border: '#1b2a47',
+              borderSubtle: '#152138',
+              muted: '#5a6f8c',
+              text: '#e6edf7',
+              textSub: '#94a3b8',
+              accent: '#3b82f6',
+              accentHover: '#2563eb',
+              buy: '#10b981',
+              buyBg: '#064e3b',
+              watch: '#3b82f6',
+              watchBg: '#1e3a8a',
+              avoid: '#475569',
+              avoidText: '#64748b',
+              crimson: '#ef4444',
+              crimsonBg: '#451010',
+              gold: '#f59e0b',
+              goldBg: '#452a05'
+            }
+          },
+          fontFamily: {
+            sans: ['"IBM Plex Sans Arabic"', 'sans-serif'],
+            mono: ['"IBM Plex Mono"', 'monospace']
+          },
+          letterSpacing: {
+            tighter: '-0.03em',
+            tight: '-0.015em',
+            wide: '0.025em',
+            wider: '0.05em',
+            widest: '0.1em'
+          }
+        }
+      }
+    };
+  </script>
+<!-- END: Tailwind Configuration -->
+<!-- BEGIN: Custom Global Terminal Styles -->
+<style data-purpose="layout-and-typography">
+    body {
+      background-color: #080d16;
+      color: #e6edf7;
+      font-family: 'IBM Plex Sans Arabic', sans-serif;
+      overflow-x: hidden;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Strict Monospace Numbers for Financial Data Alignment */
+    .tnum {
+      font-feature-settings: "tnum" 1, "zero" 1;
+      font-family: 'IBM Plex Mono', monospace;
+      letter-spacing: -0.02em;
+    }
+
+    /* Sub-pixel subtle scrollbars */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0b111c;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e2e4a;
+      border-radius: 2px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #2e446d;
+    }
+
+    /* Interactive state toggles for Scan Lifecycle Demo */
+    .view-panel {
+      display: none;
+    }
+    .view-panel.active {
+      display: block;
+    }
+  </style>
+<!-- END: Custom Global Terminal Styles -->
+</head>
+<body class="w-[1920px] h-[1080px] flex overflow-hidden select-none bg-terminal-base">
+<!-- BEGIN: Fixed Left Sidebar -->
+<aside class="w-[280px] h-screen bg-terminal-sidebar border-l border-terminal-border flex flex-col justify-between shrink-0 z-50" data-purpose="primary-sidebar">
+<div>
+<!-- Brand & Versioning Header -->
+<div class="px-5 py-4 border-b border-terminal-border/80 flex flex-col gap-1.5">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<div class="w-2.5 h-2.5 rounded-sm bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]"></div>
+<span class="font-mono text-xs font-bold tracking-wider text-slate-100 uppercase">EGX AI Trader</span>
+</div>
+<span class="px-1.5 py-0.5 text-[9px] font-mono uppercase bg-blue-500/10 text-blue-400 border border-blue-500/30 rounded">CORE-PRO</span>
+</div>
+<div class="text-[10px] text-terminal-muted font-mono tracking-tight flex items-center justify-between">
+<span>BUILD: v2.4.18</span>
+<span class="text-emerald-400">ENGINE ACTIVE</span>
+</div>
+</div>
+<!-- Realtime Engine Sync Health Strip -->
+<div class="px-4 py-2 bg-terminal-container border-b border-terminal-border/60 text-[10px] font-mono space-y-1">
+<div class="flex justify-between items-center text-slate-300">
+<span class="text-terminal-muted">EOD CANDLE:</span>
+<span class="text-emerald-400 font-semibold">224/224 SYNCED</span>
+</div>
+<div class="flex justify-between items-center text-slate-300">
+<span class="text-terminal-muted">MICROSTRUCT:</span>
+<span class="text-emerald-400 font-semibold">100% CLEAN</span>
+</div>
+</div>
+<!-- Navigation Hierarchy -->
+<nav class="p-3 space-y-6 text-xs" data-purpose="sidebar-navigation">
+<!-- PORTFOLIO Group -->
+<div>
+<div class="px-3 pb-1.5 text-[10px] font-mono uppercase tracking-wider text-terminal-muted font-bold">PORTFOLIO · المحفظة</div>
+<a class="flex items-center gap-2 px-3 py-1.5 rounded text-terminal-muted hover:text-slate-100 hover:bg-terminal-container/50 transition-colors" href="#">
+<span class="font-mono text-terminal-muted text-[11px] font-medium">01</span>
+<span>المحفظة الذاتية (My Portfolio)</span>
+</a>
+</div>
+<!-- SWING TRADING Group (Active Group) -->
+<div class="space-y-0.5">
+<div class="px-3 pb-1.5 text-[10px] font-mono uppercase tracking-wider text-terminal-muted font-bold">SWING · سوينج</div>
+<!-- Active Page Indicator with 2px blue rail -->
+<a class="relative flex items-center gap-2 px-3 py-2 rounded bg-terminal-container font-semibold text-blue-400 shadow-sm" href="#">
+<div class="absolute right-0 top-0 bottom-0 w-[3px] bg-blue-500 rounded-l"></div>
+<span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+<span>لوحة التداول اليومي (Daily)</span>
+</a>
+<a class="flex items-center gap-2 px-3 py-1.5 rounded text-terminal-muted hover:text-slate-100 hover:bg-terminal-container/40 transition-colors" href="#">
+<span class="font-mono text-slate-500 text-[11px]">02</span>
+<span>اختراقات السوينج (Swing Breakout)</span>
+</a>
+<a class="flex items-center gap-2 px-3 py-1.5 rounded text-terminal-muted hover:text-slate-100 hover:bg-terminal-container/40 transition-colors" href="#">
+<span class="font-mono text-slate-500 text-[11px]">03</span>
+<span>مراقبة الاختراق (Breakout Watch)</span>
+</a>
+<a class="flex items-center gap-2 px-3 py-1.5 rounded text-terminal-muted hover:text-slate-100 hover:bg-terminal-container/40 transition-colors" href="#">
+<span class="font-mono text-slate-500 text-[11px]">04</span>
+<span>الاختراقات المؤكدة (Confirmed)</span>
+</a>
+<a class="flex items-center gap-2 px-3 py-1.5 rounded text-terminal-muted hover:text-slate-100 hover:bg-terminal-container/40 transition-colors" href="#">
+<span class="font-mono text-slate-500 text-[11px]">05</span>
+<span>سيولة القطاعات (Sector Liquidity)</span>
+</a>
+<a class="flex items-center gap-2 px-3 py-1.5 rounded text-terminal-muted hover:text-slate-100 hover:bg-terminal-container/40 transition-colors" href="#">
+<span class="font-mono text-slate-500 text-[11px]">06</span>
+<span>قائمة المتابعة (Watchlist)</span>
+</a>
+<a class="flex items-center gap-2 px-3 py-1.5 rounded text-terminal-muted hover:text-slate-100 hover:bg-terminal-container/40 transition-colors" href="#">
+<span class="font-mono text-slate-500 text-[11px]">07</span>
+<span>تفاصيل السهم (Stock Details)</span>
+</a>
+</div>
+<!-- AI ANALYSIS Group -->
+<div>
+<div class="px-3 pb-1.5 text-[10px] font-mono uppercase tracking-wider text-terminal-muted font-bold">AI ANALYSIS · تحليل</div>
+<a class="flex items-center gap-2 px-3 py-1.5 rounded text-terminal-muted hover:text-slate-100 hover:bg-terminal-container/40 transition-colors" href="#">
+<span class="font-mono text-slate-500 text-[11px]">08</span>
+<span>التحليل الذكي (AI Analysis)</span>
+</a>
+</div>
+<!-- SYSTEM Group -->
+<div>
+<div class="px-3 pb-1.5 text-[10px] font-mono uppercase tracking-wider text-terminal-muted font-bold">SYSTEM · النظام</div>
+<a class="flex items-center gap-2 px-3 py-1.5 rounded text-terminal-muted hover:text-slate-100 hover:bg-terminal-container/40 transition-colors" href="#">
+<span class="font-mono text-slate-500 text-[11px]">09</span>
+<span>صحة النظام (System Health)</span>
+</a>
+<a class="flex items-center gap-2 px-3 py-1.5 rounded text-terminal-muted hover:text-slate-100 hover:bg-terminal-container/40 transition-colors" href="#">
+<span class="font-mono text-slate-500 text-[11px]">10</span>
+<span>الإعدادات المتقدمة (Settings)</span>
+</a>
+</div>
+</nav>
+</div>
+<!-- Sidebar Bottom Status Footer -->
+<div class="p-3 border-t border-terminal-border/80 bg-terminal-container/60 space-y-2">
+<div class="flex items-center justify-between text-[11px]">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+<span class="text-slate-300 font-medium">جلسة تداول نشطة</span>
+</div>
+<span class="font-mono text-[10px] text-terminal-muted">12-SEP 12:47</span>
+</div>
+<div class="text-[10px] text-slate-500 leading-tight">
+        المحرك يعتمد شموع يومية رسمية مقفلة لمنع الإشارات اللحظية الوهمية
+      </div>
+</div>
+</aside>
+<!-- END: Fixed Left Sidebar -->
+<!-- BEGIN: Main Workbench -->
+<main class="w-[1640px] h-screen overflow-y-auto px-8 py-5 flex flex-col gap-4" data-purpose="terminal-workbench">
+<!-- BEGIN: Top Header & Provenance Strip -->
+<header class="flex flex-col gap-2 shrink-0 border-b border-terminal-border pb-3">
+<div class="flex items-center justify-between">
+<!-- Page Title & Subtitle -->
+<div>
+<div class="flex items-center gap-3">
+<h1 class="text-xl font-bold text-slate-100 tracking-tight flex items-center gap-2">
+<span>لوحة التداول اليومي</span>
+<span class="text-slate-600 font-mono text-sm">/</span>
+<span class="text-sm font-mono tracking-normal text-slate-400 font-normal">DAILY SWING DASHBOARD</span>
+</h1>
+<span class="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-blue-500/10 text-blue-400 border border-blue-500/30">SWING ENGINE</span>
+</div>
+<p class="text-xs text-terminal-muted mt-0.5">
+            قرارات متعددة الأيام مبنية على شموع يومية مكتملة — Multi-day swing decisions strictly computed on settled daily bars
+          </p>
+</div>
+<!-- Scan Lifecycle State Switcher Demo Widget -->
+<div class="flex items-center gap-2 bg-terminal-container border border-terminal-border p-1 rounded-md text-[11px] font-mono">
+<span class="text-terminal-muted px-2">STATE:</span>
+<button class="px-2.5 py-1 rounded bg-blue-600 text-white font-medium transition-all" id="btn-state-loaded" onclick="switchScanState('loaded')">LOADED (ACTIVE)</button>
+<button class="px-2.5 py-1 rounded text-terminal-muted hover:text-slate-200 transition-all" id="btn-state-running" onclick="switchScanState('running')">RUNNING</button>
+<button class="px-2.5 py-1 rounded text-terminal-muted hover:text-slate-200 transition-all" id="btn-state-empty" onclick="switchScanState('empty')">EMPTY</button>
+</div>
+</div>
+<!-- Integrated Provenance & Status Strip -->
+<div class="flex items-center justify-between px-3 py-1.5 bg-terminal-container/70 rounded border border-terminal-border/80 text-[11px] font-mono">
+<div class="flex items-center gap-4 text-slate-400">
+<div class="flex items-center gap-1.5">
+<span class="text-terminal-muted">HISTORICAL SOURCE:</span>
+<span class="text-slate-200 font-semibold">EODHD (Cache T+0)</span>
+</div>
+<span class="text-slate-700">•</span>
+<div class="flex items-center gap-1.5">
+<span class="text-terminal-muted">LATEST CANDLE:</span>
+<span class="text-slate-200 font-semibold">2026-09-10 (Settled)</span>
+</div>
+<span class="text-slate-700">•</span>
+<div class="flex items-center gap-1.5">
+<span class="text-terminal-muted">LIVE QUOTE OVERLAY:</span>
+<span class="text-emerald-400 font-semibold flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>
+              Rubix (Real-time Active)
+            </span>
+</div>
+</div>
+<div class="text-terminal-muted text-[10px]">
+          SCAN SESSION ID: <span class="text-slate-300 font-mono">df22bdd44f44</span>
+</div>
+</div>
+</header>
+<!-- END: Top Header & Provenance Strip -->
+<!-- BEGIN: SCAN STATE 1: RUNNING (Controlled via State Switcher) -->
+<div class="view-panel space-y-3" id="state-running-container">
+<div class="p-4 bg-terminal-container border border-blue-500/30 rounded-lg shadow-lg">
+<div class="flex items-center justify-between pb-3 border-b border-terminal-border">
+<div class="flex items-center gap-3">
+<div class="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+<div>
+<div class="text-sm font-semibold text-slate-100 flex items-center gap-2">
+<span>جاري معالجة بيانات السوق وتدقيق الشموع...</span>
+<span class="font-mono text-xs text-blue-400">Loading Rubix quote overlays</span>
+</div>
+<div class="text-[11px] text-terminal-muted font-mono mt-0.5">
+                JOB: df22bdd44f44 · started 2026-09-12T09:44:20+00:00 · PREPARING_RUBIX
+              </div>
+</div>
+</div>
+<div class="flex items-center gap-3 font-mono text-xs">
+<div class="text-right">
+<div class="text-terminal-muted text-[10px]">REMAINING EST.</div>
+<div class="text-slate-200 font-bold">01:45 min</div>
+</div>
+<button class="px-3 py-1.5 bg-terminal-crimsonBg/50 text-crimson-400 border border-crimson-500/30 rounded hover:bg-terminal-crimsonBg transition-colors text-xs">
+              إيقاف الفحص (Abort)
+            </button>
+</div>
+</div>
+<!-- Progress Bar -->
+<div class="mt-4 space-y-2">
+<div class="flex justify-between text-xs font-mono">
+<span class="text-slate-300">PROGRESS: 142 / 230 SYMBOLS</span>
+<span class="text-blue-400 font-bold">61.7%</span>
+</div>
+<div class="w-full h-2 bg-terminal-base rounded overflow-hidden border border-terminal-border">
+<div class="h-full bg-blue-500 rounded transition-all duration-300" style="width: 61.7%"></div>
+</div>
+</div>
+<!-- Realtime Run Telemetry Metrics -->
+<div class="grid grid-cols-6 gap-3 mt-4 text-xs font-mono">
+<div class="p-2 bg-terminal-card rounded border border-terminal-border/60">
+<div class="text-[10px] text-terminal-muted">ELAPSED</div>
+<div class="text-sm font-bold text-slate-200 mt-1">00:42</div>
+</div>
+<div class="p-2 bg-terminal-card rounded border border-terminal-border/60">
+<div class="text-[10px] text-terminal-muted">CURRENT SYMBOL</div>
+<div class="text-sm font-bold text-blue-400 mt-1">SWDY.CA</div>
+</div>
+<div class="p-2 bg-terminal-card rounded border border-terminal-border/60">
+<div class="text-[10px] text-terminal-muted">SUCCESSFUL</div>
+<div class="text-sm font-bold text-emerald-400 mt-1">138</div>
+</div>
+<div class="p-2 bg-terminal-card rounded border border-terminal-border/60">
+<div class="text-[10px] text-terminal-muted">SKIPPED / GAPS</div>
+<div class="text-sm font-bold text-amber-400 mt-1">4</div>
+</div>
+<div class="p-2 bg-terminal-card rounded border border-terminal-border/60">
+<div class="text-[10px] text-terminal-muted">CACHE HITS</div>
+<div class="text-sm font-bold text-slate-300 mt-1">138 / 142</div>
+</div>
+<div class="p-2 bg-terminal-card rounded border border-terminal-border/60">
+<div class="text-[10px] text-terminal-muted">CIRCUIT BREAKER</div>
+<div class="text-sm font-bold text-emerald-400 mt-1">CLOSED (OK)</div>
+</div>
+</div>
+</div>
+</div>
+<!-- END: SCAN STATE 1: RUNNING -->
+<!-- BEGIN: SCAN STATE 2: EMPTY (Controlled via State Switcher) -->
+<div class="view-panel" id="state-empty-container">
+<div class="p-12 text-center bg-terminal-container border border-dashed border-terminal-border rounded-lg space-y-4">
+<div class="w-12 h-12 mx-auto rounded-full bg-terminal-card flex items-center justify-center border border-terminal-border text-terminal-muted">
+<span class="font-mono text-xl font-bold">0</span>
+</div>
+<div class="max-w-md mx-auto space-y-1">
+<h3 class="text-base font-bold text-slate-100">لا يوجد مسح محفوظ لجلسة اليوم</h3>
+<p class="text-xs text-terminal-muted">لم يتم تشغيل فحص السوق حتى الآن. اضغط أدناه لتهيئة نموذج الفحص الشامل (Phase 6/7) والتحقق من سلامة البيانات.</p>
+</div>
+<button class="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs rounded transition-all shadow-md" onclick="switchScanState('running')">
+          بدء فحص السوق اليومي (Initialize Scan)
+        </button>
+</div>
+</div>
+<!-- END: SCAN STATE 2: EMPTY -->
+<!-- BEGIN: SCAN STATE 3: LOADED (Active Dashboard View) -->
+<div class="view-panel active space-y-4" id="state-loaded-container">
+<!-- Scan Controller & Context Bar -->
+<section class="p-3.5 bg-terminal-container border border-terminal-border rounded-lg flex flex-col gap-3" data-purpose="scan-controller-bar">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded text-xs font-mono font-semibold flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+<span>فحص السوق مكتمل (Scan Complete: 209/225 Analyzed · 16 Excluded)</span>
+</div>
+<div class="text-[11px] text-terminal-muted flex items-center gap-1 font-mono">
+<span class="text-slate-400">STATUS:</span>
+<span>Scan is immutable for session 2026-09-10 — Concurrent runs locked</span>
+</div>
+</div>
+<!-- Secondary Quick Action Re-inspect -->
+<div class="flex items-center gap-2">
+<button class="px-3 py-1 bg-terminal-card hover:bg-terminal-cardHover border border-terminal-border rounded text-xs text-slate-300 font-mono transition-colors">
+              إعادة التحقق من عزل البيانات (Audit Cache)
+            </button>
+</div>
+</div>
+<!-- Summary Context Metrics Inline Strip -->
+<div class="grid grid-cols-7 gap-3 pt-2 border-t border-terminal-border/60 text-xs font-mono">
+<!-- Metric 1: BUY Signals -->
+<div class="px-3 py-2 bg-terminal-card rounded border border-emerald-500/30 flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+<span class="text-slate-300">شراء (BUY)</span>
+</div>
+<span class="text-emerald-400 font-bold text-base tnum">3</span>
+</div>
+<!-- Metric 2: WATCH Signals -->
+<div class="px-3 py-2 bg-terminal-card rounded border border-blue-500/30 flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-blue-400"></span>
+<span class="text-slate-300">متابعة (WATCH)</span>
+</div>
+<span class="text-blue-400 font-bold text-base tnum">109</span>
+</div>
+<!-- Metric 3: AVOID Signals -->
+<div class="px-3 py-2 bg-terminal-card rounded border border-slate-700/60 flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-slate-500"></span>
+<span class="text-terminal-muted">تجنب (AVOID)</span>
+</div>
+<span class="text-terminal-muted font-bold text-base tnum">97</span>
+</div>
+<!-- Metric 4: Coverage -->
+<div class="px-3 py-2 bg-terminal-card rounded border border-terminal-border flex items-center justify-between">
+<span class="text-terminal-muted">تغطية السوق</span>
+<span class="text-slate-100 font-bold tnum">90.9% <span class="text-[10px] text-slate-500">(209/230)</span></span>
+</div>
+<!-- Metric 5: Regime -->
+<div class="px-3 py-2 bg-terminal-card rounded border border-terminal-border flex items-center justify-between">
+<span class="text-terminal-muted">حالة السوق</span>
+<span class="text-amber-400 font-bold">WEAK_BULL</span>
+</div>
+<!-- Metric 6: Session Date -->
+<div class="px-3 py-2 bg-terminal-card rounded border border-terminal-border flex items-center justify-between">
+<span class="text-terminal-muted">تاريخ الجلسة</span>
+<span class="text-slate-200 font-semibold">2026-09-10</span>
+</div>
+<!-- Metric 7: Quote Feed -->
+<div class="px-3 py-2 bg-terminal-card rounded border border-terminal-border flex items-center justify-between">
+<span class="text-terminal-muted">مصدر الأسعار</span>
+<span class="text-emerald-400 font-semibold flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              Rubix Live
+            </span>
+</div>
+</div>
+<!-- Exclusion Alert Banner -->
+<div class="px-3.5 py-2 bg-amber-500/10 border-r-4 border-amber-500 border-t border-b border-l border-amber-500/20 rounded text-xs flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded text-[10px] font-mono font-bold uppercase">EXCLUSION NOTICE / تنبيه استبعاد</span>
+<span class="text-slate-200 text-[11px]">
+              تعذر تحليل 16 سهم لعدم اكتمال البيانات أو عدم تطابق جلسة التداول — تم عزلها لمنع الإشارات الزائفة وحماية رأس المال.
+            </span>
+</div>
+<button class="text-amber-400 hover:text-amber-300 underline font-mono text-[11px]" onclick="document.getElementById('advanced-research-section').scrollIntoView({behavior:'smooth'})">
+            عرض تفاصيل الـ 16 سهم في البحث المتقدم ↓
+          </button>
+</div>
+</section>
+<!-- BEGIN: Section 3: Top Actionable Opportunities -->
+<section class="space-y-2" data-purpose="top-actionable-opportunities">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<h2 class="text-sm font-bold text-slate-100 tracking-wide uppercase">أهم الفرص القابلة للمتابعة</h2>
+<span class="text-xs text-terminal-muted font-mono">/ TOP ACTIONABLE OPPORTUNITIES</span>
+</div>
+<span class="text-[11px] font-mono text-terminal-muted">RANKED BY PROBABILITY × SETTLED VOLUME PROFILE</span>
+</div>
+<!-- Top Opportunity Dense Signal Cards Grid -->
+<div class="grid grid-cols-3 gap-3.5">
+<!-- CARD 1: COMI.CA (BUY) -->
+<div class="p-3.5 bg-terminal-container border-r-4 border-r-emerald-500 border border-terminal-border rounded-lg hover:border-terminal-borderSubtle transition-all space-y-3">
+<div class="flex items-start justify-between">
+<div>
+<div class="flex items-center gap-2">
+<span class="font-mono text-base font-bold text-slate-100">COMI.CA</span>
+<span class="text-xs text-slate-300 font-medium">البنك التجاري الدولي</span>
+</div>
+<div class="text-[10px] font-mono text-terminal-muted mt-0.5">SECTOR: Commercial Banks · Regime: BULL</div>
+</div>
+<div class="flex flex-col items-end gap-1">
+<span class="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded text-[11px] font-mono font-bold">
+                  BUY / شراء
+                </span>
+<span class="text-[10px] font-mono text-emerald-400/80">Tier-1 Confirmed</span>
+</div>
+</div>
+<!-- Quantitative Details Grid -->
+<div class="grid grid-cols-4 gap-1.5 py-1.5 px-2 bg-terminal-card rounded border border-terminal-border/60 text-center font-mono text-xs">
+<div>
+<div class="text-[9px] text-terminal-muted">السعر الحالي</div>
+<div class="font-bold text-slate-100 tnum mt-0.5">92.40</div>
+</div>
+<div>
+<div class="text-[9px] text-terminal-muted">وقف الخسارة</div>
+<div class="font-bold text-rose-400 tnum mt-0.5">89.50</div>
+</div>
+<div>
+<div class="text-[9px] text-terminal-muted">هدف أول</div>
+<div class="font-bold text-slate-200 tnum mt-0.5">96.50</div>
+</div>
+<div>
+<div class="text-[9px] text-terminal-muted">العائد:المخاطرة</div>
+<div class="font-bold text-emerald-400 tnum mt-0.5">1:2.45</div>
+</div>
+</div>
+<!-- Visual Entry Band Horizontal Rail -->
+<div class="space-y-1">
+<div class="flex justify-between text-[10px] font-mono text-terminal-muted">
+<span>STOP: <span class="text-rose-400">89.50</span></span>
+<span>نطاق الدخول: <span class="text-slate-100 font-semibold">[91.80 – 92.50]</span></span>
+<span>TGT 2: <span class="text-emerald-400">101.00</span></span>
+</div>
+<div class="relative w-full h-2.5 bg-terminal-card rounded-full overflow-hidden border border-terminal-border">
+<!-- Stop Loss Zone (0% - 25%) -->
+<div class="absolute left-0 top-0 bottom-0 w-1/4 bg-rose-950/40 border-r border-rose-500/30"></div>
+<!-- Entry Band Range Highlight (25% - 45%) -->
+<div class="absolute left-1/4 top-0 bottom-0 w-[22%] bg-blue-500/40 border-x border-blue-400"></div>
+<!-- Current Price Needle (approx 40%) -->
+<div class="absolute left-[38%] top-0 bottom-0 w-1 bg-white shadow-[0_0_6px_#fff]"></div>
+<!-- Target 1 & 2 Zones (60% - 100%) -->
+<div class="absolute right-0 top-0 bottom-0 w-2/5 bg-emerald-950/40 border-l border-emerald-500/30"></div>
+</div>
+</div>
+</div>
+<!-- CARD 2: ETEL.CA (BUY) -->
+<div class="p-3.5 bg-terminal-container border-r-4 border-r-emerald-500 border border-terminal-border rounded-lg hover:border-terminal-borderSubtle transition-all space-y-3">
+<div class="flex items-start justify-between">
+<div>
+<div class="flex items-center gap-2">
+<span class="font-mono text-base font-bold text-slate-100">ETEL.CA</span>
+<span class="text-xs text-slate-300 font-medium">المصرية للاتصالات</span>
+</div>
+<div class="text-[10px] font-mono text-terminal-muted mt-0.5">SECTOR: Telecom · Regime: WEAK_BULL</div>
+</div>
+<div class="flex flex-col items-end gap-1">
+<span class="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded text-[11px] font-mono font-bold">
+                  BUY / شراء
+                </span>
+<span class="text-[10px] font-mono text-emerald-400/80">Tier-1 Confirmed</span>
+</div>
+</div>
+<!-- Quantitative Details Grid -->
+<div class="grid grid-cols-4 gap-1.5 py-1.5 px-2 bg-terminal-card rounded border border-terminal-border/60 text-center font-mono text-xs">
+<div>
+<div class="text-[9px] text-terminal-muted">السعر الحالي</div>
+<div class="font-bold text-slate-100 tnum mt-0.5">41.80</div>
+</div>
+<div>
+<div class="text-[9px] text-terminal-muted">وقف الخسارة</div>
+<div class="font-bold text-rose-400 tnum mt-0.5">40.20</div>
+</div>
+<div>
+<div class="text-[9px] text-terminal-muted">هدف أول</div>
+<div class="font-bold text-slate-200 tnum mt-0.5">44.60</div>
+</div>
+<div>
+<div class="text-[9px] text-terminal-muted">العائد:المخاطرة</div>
+<div class="font-bold text-emerald-400 tnum mt-0.5">1:2.10</div>
+</div>
+</div>
+<!-- Visual Entry Band Horizontal Rail -->
+<div class="space-y-1">
+<div class="flex justify-between text-[10px] font-mono text-terminal-muted">
+<span>STOP: <span class="text-rose-400">40.20</span></span>
+<span>نطاق الدخول: <span class="text-slate-100 font-semibold">[41.50 – 42.00]</span></span>
+<span>TGT 2: <span class="text-emerald-400">47.50</span></span>
+</div>
+<div class="relative w-full h-2.5 bg-terminal-card rounded-full overflow-hidden border border-terminal-border">
+<div class="absolute left-0 top-0 bottom-0 w-1/4 bg-rose-950/40 border-r border-rose-500/30"></div>
+<div class="absolute left-1/4 top-0 bottom-0 w-[24%] bg-blue-500/40 border-x border-blue-400"></div>
+<div class="absolute left-[36%] top-0 bottom-0 w-1 bg-white shadow-[0_0_6px_#fff]"></div>
+<div class="absolute right-0 top-0 bottom-0 w-2/5 bg-emerald-950/40 border-l border-emerald-500/30"></div>
+</div>
+</div>
+</div>
+<!-- CARD 3: AMOC.CA (WATCH - High Priority) -->
+<div class="p-3.5 bg-terminal-container border-r-4 border-r-blue-500 border border-terminal-border rounded-lg hover:border-terminal-borderSubtle transition-all space-y-3">
+<div class="flex items-start justify-between">
+<div>
+<div class="flex items-center gap-2">
+<span class="font-mono text-base font-bold text-slate-100">AMOC.CA</span>
+<span class="text-xs text-slate-300 font-medium">الإسكندرية للزيوت المعدنية</span>
+</div>
+<div class="text-[10px] font-mono text-terminal-muted mt-0.5">SECTOR: Energy · Regime: WEAK_BULL</div>
+</div>
+<div class="flex flex-col items-end gap-1">
+<span class="px-2 py-0.5 bg-blue-500/20 text-blue-400 border border-blue-500/40 rounded text-[11px] font-mono font-bold">
+                  WATCH / متابعة
+                </span>
+<span class="text-[10px] font-mono text-blue-400/80">Breakout Proximity</span>
+</div>
+</div>
+<!-- Quantitative Details Grid -->
+<div class="grid grid-cols-4 gap-1.5 py-1.5 px-2 bg-terminal-card rounded border border-terminal-border/60 text-center font-mono text-xs">
+<div>
+<div class="text-[9px] text-terminal-muted">السعر الحالي</div>
+<div class="font-bold text-slate-100 tnum mt-0.5">10.65</div>
+</div>
+<div>
+<div class="text-[9px] text-terminal-muted">وقف محتمل</div>
+<div class="font-bold text-rose-400 tnum mt-0.5">10.20</div>
+</div>
+<div>
+<div class="text-[9px] text-terminal-muted">هدف محتمل</div>
+<div class="font-bold text-slate-200 tnum mt-0.5">11.80</div>
+</div>
+<div>
+<div class="text-[9px] text-terminal-muted">العائد:المخاطرة</div>
+<div class="font-bold text-blue-400 tnum mt-0.5">1:2.55</div>
+</div>
+</div>
+<!-- Visual Entry Band Horizontal Rail -->
+<div class="space-y-1">
+<div class="flex justify-between text-[10px] font-mono text-terminal-muted">
+<span>STOP: <span class="text-rose-400">10.20</span></span>
+<span>نطاق المراقبة: <span class="text-slate-100 font-semibold">[10.60 – 10.75]</span></span>
+<span>TGT 2: <span class="text-blue-400">12.50</span></span>
+</div>
+<div class="relative w-full h-2.5 bg-terminal-card rounded-full overflow-hidden border border-terminal-border">
+<div class="absolute left-0 top-0 bottom-0 w-1/4 bg-rose-950/40 border-r border-rose-500/30"></div>
+<div class="absolute left-[30%] top-0 bottom-0 w-[20%] bg-blue-500/30 border-x border-blue-400/50"></div>
+<div class="absolute left-[32%] top-0 bottom-0 w-1 bg-white shadow-[0_0_6px_#fff]"></div>
+<div class="absolute right-0 top-0 bottom-0 w-2/5 bg-blue-950/30 border-l border-blue-500/30"></div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- END: Section 3: Top Actionable Opportunities -->
+<!-- BEGIN: Section 4: Compact Market Table -->
+<section class="space-y-2.5" data-purpose="compact-market-table">
+<!-- Table Search & Segmented Filter Toolbar -->
+<div class="p-2.5 bg-terminal-container border border-terminal-border rounded-lg flex items-center justify-between gap-4">
+<div class="flex items-center gap-3">
+<h3 class="text-sm font-bold text-slate-100">جدول السوق المختصر</h3>
+<span class="text-terminal-muted text-xs font-mono">/ COMPACT MARKET TABLE</span>
+<!-- Filter Pills -->
+<div class="flex items-center gap-1 font-mono text-xs mr-4">
+<button class="px-2.5 py-1 rounded bg-blue-600/30 border border-blue-500 text-blue-300 font-medium">ALL: 209</button>
+<button class="px-2.5 py-1 rounded bg-terminal-card border border-terminal-border text-emerald-400 hover:border-emerald-500/50">BUY: 3</button>
+<button class="px-2.5 py-1 rounded bg-terminal-card border border-terminal-border text-blue-400 hover:border-blue-500/50">WATCH: 109</button>
+<button class="px-2.5 py-1 rounded bg-terminal-card border border-terminal-border text-terminal-muted hover:text-slate-300">AVOID: 97</button>
+</div>
+</div>
+<!-- Search Input & Sort Info -->
+<div class="flex items-center gap-3 font-mono text-xs">
+<div class="relative">
+<input class="w-64 bg-terminal-card border border-terminal-border rounded px-2.5 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500" placeholder="بحث بالرمز أو الاسم (e.g. COMI)..." type="text"/>
+</div>
+<span class="text-terminal-muted text-[11px]">SORT: DEFAULT REGIME-WEIGHTED</span>
+</div>
+</div>
+<!-- Dense Tabular Data Grid -->
+<div class="bg-terminal-container border border-terminal-border rounded-lg overflow-hidden">
+<table class="w-full text-right border-collapse text-xs">
+<thead>
+<tr class="border-b border-terminal-border bg-terminal-card/80 font-mono text-[11px] text-terminal-muted">
+<th class="py-2.5 px-3 text-right">الرمز (Ticker)</th>
+<th class="py-2.5 px-3 text-right">اسم السهم</th>
+<th class="py-2.5 px-3 text-center">القرار</th>
+<th class="py-2.5 px-3 text-center">حالة السوق</th>
+<th class="py-2.5 px-3 text-left">السعر الحالي</th>
+<th class="py-2.5 px-3 text-center">نطاق الشراء (Buy Band)</th>
+<th class="py-2.5 px-3 text-left">وقف الخسارة</th>
+<th class="py-2.5 px-3 text-left">الهدف 1</th>
+<th class="py-2.5 px-3 text-left">الهدف 2</th>
+<th class="py-2.5 px-3 text-center">العائد:المخاطرة</th>
+<th class="py-2.5 px-3 text-center">الثقة</th>
+<th class="py-2.5 px-3 text-center">الحالة التشغيلية</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-terminal-border/40 font-mono text-xs">
+<!-- ROW 1: BUY Exemplar (High Visual Prominence) -->
+<tr class="bg-emerald-950/15 hover:bg-emerald-950/30 transition-colors border-r-2 border-r-emerald-400">
+<td class="py-2.5 px-3 font-bold text-slate-100">COMI.CA</td>
+<td class="py-2.5 px-3 font-sans text-slate-200 font-medium">البنك التجاري الدولي</td>
+<td class="py-2.5 px-3 text-center">
+<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px] font-bold">BUY</span>
+</td>
+<td class="py-2.5 px-3 text-center"><span class="text-emerald-400 font-semibold">BULL</span></td>
+<td class="py-2.5 px-3 text-left text-slate-100 font-bold tnum">92.40</td>
+<td class="py-2.5 px-3 text-center text-slate-200 tnum font-medium">[ 91.80 – 92.50 ]</td>
+<td class="py-2.5 px-3 text-left text-rose-400 font-bold tnum">89.50</td>
+<td class="py-2.5 px-3 text-left text-slate-200 tnum">96.50</td>
+<td class="py-2.5 px-3 text-left text-slate-200 tnum">101.00</td>
+<td class="py-2.5 px-3 text-center text-emerald-400 font-bold tnum">1:2.45</td>
+<td class="py-2.5 px-3 text-center"><span class="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[10px]">Tier-1</span></td>
+<td class="py-2.5 px-3 text-center text-[10px] text-emerald-400">QUALIFIED_ENTRY</td>
+</tr>
+<!-- ROW 2: BUY Exemplar -->
+<tr class="bg-emerald-950/15 hover:bg-emerald-950/30 transition-colors border-r-2 border-r-emerald-400">
+<td class="py-2.5 px-3 font-bold text-slate-100">ETEL.CA</td>
+<td class="py-2.5 px-3 font-sans text-slate-200 font-medium">المصرية للاتصالات</td>
+<td class="py-2.5 px-3 text-center">
+<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px] font-bold">BUY</span>
+</td>
+<td class="py-2.5 px-3 text-center"><span class="text-amber-400 font-semibold">WEAK_BULL</span></td>
+<td class="py-2.5 px-3 text-left text-slate-100 font-bold tnum">41.80</td>
+<td class="py-2.5 px-3 text-center text-slate-200 tnum font-medium">[ 41.50 – 42.00 ]</td>
+<td class="py-2.5 px-3 text-left text-rose-400 font-bold tnum">40.20</td>
+<td class="py-2.5 px-3 text-left text-slate-200 tnum">44.60</td>
+<td class="py-2.5 px-3 text-left text-slate-200 tnum">47.50</td>
+<td class="py-2.5 px-3 text-center text-emerald-400 font-bold tnum">1:2.10</td>
+<td class="py-2.5 px-3 text-center"><span class="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[10px]">Tier-1</span></td>
+<td class="py-2.5 px-3 text-center text-[10px] text-emerald-400">QUALIFIED_ENTRY</td>
+</tr>
+<!-- ROW 3: WATCH Exemplar -->
+<tr class="hover:bg-terminal-card/50 transition-colors">
+<td class="py-2.5 px-3 font-bold text-slate-300">AMOC.CA</td>
+<td class="py-2.5 px-3 font-sans text-slate-300">الإسكندرية للزيوت المعدنية</td>
+<td class="py-2.5 px-3 text-center">
+<span class="px-2 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 text-[10px] font-medium">WATCH</span>
+</td>
+<td class="py-2.5 px-3 text-center"><span class="text-amber-400">WEAK_BULL</span></td>
+<td class="py-2.5 px-3 text-left text-slate-200 tnum">10.65</td>
+<td class="py-2.5 px-3 text-center text-slate-400 tnum">[ 10.60 – 10.75 ]</td>
+<td class="py-2.5 px-3 text-left text-rose-400/80 tnum">10.20</td>
+<td class="py-2.5 px-3 text-left text-slate-300 tnum">11.80</td>
+<td class="py-2.5 px-3 text-left text-slate-300 tnum">12.50</td>
+<td class="py-2.5 px-3 text-center text-slate-300 tnum">1:2.55</td>
+<td class="py-2.5 px-3 text-center"><span class="text-terminal-muted text-[10px]">Tier-2</span></td>
+<td class="py-2.5 px-3 text-center text-[10px] text-blue-400">AWAIT_TRIGGER</td>
+</tr>
+<!-- ROW 4: WATCH Exemplar (from screenshot: ACAP.CA) -->
+<tr class="hover:bg-terminal-card/50 transition-colors">
+<td class="py-2.5 px-3 font-bold text-slate-300">ACAP.CA</td>
+<td class="py-2.5 px-3 font-sans text-slate-300">A Capital Holding</td>
+<td class="py-2.5 px-3 text-center">
+<span class="px-2 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 text-[10px] font-medium">WATCH</span>
+</td>
+<td class="py-2.5 px-3 text-center"><span class="text-emerald-400">BULL</span></td>
+<td class="py-2.5 px-3 text-left text-slate-200 tnum">9.25</td>
+<td class="py-2.5 px-3 text-center text-slate-400 tnum">[ 9.15 – 9.25 ]</td>
+<td class="py-2.5 px-3 text-left text-rose-400/80 tnum">8.66</td>
+<td class="py-2.5 px-3 text-left text-slate-300 tnum">10.00</td>
+<td class="py-2.5 px-3 text-left text-slate-300 tnum">10.66</td>
+<td class="py-2.5 px-3 text-center text-slate-300 tnum">1:2.27</td>
+<td class="py-2.5 px-3 text-center"><span class="text-terminal-muted text-[10px]">Tier-2</span></td>
+<td class="py-2.5 px-3 text-center text-[10px] text-blue-400">AWAIT_TRIGGER</td>
+</tr>
+<!-- ROW 5: WATCH Exemplar (from screenshot: SCTS.CA) -->
+<tr class="hover:bg-terminal-card/50 transition-colors">
+<td class="py-2.5 px-3 font-bold text-slate-300">SCTS.CA</td>
+<td class="py-2.5 px-3 font-sans text-slate-300">Suez Canal Co For Tech Settling</td>
+<td class="py-2.5 px-3 text-center">
+<span class="px-2 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 text-[10px] font-medium">WATCH</span>
+</td>
+<td class="py-2.5 px-3 text-center"><span class="text-emerald-400">BULL</span></td>
+<td class="py-2.5 px-3 text-left text-slate-200 tnum">621.90</td>
+<td class="py-2.5 px-3 text-center text-slate-400 tnum">[ 618.29 – 621.90 ]</td>
+<td class="py-2.5 px-3 text-left text-rose-400/80 tnum">606.39</td>
+<td class="py-2.5 px-3 text-left text-slate-300 tnum">660.00</td>
+<td class="py-2.5 px-3 text-left text-slate-300 tnum">684.03</td>
+<td class="py-2.5 px-3 text-center text-slate-300 tnum">1:2.45</td>
+<td class="py-2.5 px-3 text-center"><span class="text-terminal-muted text-[10px]">Tier-2</span></td>
+<td class="py-2.5 px-3 text-center text-[10px] text-blue-400">AWAIT_TRIGGER</td>
+</tr>
+<!-- ROW 6: AVOID Exemplar (Visual weight fix: Muted, quiet text #5a6f8c, no harsh color) -->
+<tr class="hover:bg-terminal-card/20 transition-colors opacity-75">
+<td class="py-2 px-3 font-mono text-terminal-avoidText">ESRS.CA</td>
+<td class="py-2 px-3 font-sans text-terminal-avoidText">عز الدخيلة للصلب</td>
+<td class="py-2 px-3 text-center">
+<span class="px-2 py-0.5 rounded bg-slate-800/40 text-terminal-avoidText border border-slate-700/30 text-[9px]">AVOID</span>
+</td>
+<td class="py-2 px-3 text-center text-terminal-avoidText">BEAR</td>
+<td class="py-2 px-3 text-left text-terminal-avoidText tnum">1,120.00</td>
+<td class="py-2 px-3 text-center text-slate-600 tnum">—</td>
+<td class="py-2 px-3 text-left text-slate-600 tnum">—</td>
+<td class="py-2 px-3 text-left text-slate-600 tnum">—</td>
+<td class="py-2 px-3 text-left text-slate-600 tnum">—</td>
+<td class="py-2 px-3 text-center text-slate-600 tnum">—</td>
+<td class="py-2 px-3 text-center text-[10px] text-slate-600">FILTERED</td>
+<td class="py-2 px-3 text-center text-[10px] text-slate-600">DOWN_REGIME</td>
+</tr>
+<!-- ROW 7: AVOID Exemplar (Visual weight fix: Muted, quiet text #5a6f8c) -->
+<tr class="hover:bg-terminal-card/20 transition-colors opacity-75">
+<td class="py-2 px-3 font-mono text-terminal-avoidText">ORWE.CA</td>
+<td class="py-2 px-3 font-sans text-terminal-avoidText">النساجون الشرقيون</td>
+<td class="py-2 px-3 text-center">
+<span class="px-2 py-0.5 rounded bg-slate-800/40 text-terminal-avoidText border border-slate-700/30 text-[9px]">AVOID</span>
+</td>
+<td class="py-2 px-3 text-center text-terminal-avoidText">RANGE</td>
+<td class="py-2 px-3 text-left text-terminal-avoidText tnum">23.10</td>
+<td class="py-2 px-3 text-center text-slate-600 tnum">—</td>
+<td class="py-2 px-3 text-left text-slate-600 tnum">—</td>
+<td class="py-2 px-3 text-left text-slate-600 tnum">—</td>
+<td class="py-2 px-3 text-left text-slate-600 tnum">—</td>
+<td class="py-2 px-3 text-center text-slate-600 tnum">—</td>
+<td class="py-2 px-3 text-center text-[10px] text-slate-600">FILTERED</td>
+<td class="py-2 px-3 text-center text-[10px] text-slate-600">NO_EXPANSION</td>
+</tr>
+</tbody>
+</table>
+<!-- Table Footer Pagination/Telemetry -->
+<div class="px-3 py-2 bg-terminal-card/80 border-t border-terminal-border/80 flex items-center justify-between text-[11px] font-mono text-terminal-muted">
+<div>SHOWING 1-7 OF 209 SECURITIES</div>
+<div class="flex items-center gap-2">
+<span>PAGE 1 OF 30</span>
+<button class="px-2 py-0.5 bg-terminal-container border border-terminal-border rounded text-slate-300">NEXT →</button>
+</div>
+</div>
+</div>
+</section>
+<!-- END: Section 4: Compact Market Table -->
+<!-- BEGIN: Section 5: Advanced Research Accordion & Exclusion Panel -->
+<section class="p-3 bg-terminal-container border border-terminal-border rounded-lg space-y-3" data-purpose="advanced-research-panel" id="advanced-research-section">
+<!-- Accordion Header -->
+<div class="flex items-center justify-between cursor-pointer" onclick="toggleAccordion('research-body')">
+<div class="flex items-center gap-2">
+<span class="text-blue-400 font-mono text-xs">▼</span>
+<h3 class="text-sm font-bold text-slate-100">البحث المتقدم وتفاصيل عزل البيانات</h3>
+<span class="text-terminal-muted text-xs font-mono">/ ADVANCED RESEARCH ACCORDION</span>
+</div>
+<span class="text-[10px] font-mono px-2 py-0.5 rounded bg-terminal-card border border-terminal-border text-slate-400">16 EXCLUSIONS ISOLATED</span>
+</div>
+<div class="space-y-3 pt-2 border-t border-terminal-border/60" id="research-body">
+<!-- Regime & Gate Distribution Grid -->
+<div class="grid grid-cols-3 gap-3 text-xs font-mono">
+<div class="p-2.5 bg-terminal-card rounded border border-terminal-border/60 space-y-1">
+<div class="text-[10px] text-terminal-muted">REGIME CLUSTER SUMMARY</div>
+<div class="text-slate-200 text-[11px] space-y-0.5">
+<div class="flex justify-between"><span>BULL:</span> <span class="text-emerald-400">42 (20.1%)</span></div>
+<div class="flex justify-between"><span>WEAK_BULL:</span> <span class="text-amber-400">89 (42.5%)</span></div>
+<div class="flex justify-between"><span>RANGE / BEAR:</span> <span class="text-slate-400">78 (37.4%)</span></div>
+</div>
+</div>
+<div class="p-2.5 bg-terminal-card rounded border border-terminal-border/60 space-y-1">
+<div class="text-[10px] text-terminal-muted">SCAN INTEGRITY BREAKDOWN</div>
+<div class="text-slate-200 text-[11px] space-y-0.5">
+<div class="flex justify-between"><span>SUCCESSFUL:</span> <span class="text-emerald-400">209</span></div>
+<div class="flex justify-between"><span>INSUFFICIENT_HISTORY:</span> <span class="text-amber-400">8</span></div>
+<div class="flex justify-between"><span>EODHD_CACHE_MISS:</span> <span class="text-slate-400">6</span></div>
+</div>
+</div>
+<div class="p-2.5 bg-terminal-card rounded border border-terminal-border/60 space-y-1">
+<div class="text-[10px] text-terminal-muted">POLICY &amp; VOLUME FILTERS</div>
+<div class="text-slate-200 text-[11px] space-y-0.5">
+<div class="flex justify-between"><span>SKIPPED_STALE_DAILY:</span> <span class="text-slate-400">5</span></div>
+<div class="flex justify-between"><span>VOLUME_POLICY_UNRESOLVED:</span> <span class="text-rose-400">1</span></div>
+<div class="flex justify-between"><span>INVALID_HISTORY:</span> <span class="text-rose-400">1</span></div>
+</div>
+</div>
+</div>
+<!-- Specific Exclusion List with Reasons -->
+<div class="p-2.5 bg-terminal-card rounded border border-terminal-border/80 space-y-2">
+<div class="flex items-center justify-between text-[11px] font-mono">
+<span class="text-slate-200 font-bold">قائمة الأسهم المستبعدة وأسباب العزل الصريحة (Deterministic Exclusion Audit):</span>
+<span class="text-terminal-muted">NON-PARTICIPATING CANDIDATES</span>
+</div>
+<div class="grid grid-cols-2 gap-2 text-[11px] font-mono">
+<div class="p-2 bg-terminal-container border border-terminal-border rounded flex justify-between items-center">
+<span class="text-slate-200 font-bold">MTIE.CA</span>
+<span class="text-amber-400 text-[10px]">DATA_UNAVAILABLE (no validated local seed)</span>
+</div>
+<div class="p-2 bg-terminal-container border border-terminal-border rounded flex justify-between items-center">
+<span class="text-slate-200 font-bold">ISPH.CA</span>
+<span class="text-amber-400 text-[10px]">INSUFFICIENT_HISTORY (&lt; 120 settled bars)</span>
+</div>
+<div class="p-2 bg-terminal-container border border-terminal-border rounded flex justify-between items-center">
+<span class="text-slate-200 font-bold">SWDY.CA</span>
+<span class="text-rose-400 text-[10px]">VOLUME_POLICY_UNRESOLVED (spread outlier)</span>
+</div>
+<div class="p-2 bg-terminal-container border border-terminal-border rounded flex justify-between items-center">
+<span class="text-slate-200 font-bold">ALCN.CA</span>
+<span class="text-slate-400 text-[10px]">SKIPPED_STALE_DAILY_DATA (Session mismatch)</span>
+</div>
+</div>
+<p class="text-[10px] text-terminal-muted leading-tight">
+              * جميع الأسهم المستبعدة معزولة تماماً من قرارات الشراء والمتابعة لضمان سلامة الإشارات الإحصائية وعدم الاعتماد على بيانات استيفاء غير مكتملة.
+            </p>
+</div>
+</div>
+</section>
+<!-- END: Section 5: Advanced Research Accordion & Exclusion Panel -->
+</div>
+<!-- END: SCAN STATE 3: LOADED -->
+</main>
+<!-- END: Main Workbench -->
+<!-- BEGIN: Interactive State Switcher Script -->
+<script data-purpose="lifecycle-state-switcher">
+    function switchScanState(state) {
+      // Hide all panels
+      document.getElementById('state-loaded-container').classList.remove('active');
+      document.getElementById('state-running-container').classList.remove('active');
+      document.getElementById('state-empty-container').classList.remove('active');
+
+      // Reset button styles
+      const buttons = ['btn-state-loaded', 'btn-state-running', 'btn-state-empty'];
+      buttons.forEach(id => {
+        const btn = document.getElementById(id);
+        btn.className = 'px-2.5 py-1 rounded text-terminal-muted hover:text-slate-200 transition-all';
+      });
+
+      // Activate selected state
+      if (state === 'loaded') {
+        document.getElementById('state-loaded-container').classList.add('active');
+        const activeBtn = document.getElementById('btn-state-loaded');
+        activeBtn.className = 'px-2.5 py-1 rounded bg-blue-600 text-white font-medium transition-all';
+      } else if (state === 'running') {
+        document.getElementById('state-running-container').classList.add('active');
+        const activeBtn = document.getElementById('btn-state-running');
+        activeBtn.className = 'px-2.5 py-1 rounded bg-blue-600 text-white font-medium transition-all';
+      } else if (state === 'empty') {
+        document.getElementById('state-empty-container').classList.add('active');
+        const activeBtn = document.getElementById('btn-state-empty');
+        activeBtn.className = 'px-2.5 py-1 rounded bg-blue-600 text-white font-medium transition-all';
+      }
+    }
+
+    function toggleAccordion(id) {
+      const el = document.getElementById(id);
+      if (el.style.display === 'none') {
+        el.style.display = 'block';
+      } else {
+        el.style.display = 'none';
+      }
+    }
+  </script>
+<!-- END: Interactive State Switcher Script -->
+</body></html>

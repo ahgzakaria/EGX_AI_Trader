@@ -1,0 +1,161 @@
+# EGX AI Trader — Design System Specification
+**Version:** 1.0 (Streamlit 1.58 Compatible Desktop Trading Terminal)  
+**Target:** 1920px display width, 1640px maximum content width  
+**Philosophy:** Dense, quiet, high-signal financial instrument. Zero decorative fluff.
+
+---
+
+## 1. Core Principles & Seven Operating Rules
+
+1. **Unknown is Not Zero (`--state-unknown`):** A value that was never calculated or missing is represented by `—` in muted slash pattern or hollow dashed token badge, distinct from a legitimate numeric `0.00` or neutral grey.
+2. **Stale is Not Current (`--state-stale`):** Every screen, block, and batch run reports its exact EGX session timestamp (`YYYY-MM-DD · 14:30 CLT`) and status indicator (`LIVE / CLOSING / HISTORICAL / STALE`).
+3. **Provenance Belongs to the Number:** Critical numbers feature micro-superscript tags or sub-label metadata (`src: EGX-EOD`, `src: FinModel-v2`) in 10px monospace right aligned or below the digit.
+4. **Advisory is Not Instruction:** Decision-support suggestions are framed in neutral blue-grey borders with explicit `[ADVISORY / بحث استرشادي]` taxonomy tags to prevent conflation with actionable portfolio triggers.
+5. **Three States, Never Two:** Binary checkboxes/passes are prohibited. All operational rules and health gates render as `PASS` (emerald), `FAIL` (crimson), or `UNAVAILABLE / BLOCKED` (amber hatch).
+6. **Failures Are Loud (Health Strip):** Above the left sidebar navigation sits an immovable 32px diagnostic health strip displaying terminal sync status, pipeline health, and data freshness.
+7. **Money at Risk Outranks New Ideas:** Portfolio & Open Position views take strict priority, featuring higher surface contrast, bolder borders (`border-l-4`), and immediate visibility over trade candidate scanners.
+
+---
+
+## 2. Colour System & Token Hierarchy
+
+### 2.1 Surface & Structural Roles
+- **Base Background:** `#0b1220` (`--bg-terminal`) — Canvas backdrop
+- **Sidebar & Nested Base:** `#0e1729` (`--bg-sidebar`) — Structural chrome
+- **Surface Layer 1 (Cards, Frames):** `#131c30` (`--surface-base`) — Main component housing
+- **Surface Layer 2 (Raised, Active Rows):** `#17223b` (`--surface-elevated`) — Active/selected states
+- **Surface Layer 3 (Inner Well / Input BG):** `#0f182a` (`--surface-well`) — Recessed numeric inputs
+- **Border Default:** `#223049` (`--border-subtle`, 1px solid)
+- **Border Strong / Active:** `#334769` (`--border-active`, 1px solid)
+- **Border Heavy Accent:** `#476291` (`--border-focus`)
+
+### 2.2 Typography Tiers
+- **Text Primary:** `#e6edf7` (`--text-high`) — 95% contrast, headlines, active values
+- **Text Muted / Labels:** `#8ea1bd` (`--text-med`) — 70% contrast, subtitles, headers
+- **Text De-emphasized / Micro:** `#5a6f8c` (`--text-low`) — Metadata, column captions, timestamps
+
+### 2.3 Semantic & State Roles
+- **Bullish / Profit / Pass:** `#34d399` (`--green-bull`, BG: `rgba(52, 211, 153, 0.08)`)
+- **Bearish / Loss / Fail:** `#f87171` (`--red-bear`, BG: `rgba(248, 113, 113, 0.08)`)
+- **Warning / Stale / Caution:** `#fbbf24` (`--amber-warn`, BG: `rgba(251, 191, 36, 0.08)`)
+- **Informational / Advisory / Reference:** `#60a5fa` (`--blue-info`, BG: `rgba(96, 165, 250, 0.08)`)
+- **Neutral / Dormant / Cash:** `#94a3b8` (`--gray-neutral`, BG: `rgba(148, 163, 184, 0.08)`)
+- **Unknown / Unmeasured (Distinct Non-Grey):**
+  - Text & Border: `#c084fc` (Muted violet-cyan hybrid or dashed `#7e22ce`)
+  - Pill background: `repeating-linear-gradient(45deg, rgba(192,132,252,0.06), rgba(192,132,252,0.06) 4px, transparent 4px, transparent 8px)`
+  - Symbol: `—·—` (Em-dash with mid-dot), never `0.00` or `N/A`
+
+---
+
+## 3. Typography & Baseline Matching
+
+- **Prose & Taxonomy:** `IBM Plex Sans`, `IBM Plex Sans Arabic`
+- **Numerics, Tickers, Timestamps:** `IBM Plex Mono` with `font-feature-settings: "tnum" 1, "zero" 1;` (Strict Tabular Digits)
+
+### Scale & Baseline Harmonization:
+Because Arabic glyphs have different ascender/descender ratios compared to Latin sans-serifs, specific optical compensations are applied:
+
+| Tier | Latin Spec | Arabic Spec | Line-height | Notes / Alignment |
+|---|---|---|---|---|
+| **Page Title** | 20px / 600 (`1.25rem`) | 21px / 700 | 28px (`1.75rem`) | Arabic headline stacks above English subtitle |
+| **Section Title** | 15px / 600 (`0.9375rem`)| 16px / 600 | 22px (`1.375rem`) | Clean uppercase Latin / Balanced Arabic |
+| **Body Prose** | 13px / 400 (`0.8125rem`)| 13.5px / 400 | 18px (`1.125rem`) | Notes, analysis rationale, commentary |
+| **Table Header** | 11px / 600 (`0.6875rem`)| 11.5px / 600 | 14px (`0.875rem`) | Uppercase Latin tracking +0.05em |
+| **Table Data** | 12px / 400 (Mono) | 12px / 400 (Sans) | 16px (`1.0rem`) | Numbers strict Mono, Arabic names Sans |
+| **Metric Value** | 24px / 600 (Mono) | — | 28px (`1.75rem`) | Strict tabular numerals |
+| **Micro / Provenance**| 10px / 400 (Mono) | 10.5px / 400 | 12px (`0.75rem`) | Subscript metadata and source tags |
+
+---
+
+## 4. Spacing, Geometry & Elevation
+
+- **Grid Base:** Strict 4px system (`4px`, `8px`, `12px`, `16px`, `24px`, `32px`).
+- **Corner Radii:**
+  - Standard Cards / Panels: `4px`
+  - Chips / Badges: `2px` (No pill shapes / full-roundings)
+  - Tables & Group Containers: `4px`
+- **Borders:** `1px solid #223049` universally. Active state expands to `1px solid #334769` or `border-l-2` colored indicator bar.
+- **Elevation / Shadow:** No soft Gaussian drop shadows. Contrast is achieved exclusively via 1-step surface tint shifts (`#0b1220` → `#131c30` → `#17223b`) and border definition.
+
+---
+
+## 5. Bilingual & RTL/LTR Governing Rules
+
+1. **Hierarchy & Stacking:**
+   - Container is LTR.
+   - Headers stack with Arabic on line 1 (`dir="rtl"`, `text-right` or contextual start), English on line 2 (`dir="ltr"`, `text-left` or aligned right underneath with 4px margin).
+   - In metric tiles: Label has Arabic lead (`صافي السيولة`) with 11px English translation (`Net Liquidity`) immediately trailing in parentheses or sub-line.
+2. **Badges Beside Arabic Text:**
+   - Badges (BUY, WATCH, AVOID, PASS, FAIL) are ALWAYS rendered in English uppercase LTR monospace (`font-mono`, `text-[10px]`).
+   - When placed alongside Arabic titles, the badge is floated or aligned to the visual boundary (e.g. left side in RTL flow or right-anchored in column tables) with explicit `dir="ltr"` on the badge container.
+3. **Punctuation & Units at the Boundary:**
+   - Currency (`EGP`, `ج.م`) and percent (`%`) are strictly bound to numbers in LTR format: `+4.85%`, `240,500.00 EGP`.
+   - Never allow browser bidi-reordering to place negative signs or parentheses at the wrong side: wrap all numeric + currency expressions in `<bdi dir="ltr" class="font-mono">...</bdi>`.
+4. **Table Column Headers above Numeric Columns:**
+   - Numeric columns are right-aligned LTR (`text-right font-mono`).
+   - The corresponding Arabic column header must be right-aligned above the numbers (`text-right font-sans`), so the eye vertical scan tracks the column without horizontal wandering.
+5. **Bilingual Requirement Threshold:**
+   - **Both Languages:** Page titles, major category names, core financial totals, and advisory conclusions.
+   - **English Only:** Tickers (`COMI`, `ETEL`), technical indicators (`RSI(14)`, `MACD`, `EMA50`), status pills (`STALE`, `FAIL`), table headers in dense trading grids where Arabic would force cell wrapping.
+   - **Arabic Only:** Trader-specific discretionary notes, local regulatory announcements, and analyst commentary sentences.
+
+---
+
+## 6. Component Library & State Specs
+
+### 6.1 Status Strip (Top of Workspace / Sidebar Header)
+- Height: `32px`, full content width (`1640px` or `280px` sidebar).
+- Surface: `#0e1729`, bottom border `#223049`.
+- Elements: Session Badge (`EGX CLOSED 14:30 CLT`), Sync Freshness (`EOD SYNCED 15:02 · OK`), Data Pipeline State (`T+0 CONFIRMED`).
+
+### 6.2 Metric Tile
+- Container: `#131c30`, 1px border `#223049`, padding `12px 16px`.
+- Structure:
+  - Top row: Bilingual label (`قيمة المحفظة · Total Value`) + Provenance chip (`[PORT-LIVE]`).
+  - Middle row: Primary numeric value in 24px tabular mono (`1,482,900.00 EGP`).
+  - Bottom row: Session delta (`▲ +12,450.00 (+0.85%)`) with colored directional triangle glyph.
+
+### 6.3 Badges (6 Distinct States, 2px radius, Mono 10px Uppercase)
+1. **BUY / LONG:** Text `#34d399`, BG `rgba(52,211,153,0.12)`, Border `rgba(52,211,153,0.3)`
+2. **WATCH / NEUTRAL:** Text `#60a5fa`, BG `rgba(96,165,250,0.12)`, Border `rgba(96,165,250,0.3)`
+3. **AVOID / EXIT:** Text `#f87171`, BG `rgba(248,113,113,0.12)`, Border `rgba(248,113,113,0.3)`
+4. **STALE:** Text `#fbbf24`, BG `rgba(251,191,36,0.12)`, Border `rgba(251,191,36,0.3)`
+5. **PASS:** Text `#34d399`, BG `transparent`, Border `#34d399`
+6. **UNMEASURED / UNKNOWN:** Text `#c084fc`, BG `repeating-linear-gradient(45deg, #1f1530 0px, #1f1530 3px, #131c30 3px, #131c30 6px)`, Border `1px dashed #a855f7`
+
+### 6.4 Signal Card with Proportional Stop / Entry / Target Rail
+- Container: `#131c30`, border `#223049`, padding `14px 16px`.
+- Header: Ticker (`COMI`), Arabic Name (`البنك التجاري الدولي`), Action Badge (`BUY / 84.50 EGP`), Confidence (`High / Tier-1`).
+- The Rail: 6px continuous track with 3 proportional marker points:
+  - Stop Loss (Red pin, e.g., `81.20 EGP (-3.9%)`)
+  - Entry Price (White pin, e.g., `84.50 EGP`)
+  - Target 1 / 2 (Green pins, e.g., `91.00 EGP (+7.7%)`)
+  - Visual Risk:Reward ratio rendered directly beneath the rail (`R:R 1:1.97`).
+
+### 6.5 Data Table
+- Row Height: `28px` (Dense mode) or `34px` (Standard mode).
+- Zebra Striping: Alternating `#131c30` and `#0e1729`.
+- Header: `24px` height, `#17223b` background, uppercase 11px text `#8ea1bd`, 1px solid border `#223049`.
+- Numeric Cells: `text-right font-mono text-[12px] text-[#e6edf7]` with `tabular-nums`.
+- In-Cell Mini Bar: Sub-surface inline bar (4px height) inside volume and percentage columns representing relative quartile depth.
+- Selection: Active row marked by `border-l-2 border-[#60a5fa]` and background `#1a2640`.
+
+### 6.6 Banners (Info / Warning / Error / Success)
+- Compact `36px` horizontal bars with 1px border. No large iconography.
+- Direct lead tag: `[WARNING / تحذير]` in bold monospace followed by concise message and timestamp.
+
+---
+
+## 7. Density Specification & Layout Heuristics
+
+1. **Table vs Card Decision Matrix:**
+   - Use **Data Tables** when comparing ≥3 quantitative dimensions across >5 assets (scanners, transaction logs, watchlist screens).
+   - Use **Cards / Rails** when inspecting a single asset's multi-factor signal execution (Entry/Stop/Target geometry, risk evaluation) or when inspecting actionable portfolio allocations.
+2. **Column Threshold:**
+   - A table at 1640px max width may contain up to **11 columns**.
+   - If an asset requires >11 metrics, split the layout into:
+     - Master Table (Left 60%, 7 core columns: Ticker, Price, Chg%, Vol, RSI, Signal, Action).
+     - Contextual Inspection Pane (Right 40%, Detailed factor breakdown, execution rail, commentary).
+3. **Streamlit Primitive Translation:**
+   - Sidebar: Dedicated Streamlit sidebar styled as `#0e1729` with persistent Health Strip widget at top, page selector buttons with left-border indicators, and system info footer.
+   - Content Canvas: Max-width 1640px container, 0px margins, responsive column blocks (`st.columns([2, 1])`, `st.columns([1, 1, 1, 1])`).

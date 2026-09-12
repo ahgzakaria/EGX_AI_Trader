@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EGX AI Trader — Settings & Backtest Laboratory (إعدادات الاستراتيجية ومختبر الاختبار الخلفي)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"IBM Plex Sans Arabic"', '"IBM Plex Sans"', 'sans-serif'],
+            latin: ['"IBM Plex Sans"', 'sans-serif'],
+            mono: ['"IBM Plex Mono"', 'monospace'],
+          },
+          colors: {
+            terminal: '#0b1220',
+            sidebar: '#0e1729',
+            surface: {
+              base: '#131c30',
+              elevated: '#17223b',
+              well: '#0f182a',
+              card: '#152037',
+            },
+            border: {
+              subtle: '#223049',
+              active: '#334769',
+              focus: '#476291',
+            },
+            bull: '#34d399',
+            bear: '#f87171',
+            warn: '#fbbf24',
+            info: '#60a5fa',
+            unknown: '#c084fc',
+            neutral: '#94a3b8',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #0b1220;
+      color: #e6edf7;
+      font-family: 'IBM Plex Sans Arabic', 'IBM Plex Sans', sans-serif;
+      overflow-x: hidden;
+    }
+    .font-mono-tabular {
+      font-family: 'IBM Plex Mono', monospace;
+      font-feature-settings: "tnum" 1, "zero" 1;
+    }
+    /* Inert Hatch Pattern */
+    .bg-inert-hatch {
+      background-image: repeating-linear-gradient(45deg, rgba(251, 191, 36, 0.07), rgba(251, 191, 36, 0.07) 6px, transparent 6px, transparent 12px);
+    }
+    .bg-unknown-hatch {
+      background-image: repeating-linear-gradient(45deg, rgba(192, 132, 252, 0.08), rgba(192, 132, 252, 0.08) 6px, transparent 6px, transparent 12px);
+    }
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0e1729;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #223049;
+      border-radius: 2px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334769;
+    }
+    .range-slider {
+      -webkit-appearance: none;
+      height: 4px;
+      border-radius: 2px;
+      background: #223049;
+      outline: none;
+    }
+    .range-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 2px;
+      background: #60a5fa;
+      cursor: pointer;
+      border: 1px solid #131c30;
+      box-shadow: 0 0 8px rgba(96, 165, 250, 0.5);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col bg-[#0b1220] text-[#e6edf7] antialiased selection:bg-[#60a5fa]/20 selection:text-white">
+
+  <!-- TOP HEALTH & SYNCHRONIZATION BAR (Operating Rule 6: 32px Persistent Strip) -->
+  <header class="h-8 w-full bg-[#0e1729] border-b border-[#223049] flex items-center justify-between px-4 text-[11px] font-mono-tabular shrink-0 z-50">
+    <div class="flex items-center space-x-4 space-x-reverse text-[#8ea1bd]">
+      <span class="flex items-center gap-1.5 text-[#34d399]">
+        <span class="w-2 h-2 rounded-full bg-[#34d399] animate-pulse"></span>
+        <span class="font-semibold tracking-wider">TERMINAL v4.8.2-PROD</span>
+      </span>
+      <span class="text-[#334769]">|</span>
+      <span class="text-[#e6edf7]">EGX CLOSED · 14:30 CLT</span>
+      <span class="text-[#334769]">|</span>
+      <span class="text-[#8ea1bd]">EOD SYNCED: <span class="text-[#e6edf7]">15:02 · OK</span></span>
+      <span class="text-[#334769]">|</span>
+      <span class="text-[#8ea1bd]">PIPELINE: <span class="text-[#34d399]">100% CLEAN</span></span>
+    </div>
+    <div class="flex items-center space-x-4 space-x-reverse text-[#8ea1bd]">
+      <span class="px-2 py-0.5 rounded-[2px] bg-[#fbbf24]/10 border border-[#fbbf24]/30 text-[#fbbf24] font-medium text-[10px]">
+        CONFIGURATION LOCKED (FROZEN STATE)
+      </span>
+      <span class="text-[#5a6f8c] text-[10px]">HASH: 256:7f9a88...c14e</span>
+      <span class="text-[#5a6f8c]">Node: cai-srv-prdm01</span>
+    </div>
+  </header>
+
+  <!-- WORKBENCH BODY (SIDEBAR + MAIN 1640px VIEWPORT) -->
+  <div class="flex-1 flex overflow-hidden">
+    
+    <!-- LEFT SIDEBAR (Standard 280px Institutional Sidebar) -->
+    <aside class="w-[280px] bg-[#0e1729] border-l border-[#223049] flex flex-col justify-between shrink-0 p-3 select-none">
+      <div class="space-y-4">
+        <!-- Mark & User Profile -->
+        <div class="flex items-center justify-between px-2 py-1 border-b border-[#223049] pb-3">
+          <div class="flex items-center gap-2.5">
+            <div class="w-7 h-7 rounded-[3px] bg-[#60a5fa]/10 border border-[#60a5fa]/40 flex items-center justify-center text-[#60a5fa] font-mono font-bold text-xs">
+              EGX
+            </div>
+            <div>
+              <div class="text-xs font-semibold text-[#e6edf7] flex items-center gap-1">
+                متداول البورصة المصرية
+                <span class="text-[9px] px-1 py-0.2 rounded-[2px] bg-[#60a5fa]/20 text-[#60a5fa] font-mono">PRO</span>
+              </div>
+              <div class="text-[10px] text-[#5a6f8c]">EGX AI Trader Suite</div>
+            </div>
+          </div>
+          <span class="w-2 h-2 rounded-full bg-[#34d399]"></span>
+        </div>
+
+        <!-- Section: PORTFOLIO -->
+        <div class="space-y-1">
+          <div class="text-[10px] font-mono font-semibold tracking-wider text-[#5a6f8c] px-2 uppercase">
+            PORTFOLIO · المحفظة
+          </div>
+          <a href="#" class="flex items-center justify-between px-2.5 py-1.5 rounded-[3px] text-xs text-[#8ea1bd] hover:bg-[#131c30] hover:text-[#e6edf7] transition-colors">
+            <span class="flex items-center gap-2">
+              <svg class="w-3.5 h-3.5 text-[#5a6f8c]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+              My Portfolio · محفظتي
+            </span>
+            <span class="text-[10px] font-mono text-[#34d399] font-medium">3 POS</span>
+          </a>
+        </div>
+
+        <!-- Section: SWING TRADING -->
+        <div class="space-y-1">
+          <div class="text-[10px] font-mono font-semibold tracking-wider text-[#5a6f8c] px-2 uppercase">
+            SWING · سوينج
+          </div>
+          <a href="#" class="flex items-center gap-2 px-2.5 py-1.5 rounded-[3px] text-xs text-[#8ea1bd] hover:bg-[#131c30] hover:text-[#e6edf7] transition-colors">
+            <svg class="w-3.5 h-3.5 text-[#5a6f8c]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+            Daily Dashboard · لوحة التداول
+          </a>
+          <a href="#" class="flex items-center gap-2 px-2.5 py-1.5 rounded-[3px] text-xs text-[#8ea1bd] hover:bg-[#131c30] hover:text-[#e6edf7] transition-colors">
+            <svg class="w-3.5 h-3.5 text-[#5a6f8c]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+            Swing Breakout · اختراق السوينج
+          </a>
+          <a href="#" class="flex items-center gap-2 px-2.5 py-1.5 rounded-[3px] text-xs text-[#8ea1bd] hover:bg-[#131c30] hover:text-[#e6edf7] transition-colors">
+            <svg class="w-3.5 h-3.5 text-[#5a6f8c]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+            Breakout Watch · مراقبة الاختراق
+          </a>
+          <a href="#" class="flex items-center gap-2 px-2.5 py-1.5 rounded-[3px] text-xs text-[#8ea1bd] hover:bg-[#131c30] hover:text-[#e6edf7] transition-colors">
+            <svg class="w-3.5 h-3.5 text-[#5a6f8c]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Confirmed Breakout · اختراق مؤكد
+          </a>
+          <a href="#" class="flex items-center gap-2 px-2.5 py-1.5 rounded-[3px] text-xs text-[#8ea1bd] hover:bg-[#131c30] hover:text-[#e6edf7] transition-colors">
+            <svg class="w-3.5 h-3.5 text-[#5a6f8c]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"/></svg>
+            Sector Liquidity · سيولة القطاعات
+          </a>
+          <a href="#" class="flex items-center gap-2 px-2.5 py-1.5 rounded-[3px] text-xs text-[#8ea1bd] hover:bg-[#131c30] hover:text-[#e6edf7] transition-colors">
+            <svg class="w-3.5 h-3.5 text-[#fbbf24]" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+            Watchlist · قائمة المتابعة
+          </a>
+          <a href="#" class="flex items-center gap-2 px-2.5 py-1.5 rounded-[3px] text-xs text-[#8ea1bd] hover:bg-[#131c30] hover:text-[#e6edf7] transition-colors">
+            <svg class="w-3.5 h-3.5 text-[#5a6f8c]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+            Stock Details · تفاصيل السهم
+          </a>
+        </div>
+
+        <!-- Section: AI ANALYSIS -->
+        <div class="space-y-1">
+          <div class="text-[10px] font-mono font-semibold tracking-wider text-[#5a6f8c] px-2 uppercase">
+            AI ANALYSIS · تحليل الذكاء
+          </div>
+          <a href="#" class="flex items-center gap-2 px-2.5 py-1.5 rounded-[3px] text-xs text-[#8ea1bd] hover:bg-[#131c30] hover:text-[#e6edf7] transition-colors">
+            <svg class="w-3.5 h-3.5 text-[#60a5fa]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            AI Analysis · السرد والتحليل
+          </a>
+        </div>
+
+        <!-- Section: SYSTEM (ACTIVE PAGE HERE) -->
+        <div class="space-y-1">
+          <div class="text-[10px] font-mono font-semibold tracking-wider text-[#5a6f8c] px-2 uppercase">
+            SYSTEM · النظام
+          </div>
+          <a href="#" class="flex items-center gap-2 px-2.5 py-1.5 rounded-[3px] text-xs text-[#8ea1bd] hover:bg-[#131c30] hover:text-[#e6edf7] transition-colors">
+            <svg class="w-3.5 h-3.5 text-[#5a6f8c]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            System Health · صحة النظام
+          </a>
+          <!-- CURRENT ACTIVE SELECTION -->
+          <div class="flex items-center justify-between px-2.5 py-1.5 rounded-[3px] text-xs bg-[#17223b] text-[#e6edf7] border-r-2 border-[#60a5fa] font-medium">
+            <span class="flex items-center gap-2">
+              <svg class="w-3.5 h-3.5 text-[#60a5fa]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+              Settings & Backtest · الإعدادات
+            </span>
+            <span class="w-1.5 h-1.5 rounded-full bg-[#60a5fa]"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar Footer State -->
+      <div class="border-t border-[#223049] pt-3 px-1 space-y-2">
+        <div class="flex items-center justify-between text-[11px] text-[#5a6f8c]">
+          <span>وضع البيئة:</span>
+          <span class="font-mono text-[#fbbf24] font-medium">RESEARCH MODE</span>
+        </div>
+        <div class="p-2 rounded-[3px] bg-[#0b1220] border border-[#223049] text-[10px] text-[#8ea1bd] leading-tight">
+          <span class="text-[#34d399] font-mono font-semibold">RULE ENGINE:</span> تعديل الإعدادات هنا يخضع للتحقق في مختبر الاختبار ولا يغير سلوك التداول الحي إلا بعد الترقية المعتمدة.
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN TERMINAL VIEWPORT (Max 1640px Centered Canvas) -->
+    <main class="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+      <div class="max-w-[1640px] mx-auto space-y-6">
+
+        <!-- 1. PAGE HEADER & PERMANENT METADATA -->
+        <section class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[#223049]">
+          <div class="space-y-1">
+            <div class="flex items-center gap-3">
+              <div class="p-2 rounded-[4px] bg-[#17223b] border border-[#223049] text-[#60a5fa]">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                </svg>
+              </div>
+              <div>
+                <h1 class="text-xl font-bold text-[#e6edf7] flex items-center gap-2">
+                  <span>إعدادات الاستراتيجية ومختبر الاختبار الخلفي</span>
+                  <span class="text-xs font-mono text-[#8ea1bd] font-normal" dir="ltr">/ Settings & Backtest Laboratory</span>
+                </h1>
+                <p class="text-xs text-[#8ea1bd]">
+                  معايرة وتدقيق نموذج التداول الكمي (Frozen Strategy Configuration v4.8) والتحقق التجريبي عبر بيانات البورصة المصرية
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Actions & Badges -->
+          <div class="flex items-center gap-3">
+            <!-- Research Control Badge -->
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-[2px] bg-[#17223b] border border-[#334769] text-xs">
+              <span class="w-2 h-2 rounded-full bg-[#fbbf24]"></span>
+              <span class="font-mono text-[11px] font-semibold text-[#e6edf7] tracking-wider" dir="ltr">RESEARCH CONTROL</span>
+              <span class="text-[10px] text-[#8ea1bd] font-mono">(READ-ONLY BASELINE)</span>
+            </div>
+
+            <!-- Deploy / Save State Indicator -->
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-[2px] bg-[#131c30] border border-[#223049] text-xs text-[#8ea1bd]">
+              <svg class="w-3.5 h-3.5 text-[#34d399]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+              <span>حفظ الإعدادات مقفل بالرمز المصمك (Immutable Design)</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. FOUR CORE TABS NAVIGATION (Institutional Header) -->
+        <nav class="flex items-center border-b border-[#223049] text-xs font-medium space-x-2 space-x-reverse">
+          <button id="tab-strategy" onclick="switchTab('strategy')" class="flex items-center gap-2 px-4 py-2.5 border-b-2 border-[#60a5fa] text-[#e6edf7] bg-[#17223b]/50 transition-colors">
+            <svg class="w-4 h-4 text-[#60a5fa]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+            <span>الاستراتيجية وقواعد التصفية</span>
+            <span class="text-[10px] font-mono text-[#8ea1bd]" dir="ltr">(Strategy)</span>
+          </button>
+          
+          <button id="tab-backtest" onclick="switchTab('backtest')" class="flex items-center gap-2 px-4 py-2.5 border-b-2 border-transparent text-[#8ea1bd] hover:text-[#e6edf7] hover:bg-[#131c30] transition-colors">
+            <svg class="w-4 h-4 text-[#fbbf24]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
+            <span>مختبر الاختبار الخلفي والتقرير</span>
+            <span class="text-[10px] font-mono text-[#8ea1bd]" dir="ltr">(Backtest Report)</span>
+            <span class="px-1.5 py-0.2 rounded-[2px] bg-[#34d399]/20 text-[#34d399] font-mono text-[9px]">PHASE 5 OOS</span>
+          </button>
+
+          <button id="tab-ai" onclick="switchTab('ai')" class="flex items-center gap-2 px-4 py-2.5 border-b-2 border-transparent text-[#8ea1bd] hover:text-[#e6edf7] hover:bg-[#131c30] transition-colors">
+            <svg class="w-4 h-4 text-[#60a5fa]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            <span>مرشحات الذكاء الاصطناعي</span>
+            <span class="text-[10px] font-mono text-[#8ea1bd]" dir="ltr">(AI Filter)</span>
+          </button>
+
+          <button id="tab-tools" onclick="switchTab('tools')" class="flex items-center gap-2 px-4 py-2.5 border-b-2 border-transparent text-[#8ea1bd] hover:text-[#e6edf7] hover:bg-[#131c30] transition-colors">
+            <svg class="w-4 h-4 text-[#5a6f8c]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+            <span>أدوات النظام والتشغيل</span>
+            <span class="text-[10px] font-mono text-[#8ea1bd]" dir="ltr">(Tools & Utilities)</span>
+          </button>
+        </nav>
+
+        <!-- ================================================================= -->
+        <!-- TAB 1: STRATEGY (GROUPED INPUTS + ON-BUT-INERT TAXONOMY + AUDIT) -->
+        <!-- ================================================================= -->
+        <div id="view-strategy" class="space-y-6">
+
+          <!-- 3. THE HISTORIC AUDIT ACCORDION: "Which gate actually decides" -->
+          <!-- Designed to address the core defect: a switch ON while check cannot run -->
+          <div class="rounded-[4px] border border-[#334769] bg-[#131c30] overflow-hidden">
+            <button onclick="toggleAccordion('gate-audit-panel')" class="w-full flex items-center justify-between p-3.5 bg-[#17223b] hover:bg-[#1a2640] transition-colors text-right">
+              <div class="flex items-center gap-3">
+                <span class="p-1.5 rounded-[2px] bg-[#fbbf24]/10 border border-[#fbbf24]/30 text-[#fbbf24]">
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </span>
+                <div>
+                  <div class="text-sm font-bold text-[#e6edf7] flex items-center gap-2">
+                    <span>أي بوابة تقرر فعلًا؟ · تدقيق الفاعلية التشغيلية للمدخلات</span>
+                    <span class="font-mono text-xs text-[#fbbf24]" dir="ltr">Which gate actually decides?</span>
+                  </div>
+                  <div class="text-[11px] text-[#8ea1bd]">
+                    سجل التحقق الصارم للإجابة عن سؤال: "هل هذا المفتاح حقيقي وله تأثير في الكود أم شكلي وغير فعال؟" (Root-Cause Audit)
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded-[2px] bg-[#34d399]/10 text-[#34d399] border border-[#34d399]/30">3 ACTIVE DECIDERS</span>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded-[2px] bg-[#fbbf24]/10 text-[#fbbf24] border border-[#fbbf24]/30">1 INERT</span>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded-[2px] bg-[#5a6f8c]/20 text-[#8ea1bd] border border-[#5a6f8c]/40">2 PASSIVE LABELS</span>
+                <svg id="gate-audit-chevron" class="w-4 h-4 text-[#8ea1bd] transform transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              </div>
+            </button>
+
+            <div id="gate-audit-panel" class="p-4 bg-[#0f182a] border-t border-[#223049] space-y-4">
+              <div class="p-3 rounded-[3px] bg-[#fbbf24]/5 border border-[#fbbf24]/20 text-xs text-[#e6edf7] leading-relaxed">
+                <strong class="text-[#fbbf24] font-semibold">تاريخ توثيق العيب التشغيلي (Defect Provenance):</strong>
+                في الإصدارات السابقة، كان مفتاح <code>Candle Confirmation</code> ومؤشر <code>Market Analyzer</code> يظهران بحالة <span class="font-mono text-[#34d399]">ON</span> في واجهة المستخدم، بينما كانت الدالة البرمجية المسؤولة عنهما في السيرفر معطلة منذ عامين دون تنبيه! في هذا التصميم المحدث، تم فصل المدخلات إلى 3 طبقات حسب <strong>حقيقة تأثيرها في حرمان السهم من الاختراق</strong>.
+              </div>
+
+              <!-- Gate Audit Verification Matrix Table -->
+              <div class="overflow-x-auto">
+                <table class="w-full text-right text-xs border border-[#223049]">
+                  <thead class="bg-[#17223b] text-[#8ea1bd] font-mono text-[10px] uppercase border-b border-[#223049]">
+                    <tr>
+                      <th class="p-2.5">المعامل / البوابة (Gate / Parameter)</th>
+                      <th class="p-2.5">الحالة في الواجهة</th>
+                      <th class="p-2.5">الفاعلية الحقيقية بالكود (Actual Code Impact)</th>
+                      <th class="p-2.5 text-center">حجم الاستبعاد التاريخي (Rejected)</th>
+                      <th class="p-2.5">الرأي الهندسي والحكم التشغيلي</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-[#223049] font-mono-tabular text-[11px]">
+                    <tr class="bg-[#131c30]">
+                      <td class="p-2.5 font-semibold text-[#e6edf7]">
+                        Minimum Trend (ADX Floor: 12)
+                        <div class="text-[10px] font-normal text-[#8ea1bd]">فلتر الاتجاه الأدنى لقوة الحركة</div>
+                      </td>
+                      <td class="p-2.5 text-[#34d399]">
+                        <span class="px-1.5 py-0.5 rounded-[2px] bg-[#34d399]/10 border border-[#34d399]/30">ACTIVE</span>
+                      </td>
+                      <td class="p-2.5 text-[#e6edf7]">
+                        بوابة حاسمة: تستبعد مباشرة أي سهم يقل فيه ADX عن 12 قبل فحص الشموع.
+                      </td>
+                      <td class="p-2.5 text-center font-mono text-[#bear] font-semibold text-rose-400">
+                        21,296 إشارة مرفوضة (91.2%)
+                      </td>
+                      <td class="p-2.5 text-[#34d399]">بوابة حاكمة رئيسية (Dominant Gate)</td>
+                    </tr>
+                    <tr class="bg-[#0f182a]">
+                      <td class="p-2.5 font-semibold text-[#e6edf7]">
+                        Minimum Score (Score >= 50)
+                        <div class="text-[10px] font-normal text-[#8ea1bd]">مجموع درجات الاستراتيجية الموزونة</div>
+                      </td>
+                      <td class="p-2.5 text-[#34d399]">
+                        <span class="px-1.5 py-0.5 rounded-[2px] bg-[#34d399]/10 border border-[#34d399]/30">ACTIVE</span>
+                      </td>
+                      <td class="p-2.5 text-[#e6edf7]">
+                        بوابة حاسمة: تعزل الأسهم الضعيفة في التقارب المتوسط والتذبذب.
+                      </td>
+                      <td class="p-2.5 text-center font-mono text-rose-400 font-semibold">
+                        1,420 إشارة مرفوضة
+                      </td>
+                      <td class="p-2.5 text-[#34d399]">بوابة حاكمة رئيسية</td>
+                    </tr>
+                    <!-- THE ON-BUT-INERT REAL ROW -->
+                    <tr class="bg-[#fbbf24]/5 border-r-2 border-r-[#fbbf24]">
+                      <td class="p-2.5 font-semibold text-[#fbbf24]">
+                        Require Candle Confirmation (candle_score > 0)
+                        <div class="text-[10px] font-normal text-[#8ea1bd]">تأكيد الشمعة اليابانية الصاعدة</div>
+                      </td>
+                      <td class="p-2.5 text-[#fbbf24]">
+                        <span class="px-1.5 py-0.5 rounded-[2px] bg-[#fbbf24]/20 border border-[#fbbf24]/40 font-bold">ON BUT INERT (معطل خلفيًا)</span>
+                      </td>
+                      <td class="p-2.5 text-[#e6edf7]">
+                        غير فعال: الشرط يتجاوزه الكود تلقائيًا إذا تجاوز السهم حاجز النطاق السعري في جلسة الخميس.
+                      </td>
+                      <td class="p-2.5 text-center font-mono text-[#8ea1bd]">
+                        0 إشارة (صفر استبعاد)
+                      </td>
+                      <td class="p-2.5 text-[#fbbf24]">مفتاح شكلي خامل — تم وضع وسم تنبيه صريح</td>
+                    </tr>
+                    <tr class="bg-[#0f182a]">
+                      <td class="p-2.5 font-semibold text-[#e6edf7]">
+                        Require Market Analyzer (FGX30 Index)
+                        <div class="text-[10px] font-normal text-[#8ea1bd]">فلتر توافق مؤشر السوق العام</div>
+                      </td>
+                      <td class="p-2.5 text-[#8ea1bd]">
+                        <span class="px-1.5 py-0.5 rounded-[2px] bg-[#5a6f8c]/20 border border-[#5a6f8c]/40">OFF (DISABLED)</span>
+                      </td>
+                      <td class="p-2.5 text-[#8ea1bd]">
+                        معطل افتراضيًا. في حال التفعيل يلزم وجود اتجاه صاعد للمؤشر الرئيسي.
+                      </td>
+                      <td class="p-2.5 text-center font-mono text-[#8ea1bd]">
+                        —·—
+                      </td>
+                      <td class="p-2.5 text-[#8ea1bd]">جاهز للاختبار في الباك تست فقط</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. REAL GROUPING: IMPACT-WEIGHTED CONFIGURATION CLUSTERS -->
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- CLUSTER A: DOMINANT GATES (HIGH IMPACT - The ones that actually decide) -->
+            <div class="rounded-[4px] border border-[#223049] bg-[#131c30] flex flex-col justify-between">
+              <div>
+                <div class="p-3.5 bg-[#17223b] border-b border-[#223049] flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-[2px] bg-[#34d399]"></span>
+                    <div>
+                      <h2 class="text-xs font-bold text-[#e6edf7] uppercase font-mono">1. DOMINANT EXECUTION GATES</h2>
+                      <div class="text-[11px] text-[#8ea1bd]">البوابات الحاكمة (تتحكم في 95% من استبعاد الإشارات)</div>
+                    </div>
+                  </div>
+                  <span class="px-1.5 py-0.5 rounded-[2px] bg-[#34d399]/10 text-[#34d399] font-mono text-[9px] border border-[#34d399]/30">HIGH IMPACT</span>
+                </div>
+
+                <div class="p-4 space-y-5">
+                  <!-- Setting 1: Minimum Score -->
+                  <div class="space-y-1.5">
+                    <div class="flex justify-between items-center text-xs">
+                      <label class="text-[#e6edf7] font-medium flex items-center gap-1.5">
+                        <span>الحد الأدنى لدرجة النموذج (Minimum Score)</span>
+                        <span class="text-[10px] text-[#8ea1bd] font-mono">[Core Gate]</span>
+                      </label>
+                      <span class="font-mono text-sm font-bold text-[#60a5fa]">50</span>
+                    </div>
+                    <input type="range" min="0" max="100" value="50" class="range-slider w-full" disabled>
+                    <div class="flex justify-between text-[10px] font-mono text-[#5a6f8c]">
+                      <span>0 (تساهل تام)</span>
+                      <span>50 (المعيار المعتمد)</span>
+                      <span>80 (انتقاء صارم)</span>
+                    </div>
+                    <p class="text-[10px] text-[#8ea1bd] leading-tight">
+                      يتحكم في تقاطع المتوسطات وزخم التدفق النقدي. يخضع للتجميد في الإصدار الإنتاجي.
+                    </p>
+                  </div>
+
+                  <!-- Setting 2: Minimum Trend (ADX Gate) -->
+                  <div class="space-y-1.5 pt-2 border-t border-[#223049]">
+                    <div class="flex justify-between items-center text-xs">
+                      <label class="text-[#e6edf7] font-medium flex items-center gap-1.5">
+                        <span>عتبة قوة الاتجاه (Minimum Trend ADX)</span>
+                        <span class="text-[10px] text-[#rose-400] font-mono text-rose-400 font-bold">[Most Lethal Gate]</span>
+                      </label>
+                      <span class="font-mono text-sm font-bold text-[#60a5fa]">12</span>
+                    </div>
+                    <input type="range" min="5" max="35" value="12" class="range-slider w-full" disabled>
+                    <div class="flex justify-between text-[10px] font-mono text-[#5a6f8c]">
+                      <span>5 (سوق متذبذب)</span>
+                      <span>12 (الحد الأدنى الفعلي)</span>
+                      <span>25 (ترند صاعد قوي)</span>
+                    </div>
+                    <div class="p-2 rounded-[3px] bg-[#0f182a] border border-[#223049] text-[10px] text-[#8ea1bd] space-y-1">
+                      <div class="flex items-center justify-between text-[#e6edf7]">
+                        <span>مستويات تصنيف الاتجاه:</span>
+                        <span class="font-mono text-[9px] text-[#34d399]">ADX > 25 (Trending)</span>
+                      </div>
+                      <div>
+                        الأسهم ذات ADX &lt; 12 تعتبر عرضية وضعيفة الزخم وتُرفض فورًا عند الإغلاق.
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Setting 3: Minimum Confidence -->
+                  <div class="space-y-1.5 pt-2 border-t border-[#223049]">
+                    <div class="flex justify-between items-center text-xs">
+                      <label class="text-[#e6edf7] font-medium">الحد الأدنى لثقة النموذج (Min Confidence)</label>
+                      <span class="font-mono text-sm font-bold text-[#60a5fa]">65%</span>
+                    </div>
+                    <input type="range" min="30" max="95" value="65" class="range-slider w-full" disabled>
+                    <div class="flex justify-between text-[10px] font-mono text-[#5a6f8c]">
+                      <span>30%</span>
+                      <span>65% (خط الأساس)</span>
+                      <span>90%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Cluster Footer Telemetry -->
+              <div class="p-2.5 bg-[#0f182a] border-t border-[#223049] text-[10px] text-[#8ea1bd] flex items-center justify-between font-mono">
+                <span>REJECT CONTRIBUTION:</span>
+                <span class="text-[#34d399] font-bold">96.4% OF UNIVERSE</span>
+              </div>
+            </div>
+
+            <!-- CLUSTER B: SECONDARY SENSITIVITY FILTERS (MODERATE IMPACT) -->
+            <div class="rounded-[4px] border border-[#223049] bg-[#131c30] flex flex-col justify-between">
+              <div>
+                <div class="p-3.5 bg-[#17223b] border-b border-[#223049] flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-[2px] bg-[#60a5fa]"></span>
+                    <div>
+                      <h2 class="text-xs font-bold text-[#e6edf7] uppercase font-mono">2. SECONDARY SENSITIVITY</h2>
+                      <div class="text-[11px] text-[#8ea1bd]">فلاتر الحساسية والتصنيف (تؤثر على جودة الفرص)</div>
+                    </div>
+                  </div>
+                  <span class="px-1.5 py-0.5 rounded-[2px] bg-[#60a5fa]/10 text-[#60a5fa] font-mono text-[9px] border border-[#60a5fa]/30">MODERATE IMPACT</span>
+                </div>
+
+                <div class="p-4 space-y-5">
+                  <!-- Setting 4: Minimum RR -->
+                  <div class="space-y-1.5">
+                    <div class="flex justify-between items-center text-xs">
+                      <label class="text-[#e6edf7] font-medium">الحد الأدنى للعائد إلى المخاطرة (Minimum R:R)</label>
+                      <span class="font-mono text-sm font-bold text-[#60a5fa]">3.00×</span>
+                    </div>
+                    <input type="range" min="1.5" max="5.0" step="0.25" value="3.00" class="range-slider w-full" disabled>
+                    <div class="flex justify-between text-[10px] font-mono text-[#5a6f8c]">
+                      <span>1.50× (متساهل)</span>
+                      <span>3.00× (التوزيع الافتراضي)</span>
+                      <span>4.50×</span>
+                    </div>
+                    <p class="text-[10px] text-[#8ea1bd]">
+                      يمنع احتساب الصفقات التي يقل فيها الهدف الأول عن 3 أضعاف المسافة لوقف الخسارة.
+                    </p>
+                  </div>
+
+                  <!-- Setting 5: Minimum Momentum -->
+                  <div class="space-y-1.5 pt-2 border-t border-[#223049]">
+                    <div class="flex justify-between items-center text-xs">
+                      <label class="text-[#e6edf7] font-medium">الحد الأدنى لمؤشر الزخم السريع (Momentum)</label>
+                      <span class="font-mono text-sm font-bold text-[#60a5fa]">3</span>
+                    </div>
+                    <input type="range" min="0" max="10" value="3" class="range-slider w-full" disabled>
+                    <div class="flex justify-between text-[10px] font-mono text-[#5a6f8c]">
+                      <span>0</span>
+                      <span>3 (معتدل)</span>
+                      <span>8 (عنيف)</span>
+                    </div>
+                  </div>
+
+                  <!-- Setting 6: Minimum Volume Surge -->
+                  <div class="space-y-1.5 pt-2 border-t border-[#223049]">
+                    <div class="flex justify-between items-center text-xs">
+                      <label class="text-[#e6edf7] font-medium">مضاعف أحجام التداول الدنيا (Volume Multiplier)</label>
+                      <span class="font-mono text-sm font-bold text-[#60a5fa]">0 (معطل)</span>
+                    </div>
+                    <input type="range" min="0" max="5" value="0" class="range-slider w-full" disabled>
+                    <div class="flex justify-between text-[10px] font-mono text-[#5a6f8c]">
+                      <span>0 (غير ملزم)</span>
+                      <span>1.5×</span>
+                      <span>3.0×</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Cluster Footer Telemetry -->
+              <div class="p-2.5 bg-[#0f182a] border-t border-[#223049] text-[10px] text-[#8ea1bd] flex items-center justify-between font-mono">
+                <span>FILTER TARGET:</span>
+                <span class="text-[#60a5fa] font-bold">RISK/REWARD GEOMETRY</span>
+              </div>
+            </div>
+
+            <!-- CLUSTER C: "ON BUT INERT" & EXPERIMENTAL TOGGLES (THE DEFECT RESOLVED) -->
+            <div class="rounded-[4px] border border-[#fbbf24]/40 bg-[#131c30] flex flex-col justify-between relative overflow-hidden">
+              <!-- Watermark alert on top -->
+              <div class="absolute top-0 right-0 left-0 h-1 bg-[#fbbf24]"></div>
+              <div>
+                <div class="p-3.5 bg-[#17223b] border-b border-[#223049] flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-[2px] bg-[#fbbf24]"></span>
+                    <div>
+                      <h2 class="text-xs font-bold text-[#fbbf24] uppercase font-mono">3. INERT & EXPERIMENTAL TOGGLES</h2>
+                      <div class="text-[11px] text-[#8ea1bd]">المفاتيح الخاملة والتجريبية (الإفصاح الصريح)</div>
+                    </div>
+                  </div>
+                  <span class="px-1.5 py-0.5 rounded-[2px] bg-[#fbbf24]/10 text-[#fbbf24] font-mono text-[9px] border border-[#fbbf24]/30">DEFECT PROOF</span>
+                </div>
+
+                <div class="p-4 space-y-4">
+                  
+                  <!-- THE BENCHMARK ROW: ON BUT INERT DEMONSTRATION -->
+                  <div class="p-3 rounded-[3px] border border-[#fbbf24]/50 bg-inert-hatch space-y-2">
+                    <div class="flex items-start justify-between">
+                      <div class="space-y-0.5">
+                        <div class="text-xs font-bold text-[#e6edf7] flex items-center gap-1.5">
+                          <span>Require Candle Confirmation</span>
+                          <span class="px-1.5 py-0.2 rounded-[2px] bg-[#fbbf24] text-[#0b1220] font-mono text-[9px] font-bold">
+                            ON BUT INERT
+                          </span>
+                        </div>
+                        <div class="text-[10px] text-[#8ea1bd] font-mono">candle_score > 0 · شرط شمعة التأكيد</div>
+                      </div>
+                      
+                      <!-- Tri-State Switch Display (ON, but hatched/inert visual) -->
+                      <div class="flex items-center">
+                        <div class="w-10 h-5 bg-[#fbbf24]/30 rounded-[2px] p-0.5 border border-[#fbbf24] flex items-center justify-end">
+                          <div class="w-4 h-4 rounded-[2px] bg-[#fbbf24] shadow-sm flex items-center justify-center">
+                            <span class="text-[8px] text-[#0b1220] font-bold font-mono">!</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Explicit Diagnostic Explaining Why It's Inert -->
+                    <div class="p-2 rounded-[2px] bg-[#0b1220]/80 border border-[#fbbf24]/30 text-[10px] text-[#fbbf24] space-y-1">
+                      <div class="font-semibold flex items-center gap-1">
+                        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                        <span>تشخيص هندسي (Real State vs Stored Value):</span>
+                      </div>
+                      <p class="text-[#e6edf7] leading-tight">
+                        القيمة المخزنة هي <strong class="text-[#34d399] font-mono">TRUE</strong> ولكن الفحص الداخلي بالكود معطل لأنه يعتمد على نموذج شمعي قديم يولد قيماً صفرية. لن يُغير هذا المفتاح أي إشارة حتى يتم إطلاق محرك الشموع V2.
+                      </p>
+                    </div>
+                  </div>
+
+                  <!-- Setting 8: Require Market Analyzer (FGX30 Index) -->
+                  <div class="p-3 rounded-[3px] border border-[#223049] bg-[#0f182a] space-y-2">
+                    <div class="flex items-start justify-between">
+                      <div class="space-y-0.5">
+                        <div class="text-xs font-medium text-[#e6edf7]">
+                          Require Market Analyzer (EGX30 Gate)
+                        </div>
+                        <div class="text-[10px] text-[#8ea1bd] font-mono">شرط توافق اتجاه المؤشر العام</div>
+                      </div>
+                      <div class="flex items-center">
+                        <div class="w-10 h-5 bg-[#223049] rounded-[2px] p-0.5 border border-[#334769] flex items-center justify-start">
+                          <div class="w-4 h-4 rounded-[2px] bg-[#5a6f8c]"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <p class="text-[10px] text-[#5a6f8c]">
+                      حالة المفتاح: <span class="font-mono text-[#8ea1bd]">OFF</span>. يمنع الصفقات تماماً إذا كان مؤشر EGX30 أسفل متوسط 50 يوماً.
+                    </p>
+                  </div>
+
+                  <!-- Setting 9: Max RR Cap -->
+                  <div class="p-3 rounded-[3px] border border-[#223049] bg-[#0f182a] space-y-2">
+                    <div class="flex items-start justify-between">
+                      <div class="space-y-0.5">
+                        <div class="text-xs font-medium text-[#e6edf7]">
+                          Enable Max RR Cap
+                        </div>
+                        <div class="text-[10px] text-[#8ea1bd]">سقف العائد الأقصى (تقييد الأهداف البعيدة)</div>
+                      </div>
+                      <div class="flex items-center">
+                        <div class="w-10 h-5 bg-[#223049] rounded-[2px] p-0.5 border border-[#334769] flex items-center justify-start">
+                          <div class="w-4 h-4 rounded-[2px] bg-[#5a6f8c]"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              <!-- Cluster Footer Telemetry -->
+              <div class="p-2.5 bg-[#0f182a] border-t border-[#223049] text-[10px] text-[#fbbf24] flex items-center justify-between font-mono">
+                <span>INERT WARNING:</span>
+                <span>ZERO FALSE CLAIMS GUARANTEED</span>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Bottom Notice for Strategy Changes -->
+          <div class="p-3 rounded-[4px] bg-[#131c30] border border-[#223049] flex items-center justify-between text-xs text-[#8ea1bd]">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-[#60a5fa]"></span>
+              <span>سيتم تطبيق أي تغييرات على المعاملات عند تشغيل الفحص اليومي القادم أو إجراء باك تست تجريبي جديد.</span>
+            </div>
+            <span class="font-mono text-[11px] text-[#5a6f8c]">Last Freeze: 2026-09-10 14:30 CLT</span>
+          </div>
+
+        </div>
+
+        <!-- ================================================================= -->
+        <!-- TAB 2: BACKTEST LABORATORY (REPORT VIEW + PERFECTLY ALIGNED X-AXIS) -->
+        <!-- ================================================================= -->
+        <div id="view-backtest" class="space-y-6 hidden">
+
+          <!-- 5. BACKTEST RUN CONTROL STRIP -->
+          <div class="p-4 rounded-[4px] border border-[#334769] bg-[#131c30] flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div class="space-y-1">
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded-[2px] bg-[#34d399]/20 text-[#34d399] font-mono text-xs font-bold">
+                  VALIDATED PHASE 5 OOS
+                </span>
+                <h3 class="text-sm font-bold text-[#e6edf7]">
+                  مختبر الاختبار والتحقق عبر العينة الخارجة (Comparable Baseline Benchmark)
+                </h3>
+              </div>
+              <div class="text-xs text-[#8ea1bd] font-mono">
+                Universe: <span class="text-[#e6edf7]">230 active EODHD EGX symbols</span> · Range: <span class="text-[#e6edf7]">2022-01-01 to 2026-07-30</span> · Folds: <span class="text-[#e6edf7]">5 Walk-Forward</span>
+              </div>
+            </div>
+
+            <!-- Run Action & Capital Inputs -->
+            <div class="flex items-center gap-3">
+              <div class="flex items-center gap-2 bg-[#0f182a] border border-[#223049] px-3 py-1.5 rounded-[2px] text-xs">
+                <span class="text-[#8ea1bd]">رأس المال:</span>
+                <span class="font-mono font-bold text-[#e6edf7]">100,000 EGP</span>
+              </div>
+
+              <div class="flex items-center gap-2 bg-[#0f182a] border border-[#223049] px-3 py-1.5 rounded-[2px] text-xs">
+                <span class="text-[#8ea1bd]">وضع الخروج:</span>
+                <span class="font-mono font-bold text-[#60a5fa]">TARGET 2 + TRAIL</span>
+              </div>
+
+              <button class="flex items-center gap-2 px-5 py-2 rounded-[3px] bg-[#60a5fa] hover:bg-[#3b82f6] text-[#0b1220] font-bold text-xs shadow-md transition-all">
+                <svg class="w-4 h-4 fill-current" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/></svg>
+                <span>إعادة تشغيل المحاكاة (Re-Run Laboratory)</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 6. EXECUTIVE HEADLINE STATISTICS (INSTITUTIONAL METRIC TILES) -->
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            
+            <div class="p-3 rounded-[3px] bg-[#131c30] border border-[#223049] space-y-1">
+              <div class="text-[10px] text-[#8ea1bd] uppercase font-mono">Net Return (CAGR)</div>
+              <div class="text-xl font-bold font-mono text-[#34d399]">+34.82%</div>
+              <div class="text-[9px] text-[#5a6f8c] font-mono">Vs EGX30 (+18.4%)</div>
+            </div>
+
+            <div class="p-3 rounded-[3px] bg-[#131c30] border border-[#223049] space-y-1">
+              <div class="text-[10px] text-[#8ea1bd] uppercase font-mono">Max Drawdown</div>
+              <div class="text-xl font-bold font-mono text-rose-400">-11.45%</div>
+              <div class="text-[9px] text-[#5a6f8c] font-mono">Duration: 42 sessions</div>
+            </div>
+
+            <div class="p-3 rounded-[3px] bg-[#131c30] border border-[#223049] space-y-1">
+              <div class="text-[10px] text-[#8ea1bd] uppercase font-mono">Sharpe Ratio</div>
+              <div class="text-xl font-bold font-mono text-[#e6edf7]">1.84</div>
+              <div class="text-[9px] text-[#5a6f8c] font-mono">Rf: 12.0% (CBE Yield)</div>
+            </div>
+
+            <div class="p-3 rounded-[3px] bg-[#131c30] border border-[#223049] space-y-1">
+              <div class="text-[10px] text-[#8ea1bd] uppercase font-mono">Profit Factor</div>
+              <div class="text-xl font-bold font-mono text-[#60a5fa]">2.14</div>
+              <div class="text-[9px] text-[#5a6f8c] font-mono">Gross Gain / Loss</div>
+            </div>
+
+            <div class="p-3 rounded-[3px] bg-[#131c30] border border-[#223049] space-y-1">
+              <div class="text-[10px] text-[#8ea1bd] uppercase font-mono">Win Rate</div>
+              <div class="text-xl font-bold font-mono text-[#e6edf7]">58.6%</div>
+              <div class="text-[9px] text-[#5a6f8c] font-mono">184 Wins / 130 Losses</div>
+            </div>
+
+            <div class="p-3 rounded-[3px] bg-[#131c30] border border-[#223049] space-y-1">
+              <div class="text-[10px] text-[#8ea1bd] uppercase font-mono">Total Trades</div>
+              <div class="text-xl font-bold font-mono text-[#e6edf7]">314</div>
+              <div class="text-[9px] text-[#5a6f8c] font-mono">Avg Hold: 8.4 Days</div>
+            </div>
+
+          </div>
+
+          <!-- 7. CO-ALIGNED DUAL CHART: EQUITY CURVE + DRAWDOWN WITH SHARED X-AXIS -->
+          <div class="rounded-[4px] border border-[#223049] bg-[#131c30] p-4 space-y-4">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-[#223049] pb-3">
+              <div>
+                <h4 class="text-sm font-bold text-[#e6edf7] flex items-center gap-2">
+                  <span>الرسم البياني المتزامن: منحنى نمو رأس المال وعمق التراجع (Co-Aligned Performance)</span>
+                  <span class="text-xs font-mono text-[#8ea1bd]" dir="ltr">Equity Curve & Drawdown Waterfall</span>
+                </h4>
+                <div class="text-[11px] text-[#8ea1bd]">
+                  محاذاة عمودية صارمة للمحور الزمني (Strict X-Axis Synchronization) لكشف الارتباط اللحظي بين القمم والتراجعات
+                </div>
+              </div>
+              <div class="flex items-center gap-4 text-xs font-mono">
+                <span class="flex items-center gap-1.5 text-[#34d399]">
+                  <span class="w-3 h-0.5 bg-[#34d399]"></span> Strategy Equity (منحنى المحفظة)
+                </span>
+                <span class="flex items-center gap-1.5 text-[#60a5fa]">
+                  <span class="w-3 h-0.5 bg-[#60a5fa] border-dashed border-t"></span> EGX30 Buy & Hold
+                </span>
+                <span class="flex items-center gap-1.5 text-rose-400">
+                  <span class="w-3 h-2 bg-rose-500/30"></span> Drawdown (%)
+                </span>
+              </div>
+            </div>
+
+            <!-- THE SYNCHRONIZED DUAL CANVAS -->
+            <div class="space-y-0">
+              
+              <!-- PANEL A: EQUITY CURVE (Top 220px) -->
+              <div class="relative h-[220px] w-full bg-[#0f182a] border border-[#223049] rounded-t-[3px] p-2">
+                <!-- Y-Axis Labels Left -->
+                <div class="absolute left-2 top-2 bottom-6 flex flex-col justify-between text-[10px] font-mono text-[#5a6f8c] select-none pointer-events-none">
+                  <span>260k EGP</span>
+                  <span>200k EGP</span>
+                  <span>140k EGP</span>
+                  <span>100k EGP</span>
+                </div>
+
+                <!-- SVG Visual Vector for Equity Curve -->
+                <svg class="w-full h-full" viewBox="0 0 1000 200" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#34d399" stop-opacity="0.25"/>
+                      <stop offset="100%" stop-color="#34d399" stop-opacity="0.0"/>
+                    </linearGradient>
+                  </defs>
+                  
+                  <!-- Gridlines Horizontal -->
+                  <line x1="60" y1="20" x2="980" y2="20" stroke="#223049" stroke-dasharray="3 3"/>
+                  <line x1="60" y1="75" x2="980" y2="75" stroke="#223049" stroke-dasharray="3 3"/>
+                  <line x1="60" y1="130" x2="980" y2="130" stroke="#223049" stroke-dasharray="3 3"/>
+                  <line x1="60" y1="185" x2="980" y2="185" stroke="#223049" stroke-width="1"/>
+
+                  <!-- Benchmark Line (EGX30 Index) -->
+                  <path d="M 60 185 L 200 170 L 350 160 L 500 168 L 650 145 L 800 135 L 980 120" fill="none" stroke="#60a5fa" stroke-width="1.5" stroke-dasharray="4 4"/>
+
+                  <!-- Strategy Equity Area & Line -->
+                  <path d="M 60 185 Q 150 175 220 150 T 380 130 T 520 145 T 660 85 T 820 55 T 980 25 L 980 185 L 60 185 Z" fill="url(#equityGrad)"/>
+                  <path d="M 60 185 Q 150 175 220 150 T 380 130 T 520 145 T 660 85 T 820 55 T 980 25" fill="none" stroke="#34d399" stroke-width="2.5"/>
+
+                  <!-- Max High Watermark Pin -->
+                  <circle cx="980" cy="25" r="4" fill="#34d399" stroke="#0b1220" stroke-width="2"/>
+                </svg>
+
+                <!-- Value Annotation Right -->
+                <div class="absolute right-3 top-3 px-2 py-1 bg-[#131c30] border border-[#34d399]/40 rounded-[2px] text-right font-mono">
+                  <div class="text-[9px] text-[#8ea1bd]">PORTFOLIO PEAK:</div>
+                  <div class="text-xs text-[#34d399] font-bold">254,800.00 EGP</div>
+                </div>
+              </div>
+
+              <!-- PANEL B: DRAWDOWN WATERFALL (Bottom 100px - Perfectly Synchronized X Axis) -->
+              <div class="relative h-[100px] w-full bg-[#0d1424] border-x border-b border-[#223049] rounded-b-[3px] p-2">
+                <!-- Y-Axis Labels Left -->
+                <div class="absolute left-2 top-2 bottom-6 flex flex-col justify-between text-[10px] font-mono text-[#5a6f8c] select-none pointer-events-none">
+                  <span>0%</span>
+                  <span>-10%</span>
+                  <span>-20%</span>
+                </div>
+
+                <!-- SVG Visual Vector for Drawdown Underwater Curve -->
+                <svg class="w-full h-full" viewBox="0 0 1000 80" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="drawdownGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#f87171" stop-opacity="0.05"/>
+                      <stop offset="100%" stop-color="#f87171" stop-opacity="0.4"/>
+                    </linearGradient>
+                  </defs>
+
+                  <!-- 0% Baseline -->
+                  <line x1="60" y1="10" x2="980" y2="10" stroke="#334769" stroke-width="1.5"/>
+                  <line x1="60" y1="45" x2="980" y2="45" stroke="#223049" stroke-dasharray="3 3"/>
+
+                  <!-- Underwater Fill -->
+                  <path d="M 60 10 L 150 10 L 220 22 L 280 10 L 400 10 L 470 52 L 540 45 L 600 10 L 700 10 L 750 28 L 810 10 L 980 10 L 980 10 Z" fill="url(#drawdownGrad)"/>
+                  <path d="M 60 10 L 150 10 L 220 22 L 280 10 L 400 10 L 470 52 L 540 45 L 600 10 L 700 10 L 750 28 L 810 10 L 980 10" fill="none" stroke="#f87171" stroke-width="1.8"/>
+
+                  <!-- Deepest Drawdown Pin -->
+                  <circle cx="470" cy="52" r="3.5" fill="#f87171"/>
+                </svg>
+
+                <div class="absolute right-3 bottom-2 text-[10px] font-mono text-rose-400">
+                  MAX DRAWDOWN: <strong class="font-bold">-11.45%</strong> (Session #142)
+                </div>
+              </div>
+
+              <!-- SHARED X-AXIS TIMELINE TICKS (Strictly Locked) -->
+              <div class="flex justify-between px-16 pt-2 text-[11px] font-mono text-[#8ea1bd] select-none">
+                <span>2022-Q1</span>
+                <span>2022-Q3</span>
+                <span>2023-Q1</span>
+                <span>2023-Q3</span>
+                <span>2024-Q1</span>
+                <span>2024-Q3</span>
+                <span>2025-Q1</span>
+                <span>2025-Q3</span>
+                <span>2026-Q2 (OOS)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 8. DETAILED ACCORDIONS: PROFESSIONAL METRICS & REJECTED TRADES -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            <!-- Accordion 1: Professional Quant Metrics -->
+            <div class="rounded-[4px] border border-[#223049] bg-[#131c30] overflow-hidden">
+              <div class="p-3 bg-[#17223b] border-b border-[#223049] flex items-center justify-between">
+                <span class="text-xs font-bold text-[#e6edf7] flex items-center gap-2">
+                  <svg class="w-4 h-4 text-[#60a5fa]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                  <span>المقاييس الكمية المتقدمة (Professional Metrics)</span>
+                </span>
+                <span class="font-mono text-[10px] text-[#34d399]">AUDITED T+0</span>
+              </div>
+              
+              <div class="p-4 space-y-3 font-mono-tabular text-xs">
+                <div class="flex justify-between py-1 border-b border-[#223049]">
+                  <span class="text-[#8ea1bd]">Sortino Ratio (Downside Deviation):</span>
+                  <span class="font-bold text-[#e6edf7]">2.41</span>
+                </div>
+                <div class="flex justify-between py-1 border-b border-[#223049]">
+                  <span class="text-[#8ea1bd]">Calmar Ratio (CAGR / Max DD):</span>
+                  <span class="font-bold text-[#e6edf7]">3.04</span>
+                </div>
+                <div class="flex justify-between py-1 border-b border-[#223049]">
+                  <span class="text-[#8ea1bd]">Average Trade Return:</span>
+                  <span class="font-bold text-[#34d399]">+2.38%</span>
+                </div>
+                <div class="flex justify-between py-1 border-b border-[#223049]">
+                  <span class="text-[#8ea1bd]">Expectancy per Trade:</span>
+                  <span class="font-bold text-[#e6edf7]">0.42 R</span>
+                </div>
+                <div class="flex justify-between py-1 border-b border-[#223049]">
+                  <span class="text-[#8ea1bd]">Slippage Model (Applied):</span>
+                  <span class="font-bold text-[#fbbf24]">0.25% fixed + 0.15% stamp</span>
+                </div>
+                <div class="flex justify-between py-1">
+                  <span class="text-[#8ea1bd]">Recovery Factor:</span>
+                  <span class="font-bold text-[#e6edf7]">4.88</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Accordion 2: Rejected Trades Breakdown (Where the funnel stopped) -->
+            <div class="rounded-[4px] border border-[#223049] bg-[#131c30] overflow-hidden">
+              <div class="p-3 bg-[#17223b] border-b border-[#223049] flex items-center justify-between">
+                <span class="text-xs font-bold text-[#e6edf7] flex items-center gap-2">
+                  <svg class="w-4 h-4 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+                  <span>أين توقفت الصفقات؟ (Rejected Trades Breakdown)</span>
+                </span>
+                <span class="font-mono text-[10px] text-[#8ea1bd]">FUNNEL TELEMETRY</span>
+              </div>
+              
+              <div class="p-4 space-y-3 font-mono-tabular text-xs">
+                <div>
+                  <div class="flex justify-between text-[11px] mb-1">
+                    <span class="text-[#8ea1bd]">Gate 1: ADX &lt; 12 (Weak Trend Floor)</span>
+                    <span class="text-rose-400 font-bold">21,296 (89.1%)</span>
+                  </div>
+                  <div class="w-full bg-[#0f182a] h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-rose-500 h-full" style="width: 89.1%"></div>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="flex justify-between text-[11px] mb-1">
+                    <span class="text-[#8ea1bd]">Gate 2: Score &lt; 50 (Insufficient Multi-Factor)</span>
+                    <span class="text-[#fbbf24] font-bold">1,420 (5.9%)</span>
+                  </div>
+                  <div class="w-full bg-[#0f182a] h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-amber-400 h-full" style="width: 5.9%"></div>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="flex justify-between text-[11px] mb-1">
+                    <span class="text-[#8ea1bd]">Gate 3: R:R &lt; 3.00 (Unfavorable Geometry)</span>
+                    <span class="text-[#60a5fa] font-bold">784 (3.3%)</span>
+                  </div>
+                  <div class="w-full bg-[#0f182a] h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-blue-400 h-full" style="width: 3.3%"></div>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="flex justify-between text-[11px] mb-1">
+                    <span class="text-[#8ea1bd]">Gate 4: Portfolio Heat Ceiling (Exposure Cap)</span>
+                    <span class="text-[#94a3b8] font-bold">98 (0.4%)</span>
+                  </div>
+                  <div class="w-full bg-[#0f182a] h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-slate-400 h-full" style="width: 0.4%"></div>
+                  </div>
+                </div>
+
+                <div class="pt-2 border-t border-[#223049] flex justify-between text-[11px] text-[#34d399]">
+                  <span class="font-semibold">Passed All Gates & Fired:</span>
+                  <span class="font-bold">314 Executed Setups (1.3%)</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- ================================================================= -->
+        <!-- TAB 3: AI MODEL CONTROLS -->
+        <!-- ================================================================= -->
+        <div id="view-ai" class="space-y-6 hidden">
+          <div class="rounded-[4px] border border-[#223049] bg-[#131c30] p-5 space-y-6 max-w-2xl">
+            <div class="border-b border-[#223049] pb-3">
+              <h3 class="text-sm font-bold text-[#e6edf7] flex items-center gap-2">
+                <span>إعدادات نموذج الذكاء الاصطناعي والتنبؤ</span>
+                <span class="text-xs font-mono text-[#8ea1bd]" dir="ltr">/ AI Model & Probability Gates</span>
+              </h3>
+              <p class="text-xs text-[#8ea1bd]">
+                ضبط مرشحات النماذج التوليدية والتصنيفية. تذكير: الذكاء الاصطناعي استرشادي ولا يلغي قواعد الاستراتيجية الكمية.
+              </p>
+            </div>
+
+            <!-- Enable AI Filter -->
+            <div class="flex items-center justify-between p-3 rounded-[3px] bg-[#0f182a] border border-[#223049]">
+              <div>
+                <div class="text-xs font-semibold text-[#e6edf7]">تفعيل فلتر الذكاء الاصطناعي (Enable AI Filter)</div>
+                <div class="text-[10px] text-[#8ea1bd]">استبعاد الصفقات التي يقل تقييم نموذج الاحتمالات فيها عن العتبة</div>
+              </div>
+              <input type="checkbox" checked class="w-4 h-4 rounded text-[#60a5fa] bg-[#17223b] border-[#334769]">
+            </div>
+
+            <!-- Slider Probability -->
+            <div class="space-y-2">
+              <div class="flex justify-between items-center text-xs">
+                <span class="text-[#e6edf7] font-medium">الحد الأدنى لاحتمالية النجاح (Minimum AI Probability)</span>
+                <span class="font-mono text-sm font-bold text-[#60a5fa]">60%</span>
+              </div>
+              <input type="range" min="40" max="90" value="60" class="range-slider w-full">
+              <div class="flex justify-between text-[10px] font-mono text-[#5a6f8c]">
+                <span>40% (متساهل)</span>
+                <span>60% (المعيار)</span>
+                <span>80% (صارم)</span>
+              </div>
+            </div>
+
+            <div class="p-3 rounded-[3px] bg-[#fbbf24]/5 border border-[#fbbf24]/20 text-[11px] text-[#fbbf24]">
+              <strong>ملاحظة السياسة:</strong> يتم تطبيق تغييرات احتمالية الذكاء الاصطناعي في دورة الفحص القادمة (Next Market Scan).
+            </div>
+          </div>
+        </div>
+
+        <!-- ================================================================= -->
+        <!-- TAB 4: TOOLS & UTILITIES -->
+        <!-- ================================================================= -->
+        <div id="view-tools" class="space-y-6 hidden">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl">
+            
+            <div class="p-4 rounded-[4px] border border-[#223049] bg-[#131c30] space-y-3">
+              <h4 class="text-xs font-bold text-[#e6edf7] uppercase font-mono">1. BACKTEST SCOPE & SEED</h4>
+              <p class="text-xs text-[#8ea1bd]">إعادة بناء مصفوفة الاختبار أو تصدير التقرير الفني كملف CSV أو PDF للمراجعة.</p>
+              <div class="flex gap-2">
+                <button class="px-3 py-1.5 rounded-[2px] bg-[#17223b] hover:bg-[#223049] border border-[#334769] text-xs text-[#e6edf7]">
+                  تصدير تقرير الصفقات (Export CSV)
+                </button>
+                <button class="px-3 py-1.5 rounded-[2px] bg-[#17223b] hover:bg-[#223049] border border-[#334769] text-xs text-[#e6edf7]">
+                  فتح تقارير الفحص القديمة
+                </button>
+              </div>
+            </div>
+
+            <div class="p-4 rounded-[4px] border border-[#223049] bg-[#131c30] space-y-3">
+              <h4 class="text-xs font-bold text-[#e6edf7] uppercase font-mono">2. RE-TRAIN & RESET ENGINE</h4>
+              <p class="text-xs text-[#8ea1bd]">إعادة ضبط المعاملات إلى إعدادات المصنع المعتمدة (Frozen Production State).</p>
+              <div class="flex gap-2">
+                <button class="px-3 py-1.5 rounded-[2px] bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-xs text-rose-400 font-medium">
+                  استعادة الإعدادات الافتراضية (Reset Settings)
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <script>
+    function switchTab(tabId) {
+      // Hide all tabs
+      document.getElementById('view-strategy').classList.add('hidden');
+      document.getElementById('view-backtest').classList.add('hidden');
+      document.getElementById('view-ai').classList.add('hidden');
+      document.getElementById('view-tools').classList.add('hidden');
+
+      // Reset tab button states
+      const tabs = ['strategy', 'backtest', 'ai', 'tools'];
+      tabs.forEach(t => {
+        const btn = document.getElementById('tab-' + t);
+        btn.classList.remove('border-[#60a5fa]', 'text-[#e6edf7]', 'bg-[#17223b]/50');
+        btn.classList.add('border-transparent', 'text-[#8ea1bd]');
+      });
+
+      // Show selected tab
+      document.getElementById('view-' + tabId).classList.remove('hidden');
+      const activeBtn = document.getElementById('tab-' + tabId);
+      activeBtn.classList.remove('border-transparent', 'text-[#8ea1bd]');
+      activeBtn.classList.add('border-[#60a5fa]', 'text-[#e6edf7]', 'bg-[#17223b]/50');
+    }
+
+    function toggleAccordion(id) {
+      const el = document.getElementById(id);
+      const chevron = document.getElementById('gate-audit-chevron');
+      if (el.classList.contains('hidden')) {
+        el.classList.remove('hidden');
+        if (chevron) chevron.classList.remove('rotate-180');
+      } else {
+        el.classList.add('hidden');
+        if (chevron) chevron.classList.add('rotate-180');
+      }
+    }
+  </script>
+</body>
+</html>

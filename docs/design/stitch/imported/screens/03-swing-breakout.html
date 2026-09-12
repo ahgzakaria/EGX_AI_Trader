@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>EGX AI Trader | اختراق السوينج · Swing Breakout</title>
+<!-- BEGIN: External Stylesheets & Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&amp;family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&amp;family=IBM+Plex+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- END: External Stylesheets & Fonts -->
+<!-- BEGIN: Tailwind Configuration -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              bg: '#0b1220',
+              sidebar: '#0e1729',
+              surface: '#131c30',
+              elevated: '#17223b',
+              well: '#0f182a',
+              border: '#223049',
+              borderFocus: '#476291',
+              textHigh: '#e6edf7',
+              textMed: '#8ea1bd',
+              textLow: '#5a6f8c',
+              green: '#34d399',
+              red: '#f87171',
+              amber: '#fbbf24',
+              blue: '#60a5fa',
+              purple: '#c084fc',
+            }
+          },
+          fontFamily: {
+            sans: ['"IBM Plex Sans"', '"IBM Plex Sans Arabic"', 'sans-serif'],
+            mono: ['"IBM Plex Mono"', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+<!-- END: Tailwind Configuration -->
+<!-- BEGIN: Custom CSS Tokens -->
+<style data-purpose="base-styling">
+    body {
+      background-color: #0b1220;
+      color: #e6edf7;
+      font-family: 'IBM Plex Sans', 'IBM Plex Sans Arabic', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .font-tabular {
+      font-feature-settings: "tnum" 1, "zero" 1;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    /* Cost pattern hatches */
+    .hatch-friction {
+      background: repeating-linear-gradient(
+        -45deg,
+        rgba(248, 113, 113, 0.2),
+        rgba(248, 113, 113, 0.2) 3px,
+        rgba(248, 113, 113, 0.05) 3px,
+        rgba(248, 113, 113, 0.05) 6px
+      );
+    }
+    .hatch-purple-warning {
+      background: repeating-linear-gradient(
+        45deg,
+        rgba(192, 132, 252, 0.15),
+        rgba(192, 132, 252, 0.15) 6px,
+        rgba(192, 132, 252, 0.03) 6px,
+        rgba(192, 132, 252, 0.03) 12px
+      );
+    }
+    /* Custom Scrollbar for high-density tables */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f182a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #223049;
+      border-radius: 2px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #476291;
+    }
+  </style>
+<!-- END: Custom CSS Tokens -->
+</head>
+<body class="flex min-h-screen overflow-x-hidden select-none bg-brand-bg text-brand-textHigh">
+<!-- BEGIN: LeftSidebar -->
+<aside class="w-[280px] flex-shrink-0 bg-brand-sidebar border-r border-brand-border flex flex-col justify-between z-30 h-screen sticky top-0" data-purpose="primary-sidebar">
+<!-- Top System Brand & Primary Navigation -->
+<div class="flex flex-col h-full overflow-y-auto">
+<!-- Brand Terminal Header -->
+<div class="p-4 border-b border-brand-border flex items-center justify-between">
+<div class="flex items-center space-x-2.5">
+<div class="w-7 h-7 bg-brand-elevated border border-brand-blue/40 rounded flex items-center justify-center text-brand-blue">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</div>
+<div>
+<div class="text-xs font-bold tracking-wider uppercase text-brand-textHigh flex items-center gap-1.5 font-mono">
+              EGX AI TRADER <span class="text-[10px] px-1 py-0.5 rounded bg-brand-well text-brand-blue border border-brand-blue/30 font-semibold">v4.2</span>
+</div>
+<div class="text-[11px] text-brand-textLow">متداول البورصة المصرية</div>
+</div>
+</div>
+</div>
+<!-- Navigation Hierarchy -->
+<nav aria-label="Terminal Sections" class="p-2 space-y-6 text-xs">
+<!-- Category: PORTFOLIO -->
+<div>
+<div class="px-3 py-1 text-[10px] font-semibold tracking-wider text-brand-textLow uppercase flex justify-between items-center font-mono">
+<span>المحفظة · PORTFOLIO</span>
+</div>
+<div class="mt-1 space-y-0.5">
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded text-brand-textMed hover:text-brand-textHigh hover:bg-brand-surface transition-colors" href="#">
+<svg class="w-3.5 h-3.5 text-brand-textLow" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>My Portfolio (محفظتي)</span>
+</a>
+</div>
+</div>
+<!-- Category: SWING (ACTIVE SECTION) -->
+<div>
+<div class="px-3 py-1 text-[10px] font-semibold tracking-wider text-brand-textLow uppercase flex justify-between items-center font-mono">
+<span>سوينج · SWING</span>
+</div>
+<div class="mt-1 space-y-0.5">
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded text-brand-textMed hover:text-brand-textHigh hover:bg-brand-surface transition-colors" href="#">
+<svg class="w-3.5 h-3.5 text-brand-textLow" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Daily Dashboard</span>
+</a>
+<!-- ACTIVE ITEM: Swing Breakout -->
+<a class="flex items-center justify-between px-3 py-1.5 rounded bg-brand-surface text-brand-blue font-medium border-l-2 border-brand-blue" href="#">
+<div class="flex items-center gap-2.5">
+<svg class="w-3.5 h-3.5 text-brand-blue" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Swing Breakout (اختراق)</span>
+</div>
+<span class="w-1.5 h-1.5 rounded-full bg-brand-blue animate-pulse"></span>
+</a>
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded text-brand-textMed hover:text-brand-textHigh hover:bg-brand-surface transition-colors" href="#">
+<svg class="w-3.5 h-3.5 text-brand-textLow" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Breakout Watch</span>
+</a>
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded text-brand-textMed hover:text-brand-textHigh hover:bg-brand-surface transition-colors" href="#">
+<svg class="w-3.5 h-3.5 text-brand-textLow" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Confirmed Breakout</span>
+</a>
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded text-brand-textMed hover:text-brand-textHigh hover:bg-brand-surface transition-colors" href="#">
+<svg class="w-3.5 h-3.5 text-brand-textLow" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Sector Liquidity</span>
+</a>
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded text-brand-textMed hover:text-brand-textHigh hover:bg-brand-surface transition-colors" href="#">
+<svg class="w-3.5 h-3.5 text-brand-textLow" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Watchlist</span>
+</a>
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded text-brand-textMed hover:text-brand-textHigh hover:bg-brand-surface transition-colors" href="#">
+<svg class="w-3.5 h-3.5 text-brand-textLow" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Stock Details</span>
+</a>
+</div>
+</div>
+<!-- Category: AI ANALYSIS -->
+<div>
+<div class="px-3 py-1 text-[10px] font-semibold tracking-wider text-brand-textLow uppercase flex justify-between items-center font-mono">
+<span>تحليل · AI ANALYSIS</span>
+</div>
+<div class="mt-1 space-y-0.5">
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded text-brand-textMed hover:text-brand-textHigh hover:bg-brand-surface transition-colors" href="#">
+<svg class="w-3.5 h-3.5 text-brand-textLow" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>AI Multi-Model Analysis</span>
+</a>
+</div>
+</div>
+<!-- Category: SYSTEM -->
+<div>
+<div class="px-3 py-1 text-[10px] font-semibold tracking-wider text-brand-textLow uppercase flex justify-between items-center font-mono">
+<span>النظام · SYSTEM</span>
+</div>
+<div class="mt-1 space-y-0.5">
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded text-brand-textMed hover:text-brand-textHigh hover:bg-brand-surface transition-colors" href="#">
+<svg class="w-3.5 h-3.5 text-brand-textLow" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>System Health &amp; Telemetry</span>
+</a>
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded text-brand-textMed hover:text-brand-textHigh hover:bg-brand-surface transition-colors" href="#">
+<svg class="w-3.5 h-3.5 text-brand-textLow" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Settings</span>
+</a>
+</div>
+</div>
+</nav>
+</div>
+<!-- Sidebar Bottom: Hard System Health Guard Panel -->
+<div class="p-3 border-t border-brand-border bg-brand-well font-mono">
+<div class="p-2.5 rounded bg-brand-surface border border-brand-border text-[11px] space-y-1.5">
+<div class="flex items-center justify-between">
+<span class="flex items-center gap-1.5 text-brand-green font-semibold">
+<span class="w-2 h-2 rounded-full bg-brand-green animate-pulse"></span>
+            RAN CLEAN 15:02 CLT
+          </span>
+<span class="text-[9px] px-1 bg-brand-green/10 text-brand-green border border-brand-green/30 rounded">100% PASS</span>
+</div>
+<div class="text-[10px] text-brand-textMed flex justify-between pt-1 border-t border-brand-border/60">
+<span>Universe Synced:</span>
+<span class="font-tabular font-semibold text-brand-textHigh">224 / 224</span>
+</div>
+<div class="text-[10px] text-brand-textMed flex justify-between">
+<span>Engine Integrity:</span>
+<span class="text-brand-green">OK (Clean State)</span>
+</div>
+</div>
+<div class="mt-2 text-center text-[10px] text-brand-textLow">
+        متداول البورصة المصرية · بحث كمّي
+      </div>
+</div>
+</aside>
+<!-- END: LeftSidebar -->
+<!-- BEGIN: MainContentWorkbench -->
+<main class="flex-1 min-w-0 max-w-[1640px] px-8 py-6 overflow-y-auto space-y-6" data-purpose="content-workbench">
+<!-- BEGIN: HeaderAndContext -->
+<header class="space-y-4">
+<!-- Top Title and Primary Scan Command Bar -->
+<div class="flex flex-wrap items-center justify-between gap-4">
+<div>
+<div class="flex items-center gap-3">
+<div class="p-1.5 rounded bg-brand-blue/10 border border-brand-blue/30 text-brand-blue">
+<svg class="w-5 h-5" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</div>
+<h1 class="text-xl font-bold tracking-tight text-brand-textHigh flex items-center gap-2">
+<span>اختراق السوينج</span>
+<span class="text-brand-textLow text-sm font-normal">/</span>
+<span class="text-brand-blue font-mono font-semibold">SWING BREAKOUT</span>
+</h1>
+</div>
+<p class="text-xs text-brand-textMed mt-1">
+            Four conditions, each from a rigorous statistical measurement rather than judgement. It never places an order and never reports a fill.
+          </p>
+</div>
+<!-- Global Action & Layout Switcher -->
+<div class="flex items-center gap-3">
+<div class="flex items-center bg-brand-surface border border-brand-border rounded p-1 text-xs">
+<button class="px-2.5 py-1 rounded bg-brand-blue text-brand-bg font-semibold flex items-center gap-1.5 transition">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Card View (Rails)</span>
+</button>
+<button class="px-2.5 py-1 rounded text-brand-textMed hover:text-brand-textHigh flex items-center gap-1.5 transition">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Dense Grid (12 Matrix)</span>
+</button>
+</div>
+<button class="px-4 py-2 bg-brand-blue hover:bg-blue-400 text-brand-bg font-semibold text-xs rounded shadow-sm flex items-center gap-2 font-mono transition">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Scan the market · افحص السوق</span>
+</button>
+</div>
+</div>
+<!-- Provenance Context Banner -->
+<div class="bg-brand-surface border border-brand-border rounded-md px-4 py-3 text-xs flex flex-wrap items-center justify-between gap-3 font-mono">
+<div class="flex items-center gap-2 text-brand-textMed">
+<span class="w-2 h-2 rounded-full bg-brand-blue"></span>
+<span>Scanned at <strong class="text-brand-textHigh">12:48:15 CLT</strong> for session <strong class="text-brand-textHigh">2026-09-10</strong>. Kept while moving between pages; final bars evaluated.</span>
+</div>
+<div class="flex items-center gap-4 text-[11px]">
+<span class="text-brand-textLow">HASH: <span class="text-brand-textMed">9e81cfa4</span></span>
+<span class="px-2 py-0.5 rounded bg-brand-well border border-brand-border text-brand-textHigh">EOD Bar Complete</span>
+</div>
+</div>
+<!-- High-Density Metric Strip (4 Stat Cards) -->
+<div class="grid grid-cols-4 gap-3 font-mono">
+<div class="bg-brand-surface border border-brand-border p-3 rounded">
+<div class="text-[10px] uppercase text-brand-textLow font-semibold">CANDIDATES (CURRENT)</div>
+<div class="text-2xl font-bold text-brand-textHigh font-tabular mt-1">1</div>
+<div class="text-[10px] text-brand-blue mt-1 flex items-center gap-1">
+<span>●</span> 1 Active Signal in current session
+          </div>
+</div>
+<div class="bg-brand-surface border border-brand-border p-3 rounded">
+<div class="text-[10px] uppercase text-brand-textLow font-semibold">UNIVERSE SCANNED</div>
+<div class="text-2xl font-bold text-brand-textHigh font-tabular mt-1">147</div>
+<div class="text-[10px] text-brand-textMed mt-1">100% liquid EGX list evaluated</div>
+</div>
+<div class="bg-brand-surface border border-brand-border p-3 rounded">
+<div class="text-[10px] uppercase text-brand-textLow font-semibold">ACTIVE SESSION</div>
+<div class="text-2xl font-bold text-brand-textHigh font-tabular mt-1">2026-09-10</div>
+<div class="text-[10px] text-brand-green mt-1">Trading session finalized</div>
+</div>
+<div class="bg-brand-surface border border-brand-border p-3 rounded">
+<div class="text-[10px] uppercase text-brand-textLow font-semibold">UNREADABLE / EXCLUDED</div>
+<div class="text-2xl font-bold text-brand-amber font-tabular mt-1">10</div>
+<div class="text-[10px] text-brand-textLow mt-1">Incomplete pricing or corp actions</div>
+</div>
+</div>
+</header>
+<!-- END: HeaderAndContext -->
+<!-- BEGIN: ProblemSolutionsSection -->
+<section class="space-y-4">
+<div class="flex items-center justify-between border-b border-brand-border pb-2">
+<h2 class="text-xs font-mono uppercase tracking-wider text-brand-textLow font-semibold">
+          SIGNAL ARCHETYPES &amp; BREAKOUT RAILS (THE 4 OPERATING RULES)
+        </h2>
+<span class="text-[11px] text-brand-textLow font-mono">Normalized Axis: Normalized to Price Delta [Stop to Target]</span>
+</div>
+<!-- Grid of The 4 Concrete Archetype Cards Solving the 4 Core Terminal Problems -->
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+<!-- CARD 1: NET POSITIVE (Profitable trade after friction, emerald border tint, clear cost band) -->
+<div class="bg-brand-surface border border-brand-green/40 hover:border-brand-green/70 rounded p-4 space-y-3 transition-colors shadow-sm">
+<div class="flex items-center justify-between border-b border-brand-border/60 pb-2.5">
+<div>
+<div class="flex items-center gap-2">
+<span class="font-mono text-base font-bold text-brand-textHigh">MPCO</span>
+<span class="text-xs text-brand-textMed">Mansoura Poultry</span>
+<span class="text-[10px] px-1.5 py-0.5 rounded bg-brand-green/10 text-brand-green border border-brand-green/30 font-mono font-medium">NET +7.2%</span>
+</div>
+<div class="text-[11px] text-brand-textLow font-mono mt-0.5">Rank 0.69 · Vol 4.4x · Mom(12-1) +108.5%</div>
+</div>
+<div class="text-right font-mono">
+<div class="text-xs text-brand-textLow">CLOSE</div>
+<div class="text-sm font-bold text-brand-textHigh font-tabular">2.600 EGP</div>
+</div>
+</div>
+<!-- Problem 1 Solution: Normalized Proportional Rail with Trading Cost Band -->
+<div class="space-y-1.5 py-1">
+<div class="flex justify-between text-[11px] font-mono text-brand-textMed">
+<span class="text-brand-red flex items-center gap-1 font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-brand-red"></span> STOP 2.380 (-8.4%)
+              </span>
+<span class="text-brand-textHigh flex items-center gap-1 font-bold">
+<span class="w-1.5 h-1.5 rounded-full bg-white"></span> ENTRY 2.600
+              </span>
+<span class="text-brand-green flex items-center gap-1 font-semibold">
+                TARGET 2.810 (+8.1%) <span class="w-1.5 h-1.5 rounded-full bg-brand-green"></span>
+</span>
+</div>
+<!-- Proportional Rail Track Container -->
+<div class="relative w-full h-7 bg-brand-well rounded border border-brand-border/80 overflow-hidden flex items-center px-1">
+<!-- Subtle tick grid lines -->
+<div class="absolute inset-0 flex justify-between pointer-events-none opacity-20">
+<div class="border-r border-brand-border h-full"></div>
+<div class="border-r border-brand-border h-full"></div>
+<div class="border-r border-brand-border h-full"></div>
+<div class="border-r border-brand-border h-full"></div>
+<div class="border-r border-brand-border h-full"></div>
+</div>
+<!-- Stop Loss Line (Left edge 5%) -->
+<div class="absolute left-[6%] top-0 bottom-0 w-0.5 bg-brand-red z-10"></div>
+<!-- Entry Level Pin (At 45%) -->
+<div class="absolute left-[45%] top-0 bottom-0 w-0.5 bg-white z-20 shadow-[0_0_8px_rgba(255,255,255,0.8)]"></div>
+<!-- COST BAND: Shaded hatched band starting right at Entry, width = 0.904% roundtrip friction -->
+<div class="absolute left-[45%] top-1 bottom-1 w-[14%] hatch-friction border-r border-brand-amber/80 z-10 flex items-center justify-center" title="Roundtrip Friction: Commission + Slippage + Stamp Tax">
+<span class="text-[8px] font-mono text-brand-amber font-bold tracking-tighter uppercase px-0.5 bg-brand-bg/80 rounded">Friction 0.9%</span>
+</div>
+<!-- Profit Zone remaining after friction -->
+<div class="absolute left-[59%] top-2 bottom-2 right-[8%] bg-brand-green/15 rounded-r border-r border-brand-green z-5 flex items-center justify-end pr-2">
+<span class="text-[9px] font-mono text-brand-green font-bold">NET +7.2%</span>
+</div>
+<!-- Target Line (At 92%) -->
+<div class="absolute right-[8%] top-0 bottom-0 w-0.5 bg-brand-green z-10"></div>
+</div>
+<!-- Friction Decomposition Breakdown Strip -->
+<div class="flex items-center justify-between text-[10px] font-mono text-brand-textLow px-1">
+<span>Gross Move: <strong class="text-brand-textHigh">+8.1%</strong></span>
+<span>Round-Trip Cost: <strong class="text-brand-amber font-tabular">0.904%</strong></span>
+<span>Net Outcome: <strong class="text-brand-green font-tabular">+7.20%</strong></span>
+</div>
+</div>
+</div>
+<!-- CARD 2: NET NEGATIVE (Move is wiped out by round-trip cost, amber/red tint) -->
+<div class="bg-brand-surface border border-brand-red/40 hover:border-brand-red/60 rounded p-4 space-y-3 transition-colors shadow-sm">
+<div class="flex items-center justify-between border-b border-brand-border/60 pb-2.5">
+<div>
+<div class="flex items-center gap-2">
+<span class="font-mono text-base font-bold text-brand-textHigh">ORAS</span>
+<span class="text-xs text-brand-textMed">Orascom Construction</span>
+<span class="text-[10px] px-1.5 py-0.5 rounded bg-brand-red/10 text-brand-red border border-brand-red/30 font-mono font-medium">NET -0.8% (WIPED)</span>
+</div>
+<div class="text-[11px] text-brand-textLow font-mono mt-0.5">Rank 0.31 · Vol 1.2x · Mom(12-1) +14.2%</div>
+</div>
+<div class="text-right font-mono">
+<div class="text-xs text-brand-textLow">CLOSE</div>
+<div class="text-sm font-bold text-brand-textHigh font-tabular">188.50 EGP</div>
+</div>
+</div>
+<!-- Rail with Cost Exceeding Target Delta -->
+<div class="space-y-1.5 py-1">
+<div class="flex justify-between text-[11px] font-mono text-brand-textMed">
+<span class="text-brand-red flex items-center gap-1 font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-brand-red"></span> STOP 183.00 (-2.9%)
+              </span>
+<span class="text-brand-textHigh flex items-center gap-1 font-bold">
+<span class="w-1.5 h-1.5 rounded-full bg-white"></span> ENTRY 188.50
+              </span>
+<span class="text-brand-amber flex items-center gap-1 font-semibold">
+                TARGET 190.10 (+0.85%) <span class="w-1.5 h-1.5 rounded-full bg-brand-amber"></span>
+</span>
+</div>
+<!-- Proportional Rail Track Container -->
+<div class="relative w-full h-7 bg-brand-well rounded border border-brand-border/80 overflow-hidden flex items-center px-1">
+<div class="absolute left-[8%] top-0 bottom-0 w-0.5 bg-brand-red z-10"></div>
+<div class="absolute left-[65%] top-0 bottom-0 w-0.5 bg-white z-20 shadow-[0_0_8px_rgba(255,255,255,0.8)]"></div>
+<!-- Cost Band exceeds target -->
+<div class="absolute left-[65%] top-1 bottom-1 w-[30%] hatch-friction border-r-2 border-brand-red z-10 flex items-center justify-center">
+<span class="text-[8px] font-mono text-brand-red font-bold px-1 bg-brand-bg/90 rounded">FRICTION &gt; TARGET (1.65%)</span>
+</div>
+<div class="absolute right-[18%] top-0 bottom-0 w-0.5 bg-brand-amber z-15"></div>
+</div>
+<!-- Friction Decomposition Breakdown Strip -->
+<div class="flex items-center justify-between text-[10px] font-mono text-brand-textLow px-1">
+<span>Gross Move: <strong class="text-brand-textMed">+0.85%</strong></span>
+<span>Round-Trip Cost: <strong class="text-brand-red font-tabular">1.650%</strong></span>
+<span>Net Outcome: <strong class="text-brand-red font-tabular">-0.80% (LOSS)</strong></span>
+</div>
+</div>
+</div>
+<!-- CARD 3: COST UNKNOWN (Rule 1 Safety State: Vibrant purple hatch, explicit warning banner, NO BAND) -->
+<div class="bg-brand-surface border border-brand-purple/50 rounded p-4 space-y-3 relative overflow-hidden shadow-sm">
+<!-- Subtle diagonal hazard backdrop -->
+<div class="absolute inset-0 hatch-purple-warning pointer-events-none opacity-40"></div>
+<div class="relative flex items-center justify-between border-b border-brand-border/60 pb-2.5">
+<div>
+<div class="flex items-center gap-2">
+<span class="font-mono text-base font-bold text-brand-textHigh">ETEL</span>
+<span class="text-xs text-brand-textMed">Telecom Egypt</span>
+<span class="text-[10px] px-1.5 py-0.5 rounded bg-brand-purple/20 text-brand-purple border border-brand-purple/40 font-mono font-semibold">COST UNKNOWN · مجهول التكلفة</span>
+</div>
+<div class="text-[11px] text-brand-textLow font-mono mt-0.5">Rank 0.54 · Vol 3.1x · Mom(12-1) +39.1%</div>
+</div>
+<div class="text-right font-mono">
+<div class="text-xs text-brand-textLow">CLOSE</div>
+<div class="text-sm font-bold text-brand-textHigh font-tabular">37.200 EGP</div>
+</div>
+</div>
+<!-- Rail with NO COST BAND DRAWN (Operating Rule 1) -->
+<div class="relative space-y-1.5 py-1">
+<div class="flex justify-between text-[11px] font-mono text-brand-textMed">
+<span class="text-brand-red flex items-center gap-1">STOP 34.500 (-7.2%)</span>
+<span class="text-brand-textHigh flex items-center gap-1 font-bold">ENTRY 37.200</span>
+<span class="text-brand-green flex items-center gap-1">TARGET 41.000 (+10.2%)</span>
+</div>
+<!-- Proportional Rail: Raw levels only, NO COST BAND DRAWN -->
+<div class="relative w-full h-7 bg-brand-well rounded border border-brand-purple/40 overflow-hidden flex items-center px-1">
+<div class="absolute left-[10%] top-0 bottom-0 w-0.5 bg-brand-red z-10"></div>
+<div class="absolute left-[40%] top-0 bottom-0 w-0.5 bg-white z-20"></div>
+<div class="absolute right-[10%] top-0 bottom-0 w-0.5 bg-brand-green z-10"></div>
+<!-- Centered transparent placeholder for unmeasured cost -->
+<div class="w-full text-center text-[9px] font-mono text-brand-purple font-medium tracking-wide">
+                [ NO COST BAND DRAWN · UNMEASURED FRICTION ]
+              </div>
+</div>
+<!-- Inescapable Operational Rule 1 Safety Banner -->
+<div class="p-2 rounded bg-brand-purple/10 border border-brand-purple/40 text-[10px] font-mono text-brand-purple flex items-start gap-2">
+<svg class="w-4 h-4 flex-shrink-0 text-brand-purple mt-0.5" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<div>
+<strong class="font-bold uppercase">[COST UNMEASURED · تكلفة غير محسوبة]:</strong> Cannot compute net profitability. Slippage and stamp taxes have zero historical fill samples. Never assume zero friction.
+              </div>
+</div>
+</div>
+</div>
+<!-- CARD 4: INSUFFICIENT LEVELS (Same exact chassis, structured diagnostic badge instead of fake rail) -->
+<div class="bg-brand-surface border border-brand-border rounded p-4 space-y-3 shadow-sm">
+<div class="flex items-center justify-between border-b border-brand-border/60 pb-2.5">
+<div>
+<div class="flex items-center gap-2">
+<span class="font-mono text-base font-bold text-brand-textHigh">COMI</span>
+<span class="text-xs text-brand-textMed">Commercial International Bank</span>
+<span class="text-[10px] px-1.5 py-0.5 rounded bg-brand-well text-brand-textLow border border-brand-border font-mono font-medium">NO GEOMETRY</span>
+</div>
+<div class="text-[11px] text-brand-textLow font-mono mt-0.5">Rank 0.88 · Vol 0.9x · Mom(12-1) +21.4%</div>
+</div>
+<div class="text-right font-mono">
+<div class="text-xs text-brand-textLow">CLOSE</div>
+<div class="text-sm font-bold text-brand-textHigh font-tabular">84.000 EGP</div>
+</div>
+</div>
+<!-- Diagnostic Insufficiency Container (Preserves outer card geometry exactly) -->
+<div class="space-y-1.5 py-1">
+<div class="h-7 w-full bg-brand-well rounded border border-dashed border-brand-border flex items-center justify-center text-[10px] font-mono text-brand-textLow gap-2">
+<svg class="w-3.5 h-3.5 text-brand-amber" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>INSUFFICIENT GEOMETRY: Missing Valid Historical Pivot for Target 1</span>
+</div>
+<div class="p-2 rounded bg-brand-well/60 border border-brand-border text-[10px] font-mono text-brand-textMed flex items-center justify-between">
+<span>Reason: Multi-year all-time high breakout without resistance ceiling</span>
+<span class="text-brand-amber font-semibold">Flag: Level Deficit</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- END: ProblemSolutionsSection -->
+<!-- BEGIN: DenseMatrixGridSection -->
+<section class="space-y-3" data-purpose="dense-12-matrix">
+<div class="flex items-center justify-between border-b border-brand-border pb-2">
+<div class="flex items-center gap-2">
+<h2 class="text-xs font-mono uppercase tracking-wider text-brand-textLow font-semibold">
+            DENSE CANDIDATE MATRIX (12 SIGNALS STACKED)
+          </h2>
+<span class="text-[10px] px-1.5 py-0.5 rounded bg-brand-well text-brand-textMed font-mono">Scannable 3-Col Layout</span>
+</div>
+<div class="text-xs text-brand-textLow font-mono">Sorted by Momentum &amp; ATR Volatility Decile</div>
+</div>
+<!-- 12 Compact Structured Cards arranged in 3 Columns to prevent infinite scrolling -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 font-mono text-xs">
+<!-- Matrix Card 1 -->
+<div class="bg-brand-surface border border-brand-border hover:border-brand-borderFocus p-2.5 rounded space-y-2">
+<div class="flex justify-between items-center">
+<div class="flex items-center gap-2">
+<span class="font-bold text-brand-textHigh">EKHO</span>
+<span class="text-[10px] text-brand-textLow">Egypt Kuwait Holding</span>
+</div>
+<span class="text-[10px] font-bold text-brand-green font-tabular">+5.4% NET</span>
+</div>
+<div class="flex justify-between text-[11px] text-brand-textMed font-tabular">
+<span>C: 1.140 USD</span>
+<span>R: 0.72</span>
+<span>Vol: 2.8x</span>
+</div>
+<div class="w-full h-2 bg-brand-well rounded overflow-hidden relative">
+<div class="absolute left-[15%] w-1 h-full bg-brand-red"></div>
+<div class="absolute left-[40%] w-1 h-full bg-white"></div>
+<div class="absolute left-[40%] w-[12%] h-full hatch-friction"></div>
+<div class="absolute right-[15%] w-1 h-full bg-brand-green"></div>
+</div>
+</div>
+<!-- Matrix Card 2 -->
+<div class="bg-brand-surface border border-brand-border hover:border-brand-borderFocus p-2.5 rounded space-y-2">
+<div class="flex justify-between items-center">
+<div class="flex items-center gap-2">
+<span class="font-bold text-brand-textHigh">HRHO</span>
+<span class="text-[10px] text-brand-textLow">EFG Hermes</span>
+</div>
+<span class="text-[10px] font-bold text-brand-green font-tabular">+8.1% NET</span>
+</div>
+<div class="flex justify-between text-[11px] text-brand-textMed font-tabular">
+<span>C: 18.90 EGP</span>
+<span>R: 0.65</span>
+<span>Vol: 3.4x</span>
+</div>
+<div class="w-full h-2 bg-brand-well rounded overflow-hidden relative">
+<div class="absolute left-[10%] w-1 h-full bg-brand-red"></div>
+<div class="absolute left-[35%] w-1 h-full bg-white"></div>
+<div class="absolute left-[35%] w-[10%] h-full hatch-friction"></div>
+<div class="absolute right-[10%] w-1 h-full bg-brand-green"></div>
+</div>
+</div>
+<!-- Matrix Card 3 (Cost Unknown) -->
+<div class="bg-brand-surface border border-brand-purple/40 p-2.5 rounded space-y-2 relative overflow-hidden">
+<div class="flex justify-between items-center">
+<div class="flex items-center gap-2">
+<span class="font-bold text-brand-textHigh">SKPC</span>
+<span class="text-[10px] text-brand-textLow">Sidi Kerir</span>
+</div>
+<span class="text-[10px] font-bold text-brand-purple font-mono">UNMEASURED</span>
+</div>
+<div class="flex justify-between text-[11px] text-brand-textMed font-tabular">
+<span>C: 28.50 EGP</span>
+<span>R: 0.44</span>
+<span>Vol: 1.6x</span>
+</div>
+<div class="w-full h-2 bg-brand-well rounded overflow-hidden relative">
+<div class="absolute left-[12%] w-1 h-full bg-brand-red"></div>
+<div class="absolute left-[45%] w-1 h-full bg-white"></div>
+<div class="absolute right-[12%] w-1 h-full bg-brand-green"></div>
+</div>
+</div>
+<!-- Matrix Card 4 -->
+<div class="bg-brand-surface border border-brand-border hover:border-brand-borderFocus p-2.5 rounded space-y-2">
+<div class="flex justify-between items-center">
+<div class="flex items-center gap-2">
+<span class="font-bold text-brand-textHigh">SWDY</span>
+<span class="text-[10px] text-brand-textLow">El Sewedy Electric</span>
+</div>
+<span class="text-[10px] font-bold text-brand-green font-tabular">+6.8% NET</span>
+</div>
+<div class="flex justify-between text-[11px] text-brand-textMed font-tabular">
+<span>C: 46.20 EGP</span>
+<span>R: 0.78</span>
+<span>Vol: 5.1x</span>
+</div>
+<div class="w-full h-2 bg-brand-well rounded overflow-hidden relative">
+<div class="absolute left-[8%] w-1 h-full bg-brand-red"></div>
+<div class="absolute left-[38%] w-1 h-full bg-white"></div>
+<div class="absolute left-[38%] w-[11%] h-full hatch-friction"></div>
+<div class="absolute right-[14%] w-1 h-full bg-brand-green"></div>
+</div>
+</div>
+<!-- Matrix Card 5 (Net Negative) -->
+<div class="bg-brand-surface border border-brand-red/30 p-2.5 rounded space-y-2">
+<div class="flex justify-between items-center">
+<div class="flex items-center gap-2">
+<span class="font-bold text-brand-textHigh">ISPH</span>
+<span class="text-[10px] text-brand-textLow">Ibnsina Pharma</span>
+</div>
+<span class="text-[10px] font-bold text-brand-red font-tabular">-1.2% LOSS</span>
+</div>
+<div class="flex justify-between text-[11px] text-brand-textMed font-tabular">
+<span>C: 3.120 EGP</span>
+<span>R: 0.29</span>
+<span>Vol: 1.1x</span>
+</div>
+<div class="w-full h-2 bg-brand-well rounded overflow-hidden relative">
+<div class="absolute left-[15%] w-1 h-full bg-brand-red"></div>
+<div class="absolute left-[60%] w-1 h-full bg-white"></div>
+<div class="absolute left-[60%] w-[30%] h-full hatch-friction"></div>
+<div class="absolute right-[12%] w-1 h-full bg-brand-amber"></div>
+</div>
+</div>
+<!-- Matrix Card 6 -->
+<div class="bg-brand-surface border border-brand-border hover:border-brand-borderFocus p-2.5 rounded space-y-2">
+<div class="flex justify-between items-center">
+<div class="flex items-center gap-2">
+<span class="font-bold text-brand-textHigh">MFPC</span>
+<span class="text-[10px] text-brand-textLow">Misr Fertilizers</span>
+</div>
+<span class="text-[10px] font-bold text-brand-green font-tabular">+4.9% NET</span>
+</div>
+<div class="flex justify-between text-[11px] text-brand-textMed font-tabular">
+<span>C: 48.00 EGP</span>
+<span>R: 0.59</span>
+<span>Vol: 2.2x</span>
+</div>
+<div class="w-full h-2 bg-brand-well rounded overflow-hidden relative">
+<div class="absolute left-[14%] w-1 h-full bg-brand-red"></div>
+<div class="absolute left-[42%] w-1 h-full bg-white"></div>
+<div class="absolute left-[42%] w-[10%] h-full hatch-friction"></div>
+<div class="absolute right-[16%] w-1 h-full bg-brand-green"></div>
+</div>
+</div>
+<!-- Matrix Card 7 (Insufficient Levels) -->
+<div class="bg-brand-surface border border-brand-border p-2.5 rounded space-y-2">
+<div class="flex justify-between items-center">
+<div class="flex items-center gap-2">
+<span class="font-bold text-brand-textHigh">TMGH</span>
+<span class="text-[10px] text-brand-textLow">Talaat Moustafa</span>
+</div>
+<span class="text-[10px] text-brand-textLow">DEFICIT</span>
+</div>
+<div class="flex justify-between text-[11px] text-brand-textMed font-tabular">
+<span>C: 62.10 EGP</span>
+<span>R: 0.81</span>
+<span>Vol: 1.9x</span>
+</div>
+<div class="w-full h-2 bg-brand-well rounded flex items-center justify-center text-[8px] text-brand-textLow">
+            MISSING PIVOT 1
+          </div>
+</div>
+<!-- Matrix Card 8 -->
+<div class="bg-brand-surface border border-brand-border hover:border-brand-borderFocus p-2.5 rounded space-y-2">
+<div class="flex justify-between items-center">
+<div class="flex items-center gap-2">
+<span class="font-bold text-brand-textHigh">ABUK</span>
+<span class="text-[10px] text-brand-textLow">Abu Qir Fertilizers</span>
+</div>
+<span class="text-[10px] font-bold text-brand-green font-tabular">+9.4% NET</span>
+</div>
+<div class="flex justify-between text-[11px] text-brand-textMed font-tabular">
+<span>C: 64.50 EGP</span>
+<span>R: 0.85</span>
+<span>Vol: 4.8x</span>
+</div>
+<div class="w-full h-2 bg-brand-well rounded overflow-hidden relative">
+<div class="absolute left-[10%] w-1 h-full bg-brand-red"></div>
+<div class="absolute left-[38%] w-1 h-full bg-white"></div>
+<div class="absolute left-[38%] w-[9%] h-full hatch-friction"></div>
+<div class="absolute right-[10%] w-1 h-full bg-brand-green"></div>
+</div>
+</div>
+<!-- Matrix Card 9 -->
+<div class="bg-brand-surface border border-brand-border hover:border-brand-borderFocus p-2.5 rounded space-y-2">
+<div class="flex justify-between items-center">
+<div class="flex items-center gap-2">
+<span class="font-bold text-brand-textHigh">AMOC</span>
+<span class="text-[10px] text-brand-textLow">Alexandria Mineral</span>
+</div>
+<span class="text-[10px] font-bold text-brand-green font-tabular">+3.8% NET</span>
+</div>
+<div class="flex justify-between text-[11px] text-brand-textMed font-tabular">
+<span>C: 9.850 EGP</span>
+<span>R: 0.51</span>
+<span>Vol: 2.1x</span>
+</div>
+<div class="w-full h-2 bg-brand-well rounded overflow-hidden relative">
+<div class="absolute left-[18%] w-1 h-full bg-brand-red"></div>
+<div class="absolute left-[45%] w-1 h-full bg-white"></div>
+<div class="absolute left-[45%] w-[13%] h-full hatch-friction"></div>
+<div class="absolute right-[12%] w-1 h-full bg-brand-green"></div>
+</div>
+</div>
+<!-- Matrix Card 10 -->
+<div class="bg-brand-surface border border-brand-border hover:border-brand-borderFocus p-2.5 rounded space-y-2">
+<div class="flex justify-between items-center">
+<div class="flex items-center gap-2">
+<span class="font-bold text-brand-textHigh">FWRY</span>
+<span class="text-[10px] text-brand-textLow">Fawry Banking</span>
+</div>
+<span class="text-[10px] font-bold text-brand-green font-tabular">+5.1% NET</span>
+</div>
+<div class="flex justify-between text-[11px] text-brand-textMed font-tabular">
+<span>C: 6.220 EGP</span>
+<span>R: 0.62</span>
+<span>Vol: 3.0x</span>
+</div>
+<div class="w-full h-2 bg-brand-well rounded overflow-hidden relative">
+<div class="absolute left-[15%] w-1 h-full bg-brand-red"></div>
+<div class="absolute left-[42%] w-1 h-full bg-white"></div>
+<div class="absolute left-[42%] w-[11%] h-full hatch-friction"></div>
+<div class="absolute right-[15%] w-1 h-full bg-brand-green"></div>
+</div>
+</div>
+<!-- Matrix Card 11 (Cost Unknown) -->
+<div class="bg-brand-surface border border-brand-purple/40 p-2.5 rounded space-y-2 relative overflow-hidden">
+<div class="flex justify-between items-center">
+<div class="flex items-center gap-2">
+<span class="font-bold text-brand-textHigh">ESRS</span>
+<span class="text-[10px] text-brand-textLow">Ezz Steel</span>
+</div>
+<span class="text-[10px] font-bold text-brand-purple font-mono">UNMEASURED</span>
+</div>
+<div class="flex justify-between text-[11px] text-brand-textMed font-tabular">
+<span>C: 98.00 EGP</span>
+<span>R: 0.77</span>
+<span>Vol: 4.0x</span>
+</div>
+<div class="w-full h-2 bg-brand-well rounded overflow-hidden relative">
+<div class="absolute left-[12%] w-1 h-full bg-brand-red"></div>
+<div class="absolute left-[48%] w-1 h-full bg-white"></div>
+<div class="absolute right-[12%] w-1 h-full bg-brand-green"></div>
+</div>
+</div>
+<!-- Matrix Card 12 -->
+<div class="bg-brand-surface border border-brand-border hover:border-brand-borderFocus p-2.5 rounded space-y-2">
+<div class="flex justify-between items-center">
+<div class="flex items-center gap-2">
+<span class="font-bold text-brand-textHigh">CERA</span>
+<span class="text-[10px] text-brand-textLow">Cleopatra Hospital</span>
+</div>
+<span class="text-[10px] font-bold text-brand-green font-tabular">+4.2% NET</span>
+</div>
+<div class="flex justify-between text-[11px] text-brand-textMed font-tabular">
+<span>C: 5.750 EGP</span>
+<span>R: 0.49</span>
+<span>Vol: 1.8x</span>
+</div>
+<div class="w-full h-2 bg-brand-well rounded overflow-hidden relative">
+<div class="absolute left-[14%] w-1 h-full bg-brand-red"></div>
+<div class="absolute left-[44%] w-1 h-full bg-white"></div>
+<div class="absolute left-[44%] w-[12%] h-full hatch-friction"></div>
+<div class="absolute right-[14%] w-1 h-full bg-brand-green"></div>
+</div>
+</div>
+</div>
+</section>
+<!-- END: DenseMatrixGridSection -->
+<!-- BEGIN: BottomAccordions -->
+<section class="space-y-3 pt-2">
+<!-- Accordion 1: Unreadable / Excluded Symbols -->
+<details class="bg-brand-surface border border-brand-border rounded group">
+<summary class="flex items-center justify-between p-3.5 text-xs font-mono cursor-pointer hover:bg-brand-elevated transition-colors">
+<span class="flex items-center gap-2 font-bold text-brand-textHigh">
+<svg class="w-4 h-4 text-brand-amber transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span>الرموز غير المقروءة · 10 symbols could not be read</span>
+</span>
+<span class="text-[11px] text-brand-textLow">Data exclusion telemetry</span>
+</summary>
+<div class="p-4 border-t border-brand-border bg-brand-well/40 text-xs font-mono space-y-2">
+<div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-[11px]">
+<div class="p-2 rounded bg-brand-surface border border-brand-border">
+<span class="font-bold text-brand-amber">MNHD</span>
+<p class="text-[10px] text-brand-textLow mt-0.5">Corporate split unadjusted</p>
+</div>
+<div class="p-2 rounded bg-brand-surface border border-brand-border">
+<span class="font-bold text-brand-amber">JUFO</span>
+<p class="text-[10px] text-brand-textLow mt-0.5">Zero volume in 14 bars</p>
+</div>
+<div class="p-2 rounded bg-brand-surface border border-brand-border">
+<span class="font-bold text-brand-amber">POUL</span>
+<p class="text-[10px] text-brand-textLow mt-0.5">Gapped historical stream</p>
+</div>
+<div class="p-2 rounded bg-brand-surface border border-brand-border">
+<span class="font-bold text-brand-amber">RAYA</span>
+<p class="text-[10px] text-brand-textLow mt-0.5">Missing close timestamps</p>
+</div>
+<div class="p-2 rounded bg-brand-surface border border-brand-border">
+<span class="font-bold text-brand-amber">PRDC</span>
+<p class="text-[10px] text-brand-textLow mt-0.5">Suspended trading session</p>
+</div>
+<div class="p-2 rounded bg-brand-surface border border-brand-border">
+<span class="font-bold text-brand-amber">ACGC</span>
+<p class="text-[10px] text-brand-textLow mt-0.5">Incomplete session book</p>
+</div>
+<div class="p-2 rounded bg-brand-surface border border-brand-border">
+<span class="font-bold text-brand-amber">CSAG</span>
+<p class="text-[10px] text-brand-textLow mt-0.5">Dividend parity shift</p>
+</div>
+<div class="p-2 rounded bg-brand-surface border border-brand-border">
+<span class="font-bold text-brand-amber">OIH</span>
+<p class="text-[10px] text-brand-textLow mt-0.5">Sub-penny tick violation</p>
+</div>
+<div class="p-2 rounded bg-brand-surface border border-brand-border">
+<span class="font-bold text-brand-amber">AUTO</span>
+<p class="text-[10px] text-brand-textLow mt-0.5">Stale auction orderbook</p>
+</div>
+<div class="p-2 rounded bg-brand-surface border border-brand-border">
+<span class="font-bold text-brand-amber">PHDC</span>
+<p class="text-[10px] text-brand-textLow mt-0.5">Tick sequence corrupt</p>
+</div>
+</div>
+<div class="text-[10px] text-brand-textLow pt-2">
+            * All unreadable symbols are safely stripped from candidate generation to avoid false signals.
+          </div>
+</div>
+</details>
+<!-- Accordion 2: Statistical Foundation & Historical Quartiles -->
+<details class="bg-brand-surface border border-brand-border rounded group" open="">
+<summary class="flex items-center justify-between p-3.5 text-xs font-mono cursor-pointer hover:bg-brand-elevated transition-colors">
+<span class="flex items-center gap-2 font-bold text-brand-textHigh">
+<svg class="w-4 h-4 text-brand-blue transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span>على أي أساس · What this rests on (Statistical Evidence)</span>
+</span>
+<span class="text-[11px] text-brand-blue">1,897 Historical Signals Tested</span>
+</summary>
+<div class="p-4 border-t border-brand-border bg-brand-well/40 space-y-4">
+<p class="text-xs text-brand-textMed">
+            Not a target and not a stop: this strategy has neither. These are the quartiles of <strong class="text-brand-textHigh font-mono">1,897 historical signals</strong> over 20 sessions, priced against each close. A single trade lands anywhere in that range, including outside it.
+          </p>
+<!-- Historical Empirical Matrix Table -->
+<div class="overflow-x-auto border border-brand-border rounded">
+<table class="w-full text-xs text-left font-mono font-tabular">
+<thead class="bg-brand-surface text-brand-textLow text-[10px] uppercase border-b border-brand-border">
+<tr>
+<th class="p-2.5">Ticker</th>
+<th class="p-2.5">Close</th>
+<th class="p-2.5">Worst (typical)</th>
+<th class="p-2.5">Worst (middle half)</th>
+<th class="p-2.5">Best (typical)</th>
+<th class="p-2.5">Best (middle half)</th>
+<th class="p-2.5">Day 20 (typical)</th>
+<th class="p-2.5">Day 20 (middle half)</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-brand-border/60 text-brand-textHigh">
+<tr class="hover:bg-brand-surface/80">
+<td class="p-2.5 font-bold text-brand-blue">MPCO</td>
+<td class="p-2.5">2.60</td>
+<td class="p-2.5 text-brand-red">2.39</td>
+<td class="p-2.5 text-brand-textMed">2.24 – 2.52</td>
+<td class="p-2.5 text-brand-green">2.95</td>
+<td class="p-2.5 text-brand-textMed">2.76 – 3.34</td>
+<td class="p-2.5">2.66</td>
+<td class="p-2.5 text-brand-textMed">2.42 – 3.01</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Empirical Reality Callout Banner -->
+<div class="p-3.5 rounded bg-brand-amber/10 border border-brand-amber/40 text-xs text-brand-amber space-y-1.5">
+<div class="flex items-center gap-2 font-bold font-mono">
+<svg class="w-4 h-4 text-brand-amber" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Being underwater is the normal case, not a broken trade:</span>
+</div>
+<p class="leading-relaxed font-sans text-brand-textHigh">
+<strong class="font-mono text-brand-amber">63%</strong> fall more than 5% · 
+              <strong class="font-mono text-brand-amber">40%</strong> fall more than 10% · 
+              <strong class="font-mono text-brand-amber">22%</strong> fall more than 15% · 
+              <strong class="font-mono text-brand-amber">12%</strong> fall more than 20% at some point inside the window. 
+              The median trade's worst moment is <strong class="font-mono text-brand-red">-7.89%</strong> before it does anything.
+            </p>
+<div class="text-[11px] text-brand-textLow font-mono pt-1">
+              20 sessions is what the measurement held for, not an instruction to exit on day 20.
+            </div>
+</div>
+</div>
+</details>
+</section>
+<!-- END: BottomAccordions -->
+</main>
+<!-- END: MainContentWorkbench -->
+</body></html>
