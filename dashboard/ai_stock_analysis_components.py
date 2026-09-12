@@ -1058,7 +1058,17 @@ def narrative_source_block(narrative: NarrativeResult | None):
 # The narrative block's own stylesheet. Kept here (not inline in the page) so the layout
 # contract — reading width, Arabic font stack, sizes, RTL, the desktop two-column grid and
 # the tablet single-column collapse — is inspectable without a Streamlit runtime.
-NARRATIVE_FONT_STACK = '"Segoe UI", Tahoma, Arial, sans-serif'
+#: The face the longest Arabic prose in this application is set in.
+#:
+#: It was "Segoe UI", Tahoma, Arial -- whatever Windows happened to have --
+#: and it is applied with `!important` to every descendant, so this page
+#: actively overrode the app's own font. When it was written nothing here
+#: loaded an Arabic face at all, so a system fallback was the only option;
+#: `dashboard/ui.py` now loads IBM Plex Sans Arabic, and the page with the most
+#: Arabic on it should be the first to use it. The old stack stays behind it:
+#: this file is read on mornings the font link fails too.
+NARRATIVE_FONT_STACK = ('"IBM Plex Sans Arabic", "Segoe UI", Tahoma, Arial, '
+                        "sans-serif")
 
 NARRATIVE_CSS = f"""
 <style>
@@ -1124,8 +1134,12 @@ NARRATIVE_CSS = f"""
 .egx-narr-card h3 .en {{ display: block; font-size: 13px; font-weight: 600; color: var(--muted);
     direction: ltr; text-align: right; letter-spacing: .03em; }}
 .egx-narr-card .accent {{ height: 3px; width: 58px; border-radius: 999px; margin: .5rem 0 .65rem; }}
-.egx-narr-card p.prose {{ margin: 0; font-size: 17px; font-weight: 400; line-height: 1.8;
-    color: var(--text); max-width: 78ch; }}
+/* 78ch was a measure for a table, not for reading. Long lines cost the eye
+   the return sweep, and Arabic pays more for it than Latin does: the script
+   has no capital letters to anchor a line's start, so a reader who loses the
+   line has less to find it again with. */
+.egx-narr-card p.prose {{ margin: 0; font-size: 17px; font-weight: 400; line-height: 1.85;
+    color: var(--text); max-width: 62ch; }}
 
 /* deterministic facts — a subtle secondary box, aligned label/value rows */
 .egx-narr-facts {{ margin-top: .8rem; background: var(--surface-2); border: 1px solid var(--border);

@@ -285,11 +285,23 @@ def test_the_narrative_widgets_share_the_same_centred_reading_column():
 
 def test_the_arabic_font_stack_reaches_headings_too():
     """Streamlit sets a font on headings directly, so inheritance alone is not enough."""
-    assert '"Segoe UI", Tahoma, Arial, sans-serif' in _css_rule(".egx-narrative *")
+    from dashboard.ai_stock_analysis_components import NARRATIVE_FONT_STACK
+
+    # Against the stack the page actually uses, not a literal copy of it: the
+    # literal kept passing when the stack gained IBM Plex Sans Arabic in front,
+    # because the old fallbacks were still in it as a substring.
+    assert NARRATIVE_FONT_STACK in _css_rule(".egx-narrative *")
 
 
 def test_the_prose_line_length_is_capped_for_readability():
-    assert "max-width: 78ch" in _css_rule(".egx-narr-card p.prose")
+    import re
+
+    # The cap is what this pins, not the number. It was 78ch, which is a
+    # measure for a table rather than for reading; the typography pass brought
+    # it into a reading range.
+    rule = _css_rule(".egx-narr-card p.prose")
+    measure = int(re.search(r"max-width:\s*(\d+)ch", rule).group(1))
+    assert 50 <= measure <= 70
 
 
 def test_latin_abbreviations_are_isolated_so_arabic_direction_survives():
