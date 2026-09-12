@@ -427,6 +427,35 @@ def apply_global_style():
         .egx-act .nums .v.pos { color:var(--green); }
         .egx-act .nums .v.neg { color:var(--red); }
 
+        /* --- the attrition bar --------------------------------------------
+           How a universe narrows to a handful, drawn to scale. One segment per
+           refusing gate plus the survivors, each sized by its real share.
+
+           Deliberately NOT a cascade of shrinking stages: the counts behind it
+           record which gate refused each symbol *first*, so every symbol
+           appears exactly once and the stages are a partition rather than a
+           sequence. Drawing 230 -> 209 -> 74 -> 28 would imply an ordering the
+           numbers do not carry. */
+        .egx-funnel { display:flex; width:100%; height:22px; border-radius:var(--r-chip);
+            overflow:hidden; border:1px solid var(--border); background:var(--surface-well); }
+        .egx-funnel span { display:block; height:100%; }
+        .egx-funnel span.survived { background:var(--green); }
+        .egx-funnel span.refused { background:var(--border-active); }
+        .egx-funnel span.refused.alt { background:var(--surface-2); }
+        .egx-funnel-legend { display:grid;
+            grid-template-columns:1fr auto auto; gap:.1rem .8rem; margin-top:.5rem;
+            font-size:.8rem; }
+        .egx-funnel-legend .g { display:flex; align-items:center; gap:.45rem;
+            color:var(--muted); }
+        .egx-funnel-legend .g i { width:8px; height:8px; border-radius:1px;
+            flex-shrink:0; display:block; }
+        .egx-funnel-legend .n, .egx-funnel-legend .p {
+            font-family:var(--font-mono); font-variant-numeric:tabular-nums;
+            text-align:right; color:var(--text); }
+        .egx-funnel-legend .p { color:var(--text-low); }
+        .egx-funnel-legend .row-survived .g { color:var(--green); font-weight:600; }
+        .egx-funnel-legend .row-survived .n { color:var(--green); }
+
         /* --- evidence, not an instruction ---------------------------------
            Worn by any panel whose output is research rather than a trade to
            place. Blue, never green: green on this page means a position made
@@ -793,6 +822,58 @@ def provenance_html(source, label="src"):
 def advisory_html(text="ADVISORY · بحث استرشادي"):
     """Marks a panel as evidence to read, not an instruction to act on."""
     return f'<span class="egx-advisory">{html.escape(str(text))}</span>'
+
+
+def attrition_bar(stages, survived_label="survived", total=None):
+    """How a universe narrowed, drawn to scale.
+
+    ``stages`` is ``(label, count)`` pairs for each gate that refused symbols;
+    ``survived_label`` names the final segment, whose count is whatever is left
+    of ``total``. Segments are ordered largest refusal first, because the
+    question the bar answers is what removed most of the universe.
+
+    Returns the markup; it renders nothing itself.
+
+    A stage of zero is dropped from the bar but kept in the legend: a gate that
+    refused nobody this week is a fact about the week, and a legend that omits
+    it silently reads as a gate that does not exist.
+    """
+    rows = [(str(label), max(0, int(count or 0))) for label, count in stages]
+    refused = sum(count for _, count in rows)
+    universe = int(total) if total is not None else refused
+    survivors = max(0, universe - refused)
+    if universe <= 0:
+        return ""
+
+    def share(count):
+        return count / universe * 100.0
+
+    segments, alternate = [], False
+    for _, count in sorted(rows, key=lambda row: -row[1]):
+        if not count:
+            continue
+        css = "refused alt" if alternate else "refused"
+        alternate = not alternate
+        segments.append(f'<span class="{css}" style="width:{share(count):.3f}%"></span>')
+    if survivors:
+        segments.append(
+            f'<span class="survived" style="width:{share(survivors):.3f}%"></span>')
+
+    legend = [
+        f'<div class="g row-survived"><i style="background:var(--green)"></i>'
+        f'{html.escape(str(survived_label))}</div>'
+        f'<div class="n row-survived">{survivors:,}</div>'
+        f'<div class="p">{share(survivors):.1f}%</div>'
+    ]
+    for label, count in sorted(rows, key=lambda row: -row[1]):
+        legend.append(
+            f'<div class="g"><i style="background:var(--border-active)"></i>'
+            f'{html.escape(label)}</div>'
+            f'<div class="n">{count:,}</div>'
+            f'<div class="p">{share(count):.1f}%</div>'
+        )
+    return (f'<div class="egx-funnel">{"".join(segments)}</div>'
+            f'<div class="egx-funnel-legend">{"".join(legend)}</div>')
 
 
 #: What a holding's card is saying. Four kinds, because "sell this now", "the

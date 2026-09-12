@@ -22,7 +22,8 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from dashboard.ui import empty_state, page_header, section_header
+from dashboard.ui import (attrition_bar, empty_state, page_header,
+                          section_header)
 from strategy_momentum_breakout.config import load as load_config
 from strategy_momentum_breakout.watch import (DEFAULT_REACH_ATR, HEADER_NOTE,
                                               REACH_MULTIPLES, STRUCTURAL_GATES,
@@ -86,29 +87,55 @@ def _render_triggers(frame: pd.DataFrame) -> None:
         st.markdown(f"**{row['symbol']}** — {row['trigger_sentence']}")
 
 
-def _render_funnel(funnel: dict) -> None:
-    section_header("قمع البوابات · Gate funnel",
-                   "What refused each symbol first. An empty list here means "
-                   "nothing is set up, not that the page is broken.")
-    structural = pd.DataFrame(
-        [{"gate": gate, "refused": funnel.get(gate, 0)} for gate in STRUCTURAL_GATES])
-    other = pd.DataFrame([
-        {"gate": "already above the trigger — Confirmed Breakout says if it fired",
-         "refused": funnel.get("AboveTrigger", 0)},
-        {"gate": "out of reach", "refused": funnel.get("OutOfReach", 0)},
-        {"gate": "invalid risk", "refused": funnel.get("InvalidRisk", 0)},
-        {"gate": "insufficient history",
-         "refused": funnel.get("InsufficientHistory", 0)},
-        {"gate": "unreadable", "refused": funnel.get("Unusable", 0)},
-    ])
-    left, right = st.columns(2)
-    with left:
-        st.caption("Structural gates — must all pass now")
-        st.dataframe(structural, hide_index=True, width="stretch")
-    with right:
-        st.caption(f"Trigger gates ({', '.join(TRIGGER_GATES)}): the close must "
-                   f"still be below the trigger; the other two may already hold")
-        st.dataframe(other, hide_index=True, width="stretch")
+#: Each funnel key as something a reader can read, in the rule's own order:
+#: structural gates first, then the trigger and the reach filters.
+GATE_LABELS = {
+    "PriceIntegrity": "بيانات السعر غير سليمة · price integrity",
+    "Liquidity": "سيولة أقل من الحد · liquidity",
+    "LongTermTrend": "تحت اتجاهه الطويل · long-term trend",
+    "Calm": "تذبذب أعلى من الحد · calm",
+    "AboveTrigger": "فوق الزناد بالفعل · already above the trigger",
+    "OutOfReach": "بعيد عن الزناد · out of reach",
+    "InvalidRisk": "مخاطرة غير صالحة · invalid risk",
+    "InsufficientHistory": "تاريخ غير كافٍ · insufficient history",
+    "Unusable": "غير قابل للقراءة · unreadable",
+}
+
+
+def _render_funnel(funnel: dict, candidates: int) -> None:
+    """How the universe narrowed, drawn to scale.
+
+    This was two tables of (gate, count) side by side -- the explanatory heart
+    of the page as a list of numbers, where 135 and 5 are the same size on the
+    screen.
+
+    It is drawn as one bar because the counts are a *partition*: `watch.py`
+    records which gate refused each symbol FIRST, so every symbol appears
+    exactly once and the segments sum to the universe. It is deliberately not
+    the cascade of shrinking stages the design sketches -- 230 → 209 → 74 → 28
+    would claim a sequence these numbers do not carry.
+    """
+    refused = sum(int(funnel.get(gate, 0) or 0) for gate in GATE_LABELS)
+    universe = refused + max(0, int(candidates))
+    section_header(
+        "قمع البوابات · Gate funnel",
+        f"What refused each of {universe:,} symbols first. Each name is counted "
+        f"once, by the first gate to turn it away.")
+    st.markdown(
+        attrition_bar(
+            [(label, funnel.get(gate, 0)) for gate, label in GATE_LABELS.items()],
+            survived_label=f"مرشح · approaching the trigger",
+            total=universe,
+        ),
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        f"Structural gates ({', '.join(STRUCTURAL_GATES)}) must all pass now. "
+        f"Of the trigger gates ({', '.join(TRIGGER_GATES)}) only the close "
+        f"being below the trigger is required here; the other two may already "
+        f"hold. A gate that refused nobody is listed at zero rather than "
+        f"dropped — a week it was quiet is a fact about the week."
+    )
 
 
 def show_breakout_watch() -> None:
@@ -193,7 +220,7 @@ def show_breakout_watch() -> None:
                 "rule being quiet, not a fault — the funnel below says what "
                 "refused each name.")
         if funnel:
-            _render_funnel(funnel)
+            _render_funnel(funnel, 0)
         return
 
     # Re-derived from columns already on the row, so changing the account size
@@ -217,7 +244,7 @@ def show_breakout_watch() -> None:
     _render_triggers(sized)
 
     if funnel:
-        _render_funnel(funnel)
+        _render_funnel(funnel, len(frame))
     else:
         st.caption("The gate funnel is recorded on a fresh scan; a saved list "
                    "carries its candidates only.")
