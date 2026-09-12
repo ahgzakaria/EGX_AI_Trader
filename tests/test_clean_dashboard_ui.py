@@ -54,9 +54,11 @@ def test_swing_default_view_keeps_trader_summary_primary():
     source = inspect.getsource(show_dashboard)
     assert "تغطية البيانات" in source
     assert "حالة السوق" in source
-    assert "شراء (BUY)" in source
-    assert "متابعة (WATCH)" in source
-    assert "تجنب (AVOID)" in source
+    # The three decision counts. They were `st.metric` labels reading
+    # "🟢 شراء (BUY)"; they are now `metric_card` tiles carrying a real tone,
+    # so the emoji is no longer the only thing separating a buy from a refusal.
+    for arabic, latin in (("شراء", "BUY"), ("متابعة", "WATCH"), ("تجنب", "AVOID")):
+        assert f'"{arabic}"' in source and f'"{latin}"' in source
     assert "أهم الفرص القابلة للمتابعة" in source
     assert "جدول السوق المختصر" in source
     assert source.count("_render_swing_advanced_research(") == 1
@@ -111,11 +113,13 @@ def test_the_table_shows_the_levels_the_ratio_came_from():
 
     display = _swing_primary_frame(frame)
 
+    # Formatted rather than numeric since the levels pass through `_level`,
+    # which is what keeps a refused row from quoting a stop loss of 0.000.
     assert display.loc[0, "نطاق الشراء"] == "98.00 – 101.00"
-    assert display.loc[0, "وقف الخسارة"] == 94.0
-    assert display.loc[0, "الهدف 1"] == 108.0
-    assert display.loc[0, "الهدف 2"] == 115.0
-    assert display.loc[0, "العائد إلى المخاطرة"] == 2.5
+    assert display.loc[0, "وقف الخسارة"] == "94.000"
+    assert display.loc[0, "الهدف 1"] == "108.000"
+    assert display.loc[0, "الهدف 2"] == "115.000"
+    assert display.loc[0, "العائد إلى المخاطرة"] == "2.50"
 
 
 def test_a_missing_entry_band_is_a_dash_not_a_single_price():

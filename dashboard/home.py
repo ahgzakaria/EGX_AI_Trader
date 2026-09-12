@@ -17,7 +17,8 @@ from dashboard.formatting import (
 from dashboard.scan_status_panel import coverage_view, scan_status_view
 from decision_support.service import DecisionSupportService
 from dashboard.stock_details import show_stock_details
-from dashboard.ui import empty_state, page_header, section_header, status_bar
+from dashboard.ui import (empty_state, metric_card, page_header, section_header,
+                          status_bar)
 
 
 logger = logging.getLogger(__name__)
@@ -524,6 +525,38 @@ def _entry_band(low, high):
     return f"{low_value:,.2f} – {high_value:,.2f}"
 
 
+def _level(value, digits=3):
+    """A price level, or ``—`` when the scan computed none.
+
+    Not ``0.000``. The engine leaves every level at zero for a name it refused:
+    98 of the 100 AVOID rows in a 2026-09-10 scan carried a stop loss of 0, a
+    target of 0 and a reward/risk of 0, and the table printed all of them as
+    prices. A stop of zero is not a stop -- it is the absence of one, drawn as
+    the most dangerous number on the row.
+
+    These columns become text, so the compact table no longer sorts on them
+    numerically. The full numeric frame is one disclosure away in Advanced
+    Research, and a column of false zeroes sorts to the top of exactly the
+    ranking a reader would use it for.
+    """
+
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    if number != number or number <= 0:                          # NaN or absent
+        return "—"
+    return f"{number:,.{digits}f}"
+
+
+#: Columns the engine leaves at zero for a name it refused, rather than at a
+#: value it measured. Rendered through ``_level``.
+_ABSENT_AS_ZERO = {
+    "وقف الخسارة": 3, "الهدف 1": 3, "الهدف 2": 3,
+    "العائد إلى المخاطرة": 2, "الثقة": 0,
+}
+
+
 def _swing_primary_frame(frame):
     """Compact trader view without mutating scan results.
 
@@ -555,6 +588,12 @@ def _swing_primary_frame(frame):
             _entry_band(low, high)
             for low, high in zip(source["BuyLow"], source["BuyHigh"])
         ]
+    # An absent level is an em dash, never a zero. `نطاق الشراء` above already
+    # worked this way; the five columns beside it did not, so one cell on the
+    # row said "no band" while the next four quoted prices of 0.000.
+    for column, digits in _ABSENT_AS_ZERO.items():
+        if column in view.columns:
+            view[column] = [_level(value, digits) for value in view[column]]
     return view.reindex(columns=SWING_PRIMARY_COLUMNS)
 
 
@@ -1019,11 +1058,6 @@ def show_dashboard():
         "table."
     )
 
-    primary = st.columns(3)
-    primary[0].metric("🟢 شراء (BUY)", buy)
-    primary[1].metric("🟡 متابعة (WATCH)", watch)
-    primary[2].metric("🔴 تجنب (AVOID)", avoid)
-
     coverage = list(getattr(results, "coverage", []) or [])
     failed_coverage = [
         row for row in coverage if not row.get("accepted_into_swing_scan")
@@ -1033,19 +1067,40 @@ def show_dashboard():
     )
     live_providers = {str(row.get("LiveProvider") or "").strip().lower()
                       for row in results} - {"", "unavailable"}
-    live_quote_help = "Live quote source"
-    context = st.columns(4)
-    context[0].metric(
-        "تغطية البيانات",
-        f"{len(df)} / {len(df) + len(failed_coverage)}",
-    )
-    context[1].metric("حالة السوق", market_state)
-    context[2].metric("آخر جلسة مكتملة", latest_date)
-    context[3].metric(
-        "مصدر السعر اللحظي",
-        next(iter(sorted(live_providers)), "Unavailable").title(),
-        help=live_quote_help,
-    )
+
+    # One row, not two. The decision counts and the context they were measured
+    # in were separate bands of tiles stacked above the first result, and the
+    # counts carried their state only in an emoji in the label -- 🟢 was the
+    # entire difference between a buy and a refusal.
+    total = len(df)
+    attempted = total + len(failed_coverage)
+    share = (lambda n: f"{n / total * 100:.0f}% من المفحوص" if total else "")
+    tiles = st.columns(7)
+    with tiles[0]:
+        metric_card("شراء", f"{buy}", "BUY", tone="green" if buy else None,
+                    sub=share(buy))
+    with tiles[1]:
+        metric_card("متابعة", f"{watch}", "WATCH", tone="amber" if watch else None,
+                    sub=share(watch))
+    with tiles[2]:
+        # Roughly half of every scan lands here. Saying so is the difference
+        # between a table the reader scans and a table the reader filters.
+        metric_card("تجنب", f"{avoid}", "AVOID", tone="red" if avoid else None,
+                    sub=share(avoid))
+    with tiles[3]:
+        metric_card("تغطية البيانات", f"{total} / {attempted}", "Coverage",
+                    tone="amber" if failed_coverage else None,
+                    sub=(f"{len(failed_coverage)} مستبعد" if failed_coverage
+                         else "كل الرموز"))
+    with tiles[4]:
+        metric_card("حالة السوق", market_state, "Market Regime")
+    with tiles[5]:
+        metric_card("آخر جلسة مكتملة", str(latest_date), "Settled Session")
+    with tiles[6]:
+        metric_card("مصدر السعر اللحظي",
+                    next(iter(sorted(live_providers)), "Unavailable").title(),
+                    "Live Quote Source",
+                    tone=None if live_providers else "unknown")
 
     if failed_coverage:
         st.warning(
