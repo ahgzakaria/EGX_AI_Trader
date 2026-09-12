@@ -87,7 +87,9 @@ def apply_global_style():
             --bg-2: #0e1729;
             --surface: #131c30;
             --surface-2: #17223b;
+            --surface-3: #18243c;        /* subtle highlight: nav hover */
             --surface-well: #0f182a;     /* recessed: inputs, code, wells */
+            --sidebar-width: 280px;
             --border: #223049;
             --border-active: #334769;
             --border-focus: #476291;
@@ -165,20 +167,51 @@ def apply_global_style():
         /* clear the fixed Streamlit toolbar so the page title is never clipped */
         .block-container { max-width: 1640px; padding-top: 3.4rem; padding-bottom: 2.4rem; }
         header[data-testid="stHeader"] { background: transparent; }
-        [data-testid="stSidebar"] { background: #080e1a; border-right: 1px solid var(--border); }
+        /* The sidebar is a fixed 280px and never collapses: it carries the
+           health panel, and a panel that can be folded away is a panel that
+           will be. */
+        [data-testid="stSidebar"] { background: var(--bg-2); border-right: 1px solid var(--border);
+            width: var(--sidebar-width) !important; min-width: var(--sidebar-width) !important; }
         [data-testid="stSidebar"] * { color: #c7d3e6; }
+        /* The health panel goes ABOVE the navigation, which is the whole
+           argument for it -- and it was rendering below, at the bottom of the
+           sidebar, off the fold. Streamlit builds the sidebar as header, nav,
+           then user content, in that order, whatever order the page calls
+           them in, so `sidebar_health()` running before `st.navigation()`
+           changed nothing. Ordering the three boxes is the only way to put it
+           where it belongs, and it is safe because nothing but the brand and
+           the health panel is ever written to this sidebar. */
+        [data-testid="stSidebarContent"] { display:flex; flex-direction:column; }
+        [data-testid="stSidebarHeader"] { order:0; }
+        [data-testid="stSidebarUserContent"] { order:1; padding-bottom:.35rem; }
+        [data-testid="stSidebarNav"] { order:2; }
         [data-testid="stSidebarNav"] a {
-            border-radius: 8px; min-height:42px; font-size:.96rem;
+            border-radius: 0 var(--r-chip) var(--r-chip) 0; min-height:40px;
+            font-size:.93rem; border-left:2px solid transparent; padding-left:.55rem;
         }
-        [data-testid="stSidebarNav"] a:hover { background: rgba(255,255,255,.06); }
+        [data-testid="stSidebarNav"] a:hover {
+            background: var(--surface-3); color: var(--text);
+        }
         /* The current page is marked by a rail on the leading edge, not a
            filled block: the same left-edge language the alerts and the signal
-           cards use, so one position always means "state". */
+           cards use, so one position always means "state". Flat, 2px, no pill
+           -- a rounded highlight block reads as a second navigation competing
+           with the one it is inside. */
         [data-testid="stSidebarNav"] a[aria-current="page"] {
-            background: rgba(59,130,246,.14); font-weight: 600;
-            box-shadow: inset 2px 0 0 var(--blue);
+            background: var(--surface-3); font-weight: 500;
+            border-left-color: var(--blue); color: var(--text);
         }
-        [data-testid="stSidebarNav"] span { font-size:.96rem; }
+        [data-testid="stSidebarNav"] span { font-size:.93rem; }
+        /* Bilingual group headings: Arabic, a quiet interpunct, then Latin
+           uppercase. The separator is deliberately faint -- it joins two
+           labels, it is not a third one. */
+        [data-testid="stSidebarNav"] > ul > li > div,
+        [data-testid="stSidebarNavSeparator"] ~ div,
+        .egx-navgroup {
+            font-size:.68rem; font-weight:600; letter-spacing:.05em;
+            color: var(--text-low) !important; text-transform:uppercase;
+            padding:.55rem .1rem .2rem;
+        }
 
         /* --- the health panel above the navigation ------------------------ */
         .egx-health { border:1px solid var(--border); border-radius:10px;
@@ -194,6 +227,15 @@ def apply_global_style():
         .egx-health.warn .t i { background:var(--amber); }
         .egx-health.bad { border-color:rgba(248,113,113,.32); background:rgba(248,113,113,.07); }
         .egx-health.bad .t i { background:var(--red); }
+        /* The fourth state: the panel could not find out. Not "ran and failed"
+           -- which is what an unreadable status file used to be reported as,
+           sending the reader to hunt a run that may have been fine. Hollow and
+           hatched, in the same violet every unmeasured value on every screen
+           wears. */
+        .egx-health.unknown { border-color:var(--unknown-border);
+            background:var(--unknown-hatch); }
+        .egx-health.unknown .t { color:var(--unknown); }
+        .egx-health.unknown .t i { background:transparent; border:1px solid var(--unknown); }
         h1,h2,h3,h4 { color: var(--text); letter-spacing: -.01em; }
         h1 { font-size: 1.75rem !important; }
         p, label, .stMarkdown { color: var(--text); font-size:1rem; line-height:1.65; }
@@ -475,16 +517,26 @@ def sidebar_health(session_date=None) -> None:
 
     Every failure here is caught: a panel that raises would take down whichever
     page it is decorating, and a monitor that can break the thing it monitors
-    is worse than no monitor.
+    is worse than no monitor. But it no longer catches by *disappearing*. A
+    health panel that vanishes when it breaks is the failure mode it exists to
+    prevent, wearing the panel's own clothes: the sidebar looks ordinary and
+    nothing is being watched. It now renders its fourth state instead.
+
+    Four states, because "the run failed" and "I could not find out whether the
+    run happened" are different facts and send the reader to different places.
+    An unreadable status file was reported as a failed run until now.
     """
+    tone, headline, detail = "unknown", "Run state unknown", "—·—"
     try:
-        from services.automation_status import NEVER_RAN, read_status
+        from services.automation_status import NEVER_RAN, UNREADABLE, read_status
 
         day = session_date or date.today().isoformat()
         status = read_status(day)
 
         if status.healthy:
             tone, headline = "ok", "This morning's run completed"
+        elif status.outcome == UNREADABLE:
+            tone, headline = "unknown", "Run state unreadable"
         elif status.outcome == NEVER_RAN:
             tone, headline = "bad", "No run recorded today"
         elif status.outcome == "RUNNING":
@@ -493,13 +545,17 @@ def sidebar_health(session_date=None) -> None:
             tone, headline = "bad", f"Run {status.outcome.lower()}"
 
         detail = html.escape((status.reason or "")[:120]) or html.escape(str(day))
+    except Exception:  # noqa: BLE001 - a broken monitor must not break the page
+        logger.exception("sidebar health panel could not read the run status")
+        detail = "—·— the status could not be read; this is not a healthy run"
+    try:
         st.sidebar.markdown(
             f'<div class="egx-health {tone}"><div class="t"><i></i>'
             f'<span>{html.escape(headline)}</span></div>'
             f'<div class="d">{detail}</div></div>',
             unsafe_allow_html=True,
         )
-    except Exception:  # noqa: BLE001 - a broken monitor must not break the page
+    except Exception:  # noqa: BLE001 - nothing here may take down the page
         logger.exception("sidebar health panel could not be rendered")
 
 

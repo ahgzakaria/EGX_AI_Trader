@@ -95,13 +95,14 @@ def test_unknown_is_not_a_shade_of_grey(stylesheet):
 def test_there_are_no_drop_shadows(stylesheet):
     """Depth is one rung on the surface ladder plus a border, by decision.
 
-    `inset` is allowed and is not elevation: the sidebar's current-page rail is
-    drawn with one, which is a mark on an edge rather than a lift off the page.
+    There are now no shadows at all: the sidebar's current-page rail was the
+    last one, drawn as an `inset`, and the shell pass replaced it with a real
+    `border-left` per the design system. `inset` stays permitted -- it marks an
+    edge rather than lifting a surface off the page -- so this allows it rather
+    than banning shadows outright, and fails only on elevation.
     """
-    shadows = re.findall(r"box-shadow\s*:\s*([^;}]+)", _declarations(stylesheet))
-    assert shadows, "the rail uses one; if it stopped, update this test"
-    for value in shadows:
-        assert "inset" in value, f"drop shadow: {value.strip()}"
+    for value in re.findall(r"box-shadow\s*:\s*([^;}]+)", _declarations(stylesheet)):
+        assert "inset" in value or value.strip() == "none", f"drop shadow: {value.strip()}"
 
 
 # --- typography ---------------------------------------------------------------
