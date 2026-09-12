@@ -12,7 +12,7 @@ from config.settings_manager import settings
 from services.backtest_service import FULL_HISTORY, VALIDATED_OOS, run_backtest
 from ai.trainer import AITrainer
 from core.universe import universe_provenance
-from dashboard.ui import COLOURS, page_header, section_header
+from dashboard.ui import COLOURS, badge_html, page_header, section_header
 from dashboard.backtest_state import (
     SCOPE_LABELS,
     consume_backtest_updates,
@@ -43,9 +43,54 @@ MEASURED_GATE_IMPACT = (
     ("Confidence · الثقة", 362, "Minimum Confidence"),
     ("Trend · الاتجاه", 214, "Minimum Trend"),
     ("CandleConfirmation · تأكيد الشمعة", 179, "Require Candle Confirmation"),
+    # 0 here is the 2026-08-18 measurement and is no longer the current
+    # behaviour: the gate rejected nothing because `^CASE30` was served by no
+    # provider, which was fixed on 2026-09-12 (80e9c3a). Re-measured with the
+    # index present the backtest goes 609 -> 561 trades. The setting was then
+    # turned off deliberately (c00be69), so it still rejects nothing today --
+    # for a completely different reason, which is the distinction this panel
+    # exists to make.
     ("MarketAnalyzer · مؤشر EGX30", 0, "Require Market Analyzer"),
     ("Volume · الحجم", 0, "Minimum Volume"),
 )
+
+#: A setting can be on and still decide nothing, and the reasons differ. This
+#: is the state the settings UI could not express, and the defect that shaped
+#: this whole product: `require_market_analyzer` read true for years over an
+#: index that nothing served.
+LIVE = "LIVE"                 # on, and the check behind it can run
+OFF = "OFF"                   # off by choice
+INERT = "INERT"               # on, but the check cannot run at all
+
+
+def market_analyzer_state(strategy_settings) -> tuple:
+    """``(state, explanation)`` for the gate this panel was built around.
+
+    Read now rather than quoted from a table. The stored value says what the
+    switch is set to; whether the index behind it exists is a separate question,
+    and it was answered "no" for years while the switch read on.
+    """
+    required = bool(strategy_settings.get("require_market_analyzer"))
+    try:
+        from core.frozen_mubasher_store import frozen_indices
+
+        has_index = bool(frozen_indices())
+    except Exception:                                   # noqa: BLE001
+        has_index = False
+    if not has_index:
+        return INERT, ("البوابة مفعّلة لكن مؤشر EGX30 غير متاح لأي مصدر، "
+                       "فهي لا ترفض شيئًا." if required else
+                       "البوابة مغلقة، ومؤشر EGX30 غير متاح أصلًا.")
+    if not required:
+        return OFF, ("مغلقة بقرار. المؤشر متاح ويُعرض كـ IndexRegime، لكنه لا "
+                     "يمنع صفقة. تشغيلها قِيس بـ 561 صفقة مقابل 609، "
+                     "وعائد 121.25% مقابل 142.71%.")
+    return LIVE, "مفعّلة، والمؤشر متاح — البوابة ترفض فعليًا."
+
+
+#: How each state is named and toned where it is shown.
+_STATE_LABEL = {LIVE: ("تعمل", "green"), OFF: ("مغلقة", "gray"),
+                INERT: ("مفعّلة وعاطلة", "unknown")}
 
 
 def _show_gate_impact() -> None:
@@ -56,6 +101,10 @@ def _show_gate_impact() -> None:
     getting byte-identical results. `Minimum Volume` likewise. Meanwhile the
     stock-regime filter decided roughly two thirds of every evaluation from
     behind a hardcoded threshold. Reading the sliders told you none of that.
+
+    The market-analyzer half of that has since been resolved and the stored
+    table cannot say so: the index was frozen on 2026-09-12 and the gate can
+    fire now, so the panel reads its live state rather than quoting the 0.
     """
 
     with st.expander("أي بوابة تقرر فعلًا؟ · Which gate actually decides"):
@@ -84,11 +133,21 @@ def _show_gate_impact() -> None:
                 "Setting": st.column_config.TextColumn("Setting", width="medium"),
             },
         )
+        # Read now, not quoted from the table above. The table is a
+        # measurement from a date; this is the state of the switch today, and
+        # the two stopped agreeing the moment the index was frozen.
+        state, explanation = market_analyzer_state(settings.get("strategy"))
+        label, tone = _STATE_LABEL[state]
         st.markdown(
-            "**اثنان من هذه الإعدادات لا يفعلان شيئًا.** `Require Market "
-            "Analyzer (EGX30 Index)` مفعّل ويرفض صفر إشارة — أُثبت بتشغيل "
-            "الاختبار بتفعيله وبدونه والحصول على نتائج متطابقة حرفيًا. "
-            "و`Minimum Volume` كذلك: القيمة 0 و 5 تعطيان نفس الصفقات تمامًا.\n\n"
+            "**حالة `Require Market Analyzer` الآن:** "
+            + badge_html(label, tone) + f" — {explanation}",
+            unsafe_allow_html=True)
+        st.markdown(
+            "الصفر في الجدول أعلاه قياس 2026-08-18، حين كانت البوابة مفعّلة "
+            "وترفض صفر إشارة لأن `^CASE30` لم يكن متاحًا من أي مصدر. أُصلح ذلك "
+            "في 2026-09-12، وبإعادة القياس صار الاختبار 561 صفقة بدل 609.\n\n"
+            "**و`Minimum Volume` لا يفعل شيئًا كذلك:** القيمة 0 و 5 تعطيان "
+            "نفس الصفقات تمامًا.\n\n"
             "**وتشديد أي بوابة قاس أسوأ، لا أفضل.** العودة إلى القيم "
             "الافتراضية أعطت 73 صفقة بمتوسط ‎-0.31%‎ مقابل 188 صفقة بمتوسط "
             "‎+0.01%‎ للإعدادات الحالية. رفع `Minimum RR` إلى 2.0 أعطى ‎-0.30%‎."

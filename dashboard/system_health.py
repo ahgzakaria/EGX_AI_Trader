@@ -8,7 +8,7 @@ from pathlib import Path
 import streamlit as st
 
 from core.data_provider import provider_health
-from dashboard.ui import page_header, section_header
+from dashboard.ui import metric_card, page_header, section_header
 from services.experiment_tracking import RunRepository
 from services.run_replay import replay_run
 from services.system_health import collect_system_health
@@ -34,7 +34,14 @@ def show_system_health():
         icon="🩺",
         badge="SYSTEM HEALTH",
     )
-    health = collect_system_health(streamlit_running=True)
+    # Quick by default. The full integrity scan walks every page of a 7.7 GB
+    # database and measured 140 seconds on this machine -- it ran on every
+    # render of the one page somebody opens during an incident. It is a button
+    # now, and the tiles say which check they got.
+    deep = bool(st.session_state.pop("_system_health_deep", False))
+    with st.spinner("فحص عميق لقواعد البيانات — دقائق." if deep
+                    else "قراءة حالة النظام…"):
+        health = collect_system_health(streamlit_running=True, deep=deep)
     state = health["state"]
     if state == "HEALTHY":
         st.success("الخدمات المطلوبة متاحة للبحث.")
@@ -42,12 +49,50 @@ def show_system_health():
         st.warning(f"{health['safety']['message']} ({state})")
     else:
         st.error(f"متطلبات التشغيل غير مكتملة. ({state})")
+    # Toned, because this is the page somebody opens when they are worried and
+    # it has to answer from across the room. Every tile read in plain text
+    # before: a Rubix database reporting FAILED looked exactly like one
+    # reporting HEALTHY, three words to the left of a disk figure with no
+    # threshold on it. Each tone below comes from the service's own verdict --
+    # `fallback_active`, the sqlite status, and the 1% free-space floor that
+    # already contributes to an unhealthy state -- never from a number invented
+    # here.
+    provider_health_ = health["provider"]
+    fallback = bool(provider_health_.get("fallback_active"))
+    database_status = str(health["rubix_database"]["status"])
+    free_percent = float(health["disk"]["free_percent"])
+
     provider, database, disk, replay = st.columns(4)
-    provider.metric("مصدر البيانات اليومية", health["provider"].get("actual", "Unknown").upper())
-    database.metric("قاعدة Rubix", health["rubix_database"]["status"])
-    disk.metric("المساحة المتاحة", f"{health['disk']['free_percent']:.1f}%")
-    replay.metric("جلسات البحث القابلة للإعادة", health["replay_readiness"]["ready_runs"])
-    if st.button("تحديث حالة النظام", use_container_width=True):
+    with provider:
+        metric_card(
+            "مصدر البيانات اليومية",
+            provider_health_.get("actual", "Unknown").upper(),
+            "Daily source", tone="amber" if fallback else None,
+            sub=(f"المطلوب {provider_health_.get('requested', '—')}" if fallback
+                 else "كما هو مضبوط"))
+    with database:
+        # A quick probe proves the file opens and reads; it does not prove
+        # every page is intact, and the tile says which it was rather than
+        # letting "HEALTHY" mean two different amounts of evidence.
+        check = str(health["rubix_database"].get("check", "quick"))
+        metric_card("قاعدة Rubix", database_status, "Rubix database",
+                    tone={"HEALTHY": "green", "FAILED": "red",
+                          "MISSING": "amber"}.get(database_status, "unknown"),
+                    sub="فحص كامل" if check == "integrity" else "فحص سريع")
+    with disk:
+        metric_card("المساحة المتاحة", f"{free_percent:.1f}%", "Free disk",
+                    tone="red" if free_percent < 1 else None,
+                    sub="تحت الحد" if free_percent < 1 else "")
+    with replay:
+        metric_card("جلسات قابلة للإعادة",
+                    str(health["replay_readiness"]["ready_runs"]), "Replayable runs")
+    refresh, full = st.columns(2)
+    if refresh.button("تحديث حالة النظام", use_container_width=True):
+        st.rerun()
+    if full.button("فحص كامل لقواعد البيانات · Full integrity scan",
+                   use_container_width=True,
+                   help="PRAGMA integrity_check على كل قاعدة. يستغرق دقائق."):
+        st.session_state["_system_health_deep"] = True
         st.rerun()
 
     section_header("التشخيصات الفنية", "تفاصيل للمراجعة عند وجود مشكلة")

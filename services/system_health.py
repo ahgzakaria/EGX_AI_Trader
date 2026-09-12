@@ -17,20 +17,51 @@ from services.experiment_tracking import REPORTS_ROOT, RunRepository
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _sqlite_health(path: Path) -> dict:
+def _sqlite_health(path: Path, *, deep: bool = False) -> dict:
+    """Whether one database can be opened and read, or the full integrity scan.
+
+    ``deep=False`` reads the schema and one page of the catalogue: enough to
+    catch a file that is missing, locked, truncated or not a database at all,
+    and it is over in milliseconds.
+
+    ``deep=True`` is ``PRAGMA integrity_check``, which walks every page. The
+    Rubix store on this machine is 7.7 GB and that walk alone measured **140
+    seconds**; it ran on every render of the System Health page, which is the
+    page somebody opens when something is already wrong.
+
+    Measured 2026-09-12, whole call: 328s before, of which ~170s was the
+    integrity checks across the three databases and ~144s is
+    ``provider_health``, which this change does not touch. So the page is
+    quicker by the integrity half and still slow for a reason that lives
+    elsewhere.
+
+    The returned ``check`` field names which one ran, so nothing can read a
+    quick probe as a clean integrity scan.
+    """
     if not path.is_file():
-        return {"path": str(path), "status": "MISSING", "bytes": 0}
+        return {"path": str(path), "status": "MISSING", "bytes": 0, "check": "none"}
     try:
         uri = f"file:{path.resolve().as_posix()}?mode=ro"
         with sqlite3.connect(uri, uri=True, timeout=5) as connection:
-            integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
+            if deep:
+                integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
+            else:
+                connection.execute("PRAGMA schema_version").fetchone()
+                connection.execute(
+                    "SELECT name FROM sqlite_master LIMIT 1").fetchone()
+                integrity = "not checked"
         return {
-            "path": str(path), "status": "HEALTHY" if integrity == "ok" else "FAILED",
-            "integrity": integrity, "bytes": path.stat().st_size,
+            "path": str(path),
+            "status": "HEALTHY" if (integrity == "ok" or not deep) else "FAILED",
+            "integrity": integrity,
+            "check": "integrity" if deep else "quick",
+            "bytes": path.stat().st_size,
             "modified_at": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).astimezone().isoformat(),
         }
     except sqlite3.Error as error:
-        return {"path": str(path), "status": "FAILED", "error": str(error), "bytes": path.stat().st_size}
+        return {"path": str(path), "status": "FAILED", "error": str(error),
+                "check": "integrity" if deep else "quick",
+                "bytes": path.stat().st_size}
 
 
 def _read_json(path: Path) -> dict:
@@ -91,16 +122,23 @@ def _latest_backup() -> dict:
     }
 
 
-def collect_system_health(streamlit_running=False) -> dict:
+def collect_system_health(streamlit_running=False, *, deep=False) -> dict:
+    """The operational picture. ``deep`` walks every page of every database.
+
+    Quick by default. The deep scan is minutes on a multi-gigabyte store and
+    this is called on every render of a page read during an incident; the
+    caller asks for it explicitly, and every database record says which check
+    it got.
+    """
     settings.reload()
     cfg = settings.get("market_data")
     rubix_path = Path(os.getenv("RUBIX_DB_PATH") or cfg.get("rubix_db_path", "data/rubix_live_market.db"))
     if not rubix_path.is_absolute():
         rubix_path = PROJECT_ROOT / rubix_path
     rubix = provider_health("dashboard")
-    rubix_db = _sqlite_health(rubix_path)
-    forward_db = _sqlite_health(PROJECT_ROOT / "data" / "forward_testing.db")
-    cache_db = _sqlite_health(PROJECT_ROOT / cfg.get("cache_path", "data/market_data_cache.sqlite"))
+    rubix_db = _sqlite_health(rubix_path, deep=deep)
+    forward_db = _sqlite_health(PROJECT_ROOT / "data" / "forward_testing.db", deep=deep)
+    cache_db = _sqlite_health(PROJECT_ROOT / cfg.get("cache_path", "data/market_data_cache.sqlite"), deep=deep)
     disk = shutil.disk_usage(PROJECT_ROOT)
     disk_free_pct = round(disk.free / disk.total * 100, 2) if disk.total else 0
     experiments = _experiment_health()
