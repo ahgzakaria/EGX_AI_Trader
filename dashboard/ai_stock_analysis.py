@@ -411,7 +411,23 @@ def _status_section(result):
         ("المزود · Provider", str(quality.provider or EM_DASH), "blue"),
         ("آخر جلسة · Last Session", str(quality.latest_completed_session or EM_DASH), "gray"),
         ("الحداثة · Freshness", str(quality.freshness_status or EM_DASH), "gray"),
+        ("الاستخدام · Use",
+         "للاطلاع فقط · READ ONLY" if not quality.automatic_use_permitted
+         else "مسموح · PERMITTED",
+         "red" if not quality.automatic_use_permitted else "green"),
     ])
+    if not quality.automatic_use_permitted:
+        # Above the fold and not inside the warnings list further down the page.
+        # This does not qualify one figure, it qualifies every conclusion drawn
+        # from the whole screen, and a reader who has scrolled past it is a
+        # reader who has already read the numbers.
+        st.error(
+            "**محجوز للمراجعة اليدوية · HELD FOR MANUAL REVIEW** — هذا السهم "
+            "مصنّف ضمن الطبقة المحجوزة، والأرقام تحته معروضة للاطلاع فقط: لا "
+            "يُبنى عليها قرار آلي ولا تحجيم مركز. · The numbers below are shown "
+            "for reading only; no automatic decision and no position sizing may "
+            "be taken from them."
+            + (f"\n\n`{quality.held_reason}`" if quality.held_reason else ""))
     if is_auction(result.market_phase):
         st.info("مزاد الإغلاق (14:15–14:25): تُعرض بيانات المزاد منفصلة ولا تُدمج مع نطاق الجلسة "
                 "المستمرة. · Closing auction — auction data is shown separately and is never "

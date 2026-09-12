@@ -432,6 +432,8 @@ def build_insufficient_evidence(
         live_provider=str(md.get("live_provider", "rubix")), live_available=False,
         yahoo_network_used=bool(md.get("yahoo_network_used", False)),
         yahoo_seed_present=bool(md.get("yahoo_seed_present", False)),
+        automatic_use_permitted=bool(md.get("automatic_use_permitted", True)),
+        held_reason=str(md.get("held_reason") or ""),
         notes=(reason,),
     )
     scenario = ScenarioResult(
@@ -813,6 +815,8 @@ def _data_quality(md, *, volume_safe, history_sufficient, usable, live_quote,
         live_available=bool(live_quote and live_quote.get("available")),
         yahoo_network_used=bool(md.get("yahoo_network_used", False)),   # derived
         yahoo_seed_present=bool(md.get("yahoo_seed_present", False)),   # derived
+        automatic_use_permitted=bool(md.get("automatic_use_permitted", True)),
+        held_reason=str(md.get("held_reason") or ""),
         notes=tuple(notes),
     )
 

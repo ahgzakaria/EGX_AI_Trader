@@ -363,6 +363,14 @@ class DataQualitySummary:
     live_available: bool = False
     yahoo_network_used: bool = False
     yahoo_seed_present: bool = False
+    #: False when the router served this history from a tier that is HELD for
+    #: manual review. The numbers are real and may be read; nothing may size a
+    #: position or take an automatic decision from them. A typed field rather
+    #: than a note, because a note is a string in a tuple that every consumer
+    #: is free to ignore, and this one decides what the reader is allowed to
+    #: conclude.
+    automatic_use_permitted: bool = True
+    held_reason: str = ""
     notes: tuple[str, ...] = ()
 
 

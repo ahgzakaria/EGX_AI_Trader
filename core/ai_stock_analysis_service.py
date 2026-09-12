@@ -117,8 +117,22 @@ def resolve_market_phase(now: datetime | None = None) -> MarketPhase:
 # --------------------------------------------------------------------------- #
 
 def _default_history_loader(symbol: str) -> pd.DataFrame:
+    """History for ONE symbol, including the tiers held for manual review.
+
+    ``allow_held`` is on here and nowhere else in this service's callers. This
+    page is the case the option was written for: one symbol, asked for by hand,
+    for display and analysis only, with production execution disabled. Sixteen
+    symbols -- JUFO and MTIE among them -- were classified TIER_D on
+    2026-08-27 and have a complete current EODHD series sitting unused behind
+    that classification; refusing to show it here reported "insufficient data"
+    about a symbol with 3,551 sessions.
+
+    The frame comes back marked ``automatic_use_permitted: False`` with a
+    ``held_reason``, both of which travel into ``DataQualitySummary`` and are
+    rendered on the page. Nothing automatic may act on it.
+    """
     from core.research_router import get_current_research_history
-    return get_current_research_history(symbol)
+    return get_current_research_history(symbol, allow_held=True)
 
 
 def _rubix_provider():

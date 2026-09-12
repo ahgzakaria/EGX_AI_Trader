@@ -1331,6 +1331,17 @@ def data_quality_warnings(result: AnalysisResult):
         warnings.append(("info", "بيانات مزاد الإغلاق معروضة بشكل منفصل ولا تُدمج مع نطاق الجلسة المستمرة",
                          "Closing-auction data is shown separately and is not merged into the "
                          "continuous-session range"))
+    if not quality.automatic_use_permitted:
+        # First in severity for a reason: it does not qualify one number on the
+        # page, it qualifies every conclusion drawn from all of them.
+        warnings.append((
+            "error",
+            "هذا السهم محجوز للمراجعة اليدوية — الأرقام معروضة للاطلاع فقط ولا "
+            "يُبنى عليها قرار آلي ولا تحجيم مركز"
+            + (f" · {quality.held_reason}" if quality.held_reason else ""),
+            "HELD FOR MANUAL REVIEW — these numbers are shown for reading only. "
+            "No automatic decision and no position sizing may be taken from them"
+            + (f" · {quality.held_reason}" if quality.held_reason else "")))
     if quality.yahoo_network_used:
         warnings.append(("error", "تم استخدام شبكة ياهو — مخالف لسياسة البيانات",
                          "Yahoo network was used — this violates the data policy"))
@@ -1582,6 +1593,11 @@ def build_card_payload(result: AnalysisResult, narrative: NarrativeResult | None
         f"Provider  {provider_label}",
         f"Last completed session  {format_arabic_date(completed_session)}",
     ]
+    if not result.data_quality.automatic_use_permitted:
+        # The card leaves the application. A held symbol that is marked on the
+        # page and unmarked on the exported image is marked nowhere that
+        # matters, because the image is what gets forwarded.
+        quality_bits.insert(0, "HELD FOR MANUAL REVIEW · READ ONLY")
 
     return CardPayload(
         symbol=result.request.symbol,
