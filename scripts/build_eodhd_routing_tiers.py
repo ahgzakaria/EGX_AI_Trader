@@ -46,6 +46,7 @@ def main():
 
     cat = dict(zip(results.get("symbol", []), results.get("category", []))) if not results.empty else {}
     qcls = dict(zip(queue.get("symbol", []), queue.get("classification", []))) if not queue.empty else {}
+    qev = dict(zip(queue.get("symbol", []), queue.get("evidence", []))) if not queue.empty else {}
     revcls = dict(zip(reval.get("symbol", []), reval.get("classification", []))) if not reval.empty else {}
     # symbols with a SPLIT in the last ~3 years (recent corp action → forward/backtest risk)
     recent_splits = set()
@@ -122,10 +123,23 @@ def main():
                      evidence_status="scale_anomaly_unresolved", risk_level="hold",
                      approval_reason="price-scale anomaly with no manual-queue resolution — "
                      "hold until resolved")
-        elif q == "SYMBOL_NOT_LIQUID" or c == "MANUAL_REVIEW":
+        elif q == "SYMBOL_NOT_LIQUID":
+            # The queue looked and could not adjudicate: there was no valid
+            # Rubix price to judge the two series against. An absence of a
+            # verdict is not a verdict.
             e.update(tier="TIER_D_UNSUPPORTED_OR_MANUAL", forward_primary=None,
                      evidence_status="insufficient", risk_level="hold",
-                     approval_reason="illiquid/unresolved — manual review")
+                     approval_reason="illiquid — no valid Rubix price to adjudicate")
+        elif c == "MANUAL_REVIEW" and q != "EODHD_CORRECT":
+            # MANUAL_REVIEW means the audit deferred to a human. It is a
+            # question, not an answer, and it stays a hold until the queue
+            # answers it -- or when the queue's answer is that EODHD is the
+            # wrong one (YAHOO_CORRECT / STALE_EODHD).
+            e.update(tier="TIER_D_UNSUPPORTED_OR_MANUAL", forward_primary=None,
+                     evidence_status="insufficient", risk_level="hold",
+                     approval_reason=("EODHD is the stale series here — manual review"
+                                      if q == "YAHOO_CORRECT"
+                                      else "unresolved — manual review, no queue verdict"))
         elif c == "DATA_UNAVAILABLE":
             e.update(tier="TIER_B_FORWARD_EODHD_NO_FALLBACK", forward_primary="eodhd",
                      historical_backtest_provider="eodhd", fallback_provider=None,
@@ -150,6 +164,27 @@ def main():
                      risk_level="low",
                      approval_reason="recent prices validated, no scale issue, no recent split; "
                      "forward-safe candidate (backtests still stay on Yahoo)")
+
+        # A symbol the queue adjudicated in EODHD's favour reaches the branches
+        # above on its other evidence -- a recent split still sends it to
+        # TIER_C -- but it must never be given a Yahoo fallback. The
+        # adjudication IS that Yahoo was the wrong series: seven agreed on all
+        # three sources and four had Yahoo simply out of date. Falling back to
+        # the series the review rejected would undo the review. Same rule as
+        # ORAS above, reached by evidence instead of by name.
+        if c == "MANUAL_REVIEW" and q == "EODHD_CORRECT":
+            resolved = f"queue adjudicated EODHD correct against Rubix ({qev.get(sym, '')})"
+            if e["tier"] == "TIER_A_FORWARD_SAFE":
+                # TIER_A is defined as forward-safe WITH a Yahoo fallback.
+                # Without one it is TIER_B, which is that state named.
+                e.update(tier="TIER_B_FORWARD_EODHD_NO_FALLBACK",
+                         historical_backtest_provider="eodhd_or_local")
+            e.update(fallback_provider=None, forward_primary="eodhd",
+                     price_series="SPLIT_ADJUSTED", volume_policy="EVENT_SPECIFIC",
+                     evidence_status="rubix_adjudicated",
+                     risk_level="medium" if e["risk_level"] == "low" else e["risk_level"],
+                     approval_reason=f"{resolved} — no Yahoo fallback. "
+                                     f"{e['approval_reason']}")
         entries.append(e)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
