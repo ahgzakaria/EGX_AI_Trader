@@ -26,7 +26,7 @@ from core.daily_flow import (buy_share_for, session_buy_share,
                              session_trades, trades_for)
 from core.effective_cost import load_symbol_costs, round_trip_for
 from dashboard.scan_memory import recall, remember, scan_caption
-from dashboard.ui import page_header
+from dashboard.ui import badge_html, page_header
 
 from services.swing_breakout import (
     DRAWDOWN_FREQUENCY,
@@ -68,6 +68,44 @@ def _candidate_frame(scan_result, costs=None, trades=None,
         }
         for c in scan_result.candidates
     ])
+
+
+#: Columns whose blank cell means "never measured", and what to call it.
+#: Each already says so in its own tooltip -- "Blank means too few measured
+#: sessions to say, never that it is cheap" -- which is the right words in the
+#: wrong place: a reader learns it only by hovering the column they already
+#: decided to trust. The counts go on the page instead.
+_UNMEASURED_COLUMNS = {
+    "Round trip %": "تكلفة غير مقاسة · cost",
+    "Trades": "صفقات الجلسة غير مقاسة · trades",
+    "Buy share": "حصة الشراء غير مقاسة · buy share",
+}
+
+
+def _unmeasured_note(frame: pd.DataFrame) -> None:
+    """Say how many candidates carry no measurement, rather than leaving a gap.
+
+    A blank round-trip cost is the one that matters: it is not a cheap name, it
+    is a name whose cost nobody has measured, and assuming zero friction is the
+    specific mistake that once made thirteen losing signals look profitable.
+    """
+    chips = []
+    for column, label in _UNMEASURED_COLUMNS.items():
+        if column not in frame.columns:
+            continue
+        missing = int(pd.to_numeric(frame[column], errors="coerce").isna().sum())
+        if missing:
+            chips.append(badge_html(f"{label}: {missing} / {len(frame)}", "unknown"))
+    if not chips:
+        return
+    st.markdown(
+        '<div style="display:flex;gap:.35rem;flex-wrap:wrap;align-items:center;'
+        'margin:.35rem 0 .1rem">'
+        '<span style="color:var(--text-low);font-size:.76rem">'
+        'خانة فارغة تعني لم تُقَس، لا أنها صفر:</span>'
+        + "".join(chips) + "</div>",
+        unsafe_allow_html=True,
+    )
 
 
 def _column_config() -> dict:
@@ -196,17 +234,22 @@ def show_swing_signals() -> None:
             f"the design working, not a fault.",
         )
     else:
+        symbols = [c.symbol for c in result.candidates]
+        candidates = _candidate_frame(
+            result,
+            load_symbol_costs(symbols),
+            session_trades(symbols, result.session_date),
+            session_buy_share(symbols, result.session_date),
+        )
         st.dataframe(
-            _candidate_frame(
-                result,
-                load_symbol_costs([c.symbol for c in result.candidates]),
-                session_trades([c.symbol for c in result.candidates],
-                               result.session_date),
-                session_buy_share([c.symbol for c in result.candidates],
-                                  result.session_date)),
+            candidates,
             hide_index=True, width="stretch",
             column_config=_column_config(),
         )
+        # The columns stay numeric -- sorting by what a name costs to trade is
+        # the point of having measured it -- so the blanks are counted here
+        # rather than replaced with a marker in the cell.
+        _unmeasured_note(candidates)
         _show_where_trades_went(result)
 
     _show_basis(config)
