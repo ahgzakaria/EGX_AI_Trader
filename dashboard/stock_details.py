@@ -34,7 +34,8 @@ from dashboard.provenance_panel import (
     render_provenance_panel,
 )
 from dashboard.formatting import company_name, symbol_option_label
-from dashboard.ui import section_header
+from dashboard.ui import (COLOURS, GATE_FAIL, GATE_NOT_REACHED, GATE_PASS,
+                          GATE_UNAVAILABLE, gate_html, section_header)
 from portfolio.sizing import PositionSizer
 
 
@@ -73,6 +74,60 @@ def stock_freshness_context(stock, *, evaluated_at=None, expected_session=None):
         quote_receive_timestamp=stock.get("LivePriceReceivedTimestamp"),
         source_identity=str(stock.get("DataSource") or ""),
     )
+
+
+#: What the engine writes into the decision trace, and which of the four
+#: outcomes each spelling is. "N/A" is what a gate carries when the market gate
+#: stopped the chain before it -- never evaluated, rather than evaluated and
+#: inconclusive.
+_TRACE_STATES = {
+    "PASS": GATE_PASS,
+    "FAIL": GATE_FAIL,
+    "UNAVAILABLE": GATE_UNAVAILABLE,
+    "N/A": GATE_NOT_REACHED,
+    "": GATE_NOT_REACHED,
+}
+
+
+def _gate_state(value):
+    """One trace value as one of the four outcomes.
+
+    Anything unrecognised reads as UNAVAILABLE rather than as a pass. This is
+    the panel where that matters most: it is the only place the reader can see
+    why a decision came out the way it did, and a gate whose result nobody can
+    interpret must not be drawn as one that was satisfied.
+    """
+    return _TRACE_STATES.get(str(value).strip().upper(), GATE_UNAVAILABLE)
+
+
+def _render_gates(trace):
+    """Every gate as a chip, in the order the engine checks them.
+
+    This was a two-column dataframe whose Result column was coloured by a
+    substring test: green if the text contained "PASS", red if it contained
+    "FAIL" or "LOW", and a single grey for everything else -- so a gate that
+    could not run and a gate never reached were the same grey, and the greens
+    and reds were #059669 and #dc2626, Tailwind's defaults rather than this
+    project's own.
+    """
+    chips = []
+    for gate, result in trace.items():
+        state = _gate_state(result)
+        chips.append(gate_html(state, label=str(gate),
+                               title=f"{gate}: {result}"))
+    st.markdown(
+        '<div style="display:flex;flex-wrap:wrap;gap:.35rem;margin:.2rem 0 .4rem">'
+        + "".join(chips) + "</div>",
+        unsafe_allow_html=True,
+    )
+    absent = sum(1 for result in trace.values()
+                 if _gate_state(result) in (GATE_UNAVAILABLE, GATE_NOT_REACHED))
+    if absent:
+        st.caption(
+            f"{absent} of {len(trace)} gates carry no result — either the check "
+            f"could not run, or an earlier gate stopped the chain before it. "
+            f"Neither is a pass."
+        )
 
 
 def show_stock_details(stock, *, freshness=None):
@@ -305,31 +360,16 @@ def _decision_trace(stock):
         hide_index=True,
         use_container_width=True,
     )
-    section_header("Gate Results", "The exact unified decision path")
+    section_header("Gate Results",
+                   "The exact unified decision path — PASS, FAIL, or no result")
     if trace:
-        trace_frame = pd.DataFrame([
-            {"Gate": gate, "Result": result} for gate, result in trace.items()
-        ])
-
-        def color_result(value):
-            text = str(value)
-            if "PASS" in text:
-                return "color:#059669;font-weight:700"
-            if "FAIL" in text or "LOW" in text:
-                return "color:#dc2626;font-weight:700"
-            return "color:#64748b"
-
-        styled = trace_frame.style
-        try:
-            styled = styled.map(color_result, subset=["Result"])
-        except AttributeError:
-            styled = styled.applymap(color_result, subset=["Result"])
-        st.dataframe(styled, hide_index=True, use_container_width=True)
+        _render_gates(trace)
 
     breakdown = stock.get("ConfidenceBreakdown", {})
     if breakdown:
         section_header("Confidence Breakdown", "Contribution by decision component")
-        st.bar_chart(pd.Series(breakdown, name="Confidence"), color="#2563eb")
+        st.bar_chart(pd.Series(breakdown, name="Confidence"),
+                     color=COLOURS["accent"])
 
     section_header("Strategy Module Scores", "Raw module contribution")
     scores = pd.DataFrame({
@@ -388,7 +428,7 @@ def _chart_and_indicators(stock):
     st.line_chart(chart.tail(180))
     if "Volume" in frame:
         section_header("Volume", "Source volume; no transformation")
-        st.bar_chart(frame[["Volume"]].tail(180), color="#64748b")
+        st.bar_chart(frame[["Volume"]].tail(180), color=COLOURS["gray"])
     section_header("Latest Indicators", "Last available source candle")
     names = ["EMA20", "EMA50", "EMA200", "RSI", "MACD", "ADX", "ATR", "OBV"]
     indicators = pd.DataFrame({

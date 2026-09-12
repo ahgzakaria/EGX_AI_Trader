@@ -43,6 +43,22 @@ def _tone(rgb):
 # Semantic tone -> (background, border, text) for dark badges.
 _TONE = {name: _tone(rgb) for name, rgb in _TONE_COLOUR.items()}
 
+#: The palette as literal hex, for the one place CSS variables cannot reach:
+#: chart libraries, which take a colour string and render outside the
+#: stylesheet. Charts were picking their own -- #2563eb, #0891b2, #dc2626,
+#: #64748b -- so the same "grey" on two pages was two different greys, and a
+#: drawdown chart was Tailwind red beside a design-system red legend.
+COLOURS = {name: _tone(rgb)[2] for name, rgb in _TONE_COLOUR.items()}
+COLOURS.update({
+    "accent": "#2563eb",        # the action colour, matching --accent
+    "text": "#e6edf7",
+    "muted": "#8ea1bd",
+    "surface": "#131c30",
+    "bg": "#0b1220",
+    "bg_2": "#0e1729",
+    "border": "#223049",
+})
+
 
 def apply_global_style():
     """Dark trading-terminal theme (presentation only)."""
@@ -897,7 +913,13 @@ def badge_html(text, tone="gray", title=""):
 #: with a boolean has two states and must say which of the three the third is;
 #: that is the point of the constant rather than a bare string.
 GATE_PASS, GATE_FAIL, GATE_UNAVAILABLE = "PASS", "FAIL", "UNAVAILABLE"
-_GATE_CLASS = {GATE_PASS: "pass", GATE_FAIL: "fail", GATE_UNAVAILABLE: "na"}
+#: A gate the engine never got to, because an earlier one stopped the chain.
+#: Not the same as UNAVAILABLE -- that one was reached and could not be
+#: computed -- but the same thing to look at: no result. It shares the hatch
+#: and says which it is in words.
+GATE_NOT_REACHED = "NOT REACHED"
+_GATE_CLASS = {GATE_PASS: "pass", GATE_FAIL: "fail",
+               GATE_UNAVAILABLE: "na", GATE_NOT_REACHED: "na"}
 
 
 def gate_html(state, label="", title=""):

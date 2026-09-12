@@ -12,7 +12,7 @@ from config.settings_manager import settings
 from services.backtest_service import FULL_HISTORY, VALIDATED_OOS, run_backtest
 from ai.trainer import AITrainer
 from core.universe import universe_provenance
-from dashboard.ui import page_header, section_header
+from dashboard.ui import COLOURS, page_header, section_header
 from dashboard.backtest_state import (
     SCOPE_LABELS,
     consume_backtest_updates,
@@ -882,7 +882,7 @@ def show_settings():
                         st.line_chart(equity[["Equity"]])
                     with dd_col:
                         section_header("Drawdown", "Distance from running peak")
-                        st.area_chart(equity[["DrawdownPercent"]], color="#dc2626")
+                        st.area_chart(equity[["DrawdownPercent"]], color=COLOURS["red"])
 
             st.caption(
                 f"Signals: {result['signals']} | "

@@ -17,8 +17,8 @@ from dashboard.formatting import (
 from dashboard.scan_status_panel import coverage_view, scan_status_view
 from decision_support.service import DecisionSupportService
 from dashboard.stock_details import show_stock_details
-from dashboard.ui import (empty_state, metric_card, page_header, section_header,
-                          status_bar)
+from dashboard.ui import (COLOURS, empty_state, metric_card, page_header,
+                          section_header, status_bar)
 
 
 logger = logging.getLogger(__name__)
@@ -660,11 +660,11 @@ def _render_swing_advanced_research(
                     {"Count": [buy, watch, avoid]},
                     index=["BUY", "WATCH", "AVOID"],
                 ),
-                color="#2563eb",
+                color=COLOURS["accent"],
             )
         with regime_col:
             regimes = df["Regime"].fillna("Unknown").value_counts()
-            st.bar_chart(regimes.rename("Count"), color="#0891b2")
+            st.bar_chart(regimes.rename("Count"), color=COLOURS["blue"])
 
         breakout_buy = int((df.get("BreakoutDecision") == "BUY").sum())
         breakout_watch = int((df.get("BreakoutDecision") == "WATCH").sum())
