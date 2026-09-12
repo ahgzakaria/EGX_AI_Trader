@@ -51,14 +51,19 @@ def test_swing_primary_table_is_compact_and_does_not_change_results():
 
 
 def test_swing_default_view_keeps_trader_summary_primary():
+    """The default view still leads with what a trader came for.
+
+    Asserted on the readings and the sections, not on how they are laid out:
+    this test has been rewritten twice by layout changes that did not alter
+    what the page tells anyone -- first when the counts moved from `st.metric`
+    to tiles, then when the tiles became a single context strip.
+    """
     source = inspect.getsource(show_dashboard)
-    assert "تغطية البيانات" in source
-    assert "حالة السوق" in source
-    # The three decision counts. They were `st.metric` labels reading
-    # "🟢 شراء (BUY)"; they are now `metric_card` tiles carrying a real tone,
-    # so the emoji is no longer the only thing separating a buy from a refusal.
-    for arabic, latin in (("شراء", "BUY"), ("متابعة", "WATCH"), ("تجنب", "AVOID")):
-        assert f'"{arabic}"' in source and f'"{latin}"' in source
+    # The three decisions, the coverage they were counted over, and the market
+    # they were measured in.
+    for reading in ("شراء", "متابعة", "تجنب", "BUY", "WATCH", "AVOID",
+                    "التغطية", "حالة السوق"):
+        assert reading in source, f"the default view lost {reading}"
     assert "أهم الفرص القابلة للمتابعة" in source
     assert "جدول السوق المختصر" in source
     assert source.count("_render_swing_advanced_research(") == 1

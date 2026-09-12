@@ -443,6 +443,99 @@ def apply_global_style():
         .egx-act .nums .v.pos { color:var(--green); }
         .egx-act .nums .v.neg { color:var(--red); }
 
+        /* --- the context strip --------------------------------------------
+           Seven readings on one line, each `label ......... value`, bordered
+           in its own tone. Replaces seven metric tiles: a tile is for a figure
+           you stop and read, and these are read by sweeping across them. */
+        .egx-strip { display:grid; grid-template-columns:repeat(7, minmax(0,1fr));
+            gap:.45rem; margin:.2rem 0 .55rem; }
+        .egx-strip .c { display:flex; align-items:center; justify-content:space-between;
+            gap:.4rem; background:var(--surface); border:1px solid var(--border);
+            border-radius:var(--r-chip); padding:.3rem .5rem; min-width:0; }
+        .egx-strip .c .k { display:flex; align-items:center; gap:.35rem;
+            font-size:.7rem; color:var(--muted); min-width:0;
+            overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .egx-strip .c .k i { width:6px; height:6px; border-radius:50%;
+            flex-shrink:0; display:block; }
+        .egx-strip .c .v { font-family:var(--font-mono); font-size:.86rem;
+            font-weight:600; color:var(--text); font-variant-numeric:tabular-nums;
+            white-space:nowrap; }
+        .egx-strip .c .v small { font-size:.64rem; color:var(--text-low);
+            font-weight:400; margin-inline-start:.2rem; }
+        @media (max-width:1400px) {
+            .egx-strip { grid-template-columns:repeat(4, minmax(0,1fr)); }
+        }
+
+        /* --- the exclusion notice ------------------------------------------
+           One line, a mono tag, the sentence, and where to go. It was a
+           Streamlit warning box: three lines of chrome for one fact. */
+        .egx-notice { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap;
+            background:var(--amber-bg); border:1px solid rgba(251,191,36,.25);
+            border-right:3px solid var(--amber); border-radius:var(--r-chip);
+            padding:.4rem .6rem; margin:.1rem 0 .5rem; font-size:.78rem; }
+        .egx-notice b { font-family:var(--font-mono); font-size:.62rem;
+            letter-spacing:.05em; text-transform:uppercase; color:var(--amber);
+            background:rgba(251,191,36,.14); border-radius:var(--r-chip);
+            padding:.1rem .35rem; white-space:nowrap; }
+        .egx-notice span { color:var(--text); line-height:1.6; }
+
+        /* --- the opportunity card ------------------------------------------
+           Three to a row. Ticker and name, the sector and regime it sits in,
+           its decision, the four figures a trade is judged on, and the trade
+           drawn to scale underneath. */
+        .egx-opps { display:grid; grid-template-columns:repeat(3, minmax(0,1fr));
+            gap:.6rem; margin:.2rem 0 .3rem; }
+        @media (max-width:1250px) {
+            .egx-opps { grid-template-columns:repeat(2, minmax(0,1fr)); }
+        }
+        .egx-opp { background:var(--surface); border:1px solid var(--border);
+            border-right:4px solid var(--gray); border-radius:var(--r-card);
+            padding:.65rem .75rem; display:flex; flex-direction:column; gap:.5rem; }
+        .egx-opp.buy { border-right-color:var(--green); }
+        .egx-opp.watch { border-right-color:var(--blue); }
+        .egx-opp.avoid { border-right-color:var(--red); }
+        .egx-opp .head { display:flex; align-items:flex-start;
+            justify-content:space-between; gap:.5rem; }
+        .egx-opp .tick { font-family:var(--font-mono); font-size:.98rem;
+            font-weight:600; color:var(--text); }
+        .egx-opp .name { font-size:.74rem; color:var(--muted);
+            margin-inline-start:.4rem; }
+        .egx-opp .where { font-family:var(--font-mono); font-size:.62rem;
+            color:var(--text-low); margin-top:.15rem; }
+        .egx-opp .sig { font-family:var(--font-mono); font-size:.68rem;
+            font-weight:600; border-radius:var(--r-chip); padding:.1rem .35rem;
+            white-space:nowrap; }
+        /* The four figures a trade is judged on, in one recessed row. */
+        .egx-opp .figs { display:grid; grid-template-columns:repeat(4, minmax(0,1fr));
+            gap:.3rem; background:var(--surface-well); border:1px solid var(--border);
+            border-radius:var(--r-chip); padding:.35rem .3rem; text-align:center; }
+        .egx-opp .figs .k { font-size:.58rem; color:var(--text-low);
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .egx-opp .figs .v { font-family:var(--font-mono); font-size:.82rem;
+            font-weight:600; margin-top:.1rem; font-variant-numeric:tabular-nums; }
+        .egx-opp .figs .v.stop { color:var(--red); }
+        .egx-opp .figs .v.rr { color:var(--green); }
+        /* The trade to scale: stop at one end, second target at the other, the
+           entry band and today's close where they really fall between them. A
+           card with a level missing gets no rail rather than a drawn guess. */
+        .egx-opp .legend { display:flex; justify-content:space-between;
+            font-family:var(--font-mono); font-size:.62rem; color:var(--text-low); }
+        .egx-opp .legend .lo { color:var(--red); }
+        .egx-opp .legend .hi { color:var(--green); }
+        .egx-opp .legend .mid { color:var(--text); }
+        .egx-opp .scale { position:relative; height:9px; border-radius:var(--r-chip);
+            background:var(--surface-well); border:1px solid var(--border);
+            overflow:hidden; margin-top:.2rem; }
+        .egx-opp .scale .risk { position:absolute; top:0; bottom:0; left:0;
+            background:rgba(248,113,113,.22); }
+        .egx-opp .scale .reward { position:absolute; top:0; bottom:0; right:0;
+            background:rgba(52,211,153,.20); }
+        .egx-opp .scale .band { position:absolute; top:0; bottom:0;
+            background:rgba(96,165,250,.45);
+            border-left:1px solid var(--blue); border-right:1px solid var(--blue); }
+        .egx-opp .scale .now { position:absolute; top:-1px; bottom:-1px; width:2px;
+            background:var(--text); }
+
         /* --- the attrition bar --------------------------------------------
            How a universe narrows to a handful, drawn to scale. One segment per
            refusing gate plus the survivors, each sized by its real share.
@@ -954,6 +1047,116 @@ def provenance_html(source, label="src"):
 def advisory_html(text="ADVISORY · بحث استرشادي"):
     """Marks a panel as evidence to read, not an instruction to act on."""
     return f'<span class="egx-advisory">{html.escape(str(text))}</span>'
+
+
+def context_strip(readings):
+    """Several readings on one line: ``(label, value, tone, sub)`` each.
+
+    A metric tile is for a figure you stop and read. These are read by
+    sweeping, so they are one line each with the value right-aligned and the
+    tone on the dot and the border rather than on the number.
+    """
+    cells = []
+    for label, value, tone, sub in readings:
+        colour = _TONE.get(tone, _TONE["gray"])[2] if tone else "var(--muted)"
+        border = (f"border-color:{_TONE[tone][1]}"
+                  if tone in _TONE else "")
+        extra = f"<small>{html.escape(str(sub))}</small>" if sub else ""
+        cells.append(
+            f'<div class="c" style="{border}">'
+            f'<span class="k"><i style="background:{colour}"></i>'
+            f'{html.escape(str(label))}</span>'
+            f'<span class="v" style="color:{colour}">{html.escape(str(value))}'
+            f'{extra}</span></div>')
+    return f'<div class="egx-strip">{"".join(cells)}</div>'
+
+
+def notice(tag, message):
+    """One line: a mono tag, the fact, and nothing else."""
+    return (f'<div class="egx-notice"><b>{html.escape(str(tag))}</b>'
+            f'<span>{html.escape(str(message))}</span></div>')
+
+
+def _scale_positions(stop, low, high, price, target):
+    """Where the entry band and today's close fall between stop and target.
+
+    Returns ``None`` unless every level needed to place them exists and the
+    span is real. A rail drawn from a missing level is a picture of a trade
+    that was never computed.
+    """
+    try:
+        values = [float(v) for v in (stop, low, high, price, target)]
+    except (TypeError, ValueError):
+        return None
+    if any(v != v or v <= 0 for v in values):          # NaN or absent
+        return None
+    stop, low, high, price, target = values
+    if high < low:
+        low, high = high, low
+    span = target - stop
+    if span <= 0:
+        return None
+
+    def at(value):
+        return max(0.0, min(100.0, (value - stop) / span * 100.0))
+
+    band_left, band_right = at(low), at(high)
+    return {"risk": at(low), "reward": 100.0 - at(high),
+            "band_left": band_left,
+            "band_width": max(0.6, band_right - band_left),
+            "now": at(price)}
+
+
+def opportunity_card(*, ticker, name="", sector="", regime="", signal="",
+                     tone="gray", figures=(), stop=None, buy_low=None,
+                     buy_high=None, price=None, target2=None):
+    """One candidate: what it is, what was decided, and the trade to scale."""
+    signal_colour = _TONE.get(tone, _TONE["gray"])
+    head = (
+        f'<div class="head"><div><div>'
+        f'<span class="tick">{html.escape(str(ticker))}</span>'
+        + (f'<span class="name">{html.escape(str(name))}</span>' if name else "")
+        + '</div>'
+        # Joined, not concatenated: a name with no sector rendered as "· BULL",
+        # an orphan separator where a fact should be.
+        + (f'<div class="where">'
+           + " · ".join(html.escape(str(part)) for part in (sector, regime) if part)
+           + '</div>' if (sector or regime) else "")
+        + '</div>'
+        + (f'<span class="sig" style="color:{signal_colour[2]};'
+           f'background:{signal_colour[0]};border:1px solid {signal_colour[1]}">'
+           f'{html.escape(str(signal))}</span>' if signal else "")
+        + '</div>')
+
+    cells = "".join(
+        f'<div><div class="k">{html.escape(str(label))}</div>'
+        f'<div class="v {css or ""}">{html.escape(str(value))}</div></div>'
+        for label, value, css in figures)
+    figs = f'<div class="figs">{cells}</div>' if figures else ""
+
+    rail = ""
+    places = _scale_positions(stop, buy_low, buy_high, price, target2)
+    if places:
+        rail = (
+            f'<div><div class="legend">'
+            f'<span class="lo">STOP {float(stop):,.2f}</span>'
+            f'<span class="mid">[{float(buy_low):,.2f} – {float(buy_high):,.2f}]</span>'
+            f'<span class="hi">TGT2 {float(target2):,.2f}</span></div>'
+            f'<div class="scale">'
+            f'<span class="risk" style="width:{places["risk"]:.2f}%"></span>'
+            f'<span class="reward" style="width:{places["reward"]:.2f}%"></span>'
+            f'<span class="band" style="left:{places["band_left"]:.2f}%;'
+            f'width:{places["band_width"]:.2f}%"></span>'
+            f'<span class="now" style="left:{places["now"]:.2f}%"></span>'
+            f'</div></div>')
+
+    css_tone = str(signal).strip().lower().split("/")[0].strip()
+    css_tone = css_tone if css_tone in ("buy", "watch", "avoid") else ""
+    return (f'<div class="egx-opp {css_tone}">{head}{figs}{rail}</div>')
+
+
+def opportunity_grid(cards):
+    return f'<div class="egx-opps">{"".join(cards)}</div>'
 
 
 def attrition_bar(stages, survived_label="survived", total=None):

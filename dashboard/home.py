@@ -11,13 +11,15 @@ from core.symbols import SYMBOL_SOURCE
 from dashboard.formatting import (
     NAME_COLUMN,
     company_name,
+    display_ticker,
     symbol_option_label,
     with_company_name_column,
 )
 from dashboard.scan_status_panel import coverage_view, scan_status_view
 from decision_support.service import DecisionSupportService
 from dashboard.stock_details import show_stock_details
-from dashboard.ui import (COLOURS, empty_state, metric_card, page_header,
+from dashboard.ui import (COLOURS, context_strip, empty_state, notice,
+                          opportunity_card, opportunity_grid, page_header,
                           section_header, status_bar)
 
 
@@ -557,6 +559,46 @@ _ABSENT_AS_ZERO = {
 }
 
 
+#: Decision -> the tone its card and badge wear.
+_SIGNAL_TONE = {"BUY": "green", "WATCH": "blue", "AVOID": "red"}
+
+
+def _render_opportunities(frame):
+    """The day's actionable names as cards, three to a row.
+
+    This was the same twelve-column table as the one below it, showing its
+    first ten rows -- so the page's headline section and its reference table
+    were the same object at two lengths. A candidate worth acting on is read
+    one at a time: what it is, what was decided, the four figures the trade is
+    judged on, and where today's close sits between the stop and the second
+    target.
+    """
+    cards = []
+    for _, row in frame.iterrows():
+        signal = str(row.get("Signal", ""))
+        cards.append(opportunity_card(
+            ticker=display_ticker(row.get("Ticker", "")),
+            name=company_name(row.get("Ticker", "")),
+            sector=str(row.get("Sector") or "").strip(),
+            regime=str(row.get("Regime") or "").strip(),
+            signal=signal,
+            tone=_SIGNAL_TONE.get(signal, "gray"),
+            figures=(
+                ("السعر", _level(row.get("Price"), 2), None),
+                ("الوقف", _level(row.get("StopLoss"), 2), "stop"),
+                ("هدف 1", _level(row.get("Target1"), 2), None),
+                # "العائد/المخاطرة" does not fit a quarter-width cell and
+                # truncated mid-word. R:R is what the ratio is called on a
+                # trading screen in any language.
+                ("R:R", _level(row.get("RR"), 2), "rr"),
+            ),
+            stop=row.get("StopLoss"), buy_low=row.get("BuyLow"),
+            buy_high=row.get("BuyHigh"), price=row.get("Price"),
+            target2=row.get("Target2"),
+        ))
+    st.markdown(opportunity_grid(cards), unsafe_allow_html=True)
+
+
 def _swing_primary_frame(frame):
     """Compact trader view without mutating scan results.
 
@@ -1074,42 +1116,42 @@ def show_dashboard():
     # entire difference between a buy and a refusal.
     total = len(df)
     attempted = total + len(failed_coverage)
-    share = (lambda n: f"{n / total * 100:.0f}% من المفحوص" if total else "")
-    tiles = st.columns(7)
-    with tiles[0]:
-        metric_card("شراء", f"{buy}", "BUY", tone="green" if buy else None,
-                    sub=share(buy))
-    with tiles[1]:
-        metric_card("متابعة", f"{watch}", "WATCH", tone="amber" if watch else None,
-                    sub=share(watch))
-    with tiles[2]:
-        # Roughly half of every scan lands here. Saying so is the difference
-        # between a table the reader scans and a table the reader filters.
-        metric_card("تجنب", f"{avoid}", "AVOID", tone="red" if avoid else None,
-                    sub=share(avoid))
-    with tiles[3]:
-        metric_card("تغطية البيانات", f"{total} / {attempted}", "Coverage",
-                    tone="amber" if failed_coverage else None,
-                    sub=(f"{len(failed_coverage)} مستبعد" if failed_coverage
-                         else "كل الرموز"))
-    with tiles[4]:
-        metric_card("حالة السوق", market_state, "Market Regime")
-    with tiles[5]:
-        metric_card("آخر جلسة مكتملة", str(latest_date), "Settled Session")
-    with tiles[6]:
-        metric_card("مصدر السعر اللحظي",
-                    next(iter(sorted(live_providers)), "Unavailable").title(),
-                    "Live Quote Source",
-                    tone=None if live_providers else "unknown")
+    share = (lambda n: f"{n / total * 100:.0f}%" if total else "")
+    # One line of seven readings rather than seven tiles. A tile is for a
+    # figure you stop and read; these are read by sweeping across them, and
+    # they were taking a third of the screen above the first result.
+    st.markdown(
+        context_strip([
+            ("شراء BUY", str(buy), "green" if buy else "gray", share(buy)),
+            ("متابعة WATCH", str(watch), "amber" if watch else "gray", share(watch)),
+            # Roughly half of every scan lands here. Saying so is the difference
+            # between a table the reader scans and one the reader filters.
+            ("تجنب AVOID", str(avoid), "red" if avoid else "gray", share(avoid)),
+            ("التغطية", f"{total}/{attempted}",
+             "amber" if failed_coverage else "green",
+             f"−{len(failed_coverage)}" if failed_coverage else ""),
+            ("حالة السوق", market_state, "blue", ""),
+            ("الجلسة", str(latest_date), "gray", ""),
+            ("مصدر السعر",
+             next(iter(sorted(live_providers)), "Unavailable").title(),
+             "green" if live_providers else "unknown", ""),
+        ]),
+        unsafe_allow_html=True,
+    )
 
     if failed_coverage:
-        st.warning(
-            f"تعذر تحليل {len(failed_coverage)} سهم. التفاصيل موجودة في "
-            "البحث المتقدم وصحة النظام."
+        # One line. It was a Streamlit warning box: three lines of chrome for
+        # one fact, directly above the first result.
+        st.markdown(
+            notice("EXCLUSION · استبعاد",
+                   f"تعذر تحليل {len(failed_coverage)} سهم لعدم اكتمال البيانات "
+                   f"أو عدم تطابق الجلسة — عُزلت لمنع إشارة زائفة. "
+                   f"التفاصيل في البحث المتقدم أسفل الصفحة."),
+            unsafe_allow_html=True,
         )
 
     section_header("أهم الفرص القابلة للمتابعة", "Top actionable opportunities")
-    top_buy = df[df["Signal"] == "BUY"].head(10)
+    top_buy = df[df["Signal"] == "BUY"].head(9)
     if top_buy.empty:
         empty_state(
             "لا توجد فرص شراء اليوم",
@@ -1117,11 +1159,7 @@ def show_dashboard():
             icon="○",
         )
     else:
-        st.dataframe(
-            _swing_primary_frame(top_buy),
-            use_container_width=True,
-            hide_index=True,
-        )
+        _render_opportunities(top_buy)
 
     section_header("جدول السوق المختصر", "Compact market table")
     search_col, signal_col, result_col = st.columns([2, 1, 1])
