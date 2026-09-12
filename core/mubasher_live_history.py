@@ -39,12 +39,33 @@ SERIES = "MUBASHER_SPLIT_ADJUSTED"
 PRICE_POLICY = "MUBASHER_SPLIT_ADJUSTED_NOT_DIVIDEND_ADJUSTED"
 OPEN_POLICY = "PREVIOUS_CLOSE_NOT_A_TRADED_OPEN"
 
+#: The market index the strategy's market filter reads, and the provider name
+#: its frames carry. It is not an equity and no tier routes it.
+INDEX_SYMBOL = "^CASE30"
+INDEX_PROVIDER = "mubasher_index"
+
 READY = "MUBASHER_LIVE_READY"
 STALE = "MUBASHER_LIVE_STALE"
 INSUFFICIENT = "DATA_INSUFFICIENT"
 UNAVAILABLE = "DATA_UNAVAILABLE"
 
 CONTRACT_COLUMNS = ["Open", "High", "Low", "Close", "Adj Close", "Volume"]
+
+#: How many sessions the market index may be behind the session being scanned
+#: before it is refused. The index is daily only -- the minute store holds an
+#: ETF that tracks it, not the index -- so it is as fresh as the terminal's
+#: last history download and is routinely a session or three behind.
+#:
+#: Measured on 2,947 sessions of EGX30 from 2014-07-21: a stale index and the
+#: current one give the same block/allow decision on 97.8% of sessions at one
+#: session behind, 95.1% at three, 88.4% at ten and 84.1% at twenty. Failing
+#: open instead -- which is what happened for as long as nothing served the
+#: index -- agrees with the current index on 78.5%, because the gate blocks on
+#: 21.5% of sessions. So a stale index beats no index at every lag measured,
+#: and this bound is where that margin stops being worth the claim rather than
+#: where it disappears. It is a judgement, and the numbers to revisit it are
+#: right here.
+INDEX_LAG_LIMIT_SESSIONS = 20
 
 #: How many of the most recent unconfirmed-close dates the provenance lists.
 #: The count covers the whole series; the dates are for reading, not auditing.
@@ -163,6 +184,109 @@ def mubasher_live_history(symbol, *, min_bars=250, not_after=None, database=None
         status = INSUFFICIENT
     elif ceiling is not None and (store_last is None or store_last < ceiling):
         # The record is behind: the download or the import was not run.
+        status = STALE
+    else:
+        status = READY
+    provenance["status"] = status
+    frame.attrs["market_data"] = dict(provenance)
+    return frame, status, provenance
+
+
+def _exchange_sessions_between(database, after, through):
+    """How many sessions the measured store holds in ``(after, through]``.
+
+    The store's own equity sessions are the exchange calendar here: counting
+    calendar days would call a weekend and a feast a lag.
+    """
+    from pathlib import Path
+    import sqlite3
+
+    from sector_flow import measured_turnover
+
+    try:
+        with sqlite3.connect(f"file:{Path(database).as_posix()}?mode=ro", uri=True) as db:
+            return int(db.execute(
+                f"SELECT COUNT(DISTINCT session_date) FROM {measured_turnover.TABLE} "
+                "WHERE session_date > ? AND session_date <= ?",
+                (str(after), str(through))).fetchone()[0])
+    except sqlite3.Error:
+        return 0
+
+
+def mubasher_live_index(symbol=INDEX_SYMBOL, *, min_bars=250, not_after=None,
+                        database=None):
+    """``(frame, status, provenance)`` for a market index from the same store.
+
+    The index lives in its own table, never among the equities: sector share is
+    a ratio of one symbol's turnover to the market's, and an index row there
+    would be counted as a company.
+
+    ``STALE`` here means further behind than ``INDEX_LAG_LIMIT_SESSIONS``, not
+    merely behind. See that constant for why the line is where it is; the lag
+    is reported in the provenance either way, so a caller that wants a stricter
+    rule has the number to apply it with.
+    """
+    from pathlib import Path
+    import sqlite3
+
+    from sector_flow import mubasher_local, measured_turnover
+
+    name = str(symbol).strip().upper()
+    database = database or measured_turnover.DEFAULT_DATABASE
+    provenance = {
+        "provider": INDEX_PROVIDER, "effective_provider": INDEX_PROVIDER,
+        "symbol": name, "store": str(database), "open_policy": OPEN_POLICY,
+        "price_adjustment": "INDEX_LEVEL_NOT_ADJUSTED",
+        "index_intraday_available": False,
+    }
+    try:
+        with sqlite3.connect(f"file:{Path(database).as_posix()}?mode=ro", uri=True) as db:
+            rows = pd.read_sql(
+                f"SELECT session_date, high, low, close, volume FROM "
+                f"{mubasher_local.INDEX_TABLE} WHERE symbol = ? ORDER BY session_date",
+                db, params=(name,))
+    except Exception:
+        # No table at all: a store written before the index was imported.
+        provenance["status"] = UNAVAILABLE
+        return None, UNAVAILABLE, provenance
+    if rows.empty:
+        provenance["status"] = UNAVAILABLE
+        return None, UNAVAILABLE, provenance
+
+    close = pd.to_numeric(rows["close"], errors="coerce")
+    frame = pd.DataFrame({
+        "Open": close.shift(1).to_numpy(),
+        "High": pd.to_numeric(rows["high"], errors="coerce").to_numpy(),
+        "Low": pd.to_numeric(rows["low"], errors="coerce").to_numpy(),
+        "Close": close.to_numpy(),
+        "Adj Close": close.to_numpy(),
+        "Volume": pd.to_numeric(rows["volume"], errors="coerce").to_numpy(),
+    }, index=pd.DatetimeIndex(pd.to_datetime(rows["session_date"]), name="Date"))
+    frame = frame[frame["Close"] > 0]
+    withheld = 0
+    if not_after is not None:
+        ceiling = pd.Timestamp(not_after)
+        withheld = int((frame.index > ceiling).sum())
+        frame = frame[frame.index <= ceiling]
+    if frame.empty:
+        provenance.update(status=UNAVAILABLE, sessions_withheld_ahead=withheld)
+        return None, UNAVAILABLE, provenance
+
+    effective = frame.index[-1].date()
+    lag = (0 if not_after is None
+           else _exchange_sessions_between(database, effective,
+                                           pd.Timestamp(not_after).date()))
+    provenance.update(
+        rows=int(len(frame)),
+        first_session=frame.index[0].date().isoformat(),
+        effective_latest_session=effective.isoformat(),
+        sessions_withheld_ahead=withheld,
+        index_session_lag=lag,
+        index_lag_limit_sessions=INDEX_LAG_LIMIT_SESSIONS,
+    )
+    if len(frame) < max(1, int(min_bars)):
+        status = INSUFFICIENT
+    elif lag > INDEX_LAG_LIMIT_SESSIONS:
         status = STALE
     else:
         status = READY

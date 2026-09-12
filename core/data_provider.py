@@ -201,6 +201,15 @@ def load_history(
         capture_active(symbol, frozen, "normalized")
         return frozen
 
+    # The market index is not a tradeable symbol. No tier routes it, no provider
+    # quotes it, and sending it down the swing path would spend a Rubix quote
+    # read per call on something that can never have one. It has exactly one
+    # source, and a failure to reach it must say so rather than fall anywhere.
+    if _is_index_symbol(symbol) and str(interval).strip().lower() in {"1d", "1day", "day"}:
+        finalized = _market_index_history(symbol, period, interval, min_bars, purpose)
+        capture_active(symbol, finalized, "normalized")
+        return finalized
+
     # Current-research daily candles come from the research router (EODHD / local +
     # Rubix Bridge). Rubix contributes quote metadata only and can never replace or
     # append a completed daily OHLCV row used by indicators.
@@ -484,6 +493,37 @@ def _trim_to_period(frame, period):
     raise ProviderError(f"the frozen Mubasher record cannot serve period {period!r}")
 
 
+
+def _is_index_symbol(symbol) -> bool:
+    from core.research_router import is_index_symbol
+
+    return is_index_symbol(symbol)
+
+
+def _market_index_history(symbol, period, interval, min_bars, purpose):
+    """The market index for a live purpose, from the one record that holds it."""
+
+    from core.research_router import (ResearchDataUnavailable,
+                                      get_market_index_history)
+
+    try:
+        frame = get_market_index_history(symbol, min_bars=min_bars)
+    except ResearchDataUnavailable as error:
+        raise ProviderError(
+            f"market index unavailable for {symbol}: {error.status} {error.detail}"
+        ) from error
+    # Volume is never required of an index: `strategy.market_analyzer` already
+    # asks without it, and an index's reported volume is not a tradeable one.
+    # Not trimmed, for the reason `_frozen_mubasher_history` gives: the index is
+    # context and the filter needs its EMA200 warm.
+    cleaned = _clean_for_engine(frame, symbol, min_bars, require_positive_volume=False)
+    metadata = dict(frame.attrs.get("market_data", {}))
+    metadata.update({"purpose": purpose, "period": period, "interval": interval,
+                     "historical_provider": metadata.get("provider"),
+                     "fallback_active": False, "historical_fallback_active": False})
+    cleaned.attrs["market_data"] = metadata
+    return cleaned
+
 def _frozen_mubasher_history(symbol, period, interval, min_bars, require_positive_volume):
     """A backtest frame from the frozen MubasherTrade PRO record, or ProviderError.
 
@@ -509,7 +549,14 @@ def _frozen_mubasher_history(symbol, period, interval, min_bars, require_positiv
         "period": period,
         "interval": interval,
     })
-    trimmed = _trim_to_period(loaded, period).copy()
+    # An index is context, not the series being traded, and `period` says how
+    # much of a stock's history to test -- not how much of the market's past was
+    # knowable on a given date. Trimming it to the same window would leave the
+    # market filter with no EMA200 for the first 200 sessions of every run, and
+    # `strategy.market_analyzer` slices the index by date anyway, so the whole
+    # series is served and no more of it is visible on any bar than was then.
+    trimmed = (loaded if _is_index_symbol(symbol)
+               else _trim_to_period(loaded, period)).copy()
     trimmed.attrs["market_data"] = metadata
     return _clean_for_engine(trimmed, symbol, min_bars, require_positive_volume)
 

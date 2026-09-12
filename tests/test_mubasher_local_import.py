@@ -466,3 +466,55 @@ def test_odd_lot_trades_are_excluded_from_the_estimate(tmp_path):
 
     source = inspect.getsource(local.roll_spread_estimates)
     assert "ISODDLOTTRADE='0'" in source
+
+
+# --- the market index ---------------------------------------------------------
+
+def _day(ticker, date, close):
+    return ("0", date, str(close), str(close + 1), str(close - 1), str(close),
+            "1000000", "5000000", "500")
+
+
+def test_the_index_is_read_into_its_own_table_and_not_among_the_companies(tmp_path):
+    """Sector share is a ratio to the market's turnover; an index there is a company."""
+
+    base = _build_root(tmp_path, history_rows=[
+        ("COMI", [_day("COMI", "20260907", 138)]),
+        ("EGX30", [_day("EGX30", "20260906", 56676), _day("EGX30", "20260907", 56627)]),
+    ])
+    metadata = local.import_local(base, database=str(tmp_path / "m.db"),
+                                  symbols=["COMI"])
+    assert metadata["index_rows"] == 2
+    assert metadata["index_symbols"] == ["^CASE30"]
+    assert metadata["index_last_session"] == "2026-09-07"
+    assert metadata["symbols"] == 1                      # the index is not one
+
+    with sqlite3.connect(tmp_path / "m.db") as connection:
+        companies = {row[0] for row in connection.execute(
+            f"SELECT DISTINCT ticker FROM {store.TABLE}")}
+        index = connection.execute(
+            f"SELECT symbol, close FROM {local.INDEX_TABLE} ORDER BY session_date").fetchall()
+    assert companies == {"COMI.CA"}
+    assert index == [("^CASE30", 56676.0), ("^CASE30", 56627.0)]
+
+
+def test_a_terminal_without_the_index_table_still_imports(tmp_path):
+    base = _build_root(tmp_path, history_rows=[("COMI", [_day("COMI", "20260907", 138)])])
+    metadata = local.import_local(base, database=str(tmp_path / "m.db"), symbols=["COMI"])
+    assert metadata["index_rows"] == 0 and metadata["index_symbols"] == []
+
+
+def test_the_index_table_is_rewritten_whole_on_every_import(tmp_path):
+    """The terminal back-adjusts on download, so appending would mix two bases."""
+
+    database = str(tmp_path / "m.db")
+    rows = [("COMI", [_day("COMI", "20260907", 138)])]
+    local.import_local(_build_root(tmp_path, history_rows=rows + [
+        ("EGX30", [_day("EGX30", "20260906", 1), _day("EGX30", "20260907", 2)])]),
+        database=database, symbols=["COMI"])
+    local.import_local(_build_root(tmp_path, account="98", history_rows=rows + [
+        ("EGX30", [_day("EGX30", "20260907", 9)])]), database=database, symbols=["COMI"])
+    with sqlite3.connect(database) as connection:
+        assert connection.execute(
+            f"SELECT session_date, close FROM {local.INDEX_TABLE}").fetchall() == [
+                ("2026-09-07", 9.0)]

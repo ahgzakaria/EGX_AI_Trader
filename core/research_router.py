@@ -586,6 +586,66 @@ def live_source(name):
         _LIVE_SOURCE.reset(token)
 
 
+#: Symbols that are market indices rather than equities. No tier routes them,
+#: no provider in this project quotes them, and only MubasherTrade PRO's own
+#: record carries one at all.
+INDEX_SYMBOLS = ("^CASE30",)
+
+
+def is_index_symbol(symbol) -> bool:
+    return _base(symbol) in INDEX_SYMBOLS
+
+
+def get_market_index_history(symbol, *, min_bars=250, expected=None):
+    """CURRENT_RESEARCH_V2 history for a market index, or ResearchDataUnavailable.
+
+    Served from Mubasher whatever ``live_history_source`` says, because it is
+    the only record on this machine that holds the index: EODHD does not carry
+    ``^CASE30`` and neither does the local-seed path. The frame states its own
+    lag, since the index is daily-only and is normally a session or three
+    behind the equities beside it.
+    """
+    from core.mubasher_live_history import (INDEX_PROVIDER, READY,
+                                            mubasher_live_index)
+
+    base = _base(symbol)
+    expected = expected if expected is not None else _expected_completed_session()
+    frame, status, provenance = mubasher_live_index(
+        base, min_bars=min_bars, not_after=expected)
+    if status != READY:
+        detail = (f"index through {provenance.get('effective_latest_session')}, "
+                  f"expected {expected}, {provenance.get('rows', 0)} sessions"
+                  if frame is not None else "no market index in the measured store")
+        raise ResearchDataUnavailable(base, status, detail)
+
+    effective = pd.Timestamp(frame.index[-1]).date()
+    fresh = _freshness(effective, expected)
+    md = dict(frame.attrs.get("market_data", {}))
+    md.update({
+        "data_domain": CURRENT_RESEARCH_V2, "provider": INDEX_PROVIDER,
+        "effective_provider": INDEX_PROVIDER, "requested_provider": INDEX_PROVIDER,
+        "provider_symbol": base,
+        "price_series": "INDEX_LEVEL", "price_adjustment_policy": "NONE",
+        "volume_series": "MUBASHER_INDEX_VOLUME", "volume_adjustment_policy": "NONE",
+        "volume_safe_for_lookback": True,
+        "routing_tier": "INDEX_NOT_AN_EQUITY", "routing_tiers_source": tier_source().name,
+        "fallback_used": False,
+        # An index is read to judge the market, never to trade. Nothing should
+        # size a position from it, and this says so in the same field every
+        # other frame carries.
+        "automatic_use_permitted": True,
+        "tradeable": False,
+        "yahoo_network_used": False, "yahoo_seed_present": False,
+        "latest_completed_session": effective.isoformat(),
+        "expected_completed_session": expected.isoformat() if expected else None,
+        "freshness_status": fresh.get("status"), "session_lag": fresh.get("lag"),
+        "history_sufficient": len(frame) >= min_bars,
+        "data_quality_status": status,
+    })
+    frame.attrs["market_data"] = md
+    return frame
+
+
 def _mubasher_live_frame(base, *, min_bars, expected):
     """The Mubasher live frame, or ResearchDataUnavailable naming why not."""
     from core.mubasher_live_history import READY, mubasher_live_history
@@ -629,6 +689,10 @@ def get_current_research_history(symbol, *, period="10y", interval="1d", min_bar
     expected = _expected_completed_session()
     volume_meta = {}
     bridge_md = None
+
+    if is_index_symbol(base):
+        # Not an equity: no tier, no quote, one source.
+        return get_market_index_history(base, min_bars=min_bars, expected=expected)
 
     if live_history_source() == "mubasher":
         # Every tier from one record. Mubasher carries all active symbols, so

@@ -16,6 +16,15 @@ one fixed copy of it:
     Active symbols the export left out because Mubasher files them under
     another ticker, read from ``history.db`` of the same session and resolved
     by ISIN.
+``stitched/``
+    A renamed company's live ticker joined to its retired twin's earlier
+    sessions, where their closes are identical on every session they share.
+``index/``
+    The market indices, from ``history.db`` of the same session. ``^CASE30`` is
+    what ``strategy.market_analyzer`` reads to decide whether the market as a
+    whole permits new buys; no export exists for it, and until it was frozen
+    here nothing served it, so that gate failed open on every bar of every
+    backtest.
 ``_manifest.json``
     One record per symbol: file, format, the SHA-256 of its bytes, rows, span
     and source.
@@ -64,6 +73,12 @@ EXPORT_HEADER = ("Symbol,Date Range,Open,High,Low,Closed,% Change,Change,"
 HISTORY_DB_HEADER = "Date,High,Low,Close,Volume,Turnover"
 
 COLUMNS = ["Open", "High", "Low", "Close", "Adj Close", "Volume", "Turnover"]
+
+#: Market indices the record carries, and the terminal table each comes from.
+#: They are in the manifest beside the equities and are read the same way, but
+#: they are not symbols: nothing trades them, and a universe count must not
+#: count them. ``strategy.market_analyzer`` reads ``^CASE30`` on every bar.
+INDEX_TABLES = {"^CASE30": "EGX30"}
 
 
 class FrozenStoreTampered(RuntimeError):
@@ -116,7 +131,15 @@ def read_manifest(root=None) -> dict:
 
 
 def frozen_symbols(root=None) -> list:
-    return sorted(read_manifest(root).get("symbols", {}))
+    """The tradeable symbols the record holds. Indices are not among them."""
+    return sorted(s for s in read_manifest(root).get("symbols", {})
+                  if s not in INDEX_TABLES)
+
+
+def frozen_indices(root=None) -> list:
+    """The market indices the record holds, if any."""
+    return sorted(s for s in read_manifest(root).get("symbols", {})
+                  if s in INDEX_TABLES)
 
 
 def verify(symbol, root=None):

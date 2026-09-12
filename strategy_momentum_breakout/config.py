@@ -38,12 +38,15 @@ class BreakoutConfig:
     minimum_turnover_egp: float = 2_000_000
     turnover_window: int = 20
 
-    #: The name's own long-term trend, not the index's. `^CASE30` is not
-    #: available to this project from any provider -- the Daily Dashboard's
-    #: `require_market_analyzer` gate is switched on in `config/settings.json`
-    #: and silently defaults to "allow" on every bar in backtest and live alike,
-    #: because the series it needs has one bar. A gate that cannot fire is worse
-    #: than no gate, so this strategy does not have one.
+    #: The name's own long-term trend, not the index's. This strategy has no
+    #: index gate, and the reason is measured rather than circumstantial:
+    #:
+    #: When this was written `^CASE30` was served by no provider here, so the
+    #: Daily Dashboard's `require_market_analyzer` gate defaulted to "allow" on
+    #: every bar in backtest and live alike. That is no longer true -- the index
+    #: is in the frozen record and in the measured store, from MubasherTrade
+    #: PRO -- and nothing about this strategy changes, because the absence of
+    #: the series was never the argument:
     #:
     #: An equal-weighted breadth index built from the universe *was* measured as
     #: a replacement and did not earn its place: it removed 68 of 971 trades and

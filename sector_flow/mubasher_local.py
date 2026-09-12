@@ -87,6 +87,35 @@ AUCTION_FROM_MINUTE = 14 * 60 + 15
 #: run of four digits; the index tables carry a space or start with EGX.
 NOT_EQUITY = re.compile(r"\d{4}|\s|^EGX", re.IGNORECASE)
 
+#: The market indices this project reads, and the ``history.db`` table each
+#: comes from. ``strategy.market_analyzer`` blocks new buys while EGX30 is
+#: below both of its EMAs, and until now no source in the project served
+#: ``^CASE30`` at all: the gate failed open on every bar of every run.
+#:
+#: They are stored in their own table and never in the measured-turnover one.
+#: Sector share is a ratio of one symbol's turnover to the market's, so an
+#: index row there would be counted as a company -- the same reason
+#: ``default_scope`` refuses to widen past the tradeable universe.
+#:
+#: Daily only. The minute store holds ``_EGX30ETF``, which is a fund tracking
+#: the index with its own price and volume, not the index itself -- so the
+#: index is exactly as fresh as the terminal's last history download, and
+#: readers are told its last session rather than left to assume today's.
+INDEX_TABLES = {"^CASE30": "EGX30"}
+INDEX_TABLE = "market_index"
+INDEX_SCHEMA = f"""
+CREATE TABLE IF NOT EXISTS {INDEX_TABLE} (
+    symbol TEXT NOT NULL,
+    session_date TEXT NOT NULL,
+    high REAL,
+    low REAL,
+    close REAL,
+    volume REAL,
+    turnover REAL,
+    PRIMARY KEY (symbol, session_date)
+);
+"""
+
 
 def find_root(root=None):
     """Return the account's UserData directory, or ``None`` if not installed.
@@ -184,6 +213,54 @@ def read_history(root=None, symbols=None):
     tidy = pd.concat(frames, ignore_index=True)
     tidy = tidy[tidy["session_date"].notna() & (tidy["turnover"] > 0)]
     return tidy.drop_duplicates(subset=["ticker", "session_date"], keep="last")
+
+
+def read_index(root=None, indices=None):
+    """Return the daily bars ``history.db`` holds for each market index.
+
+    Columns are ``symbol, session_date, high, low, close, volume, turnover``.
+    ``open`` is absent for the same reason it is absent from ``read_history``:
+    the source has none. Nothing here reaches the measured-turnover table.
+    """
+
+    base = find_root(root)
+    if base is None or not (base / HISTORY_RELATIVE).exists():
+        return pd.DataFrame()
+
+    wanted = dict(indices or INDEX_TABLES)
+    frames = []
+    with _open_read_only(base / HISTORY_RELATIVE, immutable=True) as connection:
+        present = {str(name).upper(): name for (name,) in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        for symbol, table in sorted(wanted.items()):
+            name = present.get(f"_{table}".upper())
+            if name is None:
+                logger.warning("mubasher index: no table _%s for %s", table, symbol)
+                continue
+            try:
+                rows = pd.read_sql(
+                    f'SELECT DATE, HIG, LOW, CLS, VOL, TOVR FROM "{name}"', connection)
+            except Exception as error:          # one index, not the file
+                logger.warning("mubasher index: %s unreadable (%s)", symbol, error)
+                continue
+            if rows.empty:
+                continue
+            session = pd.to_datetime(rows["DATE"], format="%Y%m%d", errors="coerce")
+            frames.append(pd.DataFrame({
+                "symbol": symbol,
+                "session_date": session.dt.strftime("%Y-%m-%d"),
+                "high": pd.to_numeric(rows["HIG"], errors="coerce"),
+                "low": pd.to_numeric(rows["LOW"], errors="coerce"),
+                "close": pd.to_numeric(rows["CLS"], errors="coerce"),
+                "volume": pd.to_numeric(rows["VOL"], errors="coerce"),
+                "turnover": pd.to_numeric(rows["TOVR"], errors="coerce"),
+            }))
+
+    if not frames:
+        return pd.DataFrame()
+    tidy = pd.concat(frames, ignore_index=True)
+    tidy = tidy[tidy["session_date"].notna() & (tidy["close"] > 0)]
+    return tidy.drop_duplicates(subset=["symbol", "session_date"], keep="last")
 
 
 def session_of(tmin):
@@ -656,6 +733,16 @@ def import_local(root=None, database=DEFAULT_DATABASE, suffix=".CA", symbols=Non
         connection.executescript(SCHEMA)
         stored.to_sql(TABLE, connection, if_exists="append", index=False)
 
+    # The market index, in its own table. Read whole and rewritten whole, for
+    # the same reason the daily rows are: the terminal back-adjusts history on
+    # every download, so appending would leave old bars on an old basis.
+    indices = read_index(base)
+    with sqlite3.connect(database) as connection:
+        connection.execute(f"DROP TABLE IF EXISTS {INDEX_TABLE}")
+        connection.executescript(INDEX_SCHEMA)
+        if not indices.empty:
+            indices.to_sql(INDEX_TABLE, connection, if_exists="append", index=False)
+
     unconfirmed = stored[stored["close_confirmed"] == 0]
     metadata = {
         "imported_at": datetime.now(timezone.utc).astimezone().isoformat(),
@@ -675,6 +762,12 @@ def import_local(root=None, database=DEFAULT_DATABASE, suffix=".CA", symbols=Non
         "unconfirmed_close_rows": int(len(unconfirmed)),
         "isin_resolved": {stored: twin for twin, stored in sorted(aliases.items())},
         "predecessors_stitched": stitched,
+        "index_rows": int(len(indices)),
+        # Daily only: the minute store has no index, so this is the terminal's
+        # last history download and not necessarily the last session traded.
+        "index_last_session": (None if indices.empty
+                               else str(indices["session_date"].max())),
+        "index_symbols": sorted(set(indices["symbol"])) if not indices.empty else [],
     }
     with sqlite3.connect(database) as connection:
         connection.execute(

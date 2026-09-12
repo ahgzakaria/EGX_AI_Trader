@@ -156,6 +156,45 @@ decision trace, and it has never rejected anything.
 Failing open is the right default for a network problem. Failing open silently,
 for years, while reporting `PASS`, is not.
 
+### Resolved 2026-09-12 -- and what it cost
+
+MubasherTrade PRO's `history.db` carries the index as `_EGX30`: 3,147 sessions
+from 2013-09-22 to 2026-09-07, no gaps, every close positive. It is now frozen
+into the backtest record as `^CASE30` (`data/frozen_mubasher/index/EGX30.csv`)
+and imported into the measured store's own `market_index` table for the live
+scanner. The gate fires. Asked for 2026-09-10 it answers
+`Available=True, Regime=BULL`.
+
+The same Strategy Only backtest, run before and after, changing nothing else:
+
+| | filter open (before) | filter live (after) |
+|---|---|---|
+| Trades | 609 | 561 |
+| Win rate | 39.08% | 37.43% |
+| Profit factor | 1.54 | 1.49 |
+| Total return | 142.71% | 121.25% |
+| Max drawdown | 17.97% | 17.56% |
+| Sharpe | 0.81 | 0.67 |
+
+**Switching the gate on made the measured result worse.** It removed 59 of the
+609 trades and the portfolio then took 11 it had had no capital for, so 561
+remain. The 59 it removed averaged **+0.97%** against **+0.47%** for the 550 it
+kept, and won 49.2% of the time against 35.5%. Drawdown is the one figure that
+improved, by four tenths of a point.
+
+Two things this is not. It is not evidence that an EGX30 regime filter is a bad
+idea -- 59 trades over ten years decide this comparison, 33 of them in 2020 and
+2021 alone, and one run cannot separate the rule from that sample. And it is not
+a reason to change anything: `require_market_analyzer` stays as the settings
+have it, because the finding here is that the gate now does what it always said
+it did, not that some other setting is better. What was wrong was a gate that
+could not fire while reporting `PASS`. That is fixed, and the price of fixing it
+is on this page rather than hidden in a number nobody compared.
+
+Reproduce: `python scripts/research/isolated_backtest.py --label with_index`
+against `reports/experiments/20260911_202536_mubasher_no_index` (the run made
+before the index was frozen, with the record otherwise identical).
+
 ## 8. Prices are rounded to two decimals on a market that trades in piastres
 
 `entry.py` rounds `BuyHigh`, `StopLoss`, `Target1` and `Target2` with

@@ -1,5 +1,5 @@
 {
-  "frozen_at": "2026-09-11T20:24:17.704742+00:00",
+  "frozen_at": "2026-09-12T07:56:40.318094+00:00",
   "provider": "FROZEN_MUBASHER",
   "source_directory": "E:\\EGX_Symbols",
   "export_last_session": "2026-09-07",
@@ -8,7 +8,7 @@
   "open_policy": "PREVIOUS_CLOSE_NOT_A_TRADED_OPEN",
   "price_adjustment": "SPLIT_ADJUSTED_NOT_DIVIDEND_ADJUSTED",
   "note": "Export columns Open (a copy of High) and Prev. Closed (-1) are placeholders and are not served. Re-freeze only deliberately.",
-  "symbol_count": 233,
+  "symbol_count": 234,
   "symbols": {
     "AALR": {
       "symbol": "AALR",
@@ -3036,6 +3036,18 @@
       "last_session": "2026-09-03",
       "source": "MubasherTrade PRO history.db table _MMAT, resolved by ISIN EGS70P91C010",
       "mubasher_ticker": "MMAT"
+    },
+    "^CASE30": {
+      "symbol": "^CASE30",
+      "file": "index/EGX30.csv",
+      "format": "history_db_csv",
+      "sha256": "102221fec01b6bc58421c80e47a3041d79b89563fbafd9a87982ec3714f7167c",
+      "rows": 3147,
+      "first_session": "2013-09-22",
+      "last_session": "2026-09-07",
+      "source": "MubasherTrade PRO history.db table _EGX30 (market index)",
+      "mubasher_ticker": "EGX30",
+      "tradeable": false
     }
   }
 }

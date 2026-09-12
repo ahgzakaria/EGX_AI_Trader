@@ -16,7 +16,9 @@ In order, and what each step refuses:
    under another ticker by ISIN, are written to ``history_db/`` -- only when
    ``history.db`` ends on the export's own last session, so both halves are
    one record of one day.
-5. ``_manifest.json`` is written last, and the store is built beside the
+5. The market indices in ``store.INDEX_TABLES`` are written to ``index/``
+   under the same condition: they have no export file to be verified against.
+6. ``_manifest.json`` is written last, and the store is built beside the
    destination and moved into place only when complete.
 
 It refuses to run over an existing store unless ``--replace`` is given: a
@@ -268,6 +270,43 @@ def main(argv=None) -> int:
             "mubasher_ticker": ticker,
         }
         added.append(f"{symbol}<-{ticker}")
+
+    # The market index. `strategy.market_analyzer` blocks new buys while EGX30
+    # is below both its EMAs, and no source in this project served `^CASE30`:
+    # the gate failed open on every bar of every backtest ever run here. The
+    # terminal has it daily, to the export's own last session. It has no export
+    # file to be verified against -- there is no such export -- so it is taken
+    # from history.db under the same condition as the ISIN additions above:
+    # only when history.db ends where the export does.
+    indices = {}
+    for symbol, table in sorted(store.INDEX_TABLES.items()):
+        if table not in tables:
+            skipped.append((symbol, f"no history.db table _{table}"))
+            continue
+        if history_modal != export_last:
+            skipped.append((symbol, f"history.db ends {history_modal}, export {export_last}"))
+            continue
+        frame = history_frame(connection, tables[table])
+        frame = frame[frame["Close"] > 0]
+        if frame.empty:
+            skipped.append((symbol, "no priced sessions"))
+            continue
+        (building / "index").mkdir(exist_ok=True)
+        target = building / "index" / f"{table}.csv"
+        write_history_db_copy(frame, target)
+        if not round_trips(frame, target):
+            print(f"refused: index/{table}.csv does not read back to _{table}")
+            return 2
+        first, last = _span(frame)
+        records[symbol] = {
+            "symbol": symbol, "file": f"index/{table}.csv",
+            "format": store.HISTORY_DB_FORMAT, "sha256": store.sha256_file(target),
+            "rows": int(len(frame)), "first_session": first, "last_session": last,
+            "source": f"MubasherTrade PRO history.db table _{table} (market index)",
+            "mubasher_ticker": table, "tradeable": False,
+        }
+        indices[symbol] = {"table": table, "rows": int(len(frame)), "first_session": first}
+
     connection.close()
 
     # Renamed companies: the live ticker is served from its retired twin's
@@ -326,6 +365,7 @@ def main(argv=None) -> int:
     print(f"  from the export: {len(exports)}")
     print(f"  added from history.db by ISIN: {added or 'none'}")
     print(f"  renamed tickers joined to their retired twin: {stitched or 'none'}")
+    print(f"  market indices: {indices or 'none'}")
     if skipped:
         print(f"  active symbols not frozen: {skipped}")
     missing_active = sorted(active - set(records))
