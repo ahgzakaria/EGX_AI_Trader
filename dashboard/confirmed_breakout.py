@@ -31,7 +31,8 @@ from core.daily_flow import (buy_share_for, session_buy_share,
 from core.effective_cost import load_symbol_costs, round_trip_for
 from dashboard.formatting import company_name
 from dashboard.scan_memory import recall, remember, scan_caption
-from dashboard.ui import empty_state, page_header, section_header
+from dashboard.ui import (attrition_bar, page_header, quiet_state,
+                          section_header)
 from strategy_momentum_breakout.config import load as load_config
 from strategy_momentum_breakout.scan import scan
 
@@ -117,12 +118,16 @@ def show_confirmed_breakout() -> None:
     if result.count:
         _show_signals(result, cfg)
     else:
-        empty_state(
+        # `quiet_state`, not `empty_state`. The words here were already right;
+        # the dashed grey box they sat in was the one used for a failed search
+        # and a missing file, so the commonest outcome on this page -- the rule
+        # working -- wore the clothes of something broken.
+        quiet_state(
             "لا توجد إشارة اليوم · Nothing met all seven conditions",
             f"The rule fires about ninety times a year across this universe, so "
             f"most sessions produce nothing. That is the design, not a fault — "
             f"the funnel below shows where {result.considered} symbols stopped.",
-            icon="○",
+            count=f"0 / {result.considered}",
         )
 
     _show_funnel(result)
@@ -326,13 +331,19 @@ def _show_funnel(result) -> None:
         "them — so a row says the most fundamental thing that was wrong, not "
         "the last thing tested.",
     )
-    rows = [
-        {"الشرط · Condition": GATE_LABELS.get(reason, reason), "Symbols": count}
-        for reason, count in result.funnel.items() if count
-    ]
-    rows.append({"الشرط · Condition": "✅ اجتاز الكل · Passed everything",
-                 "Symbols": result.count})
-    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+    # Drawn to scale, like Breakout Watch's. Same reason it is a bar and not a
+    # cascade: these counts are a partition -- each name is recorded against
+    # the FIRST condition it failed -- so the segments sum to the universe and
+    # no ordering between gates is implied.
+    st.markdown(
+        attrition_bar(
+            [(GATE_LABELS.get(reason, reason), count)
+             for reason, count in result.funnel.items()],
+            survived_label="اجتاز الكل · passed everything",
+            total=sum(result.funnel.values()) + result.count,
+        ),
+        unsafe_allow_html=True,
+    )
 
 
 def _show_plan(cfg) -> None:

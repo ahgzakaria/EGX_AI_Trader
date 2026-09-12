@@ -484,6 +484,27 @@ def apply_global_style():
             border-radius:12px; background: var(--surface); color: var(--muted); }
         .egx-empty strong { display:block; color: var(--text); margin-bottom:.25rem; }
 
+        /* --- a rule that ran and correctly produced nothing ----------------
+           Not `.egx-empty`. That one is dashed and grey because it means
+           absent: no search results, no saved list, nothing loaded yet. A
+           strategy that fires ninety times a year is silent on most sessions,
+           and its silence is the rule working. Dressing the two the same makes
+           the commonest state on the page look like a fault every day until
+           the reader stops believing either. Solid, bordered, and carrying its
+           own count. */
+        .egx-quiet { border:1px solid var(--border); border-left:3px solid var(--green);
+            border-radius:var(--r-card); background:var(--surface);
+            padding:1rem 1.15rem; }
+        .egx-quiet .h { display:flex; align-items:baseline; gap:.6rem;
+            flex-wrap:wrap; }
+        .egx-quiet .h strong { font-size:1.02rem; color:var(--text); font-weight:600; }
+        .egx-quiet .count { font-family:var(--font-mono);
+            font-variant-numeric:tabular-nums; font-size:.78rem; color:var(--green);
+            border:1px solid rgba(52,211,153,.35); border-radius:var(--r-chip);
+            padding:.1rem .4rem; }
+        .egx-quiet p { margin:.5rem 0 0; color:var(--muted); font-size:.88rem;
+            line-height:1.7; max-width:78ch; }
+
         .egx-rangebar { position:relative; height:8px; border-radius:999px;
             background: linear-gradient(90deg,#10233f,#12325a); border:1px solid var(--border); }
         .egx-rangebar .dot { position:absolute; top:-3px; width:12px; height:12px; border-radius:50%;
@@ -577,6 +598,25 @@ def empty_state(title, message, icon="○"):
     st.markdown(
         f'<div class="egx-empty"><div style="font-size:1.5rem">{html.escape(icon)}</div>'
         f'<strong>{html.escape(title)}</strong><span>{html.escape(message)}</span></div>',
+        unsafe_allow_html=True)
+
+
+def quiet_state(title, message, count=""):
+    """A rule that ran, refused everything, and was right to.
+
+    Distinct from ``empty_state`` on purpose: that one means something is
+    absent -- no saved list, no search results, nothing loaded. This one means
+    the measurement happened and its answer was none. A strategy that fires
+    about ninety times a year says none on most sessions, and rendering that in
+    the same dashed grey as a missing file teaches the reader to read the
+    commonest state on the page as a fault.
+    """
+    chip = (f'<span class="count">{html.escape(str(count))}</span>'
+            if count else "")
+    st.markdown(
+        f'<div class="egx-quiet"><div class="h">'
+        f'<strong>{html.escape(str(title))}</strong>{chip}</div>'
+        f'<p>{html.escape(str(message))}</p></div>',
         unsafe_allow_html=True)
 
 
