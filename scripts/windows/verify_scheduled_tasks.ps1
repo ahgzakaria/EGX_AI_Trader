@@ -77,10 +77,6 @@ $declared = @(
        Invokes = "record_confirmed_breakout_forward.py"
        Expect = "15:00"; Limit = "PT20M"; Repeat = "PT1H/PT7H"; Logon = "S4U" }
 
-    @{ Task = "EGX ORB Full Shadow Automation"
-       Installer = "install_orb_full_shadow_task.ps1"
-       Invokes = "run_daily_orb_automation.ps1"
-       Expect = "09:45"; Limit = "PT7H"; Repeat = "-"; Logon = "S4U" }
 
     # This script, run daily at 09:00. It is
     # in its own table for two reasons: an undeclared task is reported, so a
@@ -107,6 +103,13 @@ $retired = @(
     "EGX Rubix Daily Finalizer",
     "EGX Rubix Assisted Start",
     "EGX Rubix Supervisor Watchdog",
+    # Retired 2026-09-15, five days late. Every step of its wrapper read the
+    # Rubix live feed -- the readiness gate, the ORB session and the
+    # microstructure bank -- so from 2026-09-13 it was refused each trading
+    # morning and put a red "Run refused" in the dashboard sidebar. Disabled
+    # rather than unregistered because its scripts still exist; the dashboard
+    # reports it as retired via services.automation_status.RETIRED_FROM.
+    "EGX ORB Full Shadow Automation",
     # Not retired but relocated: it reads Mubasher's minute store now, and
     # RUN_DAILY.bat runs it. A 14:40 clock was the wrong owner for work that
     # depends on a download somebody does by hand.

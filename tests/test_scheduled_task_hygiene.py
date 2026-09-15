@@ -35,19 +35,21 @@ def test_every_task_the_verifier_declares_has_an_installer():
     text = (windows / "verify_scheduled_tasks.ps1").read_text(encoding="utf-8")
     declared = re.findall(r'Installer = "([^"]+)"', text)
 
-    # Four, since the Rubix trio retired on 2026-09-10 and the gap recorder
-    # moved into RUN_DAILY.bat the same day. The bound exists so a table gutted
-    # by a bad edit is caught, not so the set can never shrink -- what makes a
-    # shrink legitimate is that the tasks are declared retired below rather
-    # than simply dropped.
-    assert len(declared) >= 4, f"expected the full task set, found {declared}"
+    # Three, since the Rubix trio retired on 2026-09-10, the gap recorder moved
+    # into RUN_DAILY.bat the same day, and the ORB morning run -- every step of
+    # which read the retired feed -- was retired on 2026-09-15. The bound exists
+    # so a table gutted by a bad edit is caught, not so the set can never
+    # shrink -- what makes a shrink legitimate is that the tasks are declared
+    # retired below rather than simply dropped.
+    assert len(declared) >= 3, f"expected the full task set, found {declared}"
     missing = [name for name in declared if not (windows / name).is_file()]
     assert not missing, f"verifier points at installers that do not exist: {missing}"
 
     # A retired task must stay named. Deleting its row without saying so turns
     # a deliberately disabled job into an unexplained stray every morning.
     for retired in ("EGX Rubix Daily Finalizer", "EGX Rubix Assisted Start",
-                    "EGX Rubix Supervisor Watchdog", "EGX Gap Forward Recorder"):
+                    "EGX Rubix Supervisor Watchdog", "EGX Gap Forward Recorder",
+                    "EGX ORB Full Shadow Automation"):
         assert retired in text, f"{retired} was dropped rather than retired"
     assert "$retired = @(" in text
 

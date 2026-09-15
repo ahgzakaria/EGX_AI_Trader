@@ -618,9 +618,14 @@ def run_status_reading(session=None):
     """
     from datetime import date as _date
 
-    from services.automation_status import NEVER_RAN, UNREADABLE, read_status
+    from services.automation_status import (NEVER_RAN, UNREADABLE, is_retired,
+                                            read_status)
 
-    status = read_status(session or _date.today().isoformat())
+    day = session or _date.today().isoformat()
+    if is_retired(day):
+        # Grey, not amber: nothing is expected to run, so nothing is late.
+        return "retired", ""
+    status = read_status(day)
     if status.healthy:
         return "completed", "green"
     if status.outcome == UNREADABLE:

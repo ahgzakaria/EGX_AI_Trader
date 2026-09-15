@@ -264,6 +264,12 @@ def apply_global_style():
         .egx-health.warn { border-color:rgba(251,191,36,.32); background:rgba(251,191,36,.07); }
         .egx-health.warn .t i { background:var(--amber); }
         .egx-health.bad { border-color:rgba(248,113,113,.32); background:rgba(248,113,113,.07); }
+        /* Retired: nothing is expected to run, so nothing is late or broken.
+           Grey on purpose -- green would claim a run that did not happen, and
+           red is the false alarm this state exists to end. */
+        .egx-health.retired { border-color:var(--border); background:transparent;
+            color:var(--muted); }
+        .egx-health.retired .t i { background:var(--gray); }
         .egx-health.bad .t i { background:var(--red); }
         /* The fourth state: the panel could not find out. Not "ran and failed"
            -- which is what an unreadable status file used to be reported as,
@@ -865,12 +871,21 @@ def sidebar_health(session_date=None) -> None:
     """
     tone, headline, detail = "unknown", "Run state unknown", "—·—"
     try:
-        from services.automation_status import NEVER_RAN, UNREADABLE, read_status
+        from services.automation_status import (NEVER_RAN, RETIRED, RETIRED_REASON,
+                                                UNREADABLE, AutomationStatus,
+                                                is_retired, read_status)
 
         day = session_date or date.today().isoformat()
-        status = read_status(day)
+        # A retired run is neither a failure nor a quiet day. Checked before
+        # the status file, because a missing file on a retired date would
+        # otherwise read as "No run recorded today" in red every morning.
+        status = (AutomationStatus(session_date=str(day), outcome=RETIRED,
+                                   reason=RETIRED_REASON)
+                  if is_retired(day) else read_status(day))
 
-        if status.healthy:
+        if status.outcome == RETIRED:
+            tone, headline = "retired", "Morning run retired"
+        elif status.healthy:
             tone, headline = "ok", "This morning's run completed"
         elif status.outcome == UNREADABLE:
             tone, headline = "unknown", "Run state unreadable"

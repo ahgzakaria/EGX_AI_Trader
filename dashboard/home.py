@@ -162,6 +162,27 @@ def _observed_metadata(results):
     }
 
 
+def price_source_reading(results):
+    """The strip's price-source cell: who quoted, and whether it is current.
+
+    ``(value, tone, sub)``. It used to be green "Rubix" whenever any quote row
+    existed, because the overlay calls a row "available" regardless of its age.
+    After the feed was retired on 2026-09-10 that meant five-day-old prices were
+    labelled as the live source. Freshness comes from `_observed_metadata`, the
+    same verdict the scan banner uses, so the two can no longer disagree.
+    Decisions were never at risk: a signal is actionable and a portfolio price
+    is live only when the quote is FRESH. This is about what the page says.
+    """
+    providers = {str(row.get("LiveProvider") or "").strip().lower()
+                 for row in results or ()} - {"", "unavailable"}
+    if not providers:
+        return "Unavailable", "unknown", ""
+    name = next(iter(sorted(providers))).title()
+    if _observed_metadata(results)["live_quote_freshness"] == "STALE":
+        return name, "amber", "قديم"
+    return name, "green", ""
+
+
 def _workspace_fingerprint(workspace):
     """What must change before the stored key may be replaced.
 
@@ -1171,9 +1192,10 @@ def show_dashboard():
              f"−{len(failed_coverage)}" if failed_coverage else ""),
             ("حالة السوق", market_state, "blue", ""),
             ("الجلسة", str(latest_date), "gray", ""),
-            ("مصدر السعر",
-             next(iter(sorted(live_providers)), "Unavailable").title(),
-             "green" if live_providers else "unknown", ""),
+            # Who quoted AND whether it is current. It was green "Rubix" on
+            # five-day-old quotes after the feed was retired; see
+            # price_source_reading.
+            ("مصدر السعر", *price_source_reading(results)),
         ]),
         unsafe_allow_html=True,
     )

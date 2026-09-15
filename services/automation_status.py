@@ -44,6 +44,34 @@ NEVER_RAN = "NEVER_RAN"
 #: The file exists but could not be parsed.
 UNREADABLE = "UNREADABLE"
 
+#: The morning run no longer exists. Not a failure and not a quiet day: every
+#: step it had -- the readiness gate, the ORB session and the microstructure
+#: bank -- read the Rubix live feed, and that feed was retired on the evening of
+#: 2026-09-10 (commits 0c1bd76, c1defae, 2d73a31) because it never carries the
+#: 14:25 auction close. The task was left scheduled and was refused every
+#: trading morning after, which put a red "Run refused" in the sidebar for a run
+#: nobody should expect to happen.
+RETIRED = "RETIRED"
+
+#: The first session date on which no morning run is expected.
+RETIRED_FROM = "2026-09-13"
+
+RETIRED_REASON = (
+    "The morning ORB run was retired with the Rubix live feed on 2026-09-10. "
+    "The daily candle now comes from MubasherTrade PRO, imported by "
+    "RUN_DAILY.bat after the download; nothing runs during the session."
+)
+
+
+def is_retired(session_date) -> bool:
+    """Whether no morning run is expected on this session date.
+
+    Dates before the retirement keep their meaning -- a missing file on
+    2026-08-17 is still a run that never happened -- so history reads the same.
+    """
+    day = session_date.isoformat() if isinstance(session_date, date) else str(session_date)
+    return day >= RETIRED_FROM
+
 
 @dataclass(frozen=True)
 class AutomationStatus:
