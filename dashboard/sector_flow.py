@@ -25,7 +25,6 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from config.settings_manager import settings
 from dashboard.ui import (empty_state, metric_card, page_header, projection_note,
                          section_header, status_bar, unavailable_state)
 from decision_support.sector_analysis import load_sector_map
@@ -38,12 +37,6 @@ from sector_flow.builder import (
 from sector_flow.forecast import baseline_forecast, forecast_next_session
 from sector_flow.history import complete_sessions, latest_snapshot, rotation_matrix
 from sector_flow.strength import FULL_STRENGTH_RVOL, strength_frame
-from sector_flow.intraday import (
-    MIN_OPENING_MINUTES,
-    forecast_rest_of_day,
-    load_minute_turnover,
-    session_coverage,
-)
 
 
 HEATMAP_SESSIONS = 60
@@ -55,19 +48,6 @@ REFRESH_COMMAND = "venv/Scripts/python.exe scripts/refresh_sector_flow.py"
 def _daily_history(database_path):
     history = load_saved(database_path)
     return history, latest_build_metadata(database_path)
-
-
-@st.cache_data(ttl=120, show_spinner=False)
-def _intraday(rubix_path, sector_file):
-    sector_map = load_sector_map(sector_file)
-    if not sector_map:
-        return pd.DataFrame()
-    try:
-        return load_minute_turnover(rubix_path, sector_map)
-    except Exception:
-        # The live collector database may be locked or absent. The daily view
-        # below does not depend on it and must still render.
-        return pd.DataFrame()
 
 
 def _percent(value, digits=2):
@@ -321,69 +301,15 @@ def _intraday_section(history):
         "بقية الجلسة · Rest of today",
         "An even blend of the opening 30 minutes and the previous daily session",
     )
-    rubix = settings.get("market_data").get("rubix_db_path")
-    minutes = _intraday(rubix, "data/sectors.csv")
-    # The minute store stopped at 14:18 on 2026-09-10, when the Rubix feed was
-    # retired. `forecast_rest_of_day` takes the newest session it finds, so this
-    # section went on presenting that Thursday's opening window under "Rest of
-    # today". A forecast of today needs today's minutes; anything else is a
-    # past session and is not shown as a live one.
+    # The blend needs today's opening window, which came from the Rubix minute
+    # store. That store stopped at 14:18 on 2026-09-10 when the feed was retired,
+    # so there is no window to blend, and the store is not opened to find that out.
     from core.live_feed import NO_LIVE_FEED_AR, NO_LIVE_FEED_EN
 
-    today = pd.Timestamp.now(tz="Africa/Cairo").date().isoformat()
-    if not minutes.empty and str(minutes["SessionDate"].max()) != today:
-        unavailable_state(
-            "No intraday data for today · لا توجد بيانات لحظية اليوم",
-            f"{NO_LIVE_FEED_EN}. {NO_LIVE_FEED_AR}. The newest minute bars on "
-            f"record are from {minutes['SessionDate'].max()}, which is not today.",
-            needs="a live intraday source",
-        )
-        return
-    if minutes.empty:
-        unavailable_state(
-            "No intraday candles · لا توجد شموع لحظية",
-            "The live collector has not recorded any minute bars for a mapped "
-            "symbol.",
-            needs="the intraday collector running",
-        )
-        return
-
-    coverage = session_coverage(minutes)
-    complete = int(coverage["Complete"].sum())
-    st.caption(
-        f"{len(coverage)} sessions observed, {complete} complete. Measured over the "
-        "complete ones, the blend beats both of its own inputs (MAE 0.0157 against "
-        "0.0175 for the previous session alone and 0.0199 for the opening window "
-        "alone) — but on only 16 sessions, so it is measured, not established."
-    )
-
-    forecast = forecast_rest_of_day(minutes, complete_sessions(history))
-    if forecast.empty:
-        unavailable_state(
-            "No live forecast · لا يوجد توقّع حي",
-            "Too little of the opening window has been observed to blend it "
-            "with yesterday.",
-            needs=f"{MIN_OPENING_MINUTES} opening minutes",
-        )
-        return
-
-    projection_note(
-        "مزيج من أول ثلاثين دقيقة ومن جلسة أمس. الجلسة لم تُغلق بعد، "
-        "فهذه أرقام مُقدَّرة لا مُقاسة.")
-    st.dataframe(
-        pd.DataFrame({
-            "القطاع": forecast["Sector"],
-            "أمس": forecast["PreviousShare"].map(lambda v: _percent(v, 2)),
-            "الافتتاح": forecast["OpeningShare"].map(lambda v: _percent(v, 2)),
-            "بقية الجلسة": forecast["Forecast"].map(lambda v: _percent(v, 2)),
-            "Δ": forecast["Change"].map(lambda v: _signed_percent(v, 2)),
-        }),
-        hide_index=True,
-        use_container_width=True,
-    )
-    st.caption(
-        f"Session {forecast['SessionDate'].iloc[0]} · "
-        f"{int(forecast['OpeningMinutesObserved'].iloc[0])} opening minutes observed."
+    unavailable_state(
+        "No intraday data for today · لا توجد بيانات لحظية اليوم",
+        f"{NO_LIVE_FEED_EN}. {NO_LIVE_FEED_AR}.",
+        needs="a live intraday source",
     )
 
 

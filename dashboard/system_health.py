@@ -59,7 +59,7 @@ def show_system_health():
     # here.
     provider_health_ = health["provider"]
     fallback = bool(provider_health_.get("fallback_active"))
-    database_status = str(health["rubix_database"]["status"])
+    database_status = str(health["market_cache"]["status"])
     free_percent = float(health["disk"]["free_percent"])
 
     provider, database, disk, replay = st.columns(4)
@@ -74,8 +74,8 @@ def show_system_health():
         # A quick probe proves the file opens and reads; it does not prove
         # every page is intact, and the tile says which it was rather than
         # letting "HEALTHY" mean two different amounts of evidence.
-        check = str(health["rubix_database"].get("check", "quick"))
-        metric_card("قاعدة Rubix", database_status, "Rubix database",
+        check = str(health["market_cache"].get("check", "quick"))
+        metric_card("قاعدة الشموع اليومية", database_status, "Daily candle cache",
                     tone={"HEALTHY": "green", "FAILED": "red",
                           "MISSING": "amber"}.get(database_status, "unknown"),
                     sub="فحص كامل" if check == "integrity" else "فحص سريع")
@@ -253,17 +253,15 @@ def _provider_domains_panel():
     # There is no live provider. This section said "Live provider: Rubix" for
     # five days after the feed was retired; it now says what is true and keeps
     # the last event as history, so the date of the retirement stays checkable.
-    from core.live_feed import NO_LIVE_FEED_EN, RETIREMENT_NOTE, RUBIX_RETIRED_ON
+    from core.live_feed import (NO_LIVE_FEED_EN, RETIREMENT_NOTE, RUBIX_LAST_ROW,
+                                RUBIX_RETIRED_ON)
 
     st.subheader("LIVE QUOTES · none")
     l = st.columns(3)
     l[0].metric("Live provider", "None", help=RETIREMENT_NOTE)
     l[1].metric("Rubix retired", RUBIX_RETIRED_ON)
-    try:
-        from dashboard.scalping import _rubix_latest_event
-        l[2].metric("Last Rubix event (history)", str(_rubix_latest_event() or "—")[:19])
-    except Exception:
-        l[2].metric("Last Rubix event (history)", "—")
+    # A fixed fact, not a read: the database is not opened to look it up.
+    l[2].metric("Last Rubix row", RUBIX_LAST_ROW)
     st.caption(NO_LIVE_FEED_EN + ". Every price is a completed session's close.")
 
     st.subheader("UNSUPPORTED SYMBOLS · Local History + Mubasher tail")

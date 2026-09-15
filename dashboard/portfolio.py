@@ -110,8 +110,7 @@ def _sector_strengths():
 
 @st.cache_data(ttl=120, show_spinner=False)
 def _sector_intraday():
-    """Refreshed every two minutes: this is the reading that moves during a
-    session, and the whole point of it is that it is current."""
+    """Empty since the Rubix feed was retired; see ``default_sector_intraday``."""
 
     return default_sector_intraday()
 
@@ -131,11 +130,7 @@ def _history(symbol, session):
 
 @st.cache_data(ttl=45, show_spinner=False)
 def _quotes(symbols):
-    """Live quotes for every held symbol in one read, cached for 45 seconds.
-
-    Under the 60-second freshness budget the settings define, so a quote can
-    never be served from here after the provider would call it stale.
-    """
+    """Live quotes for the held symbols: none since the Rubix feed was retired."""
 
     return default_quote_overlays(symbols)
 

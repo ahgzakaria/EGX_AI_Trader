@@ -55,26 +55,21 @@ def test_the_scan_banner_no_longer_grades_a_dead_overlay():
 
 # --- Sector Liquidity -----------------------------------------------------------------
 
-def minutes(session):
-    return pd.DataFrame({"SessionDate": [session, session], "Minute": ["10:00", "10:01"],
-                         "Sector": ["Banks", "Banks"], "Turnover": [1.0, 2.0]})
-
-
-def test_a_past_sessions_minutes_are_not_shown_as_today(monkeypatch):
+def test_sector_liquidity_opens_no_minute_store(monkeypatch):
     from dashboard import sector_flow as page
+    import sector_flow.intraday as intraday
 
     shown = []
     monkeypatch.setattr(page, "section_header", lambda *a, **k: None)
-    monkeypatch.setattr(page, "_intraday", lambda *a, **k: minutes("2026-09-10"))
+    monkeypatch.setattr(intraday, "load_minute_turnover", refuse)
     monkeypatch.setattr(page, "unavailable_state",
                         lambda title, message, **k: shown.append((title, message)))
-    monkeypatch.setattr(page, "forecast_rest_of_day",
-                        lambda *a, **k: pytest.fail("a past session reached the live forecast"))
     page._intraday_section(pd.DataFrame())
     assert shown, "nothing told the reader there is no data for today"
     title, message = shown[-1]
     assert "today" in title.lower()
     assert "2026-09-10" in message
+    assert "load_minute_turnover" not in inspect.getsource(page)
 
 
 # --- Stock Details --------------------------------------------------------------------
@@ -130,6 +125,8 @@ def test_system_health_says_there_is_no_live_provider():
     assert 'metric("Live provider", "Rubix")' not in source
     assert "LIVE QUOTES · none" in source
     assert "Rubix Daily Bridge sessions" not in source
+    assert "_rubix_latest_event" not in source
+    assert "قاعدة Rubix" not in source
 
 
 # --- the scan reads no quote --------------------------------------------------------------
@@ -180,3 +177,67 @@ def test_a_scan_has_no_loading_rubix_stage():
     assert "RUBIX_PREPARING" not in inspect.getsource(scanner.scan_symbols)
     assert "RUBIX_READY" not in inspect.getsource(scanner.scan_symbols)
     assert "Loading Rubix" not in inspect.getsource(scan_job_manager)
+
+
+# --- the other pages read no quote either --------------------------------------------------
+
+def test_provider_health_does_not_open_the_rubix_database(monkeypatch):
+    from config.settings_manager import settings
+    from core import data_provider
+
+    monkeypatch.setitem(settings.data, "dashboard_provider", "rubix")
+    monkeypatch.setattr(data_provider, "_provider_instances", refuse)
+    health = data_provider.provider_health("dashboard")
+    assert health["status"] == live_feed.RETIRED_QUOTE_STATUS
+    assert health["database_status"] == "NOT_READ"
+
+
+def test_the_scan_audit_evidence_reads_no_quote(monkeypatch):
+    from core import data_provider
+    from providers.rubix_sqlite_provider import RubixSQLiteProvider
+
+    class Cache:
+        def inspect_cached(self, *args):
+            return {"cached": True}
+
+    monkeypatch.setattr(RubixSQLiteProvider, "symbol_availability", refuse)
+    monkeypatch.setattr(data_provider, "_provider_instances",
+                        lambda: {"local_cache": Cache(), "rubix": RubixSQLiteProvider()})
+    evidence = data_provider.symbol_data_coverage("COMI.CA")
+    assert evidence["cached"] is True
+    assert evidence["rubix_quote_available"] is False
+    assert evidence["rubix_status"] == live_feed.RETIRED_QUOTE_STATUS
+
+
+def test_the_portfolio_and_ai_analysis_read_no_quote(monkeypatch):
+    from core import ai_stock_analysis_service as ai
+    from holdings import assistant
+    from providers.rubix_sqlite_provider import RubixSQLiteProvider
+    import sector_flow.intraday as intraday
+
+    for name in ("quote_overlay", "load_latest_quote_overlays", "load_history"):
+        monkeypatch.setattr(RubixSQLiteProvider, name, refuse)
+    monkeypatch.setattr(intraday, "load_minute_turnover", refuse)
+    assert ai._default_live_quote("COMI.CA") is None
+    assert ai._default_intraday("COMI.CA") is None
+    assert assistant.default_quote_loader("COMI") is None
+    assert assistant.default_quote_overlays(("COMI", "SWDY")) == {}
+    assert assistant.default_sector_intraday() == {}
+    assert not hasattr(ai, "_rubix_provider")
+
+
+def test_system_health_opens_no_rubix_file(monkeypatch):
+    from services import system_health
+
+    opened = []
+    real = system_health._sqlite_health
+    monkeypatch.setattr(system_health, "_sqlite_health",
+                        lambda path, **k: opened.append(str(path)) or real(path, **k))
+    monkeypatch.setattr(system_health, "_experiment_health",
+                        lambda: {"replay_ready_runs": 0, "archived_dataset_coverage_pct": 0})
+    health = system_health.collect_system_health()
+    assert opened, "no database was checked at all"
+    assert not any("rubix" in path.lower() for path in opened)
+    assert "rubix_database" not in health and "rubix_supervisor" not in health
+    assert health["provider"]["fallback_active"] is False
+    assert "Yahoo" not in health["safety"]["message"]

@@ -15,7 +15,12 @@ import pandas as pd
 from config.settings_manager import settings
 from core.egx_session import egx_session_phase, trading_session_lag
 from core.frozen_mubasher_store import PROVIDER_KEY as FROZEN_MUBASHER_KEY
-from core.live_feed import NO_LIVE_FEED_EN, retired_overlay
+from core.live_feed import (
+    NO_LIVE_FEED_EN,
+    RETIRED_QUOTE_STATUS,
+    retired_overlay,
+    retired_provider_health,
+)
 from core.symbols import SYMBOL_SOURCE, load_symbols
 from providers.base_provider import ProviderDataError, ProviderError, REQUIRED_COLUMNS
 from providers.eodhd_provider import EODHDProvider
@@ -374,7 +379,7 @@ def _load_swing_daily_history(
 
 
 def symbol_data_coverage(symbol, period=None, interval=None):
-    """Return read-only historical and Rubix evidence for one audit row."""
+    """Return read-only historical evidence for one audit row."""
 
     data_cfg = settings.get("data")
     period = period or data_cfg.get("history_period", "10y")
@@ -383,20 +388,16 @@ def symbol_data_coverage(symbol, period=None, interval=None):
     cached = providers["local_cache"].inspect_cached(
         "yahoo", symbol, period, interval
     )
-    rubix = providers.get("rubix")
-    live = (
-        rubix.symbol_availability(symbol)
-        if isinstance(rubix, RubixSQLiteProvider)
-        else {
-            "rubix_quote_available": False,
-            "rubix_minute_bars_available": False,
-            "rubix_quote_count": 0,
-            "rubix_minute_bar_count": 0,
-            "rubix_quote_timestamp": None,
-            "rubix_status": "NOT_CONFIGURED",
-            "rubix_error": "Rubix provider is not configured",
-        }
-    )
+    # The Rubix feed was retired on 2026-09-10; its database is not read.
+    live = {
+        "rubix_quote_available": False,
+        "rubix_minute_bars_available": False,
+        "rubix_quote_count": 0,
+        "rubix_minute_bar_count": 0,
+        "rubix_quote_timestamp": None,
+        "rubix_status": RETIRED_QUOTE_STATUS,
+        "rubix_error": NO_LIVE_FEED_EN,
+    }
     return {**cached, **live}
 
 
@@ -617,6 +618,11 @@ def _finalize_metadata(
 
 def provider_health(purpose):
     requested = provider_name_for(purpose)
+    # "rubix" still names the EODHD + Mubasher research route in settings, but the
+    # feed itself was retired on 2026-09-10. This check read its 7.7 GB database --
+    # about 144 seconds on System Health -- to report on quotes nothing may use.
+    if requested == "rubix":
+        return retired_provider_health(requested)
     provider = _provider_instances().get(requested)
     if provider is None:
         return {"provider": requested, "status": "unknown"}

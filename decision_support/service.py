@@ -8,8 +8,6 @@ paper alerts, and reproducible decision-support reporting only.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from pathlib import Path
-import sqlite3
 
 import pandas as pd
 
@@ -29,7 +27,7 @@ from decision_support.quality import (
 from decision_support.reporting import write_daily_report
 from decision_support.sector_analysis import load_sector_map, sector_summary
 from sector_flow.strength import load_latest_strength
-from providers.symbol_mapping import to_engine_symbol, to_rubix_symbol
+from providers.symbol_mapping import to_rubix_symbol
 
 
 class DecisionSupportService:
@@ -37,10 +35,8 @@ class DecisionSupportService:
 
     def __init__(self, config=None, rubix_db=None, database=None, now=None):
         self.config = dict(config or settings.get("decision_support"))
-        market_data = settings.get("market_data")
-        self.rubix_db = Path(
-            rubix_db or market_data.get("rubix_db_path") or "data/rubix_live_market.db"
-        )
+        # ``rubix_db`` is accepted and ignored: no live quote is read since the
+        # Rubix feed was retired, and existing positional callers keep their meaning.
         self.database = database or DecisionSupportDatabase(
             self.config.get("database_path", "data/decision_support.db")
         )
@@ -258,74 +254,15 @@ class DecisionSupportService:
             "ObservedAt": observed_at,
         }
 
-    def _latest_quotes(self, symbols=()):
-        """Newest quote per requested symbol, read through the ticker index.
+    def _latest_quotes(self, symbols):
+        """``{}``: no live quote is read.
 
-        Read-only, as every reader of the collector's database is; absence is
-        evidence and never an exception.
-
-        This used to be ``SELECT ... FROM quotes ORDER BY received_at DESC``
-        followed by ``fetchall()``, keeping the first row seen per ticker. That
-        asks SQLite to sort 22 million rows by a column no index covers and then
-        materialises every one of them as a Python dict, to keep about 240.
-
-        It ran inside the Daily Dashboard's post-scan render, so the page could
-        not finish drawing until it did: after a completed scan on 2026-08-31
-        the tab sat on a stale progress panel reading "Unknown -- no dated
-        candle" while this consumed 3.8 GB, and only redrew once it returned.
-        The scan was correct and finished the whole time; the page was blocked
-        behind this.
-
-        Now each requested ticker is fetched through
-        ``idx_quotes_ticker_time (ticker, market_timestamp)`` and only the
-        newest row is read. Ordering by ``market_timestamp`` rather than
-        ``received_at`` is the same substitution made in
-        ``RubixSQLiteProvider.load_latest_quote_overlays``, for the same reason:
-        ``received_at`` is in no index, and it can only make a quote look older
-        than it is, never fresher.
-
-        Asking for nothing returns nothing. There is no whole-table path left --
-        an unbounded read of this table is never the right answer.
+        This read each symbol's newest row from the Rubix quotes table. The feed
+        was retired on 2026-09-10, so those rows are from that day, and scoring a
+        spread or an order-book balance from them grades a market that has moved
+        on. Those factors are left unmeasured instead.
         """
-
-        wanted = {}
-        for symbol in symbols or ():
-            engine = str(symbol or "").strip().upper()
-            if engine:
-                wanted.setdefault(str(to_rubix_symbol(engine)).upper(), engine)
-        if not wanted or not self.rubix_db.is_file():
-            return {}
-        uri = f"file:{self.rubix_db.resolve().as_posix()}?mode=ro"
-        latest = {}
-        try:
-            with sqlite3.connect(uri, uri=True, timeout=5) as connection:
-                connection.row_factory = sqlite3.Row
-                columns = {
-                    str(row[1]).lower()
-                    for row in connection.execute("PRAGMA table_info(quotes)")
-                }
-                required = {
-                    "ticker", "last_price", "bid", "ask", "volume",
-                    "market_timestamp", "received_at",
-                }
-                if not required.issubset(columns):
-                    return {}
-                optional = [name for name in ("bid_size", "ask_size", "trades") if name in columns]
-                projection = ",".join(sorted(required) + optional)
-                query = (f"SELECT {projection} FROM quotes WHERE ticker=? "
-                         "ORDER BY market_timestamp DESC LIMIT 1")
-                for ticker in wanted:
-                    raw = connection.execute(query, (ticker,)).fetchone()
-                    if raw is None:
-                        continue
-                    value = dict(raw)
-                    # The key is still derived from the row's own ticker, so the
-                    # mapping back to the engine symbol is unchanged.
-                    latest.setdefault(
-                        to_engine_symbol(value.get("ticker")).upper(), value)
-        except (OSError, sqlite3.Error):
-            return {}
-        return latest
+        return {}
 
     def _historical_setup_scores(self):
         analytics = performance_analytics()

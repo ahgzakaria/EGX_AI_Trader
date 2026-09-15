@@ -88,3 +88,22 @@ def retired_overlay(session_phase=None):
         "operational_state": RETIRED_QUOTE_STATUS,
         "session_phase": session_phase,
     }
+
+
+#: The newest row the Rubix database holds.
+RUBIX_LAST_ROW = "2026-09-10 14:18"
+
+
+def retired_provider_health(provider="rubix"):
+    """What a health check of the retired feed reports, without opening it."""
+    return {
+        "provider": provider,
+        "status": RETIRED_QUOTE_STATUS,
+        "reason": NO_LIVE_FEED_EN,
+        "retired_on": RUBIX_RETIRED_ON,
+        "last_row": RUBIX_LAST_ROW,
+        "freshness": "UNAVAILABLE",
+        "connection_state": RETIRED_QUOTE_STATUS,
+        "database_status": "NOT_READ",
+        "live": False,
+    }

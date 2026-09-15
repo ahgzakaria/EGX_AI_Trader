@@ -476,15 +476,17 @@ def test_dashboard_health_never_shows_false_tickerchart_active(tmp_path, monkeyp
 def test_empty_dashboard_summary_preserves_provider_health_timestamps(monkeypatch):
     exchange = "2026-07-14T11:34:31+00:00"
     received = "2026-07-14T11:35:12+00:00"
-    rubix = FakeProvider("rubix", frame=candle_frame())
-    rubix.health = lambda: {
-        "provider": "rubix", "status": "RUBIX_FRESH",
+    # A provider that still reports health. Rubix no longer does: its health is the
+    # retired record, built without opening the database.
+    live = FakeProvider("tickerchart", frame=candle_frame())
+    live.health = lambda: {
+        "provider": "tickerchart", "status": "TICKERCHART_ACTIVE",
         "freshness": "FRESH", "latest_exchange_timestamp": exchange,
         "latest_received_timestamp": received,
         "database_status": "READ_ONLY_OK",
     }
-    monkeypatch.setitem(settings.data, "dashboard_provider", "rubix")
-    monkeypatch.setattr(routing, "_PROVIDER_INSTANCES", {"rubix": rubix})
+    monkeypatch.setitem(settings.data, "dashboard_provider", "tickerchart")
+    monkeypatch.setattr(routing, "_PROVIDER_INSTANCES", {"tickerchart": live})
 
     summary = routing.summarize_frames([], purpose="dashboard")
     assert summary["latest_exchange_timestamp"] == exchange

@@ -79,36 +79,20 @@ def default_history_loader(symbol):
 
 
 def default_quote_loader(symbol):
-    """The latest Rubix overlay, or ``None`` when the feed cannot answer."""
+    """``None``: no live quote exists since the Rubix feed was retired on 2026-09-10."""
 
-    from core.ai_stock_analysis_service import _default_live_quote
-
-    return _default_live_quote(engine_symbol(symbol))
+    return None
 
 
 def default_quote_overlays(symbols):
-    """Every held symbol's overlay from the provider's batched read.
+    """``{}``: no held symbol has a live quote.
 
-    This page briefly carried its own indexed reader, because the batched read
-    then ran three ``GROUP BY ticker`` aggregates over 22 million rows and hung.
-    It was fixed in the provider itself on 2026-08-31 (commit ``1b5a470``), with
-    the same per-ticker indexed queries and the same receipt-time definition, so
-    the local copy became a second definition of a fresh quote and was deleted.
-    Measured on this portfolio's 21 symbols: 3.3s, values identical field for
-    field to what the local reader produced.
+    This read every held symbol's latest Rubix quote. The feed was retired on
+    2026-09-10, so each of those quotes is from that day. ``select_price`` never
+    took one as live -- it requires FRESH -- and the database is not opened.
     """
 
-    from core.ai_stock_analysis_service import _rubix_provider
-    from core.universe import canonical
-
-    requested = [engine_symbol(symbol) for symbol in symbols or ()]
-    if not requested:
-        return {}
-    try:
-        overlays = _rubix_provider().load_latest_quote_overlays(requested)
-    except Exception:                                            # noqa: BLE001
-        return {}
-    return {canonical(key): value for key, value in (overlays or {}).items()}
+    return {}
 
 
 def default_sector_strengths():
@@ -132,35 +116,14 @@ def default_sector_map():
 
 
 def default_sector_intraday():
-    """``{sector: forecast change in share for the rest of today}``.
+    """``{}``: no sector forecast for the rest of today.
 
-    Built by ``sector_flow.intraday``, which was measured against completed
-    sessions: the opening window blended with yesterday's full session beats
-    either input alone. An empty mapping means the session has not been observed
-    long enough to forecast, which is different from a flat forecast.
+    The forecast blended today's opening window, read from the Rubix minute
+    store, with the previous session. That store stopped at 14:18 on 2026-09-10
+    when the feed was retired, so there is no opening window to blend.
     """
 
-    try:
-        from config.settings_manager import settings
-        from decision_support.sector_analysis import load_sector_map
-        from sector_flow.builder import load_saved
-        from sector_flow.intraday import forecast_rest_of_day, load_minute_turnover
-
-        rubix_path = settings.get("market_data", {}).get("rubix_db_path") \
-            or "data/rubix_live_market.db"
-        sector_map = load_sector_map(SECTOR_FILE)
-        if not sector_map:
-            return {}
-        minutes = load_minute_turnover(rubix_path, sector_map)
-        forecast = forecast_rest_of_day(minutes, load_saved())
-        if forecast is None or forecast.empty:
-            return {}
-        return {
-            str(row["Sector"]): float(row["Change"])
-            for _, row in forecast.iterrows()
-        }
-    except Exception:                                            # noqa: BLE001
-        return {}
+    return {}
 
 
 # --------------------------------------------------------------------------- #

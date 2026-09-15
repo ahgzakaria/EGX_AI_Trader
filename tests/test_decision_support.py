@@ -246,72 +246,19 @@ def _service(tmp_path, db):
     return DecisionSupportService(service_config(tmp_path), db, now=lambda: NOW)
 
 
-def test_only_the_requested_symbols_are_read(tmp_path):
-    db = _quotes_db(tmp_path / "r.db", [
-        ("COMI", 100.0, "2026-08-31T11:00:00+00:00", "2026-08-31T11:00:00+00:00"),
-        ("SWDY", 50.0, "2026-08-31T11:00:00+00:00", "2026-08-31T11:00:00+00:00"),
-    ])
-    quotes = _service(tmp_path, db)._latest_quotes(["COMI.CA"])
-    assert set(quotes) == {"COMI.CA"}
-
-
-def test_the_newest_row_by_exchange_time_wins(tmp_path):
-    db = _quotes_db(tmp_path / "r.db", [
-        ("COMI", 100.0, "2026-08-31T09:00:00+00:00", "2026-08-31T09:00:00+00:00"),
-        ("COMI", 109.0, "2026-08-31T11:30:00+00:00", "2026-08-31T11:30:00+00:00"),
-        ("COMI", 104.0, "2026-08-31T10:00:00+00:00", "2026-08-31T10:00:00+00:00"),
-    ])
-    quotes = _service(tmp_path, db)._latest_quotes(["COMI.CA"])
-    assert quotes["COMI.CA"]["last_price"] == 109.0
-
-
-def test_asking_for_nothing_reads_nothing(tmp_path):
-    """There is no whole-table path left: an unbounded read of this table is
-    never the right answer, and an empty request must not become one."""
+def test_no_quote_is_read_even_from_a_database_that_holds_one(tmp_path):
+    """The Rubix feed was retired on 2026-09-10. A quote in its database is from
+    that day, so it is not read to score today's spread."""
 
     db = _quotes_db(tmp_path / "r.db", [
         ("COMI", 100.0, "2026-08-31T11:00:00+00:00", "2026-08-31T11:00:00+00:00")])
-    assert _service(tmp_path, db)._latest_quotes([]) == {}
-    assert _service(tmp_path, db)._latest_quotes(()) == {}
+    before = db.read_bytes()
+    assert _service(tmp_path, db)._latest_quotes(["COMI.CA"]) == {}
+    assert db.read_bytes() == before
 
 
-def test_a_symbol_with_no_quote_is_simply_absent(tmp_path):
-    db = _quotes_db(tmp_path / "r.db", [
-        ("COMI", 100.0, "2026-08-31T11:00:00+00:00", "2026-08-31T11:00:00+00:00")])
-    quotes = _service(tmp_path, db)._latest_quotes(["COMI.CA", "NOPE.CA"])
-    assert set(quotes) == {"COMI.CA"}
-
-
-def test_a_missing_database_is_evidence_not_an_exception(tmp_path):
-    service = _service(tmp_path, tmp_path / "absent.db")
-    assert service._latest_quotes(["COMI.CA"]) == {}
-
-
-def test_a_quotes_table_missing_columns_is_refused(tmp_path):
-    path = tmp_path / "r.db"
-    with sqlite3.connect(path) as connection:
-        connection.executescript(
-            "CREATE TABLE quotes (ticker TEXT, last_price REAL);")
-        connection.execute("INSERT INTO quotes VALUES ('COMI', 100.0)")
-    assert _service(tmp_path, path)._latest_quotes(["COMI.CA"]) == {}
-
-
-def test_the_read_never_scans_the_whole_table(tmp_path):
-    """A behavioural test cannot catch this: the old query returned the right
-    quotes, it just took a quarter of an hour and 3.8 GB to do it."""
-
-    import ast
+def test_the_quote_read_opens_no_database():
     import inspect
-    import textwrap
 
-    function = ast.parse(textwrap.dedent(
-        inspect.getsource(DecisionSupportService._latest_quotes))).body[0]
-    docstring = ast.get_docstring(function, clean=False)
-    queries = [node.value for node in ast.walk(function)
-               if isinstance(node, ast.Constant) and isinstance(node.value, str)
-               and node.value != docstring and "FROM quotes" in node.value]
-    assert queries, "the read must query the quotes table"
-    for query in queries:
-        assert "WHERE ticker=?" in query
-        assert "LIMIT 1" in query
-        assert "ORDER BY received_at" not in query
+    source = inspect.getsource(DecisionSupportService._latest_quotes)
+    assert "sqlite3" not in source and "connect(" not in source

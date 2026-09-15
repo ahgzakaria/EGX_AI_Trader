@@ -20,13 +20,10 @@ Every external dependency is injectable so the whole path is deterministic under
 
 from __future__ import annotations
 
-import json
-import os
 import uuid
 from collections.abc import Iterable
 from datetime import datetime, time, timezone
 from typing import Callable
-from pathlib import Path
 
 import pandas as pd
 
@@ -135,36 +132,18 @@ def _default_history_loader(symbol: str) -> pd.DataFrame:
     return get_current_research_history(symbol, allow_held=True)
 
 
-def _rubix_provider():
-    """Build the existing read-only provider from centralized deployment settings."""
-    from providers.rubix_sqlite_provider import RubixSQLiteProvider
-
-    db_path = os.getenv("RUBIX_DB_PATH")
-    if not db_path:
-        settings_path = Path(__file__).resolve().parents[1] / "config" / "settings.json"
-        try:
-            settings = json.loads(settings_path.read_text(encoding="utf-8"))
-            db_path = settings.get("market_data", {}).get("rubix_db_path")
-        except (OSError, ValueError, TypeError):
-            db_path = None
-    return RubixSQLiteProvider(db_path=db_path)
-
-
 def _default_live_quote(symbol: str) -> dict | None:
-    """Best-effort Rubix overlay. Any failure (no config/DB) degrades to None."""
-    try:
-        overlay = _rubix_provider().quote_overlay(symbol)
-        return overlay if isinstance(overlay, dict) else None
-    except Exception:
-        return None
+    """``None``: no live quote exists.
+
+    This read the symbol's latest Rubix quote. The feed was retired on
+    2026-09-10, and its database is not opened for a quote from that day.
+    """
+    return None
 
 
 def _default_intraday(symbol: str) -> pd.DataFrame | None:
-    """Best-effort read-only Rubix minute series; never contacts a network."""
-    try:
-        return _rubix_provider().load_history(symbol, "5d", "1m")
-    except Exception:
-        return None
+    """``None``: no intraday series exists since the Rubix feed was retired."""
+    return None
 
 
 # --------------------------------------------------------------------------- #

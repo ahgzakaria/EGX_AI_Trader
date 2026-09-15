@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
-import os
 from pathlib import Path
 import shutil
 import sqlite3
 
 from config.settings_manager import settings
-from core.data_provider import provider_health, provider_name_for
+from core.live_feed import history_source_label, retired_provider_health
 from services.experiment_tracking import REPORTS_ROOT, RunRepository
 
 
@@ -30,10 +29,9 @@ def _sqlite_health(path: Path, *, deep: bool = False) -> dict:
     page somebody opens when something is already wrong.
 
     Measured 2026-09-12, whole call: 328s before, of which ~170s was the
-    integrity checks across the three databases and ~144s is
-    ``provider_health``, which this change does not touch. So the page is
-    quicker by the integrity half and still slow for a reason that lives
-    elsewhere.
+    integrity checks across the three databases and ~144s was
+    ``provider_health`` reading the Rubix store. Neither runs on a default
+    render now: the store was retired on 2026-09-10 and is not opened.
 
     The returned ``check`` field names which one ran, so nothing can read a
     quick probe as a clean integrity scan.
@@ -70,19 +68,6 @@ def _read_json(path: Path) -> dict:
         return value if isinstance(value, dict) else {}
     except (OSError, ValueError):
         return {}
-
-
-def _pid_status(path: Path) -> dict:
-    payload = _read_json(path)
-    pid = payload.get("pid")
-    if not pid:
-        return {"status": "NOT_REPORTED", "pid": None}
-    try:
-        os.kill(int(pid), 0)
-        alive = True
-    except (OSError, ValueError):
-        alive = False
-    return {"status": "RUNNING" if alive else "STALE_PID", "pid": pid}
 
 
 def _experiment_health() -> dict:
@@ -132,27 +117,20 @@ def collect_system_health(streamlit_running=False, *, deep=False) -> dict:
     """
     settings.reload()
     cfg = settings.get("market_data")
-    rubix_path = Path(os.getenv("RUBIX_DB_PATH") or cfg.get("rubix_db_path", "data/rubix_live_market.db"))
-    if not rubix_path.is_absolute():
-        rubix_path = PROJECT_ROOT / rubix_path
-    rubix = provider_health("dashboard")
-    rubix_db = _sqlite_health(rubix_path, deep=deep)
+    # The Rubix feed was retired on 2026-09-10. Its 7.7 GB database is not opened
+    # here any more, for a quick check or an integrity scan: nothing uses it.
+    live = retired_provider_health()
     forward_db = _sqlite_health(PROJECT_ROOT / "data" / "forward_testing.db", deep=deep)
     cache_db = _sqlite_health(PROJECT_ROOT / cfg.get("cache_path", "data/market_data_cache.sqlite"), deep=deep)
     disk = shutil.disk_usage(PROJECT_ROOT)
     disk_free_pct = round(disk.free / disk.total * 100, 2) if disk.total else 0
     experiments = _experiment_health()
     backup = _latest_backup()
-    supervisor = _pid_status(PROJECT_ROOT / "data" / "rubix_supervisor.pid.json")
-    supervisor_health = _read_json(PROJECT_ROOT / "data" / "rubix_supervisor_health.json")
 
-    rubix_status = str(rubix.get("status", "RUBIX_UNAVAILABLE"))
-    if rubix_db.get("status") == "FAILED" or forward_db.get("status") == "FAILED" or disk_free_pct < 1:
+    # HEALTHY and DEGRADED were verdicts on the Rubix feed's freshness. With no
+    # live feed a working system is a research system on completed daily closes.
+    if forward_db.get("status") == "FAILED" or disk_free_pct < 1:
         state = "FAILED"
-    elif rubix_status == "RUBIX_FRESH" and forward_db.get("status") == "HEALTHY":
-        state = "HEALTHY" if backup.get("status") == "COMPLETED" else "DEGRADED"
-    elif rubix_status == "RUBIX_STALE":
-        state = "DEGRADED"
     elif cache_db.get("status") == "HEALTHY":
         state = "RESEARCH_ONLY"
     else:
@@ -164,16 +142,14 @@ def collect_system_health(streamlit_running=False, *, deep=False) -> dict:
         "safety": {
             "real_money_approved": False,
             "yahoo_live_actionable": False,
-            "message": "Yahoo fallback is research-only. Real-money readiness is not approved.",
+            "message": "No live feed: prices are completed session closes. Real-money readiness is not approved.",
         },
         "provider": {
-            "requested": provider_name_for("dashboard"),
-            "actual": "rubix" if rubix_status == "RUBIX_FRESH" else "yahoo",
-            "fallback_active": rubix_status != "RUBIX_FRESH",
-            **rubix,
+            "requested": "eodhd_plus_mubasher",
+            "actual": history_source_label(["eodhd_plus_mubasher"]),
+            "fallback_active": False,
+            "live_quotes": live,
         },
-        "rubix_database": rubix_db,
-        "rubix_supervisor": {**supervisor, "latest_health": supervisor_health},
         "yahoo": {"status": "CACHE_AVAILABLE" if cache_db.get("status") == "HEALTHY" else "UNAVAILABLE", "live": False},
         "market_cache": cache_db,
         "forward_testing_database": forward_db,
