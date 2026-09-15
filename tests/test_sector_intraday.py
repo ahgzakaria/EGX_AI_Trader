@@ -174,6 +174,32 @@ def test_previous_daily_shares_skips_a_session_with_no_predecessor():
     assert previous_daily_shares(daily, ["2026-08-02"], SECTORS).empty
 
 
+def test_previous_daily_shares_for_today_before_the_panel_holds_it():
+    """Mid-session the daily panel ends yesterday; yesterday is still the answer."""
+    daily = daily_fixture(["2026-08-03", "2026-08-04"])
+    previous = previous_daily_shares(daily, ["2026-08-05"], SECTORS)
+    expected = daily[daily["SessionDate"] == pd.Timestamp("2026-08-04")].set_index("Sector")
+    for sector in SECTORS:
+        assert previous.loc["2026-08-05", sector] == pytest.approx(
+            expected.loc[sector, "TurnoverShare"]
+        )
+
+
+def test_the_forecast_runs_before_the_daily_panel_holds_today():
+    """The existing mid-session test put today into the daily panel, which the
+    live page never has, so it passed while the page showed no forecast."""
+    minutes = pd.concat([
+        minutes_fixture(),
+        session_minutes("2026-08-19", last="08:15"),
+    ], ignore_index=True)
+    daily = daily_fixture(sorted(minutes_fixture()["SessionDate"].unique()))
+    assert pd.Timestamp("2026-08-19") not in set(daily["SessionDate"])
+
+    forecast = forecast_rest_of_day(minutes, daily, session="2026-08-19")
+    assert not forecast.empty
+    assert forecast["Forecast"].sum() == pytest.approx(1.0)
+
+
 # --------------------------------------------------------------------------- #
 # Blend
 # --------------------------------------------------------------------------- #
@@ -281,6 +307,68 @@ def test_forecast_is_ranked_and_reports_its_inputs():
     forecast = forecast_rest_of_day(minutes, daily)
     assert forecast["Forecast"].is_monotonic_decreasing
     assert {"OpeningShare", "PreviousShare", "Change"}.issubset(forecast.columns)
+
+
+# --------------------------------------------------------------------------- #
+# MubasherTrade PRO minute store
+# --------------------------------------------------------------------------- #
+
+def _tmin(year, month, day, hour, minute):
+    """``TMIN`` for a UTC wall-clock time: minutes since the Unix epoch."""
+    from datetime import datetime, timezone
+
+    stamp = datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
+    return str(int(stamp.timestamp() // 60))
+
+
+def _mubasher_store(root, tables):
+    import sqlite3
+
+    store = root / "Intraday" / "CASE"
+    store.mkdir(parents=True)
+    with sqlite3.connect(store / "INTRADAY_MASTER.db") as connection:
+        for table, rows in tables.items():
+            connection.execute(f'CREATE TABLE "{table}" (TMIN TEXT, TOVR TEXT)')
+            connection.executemany(f'INSERT INTO "{table}" VALUES (?, ?)', rows)
+
+
+def test_the_mubasher_loader_puts_minutes_on_the_session_clock(tmp_path):
+    from sector_flow.intraday import MINUTE_COLUMNS, load_mubasher_minute_turnover
+
+    _mubasher_store(tmp_path, {
+        "_COMI": [
+            (_tmin(2026, 9, 15, 6, 59), "5"),             # 09:59 Cairo, pre-open
+            (_tmin(2026, 9, 15, 7, 0), "2515778.97"),     # 10:00 Cairo
+            (_tmin(2026, 9, 15, 7, 1), "0"),              # nothing traded
+            (_tmin(2026, 9, 15, 11, 29), "925910.0"),     # 14:29 Cairo, auction
+        ],
+        "_EGX30": [(_tmin(2026, 9, 15, 7, 0), "999")],    # an index, not a stock
+        "_TMGH": [(_tmin(2026, 9, 15, 7, 0), "10")],      # no sector in the map
+    })
+    frame = load_mubasher_minute_turnover({"COMI.CA": "Banks"}, root=tmp_path)
+    assert list(frame.columns) == MINUTE_COLUMNS
+    assert frame["Minute"].tolist() == ["07:00", "11:29"]
+    assert frame["SessionDate"].tolist() == ["2026-09-15", "2026-09-15"]
+    assert frame["Turnover"].tolist() == [2515778.97, 925910.0]
+    assert set(frame["ticker"]) == {"COMI"}
+
+
+def test_the_opening_stays_ten_oclock_cairo_after_summer_time(tmp_path):
+    """10:00 Cairo is 08:00 UTC in December. Placed on UTC it would miss the
+    whole opening window, and the forecast would refuse every winter day."""
+    from sector_flow.intraday import load_mubasher_minute_turnover
+
+    _mubasher_store(tmp_path, {"_COMI": [(_tmin(2026, 12, 1, 8, 0), "100")]})
+    frame = load_mubasher_minute_turnover({"COMI.CA": "Banks"}, root=tmp_path)
+    assert frame["Minute"].tolist() == ["07:00"]
+    assert frame["Minute"].iloc[0] < OPENING_END
+
+
+def test_no_terminal_installed_is_an_empty_frame(tmp_path):
+    from sector_flow.intraday import MINUTE_COLUMNS, load_mubasher_minute_turnover
+
+    frame = load_mubasher_minute_turnover({"COMI.CA": "Banks"}, root=tmp_path)
+    assert frame.empty and list(frame.columns) == MINUTE_COLUMNS
 
 
 def test_empty_inputs_are_handled():

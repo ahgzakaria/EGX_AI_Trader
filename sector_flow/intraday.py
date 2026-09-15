@@ -28,8 +28,9 @@ import pandas as pd
 from providers.symbol_mapping import to_engine_symbol
 
 
-# EGX continuous trading in UTC, as stored by the Rubix collector
-# (10:00-14:30 Africa/Cairo).
+# The EGX session on a clock three hours behind Cairo (10:00-14:30 Africa/Cairo),
+# which is where these thresholds were first measured. Every loader places its
+# minutes on this clock.
 SESSION_OPEN = "07:00"
 SESSION_CLOSE = "11:30"
 OPENING_END = "07:30"
@@ -44,31 +45,61 @@ CLOSE_OBSERVED_BY = "11:25"
 
 DEFAULT_BLEND_WEIGHT = 0.5
 DEFAULT_TOP_K = 3
-MINUTE_TABLE = "candles_1m"
 
 
-def load_minute_turnover(database_path, sector_map):
-    """Return per-minute sector turnover for the continuous session only."""
+#: The frame every minute loader returns.
+MINUTE_COLUMNS = ["SessionDate", "Minute", "ticker", "Sector", "Turnover"]
 
-    query = (
-        f"SELECT substr(minute, 1, 10) AS SessionDate, "
-        f"substr(minute, 12, 5) AS Minute, ticker, high, low, close, volume "
-        f"FROM {MINUTE_TABLE} WHERE volume > 0"
-    )
-    # Read-only: the collector owns this database and may be writing to it now.
-    # A reader must not be able to alter it, or hold a write lock against it.
-    with sqlite3.connect(f"file:{database_path}?mode=ro", uri=True) as connection:
-        frame = pd.read_sql(query, connection)
+#: The session constants above were measured on a clock three hours behind
+#: Cairo (10:00 Cairo is "07:00"). Mubasher's minutes are placed on that same
+#: clock from Cairo local time, so the opening window stays 10:00-10:30 Cairo
+#: when Egypt leaves summer time and UTC+3 stops being Cairo's offset.
+_CAIRO_TO_SESSION_CLOCK_MINUTES = 180
 
-    frame = frame[(frame["Minute"] >= SESSION_OPEN) & (frame["Minute"] <= SESSION_CLOSE)]
-    frame["Sector"] = frame["ticker"].map(lambda value: sector_map.get(to_engine_symbol(value)))
-    frame = frame.dropna(subset=["Sector"]).copy()
-    # Same VWAP proxy as the daily history, so intraday and daily shares mean
-    # the same thing and can be blended without a unit mismatch.
-    frame["Turnover"] = (
-        (frame["high"] + frame["low"] + frame["close"]) / 3.0 * frame["volume"]
-    ).astype("float64")
-    return frame[["SessionDate", "Minute", "ticker", "Sector", "Turnover"]]
+
+def load_mubasher_minute_turnover(sector_map, root=None):
+    """Per-minute sector turnover from MubasherTrade PRO's own minute store.
+
+    The terminal keeps a rolling fourteen sessions in
+    ``Intraday/CASE/INTRADAY_MASTER.db`` and fills it while it runs. This
+    replaces the Rubix minute store, retired on 2026-09-10. ``Turnover`` is the
+    terminal's reported turnover for the minute (``TOVR``), not a typical-price
+    times volume proxy. Read-only: the terminal may be writing the file now.
+    """
+
+    from sector_flow import mubasher_local as local
+
+    base = local.find_root(root)
+    if base is None or not (base / local.INTRADAY_RELATIVE).exists():
+        return pd.DataFrame(columns=MINUTE_COLUMNS)
+
+    records = []
+    with local._open_read_only(base / local.INTRADAY_RELATIVE) as connection:
+        for table, ticker in local._instrument_tables(connection):
+            sector = sector_map.get(to_engine_symbol(ticker))
+            if not sector:
+                continue
+            try:
+                rows = connection.execute(f'SELECT TMIN, TOVR FROM "{table}"').fetchall()
+            except sqlite3.Error:
+                continue
+            for tmin, tovr in rows:
+                try:
+                    turnover = float(tovr or 0)
+                    session, cairo_minute = local.session_of(tmin)
+                except (TypeError, ValueError):
+                    continue
+                if turnover <= 0:
+                    continue
+                clock = cairo_minute - _CAIRO_TO_SESSION_CLOCK_MINUTES
+                if clock < 0:
+                    continue
+                records.append((session, f"{clock // 60:02d}:{clock % 60:02d}",
+                                ticker, sector, turnover))
+
+    frame = pd.DataFrame(records, columns=MINUTE_COLUMNS)
+    kept = (frame["Minute"] >= SESSION_OPEN) & (frame["Minute"] <= SESSION_CLOSE)
+    return frame[kept].reset_index(drop=True)
 
 
 def session_coverage(minutes):
@@ -153,7 +184,11 @@ def previous_daily_shares(daily_history, sessions, sectors=None):
 
     rows = {}
     for session in sessions:
-        position = panel.index.get_indexer([session])[0]
+        # The last daily session strictly before this one. Looking the session
+        # itself up and stepping back a row found nothing for today: during an
+        # open session the daily panel ends yesterday, so the live forecast
+        # never ran.
+        position = int(panel.index.searchsorted(str(session)[:10], side="left"))
         if position > 0:
             rows[session] = panel.iloc[position - 1]
     if not rows:

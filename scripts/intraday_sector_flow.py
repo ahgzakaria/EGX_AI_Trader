@@ -19,7 +19,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from config.settings_manager import settings
 from core.environment import load_project_environment
 from decision_support.sector_analysis import load_sector_map
 from sector_flow.builder import DEFAULT_DATABASE, load_saved
@@ -29,7 +28,7 @@ from sector_flow.intraday import (
     MIN_OPENING_MINUTES,
     evaluate,
     forecast_rest_of_day,
-    load_minute_turnover,
+    load_mubasher_minute_turnover,
     session_coverage,
     weight_sweep,
 )
@@ -39,22 +38,23 @@ def main():
     parser = argparse.ArgumentParser(description="Intraday sector liquidity forecast.")
     parser.add_argument("--sector-file", default="data/sectors.csv")
     parser.add_argument("--daily-database", default=DEFAULT_DATABASE)
-    parser.add_argument("--rubix-database", default=None)
+    parser.add_argument("--mubasher-root", default=None,
+                        help="MubasherTrade PRO UserData account folder; found automatically.")
     parser.add_argument("--weight", type=float, default=DEFAULT_BLEND_WEIGHT)
     parser.add_argument("--session", default=None, help="Forecast this session instead of the latest.")
     parser.add_argument("--report-dir", default="reports")
     args = parser.parse_args()
 
     load_project_environment()
-    rubix = args.rubix_database or settings.get("market_data").get("rubix_db_path")
     sector_map = load_sector_map(args.sector_file)
     if not sector_map:
         print(f"No sector map at {args.sector_file}. Run scripts/build_sector_map.py first.")
         return 1
 
-    minutes = load_minute_turnover(rubix, sector_map)
+    # MubasherTrade PRO's own minute store; the Rubix one was retired 2026-09-10.
+    minutes = load_mubasher_minute_turnover(sector_map, root=args.mubasher_root)
     if minutes.empty:
-        print(f"No intraday candles in {rubix}.")
+        print("No minute bars in MubasherTrade PRO's store for a mapped symbol.")
         return 1
     daily = complete_daily_sessions(load_saved(args.daily_database))
     if daily is None or daily.empty:

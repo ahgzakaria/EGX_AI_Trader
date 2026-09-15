@@ -126,8 +126,7 @@ def test_the_coverage_failure_explains_why_a_partial_session_is_refused():
     assert "excluded whole rather than shown in" in source
 
 
-# `_intraday_section` has no forecast table since the Rubix minute store was retired.
-@pytest.mark.parametrize("panel", ["_next_session"])
+@pytest.mark.parametrize("panel", ["_next_session", "_intraday_section"])
 def test_every_forecast_table_is_marked_as_a_projection(panel):
     source = inspect.getsource(getattr(sector_flow, panel))
     assert "projection_note(" in source

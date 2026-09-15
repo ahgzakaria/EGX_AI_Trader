@@ -37,6 +37,12 @@ from sector_flow.builder import (
 from sector_flow.forecast import baseline_forecast, forecast_next_session
 from sector_flow.history import complete_sessions, latest_snapshot, rotation_matrix
 from sector_flow.strength import FULL_STRENGTH_RVOL, strength_frame
+from sector_flow.intraday import (
+    MIN_OPENING_MINUTES,
+    forecast_rest_of_day,
+    load_mubasher_minute_turnover,
+    session_coverage,
+)
 
 
 HEATMAP_SESSIONS = 60
@@ -48,6 +54,19 @@ REFRESH_COMMAND = "venv/Scripts/python.exe scripts/refresh_sector_flow.py"
 def _daily_history(database_path):
     history = load_saved(database_path)
     return history, latest_build_metadata(database_path)
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def _intraday(sector_file):
+    sector_map = load_sector_map(sector_file)
+    if not sector_map:
+        return pd.DataFrame()
+    try:
+        return load_mubasher_minute_turnover(sector_map)
+    except Exception:
+        # The terminal may be mid-write or not installed. The daily view below
+        # does not depend on it and must still render.
+        return pd.DataFrame()
 
 
 def _percent(value, digits=2):
@@ -301,15 +320,71 @@ def _intraday_section(history):
         "بقية الجلسة · Rest of today",
         "An even blend of the opening 30 minutes and the previous daily session",
     )
-    # The blend needs today's opening window, which came from the Rubix minute
-    # store. That store stopped at 14:18 on 2026-09-10 when the feed was retired,
-    # so there is no window to blend, and the store is not opened to find that out.
-    from core.live_feed import NO_LIVE_FEED_AR, NO_LIVE_FEED_EN
+    # Minutes come from MubasherTrade PRO's own store, which the terminal fills
+    # while it is open. It replaced the Rubix minute store, retired 2026-09-10.
+    minutes = _intraday("data/sectors.csv")
+    if minutes.empty:
+        unavailable_state(
+            "No intraday candles · لا توجد شموع لحظية",
+            "MubasherTrade PRO's minute store holds no bars for a mapped symbol. "
+            "It fills while the terminal is open.",
+            needs="MubasherTrade PRO open during the session",
+        )
+        return
 
-    unavailable_state(
-        "No intraday data for today · لا توجد بيانات لحظية اليوم",
-        f"{NO_LIVE_FEED_EN}. {NO_LIVE_FEED_AR}.",
-        needs="a live intraday source",
+    # A forecast of today needs today's opening window. The store keeps twenty
+    # sessions, so its newest one is not today before 10:00 or on a closed day,
+    # and that session is not presented as a live one.
+    today = pd.Timestamp.now(tz="Africa/Cairo").date().isoformat()
+    newest = str(minutes["SessionDate"].max())
+    if newest != today:
+        unavailable_state(
+            "No intraday data for today · لا توجد بيانات لحظية اليوم",
+            f"The newest minute bars in MubasherTrade PRO are from {newest}, which "
+            "is not today.",
+            needs="MubasherTrade PRO open during the session",
+        )
+        return
+
+    coverage = session_coverage(minutes)
+    complete = int(coverage["Complete"].sum())
+    st.caption(
+        f"{len(coverage)} sessions in the store, {complete} complete. Measured on 20 "
+        "complete sessions (2026-08-18 to 2026-09-15), the blend has the lowest "
+        "error (MAE 0.0167 against 0.0183 for the previous session alone and 0.0210 "
+        "for the opening window alone) and ranks sectors best, but names the top "
+        "three less often than the previous session alone (70% against 77%). "
+        "Measured, not established."
+    )
+
+    forecast = forecast_rest_of_day(minutes, complete_sessions(history), session=today)
+    if forecast.empty:
+        unavailable_state(
+            "No live forecast · لا يوجد توقّع حي",
+            "Too little of the opening window has been observed to blend it "
+            "with yesterday.",
+            needs=f"{MIN_OPENING_MINUTES} opening minutes",
+        )
+        return
+
+    projection_note(
+        "مزيج من أول ثلاثين دقيقة ومن جلسة أمس. الجلسة لم تُغلق بعد، "
+        "فهذه أرقام مُقدَّرة لا مُقاسة.")
+    st.dataframe(
+        pd.DataFrame({
+            "القطاع": forecast["Sector"],
+            "أمس": forecast["PreviousShare"].map(lambda v: _percent(v, 2)),
+            "الافتتاح": forecast["OpeningShare"].map(lambda v: _percent(v, 2)),
+            "بقية الجلسة": forecast["Forecast"].map(lambda v: _percent(v, 2)),
+            "Δ": forecast["Change"].map(lambda v: _signed_percent(v, 2)),
+        }),
+        hide_index=True,
+        use_container_width=True,
+    )
+    st.caption(
+        f"Session {forecast['SessionDate'].iloc[0]} · "
+        f"{int(forecast['OpeningMinutesObserved'].iloc[0])} opening minutes observed · "
+        "MubasherTrade PRO minute store."
     )
 
 

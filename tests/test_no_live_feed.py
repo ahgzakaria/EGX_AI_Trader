@@ -55,21 +55,29 @@ def test_the_scan_banner_no_longer_grades_a_dead_overlay():
 
 # --- Sector Liquidity -----------------------------------------------------------------
 
-def test_sector_liquidity_opens_no_minute_store(monkeypatch):
+def test_sector_liquidity_reads_mubasher_minutes_not_rubix(monkeypatch):
     from dashboard import sector_flow as page
     import sector_flow.intraday as intraday
 
+    source = inspect.getsource(page)
+    assert "load_mubasher_minute_turnover" in source
+    assert "rubix_db_path" not in source
+    assert not hasattr(intraday, "load_minute_turnover")
+
     shown = []
     monkeypatch.setattr(page, "section_header", lambda *a, **k: None)
-    monkeypatch.setattr(intraday, "load_minute_turnover", refuse)
+    monkeypatch.setattr(page, "_intraday", lambda *a, **k: pd.DataFrame({
+        "SessionDate": ["2026-09-10"], "Minute": ["07:00"], "ticker": ["COMI"],
+        "Sector": ["Banks"], "Turnover": [1.0]}))
     monkeypatch.setattr(page, "unavailable_state",
                         lambda title, message, **k: shown.append((title, message)))
+    monkeypatch.setattr(page, "forecast_rest_of_day",
+                        lambda *a, **k: pytest.fail("a past session reached the live forecast"))
     page._intraday_section(pd.DataFrame())
     assert shown, "nothing told the reader there is no data for today"
     title, message = shown[-1]
     assert "today" in title.lower()
     assert "2026-09-10" in message
-    assert "load_minute_turnover" not in inspect.getsource(page)
 
 
 # --- Stock Details --------------------------------------------------------------------
@@ -217,7 +225,9 @@ def test_the_portfolio_and_ai_analysis_read_no_quote(monkeypatch):
 
     for name in ("quote_overlay", "load_latest_quote_overlays", "load_history"):
         monkeypatch.setattr(RubixSQLiteProvider, name, refuse)
-    monkeypatch.setattr(intraday, "load_minute_turnover", refuse)
+    # The portfolio's sector forecast stays empty until it is decided to feed
+    # its exit rule from Mubasher's minutes.
+    monkeypatch.setattr(intraday, "load_mubasher_minute_turnover", refuse)
     assert ai._default_live_quote("COMI.CA") is None
     assert ai._default_intraday("COMI.CA") is None
     assert assistant.default_quote_loader("COMI") is None
