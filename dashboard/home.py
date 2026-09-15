@@ -163,24 +163,22 @@ def _observed_metadata(results):
 
 
 def price_source_reading(results):
-    """The strip's price-source cell: who quoted, and whether it is current.
+    """The strip's price-source cell: the completed close, and whose record it is.
 
-    ``(value, tone, sub)``. It used to be green "Rubix" whenever any quote row
-    existed, because the overlay calls a row "available" regardless of its age.
-    After the feed was retired on 2026-09-10 that meant five-day-old prices were
-    labelled as the live source. Freshness comes from `_observed_metadata`, the
-    same verdict the scan banner uses, so the two can no longer disagree.
-    Decisions were never at risk: a signal is actionable and a portfolio price
-    is live only when the quote is FRESH. This is about what the page says.
+    ``(value, tone, sub)``. There is no live source to name. The Rubix feed was
+    retired on 2026-09-10, and the question this cell used to answer -- is the
+    live quote fresh or stale? -- stopped having a subject that evening. It went
+    from green "Rubix" to amber "Rubix · قديم", and both were wrong for the same
+    reason: every price on the page is a completed session's close.
+
+    So it says that, and names the history record the rows actually came from
+    (``DataSource``, e.g. EODHD + Mubasher). No row carrying a source is "—",
+    never a guess.
     """
-    providers = {str(row.get("LiveProvider") or "").strip().lower()
-                 for row in results or ()} - {"", "unavailable"}
-    if not providers:
-        return "Unavailable", "unknown", ""
-    name = next(iter(sorted(providers))).title()
-    if _observed_metadata(results)["live_quote_freshness"] == "STALE":
-        return name, "amber", "قديم"
-    return name, "green", ""
+    from core.live_feed import PRICE_SOURCE_AR, history_source_label
+
+    source = history_source_label(row.get("DataSource") for row in results or ())
+    return PRICE_SOURCE_AR, "gray", ("" if source == "—" else source)
 
 
 def _workspace_fingerprint(workspace):
@@ -359,13 +357,15 @@ def _render_scan_status(job_progress, expected_session=None, result_metadata=Non
     view = scan_status_view(job_progress, expected_session=expected_session,
                             result_metadata=result_metadata)
     coverage = coverage_view(job_progress)
+    # The third line used to report the Rubix overlay -- Fresh, Stale, Partially
+    # Available -- five days after that feed was retired. There is no live
+    # overlay to grade, so the line says so instead of grading a dead one.
+    from core.live_feed import LIVE_QUOTES_STATUS_EN
+
     status_bar([
         ("Historical analysis source", view["historical_source"], "blue"),
         ("Latest completed candle", view["latest_completed_candle"], "gray"),
-        ("Live quote overlay", view["live_overlay"],
-         "green" if view["live_overlay"] == "Rubix Fresh"
-         else "amber" if "Partially" in view["live_overlay"]
-         or "Stale" in view["live_overlay"] else "gray"),
+        ("Live quotes", LIVE_QUOTES_STATUS_EN, "gray"),
     ])
     return coverage
 
@@ -411,8 +411,13 @@ def _render_scan_job(job):
         row = st.columns(4)
         row[0].metric("EODHD cache hits", snapshot.eodhd_cache_hits)
         row[1].metric("EODHD refreshes", snapshot.eodhd_refresh_attempts)
-        row[2].metric("Rubix overlays",
-                      f"{snapshot.rubix_overlay_available}/{snapshot.total}")
+        # This counted Rubix overlays read from a database nothing has written
+        # since 2026-09-10 -- a count of five-day-old quotes shown beside the
+        # scan's real progress as if it were part of it.
+        from core.live_feed import LIVE_QUOTES_STATUS_EN, RETIREMENT_NOTE
+
+        row[2].metric("Live quotes", LIVE_QUOTES_STATUS_EN.split(" · ", 1)[0],
+                      help=RETIREMENT_NOTE)
         row[3].metric("Circuit breaker", snapshot.circuit_breaker_state)
 
         if snapshot.status_breakdown:
@@ -844,29 +849,26 @@ def _render_swing_advanced_research(
         )
 
         section_header("الجدول البحثي الكامل", "Developer metrics and attribution")
-        # Typed daily-candle and Rubix provenance, so a price is never shown
-        # without the evidence for how current it is. A generic green "Fresh"
-        # is deliberately impossible here: every label names its session.
+        # Typed daily-candle provenance, so a price is never shown without the
+        # evidence for how current it is. A generic green "Fresh" is deliberately
+        # impossible here: every label names its session. The six Rubix quote
+        # columns went with the feed on 2026-09-10 -- they could only ever show
+        # the last quotes from before it was retired, beside today's rows.
         freshness_columns = [
             "DailyCandleSession", "DailyFreshnessStatus",
-            "RubixQuoteStatus", "RubixQuoteSession",
-            "RubixMarketTimestamp", "RubixReceiveTimestamp",
-            "RubixOverlayApplied", "DisplayPriceSource", "DecisionPriceSource",
-            "RubixOverlayDenialReason",
+            "DataSource", "DisplayPriceSource", "DecisionPriceSource",
         ]
         available_freshness = [c for c in freshness_columns if c in df.columns]
         if available_freshness:
-            with st.expander("Daily-candle and Rubix quote provenance"):
+            with st.expander("Daily-candle provenance"):
                 st.dataframe(
                     df[["Ticker", *available_freshness]]
                     if "Ticker" in df.columns else df[available_freshness],
                     use_container_width=True, hide_index=True,
                 )
-                st.caption(
-                    "When the Rubix overlay is not applied the decision price "
-                    "is the EODHD daily close; the quote is shown as evidence "
-                    "only and is never labelled live."
-                )
+                from core.live_feed import RETIREMENT_NOTE
+
+                st.caption(RETIREMENT_NOTE)
 
         diagnostic_columns = [
             "Rank", "Rating", "Ticker", NAME_COLUMN, "Regime", "StrategySignal", "Stars",
@@ -1167,8 +1169,6 @@ def show_dashboard():
     market_state = str(
         df.get("MarketRegime", pd.Series(["UNKNOWN"])).iloc[0]
     )
-    live_providers = {str(row.get("LiveProvider") or "").strip().lower()
-                      for row in results} - {"", "unavailable"}
 
     # One row, not two. The decision counts and the context they were measured
     # in were separate bands of tiles stacked above the first result, and the
@@ -1512,38 +1512,25 @@ def _archive_warning(results) -> str:
 def _render_provider_status(summary):
     """Show one routing notice and keep diagnostics collapsed by default."""
 
-    historical = str(
-        summary.get("historical_provider") or "local_cache:yahoo"
-    )
-    live = str(summary.get("live_quote_provider") or "unavailable")
+    # Reached only when results were restored from an older run with no job in
+    # this session. It reported the Rubix collector, its database, quote
+    # freshness and the "Rubix Completed-Daily Bridge" -- all retired on
+    # 2026-09-10 -- and warned that a dead overlay was stale. What remains true
+    # is the history source and the candle date.
+    from core.live_feed import LIVE_QUOTES_STATUS_EN, RETIREMENT_NOTE
+
+    historical = str(summary.get("historical_provider") or "unknown")
     completed = _display_timestamp(summary.get("latest_completed_candle"))
-    quote_time = _display_timestamp(summary.get("live_quote_timestamp"))
     st.info(
         f"Historical analysis source: {historical}  ·  "
-        f"Live quote overlay: {live.title()}  ·  "
-        f"Latest completed candle: {completed}  ·  Current quote: {quote_time}"
+        f"Latest completed candle: {completed}  ·  "
+        f"Live quotes: {LIVE_QUOTES_STATUS_EN}"
     )
     with st.expander("Data Status", expanded=False):
-        status = st.columns(3)
-        status[0].metric("Collector", str(summary.get("collector_status") or "N/A"))
-        status[1].metric("Database", str(summary.get("database_status") or "N/A"))
-        status[2].metric("Quote freshness", str(summary.get("freshness") or "N/A"))
-        st.caption(
-            f"Coverage: {int(summary.get('symbols_received') or 0)} / "
-            f"{int(summary.get('symbols_requested') or 0)} · "
-            f"Market: {summary.get('session_phase') or 'N/A'} · "
-            f"Fallback: {'YES' if summary.get('fallback_active') else 'NO'}"
-        )
+        st.caption(RETIREMENT_NOTE)
         reasons = summary.get("fallback_reasons") or []
         if reasons:
             st.warning("Fallback reason: " + "; ".join(map(str, reasons)))
-        _render_bridge_disclosure()
-        freshness = str(summary.get("freshness") or "").upper()
-        if "STALE" in freshness:
-            st.warning(
-                "Rubix quote overlay is stale. Historical Swing analysis remains "
-                "available, but no result should be treated as a live quote."
-            )
     _render_tradingview_research_panel()
 
 
@@ -1581,25 +1568,6 @@ def _render_tradingview_research_panel():
         )
         if info["failure_or_limitation_reason"] not in (None, "n/a"):
             st.info(f"Limitation: {info['failure_or_limitation_reason']}")
-
-
-def _render_bridge_disclosure():
-    """Disclose the Rubix Completed-Daily Bridge state (display only)."""
-
-    try:
-        from providers.rubix_bridge_factory import bridge_disclosure
-
-        info = bridge_disclosure()
-    except Exception:
-        return
-    st.caption(
-        f"Rubix Completed-Daily Bridge: **{info['mode_label']}** · "
-        f"Historical warm-up source: {info['historical_warmup_source']} · "
-        f"Latest completed candle source: {info['latest_completed_candle_source']} · "
-        f"Rubix sessions appended (symbols): {info['symbols_with_rubix_sessions']} · "
-        f"Current partial session in indicators: "
-        f"{info['current_session_included_in_indicators']}"
-    )
 
 
 def _display_timestamp(value):

@@ -42,13 +42,15 @@ def render_historical_labels():
 def render_rubix_status(context):
     """Typed Rubix wording only - never a generic FRESH / LIVE / UPDATED."""
 
-    message = context.rubix_message()
-    if context.may_label_rubix_live:
-        st.success(message)
-    else:
-        st.info(message)
-        if not context.rubix_overlay_applied:
-            st.caption(context.overlay_denial_message())
+    # There is no live feed to label. Rubix was retired on 2026-09-10, so the
+    # green "live" branch can no longer be reached honestly and is not offered:
+    # the panel states that the price is a completed close, and keeps the typed
+    # Rubix status underneath as history of what the last quote was.
+    from core.live_feed import NO_LIVE_FEED_AR, NO_LIVE_FEED_EN
+
+    st.info(f"{NO_LIVE_FEED_AR} · {NO_LIVE_FEED_EN}. "
+            "Decision price: completed session close.")
+    st.caption("Last Rubix quote on record: " + context.rubix_message().replace("\n", " · "))
 
 
 def withheld_badge() -> str:

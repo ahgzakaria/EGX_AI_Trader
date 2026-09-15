@@ -345,14 +345,21 @@ def test_the_completed_page_references_no_undefined_names():
 
 
 def test_the_live_quote_tile_reads_the_rows_the_scan_produced():
-    """It used to read a provider summary computed only on the pre-scan path."""
+    """It used to read a provider summary computed only on the pre-scan path.
+
+    The cell no longer names a live quote source at all -- the Rubix feed was
+    retired on 2026-09-10 -- but the rule this test exists for still holds: the
+    price-source cell is built from the rows the scan produced, never from a
+    summary computed before any scan ran.
+    """
+    import inspect
+
     from dashboard import home
 
     source = pathlib.Path(home.__file__).read_text(encoding="utf-8")
     assert "provider_summary" not in source
-    tile = source.split('"Live quote source"')[0].rsplit("context[2]", 1)[0]
-    assert "LiveProvider" in tile.rsplit("live_providers", 2)[0] or \
-        "LiveProvider" in source.split('"Live quote source"')[0][-400:]
+    assert "price_source_reading(results)" in inspect.getsource(home.show_dashboard)
+    assert 'row.get("DataSource")' in inspect.getsource(home.price_source_reading)
 
 
 # --------------------------------------------------------------------------- #

@@ -232,7 +232,11 @@ def _overview(stock, context=None):
     section_header("Snapshot & Price", "Frozen Classic evidence is never relabelled as live")
     snapshot = st.columns(6)
     snapshot[0].metric("Frozen Signal Snapshot Price", _price(context["frozen_price"]))
-    snapshot[1].metric("Rubix Overlay Price", _price(context["live_price"]))
+    # Not a current price: the Rubix feed was retired on 2026-09-10, so any value
+    # here is the last quote on record from before that. Named as such.
+    snapshot[1].metric("Last Rubix quote (retired)", _price(context["live_price"]),
+                       help="The Rubix feed was retired on 2026-09-10. This is the "
+                            "last quote on record, not a live price.")
     snapshot[2].metric(
         "Selected Comparison Price",
         _price(context["comparison"].value),

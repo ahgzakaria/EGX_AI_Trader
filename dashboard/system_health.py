@@ -250,24 +250,31 @@ def _provider_domains_panel():
     c[4].metric("Freshness", fresh)
     st.caption("Current research never uses Yahoo; Yahoo's date is not consulted for freshness.")
 
-    st.subheader("LIVE · Rubix")
-    l = st.columns(3)
-    try:
-        from dashboard.scalping import _rubix_latest_event, _rubix_path
-        l[0].metric("Live provider", "Rubix")
-        l[1].metric("Collector DB", "present" if _rubix_path().is_file() else "missing")
-        l[2].metric("Last event", str(_rubix_latest_event() or "—")[:19])
-    except Exception:
-        l[0].metric("Live provider", "Rubix")
+    # There is no live provider. This section said "Live provider: Rubix" for
+    # five days after the feed was retired; it now says what is true and keeps
+    # the last event as history, so the date of the retirement stays checkable.
+    from core.live_feed import NO_LIVE_FEED_EN, RETIREMENT_NOTE, RUBIX_RETIRED_ON
 
-    st.subheader("UNSUPPORTED SYMBOLS · Local History + Rubix Daily Bridge")
+    st.subheader("LIVE QUOTES · none")
+    l = st.columns(3)
+    l[0].metric("Live provider", "None", help=RETIREMENT_NOTE)
+    l[1].metric("Rubix retired", RUBIX_RETIRED_ON)
+    try:
+        from dashboard.scalping import _rubix_latest_event
+        l[2].metric("Last Rubix event (history)", str(_rubix_latest_event() or "—")[:19])
+    except Exception:
+        l[2].metric("Last Rubix event (history)", "—")
+    st.caption(NO_LIVE_FEED_EN + ". Every price is a completed session's close.")
+
+    st.subheader("UNSUPPORTED SYMBOLS · Local History + Mubasher tail")
     u = st.columns(3)
     u[0].metric("Evaluated", summary.get("unsupported_evaluated", "—"))
     u[1].metric("Ready", summary.get("unsupported_ready", "—"))
     blocked = summary.get("blocked", "—")
     u[2].metric("Blocked (all tiers)", blocked)
     st.caption("EODHD-unsupported symbols use validated local history plus completed "
-               "Rubix Daily Bridge sessions — never a Yahoo update.")
+               "sessions from MubasherTrade PRO's measured record — never a Yahoo "
+               "update. (This was the Rubix Daily Bridge until 2026-09-10.)")
 
     from config.settings_manager import settings as _settings
     from core.frozen_mubasher_store import read_manifest as _frozen_manifest

@@ -488,8 +488,13 @@ def _price_section(result):
 
 
 def _chart_section(result, presentation=None):
-    """Render the typed daily/Rubix series. All levels come from the presentation model."""
-    section_header("الرسم البياني", "Typed Daily + Rubix Intraday Series")
+    """Render the typed daily series. All levels come from the presentation model.
+
+    The intraday tab stays because the result type still carries the series,
+    but it is labelled for what it is: the Rubix feed that produced it was
+    retired on 2026-09-10, so there is no current intraday data to show.
+    """
+    section_header("الرسم البياني", "Typed daily series")
     try:
         import plotly.graph_objects as go                                  # noqa: F401
     except Exception:
@@ -503,7 +508,7 @@ def _chart_section(result, presentation=None):
         empty_state("لا توجد بيانات كافية للرسم", "No typed daily chart series was supplied.")
         return
 
-    daily_tab, intraday_tab = st.tabs(("Daily · يومي", "Rubix Intraday · لحظي"))
+    daily_tab, intraday_tab = st.tabs(("Daily · يومي", "Intraday · لحظي (متوقف)"))
 
     with daily_tab:
         timeframe = st.radio(
@@ -535,7 +540,10 @@ def _chart_section(result, presentation=None):
 
     with intraday_tab:
         if intraday is None or not intraday.points:
-            empty_state("لا توجد بيانات لحظية", "No typed Rubix intraday series was supplied.")
+            empty_state("لا توجد بيانات لحظية · No intraday data",
+                        "أُوقف مصدر البيانات اللحظية (Rubix) في 2026-09-10، "
+                        "ولا يوجد مصدر لحظي حالياً. · The intraday source (Rubix) "
+                        "was retired on 2026-09-10; there is no live intraday data.")
         else:
             points = intraday.points
             intraday_figure = go.Figure()

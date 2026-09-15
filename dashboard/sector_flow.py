@@ -323,6 +323,22 @@ def _intraday_section(history):
     )
     rubix = settings.get("market_data").get("rubix_db_path")
     minutes = _intraday(rubix, "data/sectors.csv")
+    # The minute store stopped at 14:18 on 2026-09-10, when the Rubix feed was
+    # retired. `forecast_rest_of_day` takes the newest session it finds, so this
+    # section went on presenting that Thursday's opening window under "Rest of
+    # today". A forecast of today needs today's minutes; anything else is a
+    # past session and is not shown as a live one.
+    from core.live_feed import NO_LIVE_FEED_AR, NO_LIVE_FEED_EN
+
+    today = pd.Timestamp.now(tz="Africa/Cairo").date().isoformat()
+    if not minutes.empty and str(minutes["SessionDate"].max()) != today:
+        unavailable_state(
+            "No intraday data for today · لا توجد بيانات لحظية اليوم",
+            f"{NO_LIVE_FEED_EN}. {NO_LIVE_FEED_AR}. The newest minute bars on "
+            f"record are from {minutes['SessionDate'].max()}, which is not today.",
+            needs="a live intraday source",
+        )
+        return
     if minutes.empty:
         unavailable_state(
             "No intraday candles · لا توجد شموع لحظية",

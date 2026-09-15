@@ -107,38 +107,28 @@ def test_the_verifier_expects_the_task_retired_not_running():
 
 
 # --- the price source ----------------------------------------------------------------
+#
+# The first version of this fix graded the dead feed -- green "Rubix" when
+# fresh, amber "Rubix · قديم" when stale. Both were wrong: Rubix was retired, so
+# there is no live source to grade. The cell names what every price is.
 
-def row(provider="rubix", freshness="FRESH", quote_status=None):
-    r = {"LiveProvider": provider, "LivePriceStatus": freshness}
-    if quote_status is not None:
-        r["RubixQuoteStatus"] = quote_status
-    return r
-
-
-def test_fresh_quotes_are_the_live_source_in_green():
-    assert home.price_source_reading([row(), row()]) == ("Rubix", "green", "")
-
-
-def test_a_stale_quote_is_never_green():
-    """The case that happened: every quote five days old, labelled live."""
-    value, tone, sub = home.price_source_reading([row(freshness="STALE")] * 3)
-    assert (value, tone, sub) == ("Rubix", "amber", "قديم")
+def test_the_price_source_is_the_completed_close_never_a_live_feed():
+    rows = [{"DataSource": "eodhd_plus_mubasher", "LiveProvider": "rubix",
+             "LivePriceStatus": "FRESH"}]
+    value, tone, sub = home.price_source_reading(rows)
+    assert value == "إغلاق آخر جلسة"
+    assert tone == "gray"
+    assert "Rubix" not in value + sub and "قديم" not in value + sub
 
 
-def test_one_stale_row_downgrades_the_whole_cell():
-    """Same rule as the scan banner: fresh alone is never enough."""
-    assert home.price_source_reading([row(), row(freshness="STALE")])[1] == "amber"
+def test_the_price_source_names_the_history_record_the_rows_used():
+    rows = [{"DataSource": "eodhd"}, {"DataSource": "eodhd_plus_mubasher"}]
+    assert home.price_source_reading(rows)[2] == "EODHD · EODHD + Mubasher"
 
 
-def test_a_non_current_rubix_status_is_stale_too():
-    assert home.price_source_reading(
-        [row(freshness="", quote_status="RUBIX_PREVIOUS_SESSION")])[1] == "amber"
-
-
-def test_no_quote_at_all_is_unavailable_not_a_source():
-    assert home.price_source_reading([row(provider="unavailable"), {}]) == (
-        "Unavailable", "unknown", "")
-    assert home.price_source_reading([]) == ("Unavailable", "unknown", "")
+def test_no_recorded_source_is_left_blank_rather_than_guessed():
+    assert home.price_source_reading([{}, {"DataSource": "unknown"}]) == (
+        "إغلاق آخر جلسة", "gray", "")
 
 
 def test_the_strip_uses_the_reading():
