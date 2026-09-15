@@ -251,7 +251,7 @@ def test_the_completed_banner_no_longer_says_awaiting_scan_or_loading_rubix():
     assert view["latest_completed_candle"] == "2026-07-27"
     assert view["latest_completed_candle"] != "Awaiting scan"
     assert view["live_overlay"] != "Loading Rubix"
-    assert view["live_overlay"] == "Rubix Fresh"
+    assert view["live_overlay"] == "None · Rubix retired 2026-09-10"
     assert view["historical_source"] == "EODHD cache"
 
 
@@ -266,7 +266,7 @@ def test_the_final_banner_never_names_yahoo():
     job = _terminal_job()
     job.publish(rubix_overlay_available=0, rubix_batch_status="RUBIX_DB_UNAVAILABLE")
     view = scan_status_view(job.progress())
-    assert view["live_overlay"] == "Rubix Unavailable"
+    assert view["live_overlay"] == "None · Rubix retired 2026-09-10"
     assert view["historical_source"] == "EODHD cache"
     for value in view.values():
         assert "yahoo" not in str(value).lower()

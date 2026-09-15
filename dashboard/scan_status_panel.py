@@ -11,8 +11,9 @@ answered separately here:
 
   * historical source comes from the configured operational provider and, once a scan has
     observed data, from what that scan actually used;
-  * the live overlay reports Rubix on its own terms — Fresh, Stale, Partially Available or
-    Unavailable — and can never change the historical label.
+  * the live-quote line says there are none. It used to grade the Rubix overlay (Fresh,
+    Stale, Partially Available); that feed was retired on 2026-09-10, and a scan no longer
+    reads it.
 
 The frozen Yahoo legacy-backtest route is untouched; it is simply not a current-research
 source and is never named as one here.
@@ -20,32 +21,15 @@ source and is never named as one here.
 
 from __future__ import annotations
 
+from core.live_feed import LIVE_QUOTES_STATUS_EN
+
 # Historical-source labels for the current-research (Swing/Daily) path.
 EODHD = "EODHD"
 EODHD_CACHE = "EODHD cache"
 EODHD_CACHE_PLUS_REFRESH = "EODHD cache + bounded refreshes"
 
-# Live-overlay labels.
-RUBIX_NOT_CHECKED = "Rubix status not checked"
-RUBIX_LOADING = "Loading Rubix"
-RUBIX_FRESH = "Rubix Fresh"
-RUBIX_STALE = "Rubix Stale"
-RUBIX_PARTIAL = "Rubix Partially Available"
-RUBIX_UNAVAILABLE = "Rubix Unavailable"
-
 AWAITING_SCAN = "Awaiting scan"
 
-
-def _rubix_label(available, total, batch_status="", freshness=""):
-    """Describe the live overlay from overlay counts and the batch outcome."""
-    if str(batch_status) in ("RUBIX_DB_UNAVAILABLE", "RUBIX_DB_BUSY",
-                             "RUBIX_BATCH_TIMEOUT"):
-        return RUBIX_UNAVAILABLE
-    if not total or available <= 0:
-        return RUBIX_UNAVAILABLE
-    if available < total:
-        return RUBIX_PARTIAL
-    return RUBIX_STALE if str(freshness).upper() == "STALE" else RUBIX_FRESH
 
 #: Shown when a finished scan produced no usable session date. Deliberately
 #: not the expected session: an unknown actual date is information, and a
@@ -68,7 +52,7 @@ def scan_status_view(job_progress=None, expected_session=None, result_metadata=N
         return {
             "historical_source": EODHD,
             "latest_completed_candle": AWAITING_SCAN,
-            "live_overlay": RUBIX_NOT_CHECKED,
+            "live_overlay": LIVE_QUOTES_STATUS_EN,
         }
 
     state = str(job_progress.state)
@@ -79,13 +63,10 @@ def scan_status_view(job_progress=None, expected_session=None, result_metadata=N
         return {
             "historical_source": EODHD,
             "latest_completed_candle": AWAITING_SCAN,
-            "live_overlay": RUBIX_LOADING,
+            "live_overlay": LIVE_QUOTES_STATUS_EN,
         }
 
-    available = int(job_progress.rubix_overlay_available)
-    total = int(job_progress.total or 0)
-    overlay = _rubix_label(available, total, job_progress.rubix_batch_status,
-                           (result_metadata or {}).get("live_quote_freshness", ""))
+    overlay = LIVE_QUOTES_STATUS_EN
 
     refreshed = int(job_progress.eodhd_refresh_successes or 0)
     historical = EODHD_CACHE_PLUS_REFRESH if refreshed else EODHD_CACHE

@@ -130,3 +130,53 @@ def test_system_health_says_there_is_no_live_provider():
     assert 'metric("Live provider", "Rubix")' not in source
     assert "LIVE QUOTES · none" in source
     assert "Rubix Daily Bridge sessions" not in source
+
+
+# --- the scan reads no quote --------------------------------------------------------------
+#
+# Removing the wording left the scan still opening the Rubix database and
+# attaching a days-old quote to every row. These pin that it reads nothing.
+
+def refuse(*args, **kwargs):
+    pytest.fail("the retired Rubix database was read")
+
+
+def test_a_scan_context_opens_no_rubix_database(monkeypatch):
+    from core import data_provider, scan_context
+    from providers.rubix_sqlite_provider import RubixSQLiteProvider
+
+    monkeypatch.setattr(data_provider, "_provider_instances", refuse)
+    monkeypatch.setattr(RubixSQLiteProvider, "load_latest_quote_overlays", refuse)
+    context = scan_context.build_scan_context(["COMI.CA"], eodhd_client=object())
+    assert not hasattr(context, "rubix_overlays")
+    assert "rubix_provider" not in inspect.signature(scan_context.build_scan_context).parameters
+
+
+def test_the_daily_loader_attaches_no_quote(monkeypatch):
+    from core import data_provider, research_router
+    from providers.rubix_sqlite_provider import RubixSQLiteProvider
+
+    monkeypatch.setattr(RubixSQLiteProvider, "quote_overlay", refuse)
+    monkeypatch.setattr(RubixSQLiteProvider, "load_latest_quote_overlays", refuse)
+    index = pd.bdate_range("2025-01-01", periods=300)
+    history = pd.DataFrame({"Open": 10.0, "High": 11.0, "Low": 9.0, "Close": 10.5,
+                            "Volume": 1000.0}, index=index)
+    history.attrs["market_data"] = {"provider": "eodhd"}
+    monkeypatch.setattr(research_router, "get_current_research_history",
+                        lambda *a, **k: history)
+    frame = data_provider._load_swing_daily_history(
+        "COMI.CA", "2y", "1d", 250, False, None, None, "scanner")
+    md = frame.attrs["market_data"]
+    assert md["live_quote_available"] is False
+    assert md["live_quote_last"] is None
+    assert md["live_quote_status"] == live_feed.RETIRED_QUOTE_STATUS
+    assert md["live_quote_provider"] == "unavailable"
+    assert "2026-09-10" in md["fallback_reason"]
+
+
+def test_a_scan_has_no_loading_rubix_stage():
+    from core import scan_job_manager, scanner
+
+    assert "RUBIX_PREPARING" not in inspect.getsource(scanner.scan_symbols)
+    assert "RUBIX_READY" not in inspect.getsource(scanner.scan_symbols)
+    assert "Loading Rubix" not in inspect.getsource(scan_job_manager)

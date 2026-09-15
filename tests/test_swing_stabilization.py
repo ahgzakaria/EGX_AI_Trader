@@ -97,7 +97,9 @@ def _pin_current_research(monkeypatch, frame, provider="eodhd"):
     monkeypatch.setattr(router, "get_current_research_history", _fake)
 
 
-def test_rubix_quote_overlay_never_changes_completed_daily_history(tmp_path, monkeypatch):
+def test_a_rubix_database_neither_changes_history_nor_attaches_a_quote(tmp_path, monkeypatch):
+    """The feed was retired on 2026-09-10. Even a database holding a quote that
+    looks current is not read: the row carries no live quote."""
     original = _daily()
     cache = LocalCacheProvider(tmp_path / "cache.sqlite", source_provider="yahoo")
     write_snapshot(cache.path, "COMI.CA", original)
@@ -120,8 +122,8 @@ def test_rubix_quote_overlay_never_changes_completed_daily_history(tmp_path, mon
     assert metadata["historical_provider"] == "eodhd"          # current research, not Yahoo
     assert metadata["data_domain"] == "CURRENT_RESEARCH_V2"
     assert metadata["yahoo_used"] is False
-    assert metadata["live_quote_provider"] == "rubix"
-    assert metadata["live_quote_last"] == 100.0
+    assert metadata["live_quote_provider"] == "unavailable"
+    assert metadata["live_quote_last"] is None
     assert metadata["rubix_overlay_mutates_history"] is False
     assert loaded.index.max() == original.index.max()
     pd.testing.assert_frame_equal(

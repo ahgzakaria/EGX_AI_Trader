@@ -68,3 +68,23 @@ def history_source_label(values):
     if not names:
         return "—"
     return " · ".join(sorted(names))
+
+
+#: The live-quote status every scan row carries. No feed exists, so none is read.
+RETIRED_QUOTE_STATUS = "RUBIX_RETIRED"
+
+
+def retired_overlay(session_phase=None):
+    """The quote overlay for every symbol: none, and why.
+
+    Built without opening the Rubix database. It has the shape the old reader
+    returned for a missing quote, so the actionability gate and the provenance
+    row read "no quote" exactly as they always did.
+    """
+    return {
+        "provider": "none",
+        "available": False,
+        "freshness": "UNAVAILABLE",
+        "operational_state": RETIRED_QUOTE_STATUS,
+        "session_phase": session_phase,
+    }

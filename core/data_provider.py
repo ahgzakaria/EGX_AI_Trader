@@ -15,6 +15,7 @@ import pandas as pd
 from config.settings_manager import settings
 from core.egx_session import egx_session_phase, trading_session_lag
 from core.frozen_mubasher_store import PROVIDER_KEY as FROZEN_MUBASHER_KEY
+from core.live_feed import NO_LIVE_FEED_EN, retired_overlay
 from core.symbols import SYMBOL_SOURCE, load_symbols
 from providers.base_provider import ProviderDataError, ProviderError, REQUIRED_COLUMNS
 from providers.eodhd_provider import EODHDProvider
@@ -221,7 +222,7 @@ def load_history(
     ):
         finalized = _load_swing_daily_history(
             symbol, period, interval, min_bars, require_positive_volume,
-            cache, providers["yahoo"], providers["rubix"], purpose,
+            cache, providers["yahoo"], purpose,
             scan_context=scan_context, allow_held=allow_held,
         )
         capture_active(symbol, finalized, "normalized")
@@ -254,13 +255,12 @@ def load_history(
 
 def _load_swing_daily_history(
     symbol, period, interval, min_bars, require_positive_volume,
-    cache, yahoo, rubix, purpose, scan_context=None, allow_held=False,
+    cache, yahoo, purpose, scan_context=None, allow_held=False,
 ):
-    """Load completed daily history first, then attach a non-candle quote overlay.
+    """Load completed daily history, with the live-quote fields saying there is none.
 
-    Inside a scan the live overlay comes from ``scan_context`` — one batched read for the
-    whole universe — so this path opens no per-symbol Rubix connection. Outside a scan the
-    single-symbol overlay is used exactly as before.
+    This used to attach a Rubix quote. The feed was retired on 2026-09-10 and its
+    database has had no new row since, so no quote is read, in a scan or out of one.
     """
 
     # CURRENT_RESEARCH_V2: EODHD (per routing tier) or validated local history +
@@ -299,37 +299,10 @@ def _load_swing_daily_history(
     )
     completed = pd.Timestamp(frame.index[-1]).isoformat()
     metadata = dict(frame.attrs.get("market_data", {}))
-    overlay_error = None
-    if scan_context is not None:
-        # Scan path: the overlay was already read for the whole universe in one bounded
-        # batch. No connection is opened here, and a missing quote stays typed-missing —
-        # it is never substituted from another provider.
-        overlay = scan_context.overlay_for(symbol)
-        if overlay is None:
-            overlay = {
-                "provider": "rubix",
-                "available": False,
-                "freshness": "UNAVAILABLE",
-                "operational_state": scan_context.rubix_batch_status,
-                "session_phase": egx_session_phase(),
-            }
-            overlay_error = (scan_context.rubix_batch_detail
-                             or "no batched Rubix quote for this symbol")
-        elif not overlay.get("available"):
-            overlay_error = overlay.get("freshness_warning")
-    else:
-        try:
-            overlay = rubix.quote_overlay(symbol)
-        except Exception as error:  # Live evidence must never erase valid history.
-            logger.warning("Rubix quote overlay unavailable for %s: %s", symbol, error)
-            overlay_error = str(error)
-            overlay = {
-                "provider": "rubix",
-                "available": False,
-                "freshness": "UNAVAILABLE",
-                "operational_state": "RUBIX_UNAVAILABLE",
-                "session_phase": egx_session_phase(),
-            }
+    # No live quote is read. The Rubix feed was retired on 2026-09-10, and reading its
+    # database only attached a days-old quote that nothing was allowed to act on.
+    overlay = retired_overlay(egx_session_phase())
+    overlay_error = NO_LIVE_FEED_EN
 
     metadata.update({
         "data_domain": research_md.get("data_domain"),

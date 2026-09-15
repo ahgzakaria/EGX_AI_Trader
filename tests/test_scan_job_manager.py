@@ -18,6 +18,7 @@ import time
 import pytest
 
 from core import scan_job_manager as jm
+from core.live_feed import LIVE_QUOTES_STATUS_EN
 from dashboard.scan_status_panel import coverage_view, scan_status_view
 
 
@@ -424,10 +425,10 @@ def test_before_any_scan_the_banner_says_eodhd_and_awaiting_scan():
     view = scan_status_view(None)
     assert view["historical_source"] == "EODHD"
     assert view["latest_completed_candle"] == "Awaiting scan"
-    assert view["live_overlay"] == "Rubix status not checked"
+    assert view["live_overlay"] == LIVE_QUOTES_STATUS_EN
 
 
-def test_during_preparation_the_banner_shows_loading_rubix():
+def test_during_preparation_the_banner_claims_no_candle_date():
     """No row has been read yet, so no candle date may be claimed.
 
     This line is labelled "Latest completed candle". Printing the EXPECTED
@@ -440,7 +441,7 @@ def test_during_preparation_the_banner_shows_loading_rubix():
     view = scan_status_view(job.progress(), expected_session="2026-07-26")
     assert view["historical_source"] == "EODHD"
     assert view["latest_completed_candle"] != "2026-07-26"
-    assert view["live_overlay"] == "Loading Rubix"
+    assert view["live_overlay"] == LIVE_QUOTES_STATUS_EN
 
 
 def test_after_a_cached_scan_the_banner_says_eodhd_cache():
@@ -449,7 +450,7 @@ def test_after_a_cached_scan_the_banner_says_eodhd_cache():
                 rubix_batch_status="RUBIX_BATCH_OK")
     view = scan_status_view(job.progress(), expected_session="2026-07-26")
     assert view["historical_source"] == "EODHD cache"
-    assert view["live_overlay"] == "Rubix Fresh"
+    assert view["live_overlay"] == LIVE_QUOTES_STATUS_EN
 
 
 def test_a_refreshing_scan_reports_bounded_refreshes():
@@ -460,18 +461,17 @@ def test_a_refreshing_scan_reports_bounded_refreshes():
     assert view["historical_source"] == "EODHD cache + bounded refreshes"
 
 
-@pytest.mark.parametrize("available,total,status,expected", [
-    (10, 10, "RUBIX_BATCH_OK", "Rubix Fresh"),
-    (4, 10, "RUBIX_BATCH_OK", "Rubix Partially Available"),
-    (0, 10, "RUBIX_BATCH_OK", "Rubix Unavailable"),
-    (10, 10, "RUBIX_DB_BUSY", "Rubix Unavailable"),
-    (10, 10, "RUBIX_DB_UNAVAILABLE", "Rubix Unavailable"),
+@pytest.mark.parametrize("available,total,status", [
+    (10, 10, "RUBIX_BATCH_OK"),
+    (4, 10, "RUBIX_BATCH_OK"),
+    (0, 10, "RUBIX_DB_UNAVAILABLE"),
 ])
-def test_the_live_overlay_reports_its_own_state(available, total, status, expected):
+def test_the_live_quote_line_says_none_whatever_an_old_job_recorded(available, total, status):
+    """It graded the Rubix overlay; the feed is retired, so there is nothing to grade."""
     job, _ = _job(total=total)
     job.publish(state=jm.COMPLETED, rubix_overlay_available=available,
                 rubix_batch_status=status)
-    assert scan_status_view(job.progress())["live_overlay"] == expected
+    assert scan_status_view(job.progress())["live_overlay"] == LIVE_QUOTES_STATUS_EN
 
 
 def test_an_unavailable_rubix_overlay_never_changes_the_historical_provider():
@@ -480,7 +480,7 @@ def test_an_unavailable_rubix_overlay_never_changes_the_historical_provider():
     job.publish(state=jm.COMPLETED, rubix_overlay_available=0,
                 rubix_batch_status="RUBIX_DB_UNAVAILABLE")
     view = scan_status_view(job.progress())
-    assert view["live_overlay"] == "Rubix Unavailable"
+    assert view["live_overlay"] == LIVE_QUOTES_STATUS_EN
     assert view["historical_source"] == "EODHD cache"
     for value in view.values():
         assert "yahoo" not in str(value).lower()

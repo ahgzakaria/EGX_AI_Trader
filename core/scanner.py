@@ -397,9 +397,8 @@ def scan_symbols(source, data_purpose="scanner", scan_context=None, *,
     freshness_results = []
     required_lookback = int(settings.get("data").get("min_bars", 250))
 
-    # One scan-scoped context: one EODHD session, one expected-completed-session
-    # resolution, and ONE batched Rubix overlay read for the whole universe. The
-    # per-symbol path below therefore opens no Rubix connection of its own.
+    # One scan-scoped context: one EODHD session and one expected-completed-session
+    # resolution. No live quote is read: the Rubix feed was retired on 2026-09-10.
     cancelled = False
     # ``emit`` is a no-op unless a caller supplied a progress callback, so every
     # existing call site keeps its exact previous behaviour.
@@ -409,7 +408,6 @@ def scan_symbols(source, data_purpose="scanner", scan_context=None, *,
 
     if scan_context is None:
         reset_research_caches()
-        emit("RUBIX_PREPARING", total=len(symbols))
         scan_ctx = build_scan_context(symbols, cancellation_event=cancellation_event,
                                       breaker=getattr(job, "breaker", None))
         owns_context = True
@@ -421,9 +419,6 @@ def scan_symbols(source, data_purpose="scanner", scan_context=None, *,
     else:
         scan_ctx = scan_context
         owns_context = False
-    emit("RUBIX_READY", available=scan_ctx.rubix_available_count,
-         missing=len(symbols) - scan_ctx.rubix_available_count,
-         status=scan_ctx.rubix_batch_status)
     emit("SCAN_STARTING", total=len(symbols))
 
     # Immutable evidence is still captured for every symbol, but its serialization runs

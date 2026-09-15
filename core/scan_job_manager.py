@@ -51,8 +51,6 @@ TERMINAL_STATES = frozenset({CANCELLED, COMPLETED, COMPLETED_WITH_GAPS, FAILED})
 # -- progress events emitted by the scanner ---------------------------------- #
 
 SCAN_STARTING = "SCAN_STARTING"
-RUBIX_PREPARING = "RUBIX_PREPARING"
-RUBIX_READY = "RUBIX_READY"
 SYMBOL_STARTING = "SYMBOL_STARTING"
 SYMBOL_COMPLETED = "SYMBOL_COMPLETED"
 SYMBOL_FAILED = "SYMBOL_FAILED"
@@ -141,6 +139,8 @@ class ScanProgress:
     eodhd_cache_misses: int = 0
     eodhd_refresh_attempts: int = 0
     eodhd_refresh_successes: int = 0
+    # Nothing sets these since the Rubix feed was retired; they stay so the fields a
+    # job snapshot has always carried still exist.
     rubix_overlay_available: int = 0
     rubix_overlay_missing: int = 0
     rubix_batch_status: str = ""
@@ -698,7 +698,7 @@ def _run_job(job, source, purpose, runner=None):
     from core.scanner import scan_symbols
 
     try:
-        job.publish(state=PREPARING_RUBIX, stage="Loading Rubix quote overlays")
+        job.publish(state=STARTING, stage="Preparing scan")
         execute = runner or scan_symbols
         result = execute(source, data_purpose=purpose,
                          progress=make_progress_reporter(job),
@@ -748,13 +748,6 @@ def _apply_event(job, event, payload):
     if event == SCAN_STARTING:
         job.publish(state=SCANNING, stage="Scanning symbols",
                     total=int(payload.get("total", snapshot.total)))
-    elif event == RUBIX_PREPARING:
-        job.publish(state=PREPARING_RUBIX, stage="Loading Rubix quote overlays")
-    elif event == RUBIX_READY:
-        job.publish(state=SCANNING, stage="Scanning symbols",
-                    rubix_overlay_available=int(payload.get("available", 0)),
-                    rubix_overlay_missing=int(payload.get("missing", 0)),
-                    rubix_batch_status=str(payload.get("status", "")))
     elif event == SYMBOL_STARTING:
         job.publish(current_symbol=str(payload.get("symbol", "")))
     elif event in (SYMBOL_COMPLETED, SYMBOL_FAILED):

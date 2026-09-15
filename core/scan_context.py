@@ -18,17 +18,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import logging
 import threading
-import time
 
 logger = logging.getLogger(__name__)
 
-# Typed batch states for the live-quote overlay. A failure here is disclosed, never
-# replaced by another provider.
-RUBIX_BATCH_OK = "RUBIX_BATCH_OK"
-RUBIX_DB_BUSY = "RUBIX_DB_BUSY"
-RUBIX_DB_UNAVAILABLE = "RUBIX_DB_UNAVAILABLE"
-RUBIX_BATCH_TIMEOUT = "RUBIX_BATCH_TIMEOUT"
-RUBIX_NOT_CHECKED = "RUBIX_NOT_CHECKED"
+# A scan used to open the Rubix database once and read a quote for every symbol. That
+# feed was retired on 2026-09-10 and nothing has written the database since, so a scan
+# reads no live quote at all; see ``core.live_feed``.
 
 
 class ScanCancelled(Exception):
@@ -40,16 +35,11 @@ class ScanDataContext:
     """Resources shared by every symbol of ONE scan.
 
     ``eodhd_client`` is this scan's session. ``expected_completed_session`` is resolved
-    once. ``rubix_overlays`` is the single batched live-quote map. ``cancellation_event``
-    is checked between symbols and before any provider work.
+    once. ``cancellation_event`` is checked between symbols and before any provider work.
     """
 
     eodhd_client: object = None
     expected_completed_session: object = None
-    rubix_overlays: dict = field(default_factory=dict)
-    rubix_batch_status: str = RUBIX_NOT_CHECKED
-    rubix_batch_detail: str = ""
-    rubix_batch_seconds: float = 0.0
     cancellation_event: threading.Event = field(default_factory=threading.Event)
     # Bounds for any refresh this scan performs. ``None`` means use the module default.
     request_deadline_seconds: float = None
@@ -92,18 +82,6 @@ class ScanDataContext:
 
     # -- live quote overlay ------------------------------------------------- #
 
-    def overlay_for(self, symbol):
-        """The batched overlay for ``symbol``, or ``None`` when it has none.
-
-        Never opens a connection and never falls back to another provider.
-        """
-        return self.rubix_overlays.get(symbol)
-
-    @property
-    def rubix_available_count(self) -> int:
-        return sum(1 for overlay in self.rubix_overlays.values()
-                   if isinstance(overlay, dict) and overlay.get("available"))
-
     # -- lifetime ----------------------------------------------------------- #
 
     def close(self):
@@ -126,14 +104,13 @@ class ScanDataContext:
         return False
 
 
-def build_scan_context(symbols, *, rubix_provider=None, eodhd_client=None,
-                       cancellation_event=None, load_overlays=True, breaker=None):
+def build_scan_context(symbols, *, eodhd_client=None, cancellation_event=None,
+                       breaker=None):
     """Resolve every once-per-scan answer and return the context.
 
-    ``symbols`` is the approved universe in its original order. The Rubix overlay map is
-    loaded with ONE batched call; if that fails the scan still proceeds on completed EODHD
-    daily history with a typed batch status, because a missing live overlay must never be
-    substituted from another provider.
+    ``symbols`` is the approved universe in its original order. No live quote is loaded:
+    the Rubix feed is retired, and a missing live quote is never substituted from another
+    provider.
     """
     from core.research_router import _compute_expected_completed_session
 
@@ -151,47 +128,5 @@ def build_scan_context(symbols, *, rubix_provider=None, eodhd_client=None,
         context._owns_client = False
 
     context.expected_completed_session = _compute_expected_completed_session()
-
-    if load_overlays:
-        _load_overlays(context, symbols, rubix_provider)
     return context
 
-
-def _load_overlays(context, symbols, rubix_provider):
-    """One batched Rubix read for the whole universe, with typed failure states."""
-    from providers.base_provider import (
-        ProviderConfigurationError,
-        ProviderConnectionError,
-        ProviderError,
-    )
-
-    if rubix_provider is None:
-        from core.data_provider import _provider_instances
-        rubix_provider = _provider_instances().get("rubix")
-    if rubix_provider is None or not hasattr(rubix_provider,
-                                             "load_latest_quote_overlays"):
-        context.rubix_batch_status = RUBIX_DB_UNAVAILABLE
-        context.rubix_batch_detail = "no Rubix provider is configured"
-        return
-
-    started = time.monotonic()
-    try:
-        context.rubix_overlays = rubix_provider.load_latest_quote_overlays(symbols)
-        context.rubix_batch_status = RUBIX_BATCH_OK
-    except ProviderConfigurationError as error:
-        context.rubix_batch_status = RUBIX_DB_UNAVAILABLE
-        context.rubix_batch_detail = str(error)
-    except ProviderConnectionError as error:
-        detail = str(error).lower()
-        context.rubix_batch_status = (
-            RUBIX_DB_BUSY if "lock" in detail or "busy" in detail
-            else RUBIX_DB_UNAVAILABLE)
-        context.rubix_batch_detail = str(error)
-    except ProviderError as error:
-        context.rubix_batch_status = RUBIX_DB_UNAVAILABLE
-        context.rubix_batch_detail = str(error)
-    finally:
-        context.rubix_batch_seconds = time.monotonic() - started
-    if context.rubix_batch_status != RUBIX_BATCH_OK:
-        logger.warning("Rubix batch overlay unavailable (%s): %s",
-                       context.rubix_batch_status, context.rubix_batch_detail)
