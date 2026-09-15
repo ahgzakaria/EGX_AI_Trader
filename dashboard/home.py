@@ -18,9 +18,39 @@ from dashboard.formatting import (
 from dashboard.scan_status_panel import coverage_view, scan_status_view
 from decision_support.service import DecisionSupportService
 from dashboard.stock_details import show_stock_details
-from dashboard.ui import (COLOURS, context_strip, empty_state, notice,
-                          opportunity_card, opportunity_grid, page_header,
-                          section_header, status_bar)
+from dashboard.ui import (COLOURS, EMA20_MARKER_HELP, context_strip,
+                          ema20_marker_html, ema20_marker_text, empty_state,
+                          notice, opportunity_card, opportunity_grid,
+                          page_header, section_header, status_bar)
+
+#: The compact table's marker column. Shown beside every signal; decides nothing.
+EMA20_COLUMN = "بُعد EMA20"
+
+
+def _ema20_distance(row):
+    """The signal close's distance from EMA20 in percent, or None.
+
+    Read from the features the scanner attached to the row (the last bar of
+    the indicator frame), falling back to that frame itself. Never computed
+    here: this is the same `EMA20_DIST` the research measured and the forward
+    tester stores, so the marker, the study and the live check agree.
+    """
+    for source in (row.get("AIFeatures"), row.get("Data")):
+        try:
+            if source is None:
+                continue
+            if isinstance(source, pd.DataFrame):
+                if "EMA20_DIST" not in source.columns or source.empty:
+                    continue
+                value = source["EMA20_DIST"].iloc[-1]
+            else:
+                value = source.get("EMA20_DIST")
+            value = float(value)
+        except (TypeError, ValueError, AttributeError, IndexError):
+            continue
+        if value == value:
+            return value
+    return None
 
 
 logger = logging.getLogger(__name__)
@@ -503,6 +533,9 @@ SWING_PRIMARY_COLUMNS = (
     "الهدف 2",
     "العائد إلى المخاطرة",
     "الثقة",
+    # Beside the decision, never part of it: which side of EMA20 the signal
+    # closed on. Measured better at or below in both eras; not a rule.
+    EMA20_COLUMN,
     "الحالة التشغيلية",
 )
 
@@ -595,6 +628,7 @@ def _render_opportunities(frame):
             stop=row.get("StopLoss"), buy_low=row.get("BuyLow"),
             buy_high=row.get("BuyHigh"), price=row.get("Price"),
             target2=row.get("Target2"),
+            marker_html=ema20_marker_html(_ema20_distance(row)),
         ))
     st.markdown(opportunity_grid(cards), unsafe_allow_html=True)
 
@@ -636,6 +670,11 @@ def _swing_primary_frame(frame):
     for column, digits in _ABSENT_AS_ZERO.items():
         if column in view.columns:
             view[column] = [_level(value, digits) for value in view[column]]
+    # Read row by row from the source, never from `view`: the features the
+    # scanner attached are not among the renamed columns. An unmeasured
+    # distance is an em dash, never a side.
+    view[EMA20_COLUMN] = [ema20_marker_text(_ema20_distance(row))
+                          for _, row in source.iterrows()]
     return view.reindex(columns=SWING_PRIMARY_COLUMNS)
 
 
@@ -1193,6 +1232,10 @@ def show_dashboard():
             use_container_width=True,
             hide_index=True,
             height=min(650, 82 + len(filtered) * 42),
+            column_config={
+                EMA20_COLUMN: st.column_config.TextColumn(
+                    EMA20_COLUMN, width="medium", help=EMA20_MARKER_HELP),
+            },
         )
 
     _render_swing_advanced_research(

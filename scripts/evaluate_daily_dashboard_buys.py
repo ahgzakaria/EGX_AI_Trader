@@ -233,6 +233,46 @@ def simulate_account(rows, *, capital, risk_percent, max_open_positions,
     }
 
 
+def ema20_distance(indicators_json):
+    """The EMA20 distance the dashboard showed for a decision, or None.
+
+    Read from the indicators the forward tester stored with the signal -- the
+    same `EMA20_DIST` field the dashboard's marker reads -- so the split below
+    tests the marker the reader actually saw, not a recomputation of it.
+    """
+    import json
+
+    try:
+        value = json.loads(indicators_json or "{}").get("EMA20_DIST")
+        value = float(value)
+    except (TypeError, ValueError, AttributeError):
+        return None
+    return None if value != value else value
+
+
+def split_by_ema20(rows):
+    """Closed distinct trades, split at the pre-registered EMA20 threshold."""
+    groups = {"at/below EMA20": [], "above EMA20": [], "unmeasured": []}
+    for row in rows:
+        if row.get("outcome") != "CLOSED" or row.get("repeat_of_open"):
+            continue
+        distance = row.get("ema20_dist")
+        key = ("unmeasured" if distance is None
+               else "at/below EMA20" if distance <= 0 else "above EMA20")
+        groups[key].append(float(row["net_return_pct"]))
+    out = {}
+    for label, returns in groups.items():
+        if not returns:
+            out[label] = "n=0"
+            continue
+        gains = sum(r for r in returns if r > 0)
+        losses = -sum(r for r in returns if r < 0)
+        out[label] = (f"n={len(returns)} win={sum(r > 0 for r in returns) / len(returns) * 100:.0f}% "
+                      f"mean={sum(returns) / len(returns):+.2f}% "
+                      f"PF={(gains / losses) if losses else float('inf'):.2f}")
+    return out
+
+
 def _write(path, rows):
     path.parent.mkdir(parents=True, exist_ok=True)
     fields = sorted({k for row in rows for k in row})
@@ -290,6 +330,16 @@ def main(argv=None):
     print("\nthe account")
     for key, value in account.items():
         print(f"  {key:30} {value}")
+
+    # --- the EMA20 marker, confirmed or not by the live record
+    distances = {(s["ticker"], s["signal_date"]): ema20_distance(s["indicators_json"])
+                 for s in signals}
+    for row in rows:
+        row["ema20_dist"] = distances.get((row["ticker"], row["signal_date"]))
+    print("\nlive outcomes by the dashboard's EMA20 marker "
+          "(research/ema20_entry_gate.py: at or below 0 measured better)")
+    for label, stats in split_by_ema20(rows).items():
+        print(f"  {label:16} {stats}")
     print(f"\nwrote {OUT.relative_to(PROJECT_ROOT)} and {LEDGER.relative_to(PROJECT_ROOT)}")
     return 0
 

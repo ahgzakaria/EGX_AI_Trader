@@ -1156,10 +1156,87 @@ def _scale_positions(stop, low, high, price, target):
             "now": at(price)}
 
 
+#: The pre-registered threshold from scripts/research/ema20_entry_gate.py: the
+#: close at or below its own twenty-day average. Zero is EMA20's neutral point,
+#: not a cut chosen from the data.
+EMA20_THRESHOLD = 0.0
+
+EMA20_AT_OR_BELOW, EMA20_ABOVE, EMA20_UNMEASURED = "at_or_below", "above", "unmeasured"
+
+
+def ema20_side(distance):
+    """Which side of EMA20 the signal's close sat on, or unmeasured.
+
+    Unmeasured is its own state and never a side: a missing distance classified
+    as "above" would read as a measured judgement about a number nobody had.
+    """
+    try:
+        value = float(distance)
+    except (TypeError, ValueError):
+        return EMA20_UNMEASURED
+    if value != value:
+        return EMA20_UNMEASURED
+    return EMA20_AT_OR_BELOW if value <= EMA20_THRESHOLD else EMA20_ABOVE
+
+
+def ema20_marker_text(distance):
+    """The marker as plain text, for a table cell. An em dash when unmeasured."""
+    side = ema20_side(distance)
+    if side == EMA20_UNMEASURED:
+        return "—"
+    label = "تحت EMA20" if side == EMA20_AT_OR_BELOW else "فوق EMA20"
+    return f"{float(distance):+.1f}% · {label}"
+
+
+#: Why the marker exists, in the words the page shows. A marker, not a rule:
+#: nothing in the decision changed.
+EMA20_MARKER_HELP = (
+    "بُعد إغلاق الإشارة عن متوسط EMA20. على السجل التاريخي (2017-2026)، "
+    "صفقات هذه الاستراتيجية التي دخلت عند EMA20 أو تحته: معامل ربح 2.42 "
+    "مقابل 1.54 للكل، ونسبة نجاح 69% مقابل 39%، في الفترتين قبل 2023 وبعدها. "
+    "علامة للمتابعة وليست قاعدة: القرار نفسه لم يتغير، والسجل الحي لم يؤكدها بعد."
+)
+
+
+def ema20_marker_html(distance):
+    """A chip beside the decision: which side of EMA20 the signal closed on.
+
+    Blue for at-or-below, because that is the side measured better and blue is
+    this interface's advisory colour -- never green, which would read as an
+    instruction to buy. Grey for above. The unknown mark when unmeasured.
+    """
+    side = ema20_side(distance)
+    if side == EMA20_UNMEASURED:
+        return (f'<span class="sig" title="{html.escape(EMA20_MARKER_HELP)}" '
+                f'style="color:var(--unknown);border:1px dashed var(--unknown)">'
+                f'EMA20 —·—</span>')
+    tone = _TONE["blue"] if side == EMA20_AT_OR_BELOW else _TONE["gray"]
+    return (f'<span class="sig" title="{html.escape(EMA20_MARKER_HELP)}" '
+            f'style="color:{tone[2]};background:{tone[0]};border:1px solid {tone[1]}">'
+            f'{html.escape(ema20_marker_text(distance))}</span>')
+
+
+def _badge_group(badge, marker):
+    """The decision badge, with the EMA20 marker beside it when there is one.
+
+    With no marker the badge is returned exactly as before, so a card that
+    carries no marker renders byte for byte as it did.
+    """
+    if not marker:
+        return badge
+    return ('<span style="display:flex;gap:.3rem;flex-wrap:wrap;'
+            'justify-content:flex-end;align-items:flex-start">'
+            f'{badge}{marker}</span>')
+
+
 def opportunity_card(*, ticker, name="", sector="", regime="", signal="",
                      tone="gray", figures=(), stop=None, buy_low=None,
-                     buy_high=None, price=None, target2=None):
-    """One candidate: what it is, what was decided, and the trade to scale."""
+                     buy_high=None, price=None, target2=None, marker_html=""):
+    """One candidate: what it is, what was decided, and the trade to scale.
+
+    ``marker_html`` is trusted markup built by a component in this module
+    (``ema20_marker_html``), placed beside the decision badge.
+    """
     signal_colour = _TONE.get(tone, _TONE["gray"])
     head = (
         f'<div class="head"><div><div>'
@@ -1172,9 +1249,11 @@ def opportunity_card(*, ticker, name="", sector="", regime="", signal="",
            + " · ".join(html.escape(str(part)) for part in (sector, regime) if part)
            + '</div>' if (sector or regime) else "")
         + '</div>'
-        + (f'<span class="sig" style="color:{signal_colour[2]};'
-           f'background:{signal_colour[0]};border:1px solid {signal_colour[1]}">'
-           f'{html.escape(str(signal))}</span>' if signal else "")
+        + (_badge_group(
+            (f'<span class="sig" style="color:{signal_colour[2]};'
+             f'background:{signal_colour[0]};border:1px solid {signal_colour[1]}">'
+             f'{html.escape(str(signal))}</span>' if signal else ""),
+            marker_html))
         + '</div>')
 
     cells = "".join(
