@@ -116,9 +116,14 @@ today; money leaving the sector around a stock still being traded is not money
 leaving the stock.
 
 During an open session the sector reading comes from
-`sector_flow.intraday.forecast_rest_of_day` — the opening window blended with
-yesterday's full session, which was measured to beat either input alone. Outside
-a session it falls back to the completed-session sector strength. The stock's
+`sector_flow.intraday.forecast_rest_of_day` — today's opening window, read from
+MubasherTrade PRO's own minute store, blended with the previous completed
+session. Measured on 20 complete sessions (2026-08-18 to 2026-09-15) it has the
+lowest error (MAE 0.0167 against 0.0183 for the previous session alone and
+0.0210 for the opening window alone) and the best rank correlation, but names
+the top three sectors less often than the previous session alone (70% against
+77%). Before 10:00, after 14:30, on a closed day, or when today's opening window
+was not observed, it falls back to the completed-session sector strength. The stock's
 own relative volume is always measured on completed daily bars, because today's
 partial volume is not comparable to a full session's average until the session
 ends.
@@ -135,8 +140,9 @@ the 48 live ORB signals were. Until then the page labels them
 
 ## 4. Price selection
 
-* **Live** only when the Rubix overlay reports itself `FRESH` — the provider's
-  own classification against the exchange clock, not re-derived.
+* **Live** only when a quote reports itself `FRESH`. There has been no live
+  quote since the Rubix feed was retired on 2026-09-10, so every price is the
+  completed close below.
 * Otherwise the **last completed session's close**, labelled as such, with the
   reason the live quote was refused.
 * Neither available → **no price**, and the rules withhold. A stale price shown

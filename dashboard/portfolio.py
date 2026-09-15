@@ -110,7 +110,7 @@ def _sector_strengths():
 
 @st.cache_data(ttl=120, show_spinner=False)
 def _sector_intraday():
-    """Empty since the Rubix feed was retired; see ``default_sector_intraday``."""
+    """Refreshed every two minutes while the session is open; empty outside it."""
 
     return default_sector_intraday()
 

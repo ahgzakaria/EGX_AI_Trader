@@ -6,6 +6,7 @@ makes rather than the availability of a market feed.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 
 import pandas as pd
@@ -77,6 +78,74 @@ def view_for(store, **overrides):
 # --------------------------------------------------------------------------- #
 # Price selection
 # --------------------------------------------------------------------------- #
+
+# --------------------------------------------------------------------------- #
+# Sector forecast for the rest of today
+# --------------------------------------------------------------------------- #
+
+# 2026-09-15 is a Tuesday, a trading day. Cairo is UTC+3 in September.
+OPEN_NOW = datetime(2026, 9, 15, 9, 0, tzinfo=timezone.utc)          # 12:00 Cairo
+
+
+def _forecast_inputs(monkeypatch, forecast=None):
+    import decision_support.sector_analysis as sectors
+    import sector_flow.builder as builder
+    import sector_flow.history as history
+    import sector_flow.intraday as intraday
+
+    asked = {}
+    monkeypatch.setattr(sectors, "load_sector_map",
+                        lambda path: {"ABUK.CA": "Basic Resources"})
+    monkeypatch.setattr(intraday, "load_mubasher_minute_turnover",
+                        lambda sector_map, root=None: "minutes")
+    monkeypatch.setattr(builder, "load_saved", lambda *a, **k: "daily")
+    monkeypatch.setattr(history, "complete_sessions",
+                        lambda panel, *a, **k: f"complete {panel}")
+
+    def forecast_rest_of_day(minutes, daily, session=None, weight=0.5):
+        asked.update(minutes=minutes, daily=daily, session=session)
+        if forecast is not None:
+            return forecast
+        return pd.DataFrame({"Sector": ["Basic Resources", "Banks"],
+                             "Change": [-0.02, 0.01]})
+
+    monkeypatch.setattr(intraday, "forecast_rest_of_day", forecast_rest_of_day)
+    return asked
+
+
+def test_the_sector_forecast_comes_from_mubasher_while_the_session_is_open(monkeypatch):
+    from holdings.assistant import default_sector_intraday
+
+    asked = _forecast_inputs(monkeypatch)
+    assert default_sector_intraday(now=OPEN_NOW) == {"Basic Resources": -0.02,
+                                                     "Banks": 0.01}
+    assert asked == {"minutes": "minutes", "daily": "complete daily",
+                     "session": "2026-09-15"}
+
+
+@pytest.mark.parametrize("now", [
+    datetime(2026, 9, 15, 6, 30, tzinfo=timezone.utc),     # 09:30 Cairo, before the open
+    datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc),     # 15:00 Cairo, after the close
+    datetime(2026, 9, 18, 9, 0, tzinfo=timezone.utc),      # a Friday
+])
+def test_outside_an_open_session_the_minute_store_is_not_read(monkeypatch, now):
+    """After the close the hours it forecasts are over; ``Evidence.sector_weak``
+    then answers from the daily strength, as it documents."""
+    import sector_flow.intraday as intraday
+    from holdings.assistant import default_sector_intraday
+
+    monkeypatch.setattr(
+        intraday, "load_mubasher_minute_turnover",
+        lambda *a, **k: pytest.fail("the minute store was read outside the session"))
+    assert default_sector_intraday(now=now) == {}
+
+
+def test_no_opening_window_observed_today_is_no_forecast(monkeypatch):
+    from holdings.assistant import default_sector_intraday
+
+    _forecast_inputs(monkeypatch, forecast=pd.DataFrame())
+    assert default_sector_intraday(now=OPEN_NOW) == {}
+
 
 def test_a_fresh_quote_is_used_and_labelled_live():
     selected = select_price(fresh_quote(11.5), frame())

@@ -115,15 +115,49 @@ def default_sector_map():
         return {}
 
 
-def default_sector_intraday():
-    """``{}``: no sector forecast for the rest of today.
+def default_sector_intraday(now=None):
+    """``{sector: forecast change in share for the rest of today}``, or ``{}``.
 
-    The forecast blended today's opening window, read from the Rubix minute
-    store, with the previous session. That store stopped at 14:18 on 2026-09-10
-    when the feed was retired, so there is no opening window to blend.
+    Built by ``sector_flow.intraday`` from MubasherTrade PRO's own minute store:
+    today's opening window blended with the previous completed session.
+    Measured on 20 complete sessions, the blend has the lowest error (MAE
+    0.0167 against 0.0183 for the previous session alone) but names the top
+    three sectors less often (70% against 77%).
+
+    Only while the session is open. ``Evidence.sector_weak`` lets this win over
+    the daily strength because it describes the hours still to come; after the
+    close those hours are over, and the daily strength answers instead. Empty
+    also when today's opening window has not been observed.
     """
 
-    return {}
+    try:
+        from core.egx_session import cairo_now, egx_session_phase
+
+        if egx_session_phase(now) != "OPEN":
+            return {}
+
+        from decision_support.sector_analysis import load_sector_map
+        from sector_flow.builder import load_saved
+        from sector_flow.history import complete_sessions
+        from sector_flow.intraday import (forecast_rest_of_day,
+                                          load_mubasher_minute_turnover)
+
+        sector_map = load_sector_map(SECTOR_FILE)
+        if not sector_map:
+            return {}
+        forecast = forecast_rest_of_day(
+            load_mubasher_minute_turnover(sector_map),
+            complete_sessions(load_saved()),
+            session=cairo_now(now).date().isoformat(),
+        )
+        if forecast is None or forecast.empty:
+            return {}
+        return {
+            str(row["Sector"]): float(row["Change"])
+            for _, row in forecast.iterrows()
+        }
+    except Exception:                                            # noqa: BLE001
+        return {}
 
 
 # --------------------------------------------------------------------------- #

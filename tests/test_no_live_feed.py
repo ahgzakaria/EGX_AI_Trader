@@ -225,14 +225,15 @@ def test_the_portfolio_and_ai_analysis_read_no_quote(monkeypatch):
 
     for name in ("quote_overlay", "load_latest_quote_overlays", "load_history"):
         monkeypatch.setattr(RubixSQLiteProvider, name, refuse)
-    # The portfolio's sector forecast stays empty until it is decided to feed
-    # its exit rule from Mubasher's minutes.
+    # Outside an open session the portfolio's sector forecast reads nothing.
     monkeypatch.setattr(intraday, "load_mubasher_minute_turnover", refuse)
     assert ai._default_live_quote("COMI.CA") is None
     assert ai._default_intraday("COMI.CA") is None
     assert assistant.default_quote_loader("COMI") is None
     assert assistant.default_quote_overlays(("COMI", "SWDY")) == {}
-    assert assistant.default_sector_intraday() == {}
+    from datetime import datetime, timezone
+    after_close = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)      # 15:00 Cairo
+    assert assistant.default_sector_intraday(now=after_close) == {}
     assert not hasattr(ai, "_rubix_provider")
 
 
