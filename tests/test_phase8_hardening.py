@@ -75,15 +75,20 @@ def _sqlite(path: Path):
 
 
 def test_backup_restore_is_checksummed_and_never_overwrites(tmp_path):
-    rubix = tmp_path / "rubix.db"
     forward = tmp_path / "forward.db"
-    _sqlite(rubix)
+    portfolio = tmp_path / "portfolio.db"
     _sqlite(forward)
-    backup = create_backup(tmp_path / "backups", rubix, forward)
+    _sqlite(portfolio)
+    backup = create_backup(tmp_path / "backups", forward_db=forward,
+                           portfolio_db=portfolio)
     assert verify_backup(backup)["valid"] is True
     destination = tmp_path / "restore"
     restore_backup(backup, destination)
-    assert (destination / "rubix_live_market.db").is_file()
+    assert (destination / "forward_testing.db").is_file()
+    assert (destination / "portfolio.db").is_file()
+    # The retired Rubix quote database is not part of a backup.
+    assert not (destination / "rubix_live_market.db").exists()
+    assert "rubix_db" not in __import__("inspect").signature(create_backup).parameters
     with pytest.raises(FileExistsError):
         restore_backup(backup, destination)
 

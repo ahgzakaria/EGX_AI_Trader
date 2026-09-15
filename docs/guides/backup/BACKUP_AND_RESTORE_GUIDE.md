@@ -6,9 +6,11 @@
 venv\Scripts\python.exe scripts\backup_data.py
 ```
 
-This creates `backups/BACKUP_YYYYMMDD_HHMMSS/` atomically. It uses SQLite's online backup API for the Rubix and Forward Testing databases and stores experiment metadata in a ZIP. `BACKUP_MANIFEST.json` records checksums, integrity results, sizes, and confirms that no secrets are included.
+This creates `backups/BACKUP_YYYYMMDD_HHMMSS/` atomically. It uses SQLite's online backup API for the Forward Testing and Portfolio databases and stores experiment metadata in a ZIP. `BACKUP_MANIFEST.json` records checksums, integrity results, sizes, and confirms that no secrets are included.
 
-Missing Rubix is recorded as `MISSING`; it does not cause the valid Forward database backup to be discarded.
+A missing database is recorded as `MISSING`; it does not cause the others to be discarded.
+
+The Rubix quote database (`data/rubix_live_market.db`, about 8 GB) is not backed up. The feed was retired on 2026-09-10, so the file no longer changes and no page reads it. It is the only copy of that history: if you want to keep it, copy it once to another disk yourself.
 
 ## Restore safely
 

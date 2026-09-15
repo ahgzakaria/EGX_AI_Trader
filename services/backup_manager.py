@@ -66,7 +66,9 @@ def _backup_sqlite(source: Path, destination: Path) -> dict:
 
 def create_backup(
     backup_root=DEFAULT_BACKUP_ROOT,
-    rubix_db=PROJECT_ROOT / "data" / "rubix_live_market.db",
+    # The Rubix quote database is not backed up. The feed was retired on
+    # 2026-09-10, so the file no longer changes, and at 8 GB it made every
+    # backup a full copy of something a page no longer reads.
     forward_db=PROJECT_ROOT / "data" / "forward_testing.db",
     # The portfolio is the one database here that no provider can rebuild. A
     # quote, a candle or a scan result can all be fetched again; what the user
@@ -84,7 +86,6 @@ def create_backup(
     staging.mkdir()
     try:
         databases = [
-            _backup_sqlite(Path(rubix_db), staging / "rubix_live_market.db"),
             _backup_sqlite(Path(forward_db), staging / "forward_testing.db"),
             _backup_sqlite(Path(portfolio_db), staging / "portfolio.db"),
         ]
