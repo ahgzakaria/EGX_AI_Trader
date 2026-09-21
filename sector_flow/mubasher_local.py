@@ -151,6 +151,55 @@ def _open_read_only(path, immutable=False):
     return sqlite3.connect(uri, uri=True)
 
 
+#: The file the terminal downloads into before replacing ``history.db`` with it.
+HISTORY_STAGED_SUFFIX = ".tmp"
+
+
+def history_database(root=None):
+    """The history file to read: the terminal's, or the download beside it.
+
+    MubasherTrade PRO downloads the archive into ``history.db.tmp`` and then
+    replaces ``history.db`` with it. On this machine that replacement stopped
+    happening after 2026-09-07: the downloads of 09-12, 09-15 and 09-21 each
+    left a complete ``.tmp`` holding sessions the live file lacks, and EGX30 --
+    which no other file carries -- stopped with it, so the strategy's market
+    filter has been reading a fortnight-old market.
+
+    The newer of the two is read, and only when it opens as a database that
+    holds instrument tables. This is the terminal's own download in the
+    terminal's own format: nothing here repairs, promotes or writes either
+    file. ``None`` when neither can be read.
+    """
+
+    base = find_root(root)
+    if base is None:
+        return None
+    live = base / HISTORY_RELATIVE
+    staged = live.with_name(live.name + HISTORY_STAGED_SUFFIX)
+    if not staged.is_file():
+        return live if live.is_file() else None
+    if live.is_file() and staged.stat().st_mtime <= live.stat().st_mtime:
+        return live
+
+    try:
+        with _open_read_only(staged, immutable=True) as connection:
+            # Any instrument table, by the terminal's own naming. Not the equity
+            # filter: a file holding only ``_EGX30`` is still the archive, and
+            # the index is the half of it that nothing else carries.
+            if not connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' "
+                    "AND name LIKE '\\_%' ESCAPE '\\' LIMIT 1").fetchone():
+                raise sqlite3.DatabaseError("no instrument tables")
+    except Exception as error:                  # a half-written download
+        logger.warning("mubasher history: %s unusable (%s)", staged.name, error)
+        return live if live.is_file() else None
+
+    logger.warning(
+        "mubasher history: reading %s -- the terminal downloaded it but did not "
+        "replace %s with it", staged.name, live.name)
+    return staged
+
+
 def _instrument_tables(connection, symbols=None):
     """Return ``(table, ticker)`` for the instruments an import should read."""
 
@@ -178,11 +227,12 @@ def read_history(root=None, symbols=None):
     """
 
     base = find_root(root)
-    if base is None or not (base / HISTORY_RELATIVE).exists():
+    history = history_database(root)
+    if base is None or history is None:
         return pd.DataFrame()
 
     frames = []
-    with _open_read_only(base / HISTORY_RELATIVE, immutable=True) as connection:
+    with _open_read_only(history, immutable=True) as connection:
         for table, ticker in _instrument_tables(connection, symbols):
             try:
                 rows = pd.read_sql(
@@ -224,12 +274,13 @@ def read_index(root=None, indices=None):
     """
 
     base = find_root(root)
-    if base is None or not (base / HISTORY_RELATIVE).exists():
+    history = history_database(root)
+    if base is None or history is None:
         return pd.DataFrame()
 
     wanted = dict(indices or INDEX_TABLES)
     frames = []
-    with _open_read_only(base / HISTORY_RELATIVE, immutable=True) as connection:
+    with _open_read_only(history, immutable=True) as connection:
         present = {str(name).upper(): name for (name,) in connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table'")}
         for symbol, table in sorted(wanted.items()):
@@ -555,7 +606,7 @@ def _isin_aliases(base, scope, isin_of=None, by_isin=None):
             by_isin = isin_ticker_map(base)
         if not by_isin:
             return {}
-        with _open_read_only(base / HISTORY_RELATIVE, immutable=True) as connection:
+        with _open_read_only(history_database(base), immutable=True) as connection:
             held = {ticker for _, ticker in _instrument_tables(connection)}
     except Exception as error:                              # an enrichment, not a gate
         logger.warning("mubasher import: ISIN resolution skipped (%s)", error)

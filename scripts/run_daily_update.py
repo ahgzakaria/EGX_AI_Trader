@@ -117,14 +117,20 @@ def check_sources(expected):
         return None, False
 
     _say(f"  terminal data   {base}")
-    history = base / local.HISTORY_RELATIVE
+    # Whichever file the import will actually read: the terminal downloads into
+    # `history.db.tmp` and then replaces `history.db` with it, and when that
+    # replacement does not happen the download beside it is the real archive.
+    history = local.history_database(base) or (base / local.HISTORY_RELATIVE)
+    if history.name != Path(local.HISTORY_RELATIVE).name:
+        _say(f"  note            reading {history.name} -- MubasherTrade PRO "
+             "downloaded it but did not put it in place")
     intraday = base / local.INTRADAY_RELATIVE
 
     history_date = intraday_date = None
     if history.exists():
         stamp = _dt.datetime.fromtimestamp(history.stat().st_mtime)
         history_date = _max_history_date(history)
-        _say(f"  history.db      through {history_date or '?'}   "
+        _say(f"  {history.name:<15} through {history_date or '?'}   "
              f"(file written {stamp:%Y-%m-%d %H:%M})")
     else:
         _say("  history.db      MISSING")

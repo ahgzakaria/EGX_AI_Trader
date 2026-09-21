@@ -241,6 +241,95 @@ def test_the_scope_is_the_stores_own_and_not_every_table_in_the_file(tmp_path):
     assert not any(name.endswith("_r1") for name in scope)
 
 
+# --- the download the terminal did not put in place -------------------------
+
+def _stage(base, history_rows=(), *, newer=True, corrupt=False, empty=False):
+    """Write ``history.db.tmp`` beside the live file, as the terminal does."""
+    import os
+    import time
+
+    live = base / local.HISTORY_RELATIVE
+    staged = live.with_name(live.name + local.HISTORY_STAGED_SUFFIX)
+    if corrupt:
+        staged.write_bytes(b"half a download")
+    else:
+        with sqlite3.connect(staged) as connection:
+            if not empty:
+                for ticker, rows in history_rows:
+                    connection.execute(
+                        f'CREATE TABLE "_{ticker}" (INS TEXT, DATE TEXT, OP TEXT, '
+                        f'HIG TEXT, LOW TEXT, CLS TEXT, VOL TEXT, TOVR TEXT, NOTR TEXT)')
+                    connection.executemany(
+                        f'INSERT INTO "_{ticker}" VALUES (?,?,?,?,?,?,?,?,?)', rows)
+            else:
+                connection.execute("CREATE TABLE notes (value TEXT)")
+    stamp = time.time() + (60 if newer else -3600)
+    os.utime(staged, (stamp, stamp))
+    return staged
+
+
+def _row(date, close):
+    return ("0", date, close, close, close, close, "1000", "1000", "5")
+
+
+def test_the_download_the_terminal_left_behind_is_read(tmp_path):
+    """MubasherTrade PRO downloads into `history.db.tmp` and then replaces
+    `history.db` with it. On 2026-09-21 that replacement had not happened for
+    three downloads running: the live file stopped on 09-07 while a complete
+    `.tmp` held 09-20, and EGX30 -- which no other file carries -- stopped with
+    it, so the strategy's market filter read a fortnight-old market."""
+
+    base = _build_root(tmp_path, history_rows=[("COMI", [_row("20260907", "140")])])
+    _stage(base, [("COMI", [_row("20260907", "140"), _row("20260920", "151")])])
+
+    assert local.history_database(base).name == "history.db.tmp"
+    history = local.read_history(base, symbols=["COMI"])
+    assert history["session_date"].max() == "2026-09-20"
+
+
+def test_an_older_staged_file_is_ignored(tmp_path):
+    """Once the terminal succeeds, the leftover must not drag the record back."""
+
+    base = _build_root(tmp_path, history_rows=[("COMI", [_row("20260920", "151")])])
+    _stage(base, [("COMI", [_row("20260907", "140")])], newer=False)
+
+    assert local.history_database(base).name == "history.db"
+    assert local.read_history(base, symbols=["COMI"])["session_date"].max() == "2026-09-20"
+
+
+@pytest.mark.parametrize("flaw", ["corrupt", "empty"])
+def test_a_half_written_download_is_refused(tmp_path, flaw):
+    base = _build_root(tmp_path, history_rows=[("COMI", [_row("20260907", "140")])])
+    _stage(base, [], corrupt=(flaw == "corrupt"), empty=(flaw == "empty"))
+
+    assert local.history_database(base).name == "history.db"
+    assert local.read_history(base, symbols=["COMI"])["session_date"].max() == "2026-09-07"
+
+
+def test_the_staged_download_is_never_written_to(tmp_path):
+    """It belongs to the terminal. This reads it; it does not promote it."""
+    import hashlib
+
+    base = _build_root(tmp_path, history_rows=[("COMI", [_row("20260907", "140")])])
+    staged = _stage(base, [("COMI", [_row("20260920", "151")])])
+    before = hashlib.sha256(staged.read_bytes()).hexdigest()
+
+    local.import_local(base, database=str(tmp_path / "m.db"), symbols=["COMI"])
+
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == before
+    assert staged.exists(), "the download is the terminal's to place, not ours to move"
+
+
+def test_the_index_comes_from_whichever_file_is_read(tmp_path):
+    """EGX30 only moves when this archive does, which is why it matters."""
+
+    base = _build_root(tmp_path, history_rows=[("EGX30", [_row("20260907", "55000")])])
+    _stage(base, [("EGX30", [_row("20260907", "55000"), _row("20260920", "56200")])])
+
+    index = local.read_index(base)
+    assert index["session_date"].max() == "2026-09-20"
+
+
 def test_stale_history_is_reported_rather_than_assumed_current(tmp_path):
     """The metadata says how far each source reached, because they differ.
 
