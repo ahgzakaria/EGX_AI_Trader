@@ -142,6 +142,7 @@ def check_sources(expected):
         return base, True
 
     target = expected.isoformat()
+    _report_archive_lag(history_date, target)
     have = max([d for d in (history_date, intraday_date) if d], default=None)
     if have and have >= target:
         _say(f"  OK              {target} is present and will be imported.")
@@ -156,6 +157,68 @@ def check_sources(expected):
     _say("     Continuing anyway -- what is there will still be imported -- but")
     _say("     the candle will stay behind until the download is run.")
     return base, False
+
+
+#: When the prompt to download appears. A trading week, not half the index
+#: limit: at nine sessions behind -- where this machine was when the check was
+#: written -- a half-limit rule said nothing at all, and the index had been
+#: stale for a fortnight. A week behind is already worth a sentence.
+SESSIONS_IN_A_WEEK = 5
+
+
+def _sessions_behind(have, target):
+    """Trading sessions between two dates, by the exchange calendar.
+
+    Counting calendar days would call a weekend and a feast a lag.
+    """
+    from core.egx_session import next_trading_session
+
+    try:
+        day = _dt.date.fromisoformat(str(have)[:10])
+        end = _dt.date.fromisoformat(str(target)[:10])
+    except ValueError:
+        return 0
+    behind = 0
+    while day < end and behind < 400:
+        day = next_trading_session(day)
+        if day <= end:
+            behind += 1
+    return behind
+
+
+def _report_archive_lag(history_date, target):
+    """Say how far the manual archive is behind, and what that costs.
+
+    The minute store moves itself and fills the stock sessions the archive has
+    not reached, so a current minute store makes the run look fine while the
+    archive sits weeks old -- which is exactly what happened: it stopped on
+    2026-09-07 and nothing said so until 2026-09-21.
+
+    The archive is also the only file that carries EGX30. The minute store
+    cannot stand in for it: it holds no index at all. `strategy.market_analyzer`
+    reads that index, and past `INDEX_LAG_LIMIT_SESSIONS` behind it is refused
+    and the market filter stops applying to any decision -- so this says so
+    before that line, not after it.
+    """
+    from core.mubasher_live_history import INDEX_LAG_LIMIT_SESSIONS
+
+    if not history_date or history_date >= target:
+        return
+    behind = _sessions_behind(history_date, target)
+    if behind <= 0:
+        return
+
+    _say(f"  archive         {behind} session(s) behind {target} -- "
+         "and it is the only file that carries EGX30")
+    if behind >= INDEX_LAG_LIMIT_SESSIONS:
+        _say(f"     !! The index is now refused ({INDEX_LAG_LIMIT_SESSIONS}+ sessions "
+             "behind), so the market filter no longer blocks anything.")
+    elif behind >= SESSIONS_IN_A_WEEK:
+        _say(f"     !  At {INDEX_LAG_LIMIT_SESSIONS} sessions behind the index is "
+             "refused and the market filter stops applying.")
+    else:
+        return
+    _say("        Download Market History in MubasherTrade PRO, then run this again.")
 
 
 def _max_history_date(path):

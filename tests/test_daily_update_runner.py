@@ -98,6 +98,56 @@ def test_the_minute_store_alone_can_carry_the_session(tmp_path, monkeypatch):
     assert fresh is True
 
 
+def test_a_stale_archive_is_named_even_when_the_minute_store_is_current(
+        tmp_path, monkeypatch, capsys):
+    """The failure this exists for: the archive stopped on 2026-09-07 and the
+    minute store kept the stock sessions current, so the run read as fine while
+    EGX30 -- which only this file carries -- sat ten sessions behind."""
+
+    base = _terminal(tmp_path, history_date="2026-09-07", intraday_date="2026-09-21")
+    monkeypatch.setattr(local, "find_root", lambda *a, **k: base)
+
+    _found, fresh = runner.check_sources(dt.date(2026, 9, 21))
+
+    out = capsys.readouterr().out
+    assert fresh is True, "the candle is current; this is a warning, not a failure"
+    assert "10 session(s) behind" in out
+    assert "EGX30" in out and "market filter" in out
+    assert "Download Market History" in out
+
+
+def test_an_archive_past_the_limit_says_the_filter_has_stopped(
+        tmp_path, monkeypatch, capsys):
+    base = _terminal(tmp_path, history_date="2026-08-06", intraday_date="2026-09-21")
+    monkeypatch.setattr(local, "find_root", lambda *a, **k: base)
+
+    runner.check_sources(dt.date(2026, 9, 21))
+
+    out = capsys.readouterr().out
+    assert "no longer blocks anything" in out
+
+
+def test_an_archive_a_session_or_two_behind_is_not_shouted_about(
+        tmp_path, monkeypatch, capsys):
+    """One session behind is the normal state right after a close."""
+
+    base = _terminal(tmp_path, history_date="2026-09-20", intraday_date="2026-09-21")
+    monkeypatch.setattr(local, "find_root", lambda *a, **k: base)
+
+    runner.check_sources(dt.date(2026, 9, 21))
+
+    out = capsys.readouterr().out
+    assert "1 session(s) behind" in out
+    assert "Download Market History" not in out
+
+
+def test_the_lag_is_counted_in_sessions_not_calendar_days():
+    """Thursday to Sunday is one session, not three days: the exchange is shut."""
+    assert runner._sessions_behind("2026-09-17", "2026-09-20") == 1
+    assert runner._sessions_behind("2026-09-20", "2026-09-20") == 0
+    assert runner._sessions_behind("not a date", "2026-09-20") == 0
+
+
 def test_no_terminal_at_all_stops_the_run(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(local, "find_root", lambda *a, **k: None)
 
