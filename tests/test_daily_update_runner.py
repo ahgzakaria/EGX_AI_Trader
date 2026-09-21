@@ -195,6 +195,21 @@ def test_the_candle_check_fails_when_the_store_is_behind(tmp_path, monkeypatch, 
     assert "2026-09-09" in capsys.readouterr().out
 
 
+def test_a_store_ahead_of_the_calendar_is_not_a_failure(tmp_path, monkeypatch, capsys):
+    """The archive now carries today's session as soon as the terminal
+    downloads it, while the calendar only calls today completed once the
+    settlement grace has passed. On 2026-09-21 that read as "the candle is not
+    at the last completed session" and failed a run that had just imported it."""
+
+    import sector_flow.measured_turnover as module
+
+    database = _store(tmp_path, {"2026-09-20": ["COMI.CA"], "2026-09-21": ["COMI.CA"]})
+    monkeypatch.setattr(module, "DEFAULT_DATABASE", database)
+
+    assert runner.check_candle(dt.date(2026, 9, 20)) is True
+    assert "ahead of the calendar" in capsys.readouterr().out
+
+
 def test_the_candle_check_passes_when_the_session_is_there(tmp_path, monkeypatch):
     import sector_flow.measured_turnover as module
 

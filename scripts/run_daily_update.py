@@ -338,9 +338,17 @@ def check_candle(expected):
 
     _say(f"  store's newest session   {newest}")
     _say(f"  last completed session   {target}")
+    # Reaching the session is the question, not matching it. The store can sit
+    # ahead: the archive now carries today's session as soon as the terminal
+    # downloads it, while the calendar only calls today completed once the
+    # settlement grace has passed. That is data arriving early, not missing.
+    reached = bool(newest) and str(newest) >= target
+    if newest and str(newest) > target:
+        _say(f"  ahead of the calendar: {newest} is downloaded but not yet "
+             "called completed")
     if not universe:
         _say(f"  symbols with that session: {len(present)}")
-        return newest == target
+        return reached
 
     covered = universe & present
     _say(f"  tradeable symbols with it: {len(covered)} of {len(universe)}")
@@ -351,7 +359,7 @@ def check_candle(expected):
         _say(f"  without it: {shown}{more}")
         _say("  A symbol that did not trade has no row, so some of these are")
         _say("  expected. A long list on a normal session is not.")
-    return newest == target
+    return reached
 
 
 # --------------------------------------------------------------------------- #
