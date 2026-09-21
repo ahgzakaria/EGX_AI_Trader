@@ -319,6 +319,33 @@ def run_gap_forward():
 # 5. is anything that records itself quietly stalled?
 # --------------------------------------------------------------------------- #
 
+def run_swing_forward():
+    """Write down what Swing Breakout and Breakout Watch named, and grade what matured.
+
+    Both pages rendered and forgot: a candidate named on a Tuesday left no
+    trace by Wednesday, so neither rule could be scored on its live record the
+    way the daily strategy was. It belongs to the click rather than to a clock
+    because it reads the measured store this run has just imported, and it is
+    idempotent -- the store refuses to rewrite a session it already holds.
+    """
+
+    import subprocess
+
+    completed = subprocess.run(
+        [sys.executable, "scripts/record_swing_breakout_forward.py"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    for line in (completed.stdout or "").splitlines():
+        if line.strip().startswith(('"session_date"', '"swing_candidates"',
+                                    '"watch_candidates"', '"resolved"',
+                                    '"status"')):
+            _say(f"  {line.strip().rstrip(',')}")
+    if completed.returncode != 0:
+        for line in (completed.stderr or "").splitlines()[-6:]:
+            if line.strip():
+                _say(f"  ! {line.rstrip()}")
+    return completed.returncode == 0
+
+
 def run_live_source_shadow():
     """Run the live rules on EODHD and on Mubasher and record where they agree.
 
@@ -350,6 +377,7 @@ def run_live_source_shadow():
 #: half the experiment.
 RECORDERS = (
     ("gap forward",       "data/research/gap_forward.db", "gap_predictions", "session"),
+    ("swing breakout",    "data/swing_breakout_forward.db", "sessions", "session_date"),
     ("confirmed breakout", "data/confirmed_breakout_forward.db", "sessions", "session_date"),
     ("live sessions",     "data/forward_testing.db", "live_sessions", "session_date"),
     ("live source shadow", "data/research/live_source_shadow.db", "runs", "session_date"),
@@ -396,7 +424,7 @@ def main(argv=None):
                         help="import only; leave the sector history alone")
     args = parser.parse_args(argv)
 
-    total = 6 if args.skip_sector_flow else 7
+    total = 7 if args.skip_sector_flow else 8
     _open_log()
     _say()
     _say(RULE)
@@ -444,6 +472,11 @@ def main(argv=None):
     _step(step, total, "record the live-source shadow: EODHD against Mubasher")
     if not run_live_source_shadow():
         failures.append("the live-source shadow did not record")
+    step += 1
+
+    _step(step, total, "record what Swing Breakout and Breakout Watch named")
+    if not run_swing_forward():
+        failures.append("the swing breakout forward test did not record")
     step += 1
 
     _step(step, total, "are the forward-test recorders still recording?")

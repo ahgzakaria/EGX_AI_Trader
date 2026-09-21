@@ -188,6 +188,16 @@ def test_the_batch_file_is_what_the_operator_was_promised():
         assert retired not in text.lower(), f"the daily run still calls {retired}"
 
 
+def test_the_run_records_what_the_two_breakout_pages_named():
+    """Both pages rendered and forgot until 2026-09-21. The recorder belongs to
+    this click: it reads the measured store the run has just imported."""
+
+    text = (ROOT / "scripts" / "run_daily_update.py").read_text(encoding="utf-8")
+    assert "record_swing_breakout_forward.py" in text
+    # And the run notices when it stops recording, the way it does for the rest.
+    assert "swing_breakout_forward.db" in text
+
+
 def test_the_runner_forces_the_sector_rebuild():
     """Left to its own missing-session check it would find none and skip.
 

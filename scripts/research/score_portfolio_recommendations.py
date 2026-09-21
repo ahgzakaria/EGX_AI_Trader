@@ -62,6 +62,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import pandas as pd                                         # noqa: E402
 
+from core.measured_benchmark import median_return           # noqa: E402
+
 DB = PROJECT_ROOT / "data" / "portfolio.db"
 OUT = PROJECT_ROOT / "reports" / "research" / "portfolio_recommendation_scores.csv"
 
@@ -87,11 +89,9 @@ def measured(symbols):
     short: the EGX30 record lagged the stock record by ten sessions when this
     was written, so nothing here depends on it.
     """
-    import sqlite3
-
+    from core.measured_benchmark import close_panel
     from core.mubasher_live_history import (READY, mubasher_live_history,
                                             mubasher_live_index)
-    from sector_flow import measured_turnover
 
     closes = {}
     for symbol in sorted(symbols):
@@ -101,14 +101,7 @@ def measured(symbols):
             series.index = pd.to_datetime(series.index).normalize()
             closes[symbol] = series[~series.index.duplicated(keep="last")].sort_index()
 
-    database = Path(measured_turnover.DEFAULT_DATABASE).as_posix()
-    with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as db:
-        rows = pd.read_sql(
-            f"SELECT ticker, session_date, close FROM {measured_turnover.TABLE} "
-            f"WHERE close > 0", db)
-    rows["session_date"] = pd.to_datetime(rows["session_date"]).values
-    panel = rows.pivot_table(index="session_date", columns="ticker",
-                             values="close", aggfunc="last").sort_index()
+    panel = close_panel()
 
     frame, status, _ = mubasher_live_index(min_bars=30)
     index = None
@@ -119,27 +112,10 @@ def measured(symbols):
     return closes, index, panel
 
 
-def peer_return(panel, session, horizon):
-    """The median symbol's return over the same sessions, or ``None``.
-
-    Every symbol the store holds that traded on both ends of the window. The
-    median rather than the mean: one symbol doubling is not what the holder of
-    another was up against.
-    """
-    if panel is None or panel.empty:
-        return None
-    day = pd.Timestamp(session).normalize()
-    position = panel.index.searchsorted(day, side="right") - 1
-    if position < 0 or panel.index[position] != day:
-        return None
-    if position + horizon >= len(panel.index):
-        return None
-    start = panel.iloc[position]
-    later = panel.iloc[position + horizon]
-    both = start.notna() & later.notna() & (start > 0)
-    if int(both.sum()) < 30:            # too thin a cross-section to be one
-        return None
-    return float(((later[both] / start[both] - 1.0) * 100.0).median())
+#: The median symbol over the same sessions. One definition, in
+#: ``core.measured_benchmark``, so two measurements of this project's rules can
+#: never be scored against two different markets.
+peer_return = median_return
 
 
 def forward(series, session, horizon):
