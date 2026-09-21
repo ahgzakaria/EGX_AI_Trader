@@ -148,17 +148,11 @@ def _observed_metadata(results):
         # The date the displayed prices actually carry, not the newest outlier.
         "latest_completed_candle": coverage["dominant"],
         "session_coverage": coverage,
-        # Any stale overlay downgrades the reported live state; it never touches the
-        # historical source.
-        # Any non-live typed status downgrades the banner. "FRESH" alone is
-        # never enough: the 2026-08-04 incident had 193 of 194 rows marked
-        # FRESH while every quote belonged to the previous session.
-        "live_quote_freshness": "STALE" if (
-            "STALE" in statuses
-            or any(str(row.get("RubixQuoteStatus") or "").startswith("RUBIX_")
-                   and row.get("RubixQuoteStatus") != "RUBIX_LIVE_CURRENT"
-                   for row in results or ())
-        ) else "",
+        # No row carries a live quote since the feed was retired, so this can
+        # only be "" now. It stays because a scan archived before that date
+        # still has rows that say STALE, and reading one back must report what
+        # it recorded rather than today's silence.
+        "live_quote_freshness": "STALE" if "STALE" in statuses else "",
     }
 
 

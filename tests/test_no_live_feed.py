@@ -179,6 +179,26 @@ def test_the_daily_loader_attaches_no_quote(monkeypatch):
     assert "2026-09-10" in md["fallback_reason"]
 
 
+def test_the_scan_classifies_no_quote_per_symbol():
+    """It ran `classify_rubix_quote` for all 230 symbols every scan, and the
+    answer was always the same denial. The archive keeps the columns -- its
+    schema is a record -- but they are written, not computed."""
+    from core import scanner
+    from core.live_feed import NO_LIVE_FEED_EN, retired_quote_provenance
+
+    source = inspect.getsource(scanner)
+    assert "classify_rubix_quote" not in source
+    assert "evaluate_overlay_permission" not in source
+
+    row = retired_quote_provenance()
+    assert row["RubixOverlayApplied"] is False
+    assert row["RubixDecisionInputAllowed"] is False
+    assert row["DecisionPriceSource"] == "eodhd_daily_close"
+    assert row["DisplayPriceSource"] == "eodhd_daily_close"
+    assert row["RubixQuoteStatus"] == ""
+    assert row["RubixOverlayDenialReason"] == NO_LIVE_FEED_EN
+
+
 def test_a_scan_has_no_loading_rubix_stage():
     from core import scan_job_manager, scanner
 

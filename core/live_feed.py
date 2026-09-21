@@ -107,3 +107,30 @@ def retired_provider_health(provider="rubix"):
         "database_status": "NOT_READ",
         "live": False,
     }
+
+
+def retired_quote_provenance():
+    """The scan row's quote-provenance fields, now that no quote is read.
+
+    The archive's schema keeps these columns on purpose. An archive is a
+    record, and the reader demotes an archive whose schema predates the current
+    one to "legacy" -- so dropping the columns would relabel every archive
+    already written. They stay, and they now say what is true: no quote was
+    read, and the price is the completed session's close.
+    """
+    return {
+        "RubixQuoteStatus": "",
+        "RubixMarketTimestamp": "",
+        "RubixReceiveTimestamp": "",
+        "RubixQuoteSession": "",
+        "RubixPermittedSession": "",
+        "RubixExchangePhase": "",
+        "RubixReceiveLagSeconds": None,
+        "RubixFreshnessBudgetSeconds": None,
+        "RubixStatusReason": NO_LIVE_FEED_EN,
+        "RubixOverlayApplied": False,
+        "RubixDecisionInputAllowed": False,
+        "DisplayPriceSource": "eodhd_daily_close",
+        "DecisionPriceSource": "eodhd_daily_close",
+        "RubixOverlayDenialReason": NO_LIVE_FEED_EN,
+    }
