@@ -335,13 +335,22 @@ def frame_for(ticker, database=DEFAULT_DATABASE):
     if rows.empty or rows["close"].notna().sum() == 0:
         return None
 
+    # Coerced, not passed through. ``history.db`` carries no opening price at
+    # all, so a symbol whose sessions all come from the archive has an entirely
+    # NULL open, which pandas types as `object` -- and the dataset archive
+    # refuses a non-numeric OHLCV column, which failed every symbol of the scan
+    # on 2026-09-21, the first day the archive reached the current session. A
+    # missing open is NaN, which is what "not recorded" means here.
+    def numeric(name):
+        return pd.to_numeric(rows[name], errors="coerce")
+
     frame = pd.DataFrame({
-        "Open": rows["open"], "High": rows["high"], "Low": rows["low"],
-        "Close": rows["close"], "Volume": rows["volume"],
-        "Turnover": rows["turnover"],
+        "Open": numeric("open"), "High": numeric("high"), "Low": numeric("low"),
+        "Close": numeric("close"), "Volume": numeric("volume"),
+        "Turnover": numeric("turnover"),
     })
     if "close_confirmed" in rows.columns:
-        frame["CloseConfirmed"] = rows["close_confirmed"]
+        frame["CloseConfirmed"] = numeric("close_confirmed")
     frame.index = pd.to_datetime(rows["session_date"])
     frame.index.name = "Date"
     frame.attrs["market_data"] = {

@@ -38,6 +38,25 @@ def make_store(tmp_path, ticker="COMI.CA", sessions=300, end="2026-09-10",
     return path, dates
 
 
+def test_a_store_with_no_opening_price_still_types_its_columns_numerically(tmp_path):
+    """``history.db`` carries no opening price at all, so a symbol served from
+    the archive has an entirely NULL open. Passed through, pandas types that
+    column `object`, the dataset archive refuses a non-numeric OHLCV column,
+    and on 2026-09-21 -- the first day the archive reached the current session
+    -- every symbol of the scan failed with `Open=object`. Not recorded is NaN.
+    """
+    from services.archive_capture_session import validate_archivable
+
+    path, _ = make_store(tmp_path)
+    frame = measured_turnover.frame_for("COMI.CA", database=str(path))
+
+    assert str(frame["Open"].dtype) == "float64"
+    assert frame["Open"].isna().all(), "an open nobody recorded is not a number"
+    for column in ("High", "Low", "Close", "Volume", "Turnover"):
+        assert str(frame[column].dtype) == "float64"
+    validate_archivable(frame)          # what the scanner calls before archiving
+
+
 # --- the reader ---------------------------------------------------------------
 
 def test_the_reader_serves_the_store_oldest_first_with_the_previous_close_as_open(tmp_path):
