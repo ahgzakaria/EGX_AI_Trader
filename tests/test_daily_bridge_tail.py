@@ -292,3 +292,69 @@ def test_a_close_the_auction_never_set_is_appended_and_named():
     assert provenance["bridge_sessions_appended"] == 2
     assert provenance["bridge_unconfirmed_close_count"] == 1
     assert provenance["bridge_unconfirmed_close_dates"] == ("2026-08-12",)
+
+
+# --- the session the archive owns has no opening price ----------------------
+#
+# `history.db` carries none: its own OP column is the previous close, and the
+# import stores nothing rather than a wrong number. That was invisible while the
+# archive lagged -- the tail came from the minute store, which has a real open
+# -- and on 2026-09-21, the first day the archive reached the current session,
+# every appended bar arrived with Open NaN, the engine's cleaner dropped it for
+# a missing OHLCV field, and all 230 symbols read one session behind and were
+# skipped as stale.
+
+def test_a_measured_session_with_no_open_takes_the_previous_close(tmp_path, monkeypatch):
+    """The substitution this project already makes for Mubasher's open."""
+    import sector_flow.measured_turnover as store
+    from core.local_daily_history import _measured_rows_after
+
+    frame = pd.DataFrame(
+        {"Open": [float("nan"), float("nan")], "High": [11.0, 12.0],
+         "Low": [9.0, 10.0], "Close": [10.0, 11.5], "Volume": [100.0, 200.0]},
+        index=pd.DatetimeIndex(pd.to_datetime(["2026-09-20", "2026-09-21"]), name="Date"))
+    monkeypatch.setattr(store, "frame_for", lambda *a, **k: frame)
+
+    [row] = _measured_rows_after("COMI", "2026-09-20")
+    assert row["Open"] == pytest.approx(10.0), "yesterday's close is the open"
+    assert row["_open_from_previous_close"] is True
+    assert not pd.isna(row["Open"]), "a NaN open is dropped by the engine cleaner"
+
+
+def test_a_measured_session_with_a_real_open_keeps_it(tmp_path, monkeypatch):
+    import sector_flow.measured_turnover as store
+    from core.local_daily_history import _measured_rows_after
+
+    frame = pd.DataFrame(
+        {"Open": [10.0, 11.0], "High": [11.0, 12.0], "Low": [9.0, 10.0],
+         "Close": [10.0, 11.5], "Volume": [100.0, 200.0]},
+        index=pd.DatetimeIndex(pd.to_datetime(["2026-09-20", "2026-09-21"]), name="Date"))
+    monkeypatch.setattr(store, "frame_for", lambda *a, **k: frame)
+
+    [row] = _measured_rows_after("COMI", "2026-09-20")
+    assert row["Open"] == pytest.approx(11.0)
+    assert row["_open_from_previous_close"] is False
+
+
+def test_a_borrowed_open_is_named_in_the_provenance():
+    """Named, not implied -- the same discipline as an unconfirmed close."""
+    frame = _frame(["2026-09-18", "2026-09-20"], [10.0, 10.5])
+    bar = {**_bar("2026-09-21", close=11.0), "_open_from_previous_close": True}
+
+    appended, provenance = append_bridge_bars(frame, "COMI", tail_rows=_tail([bar]))
+
+    assert provenance["bridge_sessions_appended"] == 1
+    assert provenance["bridge_open_from_previous_close"] == 1
+    assert provenance["bridge_open_from_previous_close_dates"] == ("2026-09-21",)
+    assert not appended[CONTRACT_COLUMNS].isna().any().any(), (
+        "a bar with any missing OHLCV field is dropped before the strategy sees it")
+
+
+def test_a_real_open_is_not_reported_as_borrowed():
+    frame = _frame(["2026-09-18", "2026-09-20"], [10.0, 10.5])
+
+    _appended, provenance = append_bridge_bars(
+        frame, "COMI", tail_rows=_tail([_bar("2026-09-21", close=11.0)]))
+
+    assert provenance["bridge_open_from_previous_close"] == 0
+    assert provenance["bridge_open_from_previous_close_dates"] == ()

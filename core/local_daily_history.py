@@ -139,7 +139,7 @@ def append_bridge_bars(frame, symbol, *, not_after=None, tail_rows=None):
         return frame, provenance
 
     appended, duplicate, conflict = 0, 0, 0
-    dates, unconfirmed = [], []
+    dates, unconfirmed, borrowed_open = [], [], []
     updated = frame.copy()
     for row in rows:
         day = row["session_date"]
@@ -155,6 +155,8 @@ def append_bridge_bars(frame, symbol, *, not_after=None, tail_rows=None):
         dates.append(day)
         if not row.get("_official_close", True):
             unconfirmed.append(day)
+        if row.get("_open_from_previous_close"):
+            borrowed_open.append(day)
         appended += 1
 
     # Named, not filtered. A session whose auction never arrived is still the
@@ -166,7 +168,13 @@ def append_bridge_bars(frame, symbol, *, not_after=None, tail_rows=None):
                       duplicate_count=duplicate, conflict_count=conflict,
                       bridge_unconfirmed_close_count=len(unconfirmed),
                       bridge_unconfirmed_close_dates=tuple(
-                          d.date().isoformat() for d in sorted(unconfirmed)))
+                          d.date().isoformat() for d in sorted(unconfirmed)),
+                      # Named for the same reason an unconfirmed close is: the
+                      # caller decides what a substituted open is good enough
+                      # for, and the strategy's rule never reads one.
+                      bridge_open_from_previous_close=len(borrowed_open),
+                      bridge_open_from_previous_close_dates=tuple(
+                          d.date().isoformat() for d in sorted(borrowed_open)))
     if not appended:
         return frame, provenance
 
@@ -278,15 +286,28 @@ def _measured_rows_after(base, after_date):
         return []
 
     ceiling = pd.Timestamp(after_date)
+    # The terminal's archive carries no opening price at all -- its own ``OP``
+    # column is the previous close -- so a session the archive owns arrives with
+    # none. The engine's cleaner drops any bar missing an OHLCV field, which
+    # silently removed every appended session on 2026-09-21 and left all 230
+    # symbols one session behind and skipped as stale. The previous close is
+    # what this project already serves as Mubasher's open (`OPEN_POLICY` in
+    # ``core.mubasher_live_history``); it is named in provenance, not implied.
+    previous_close = frame["Close"].shift(1)
     rows = []
     for stamp, bar in frame[frame.index > ceiling].iterrows():
         close = bar.get("Close")
         if close is None or pd.isna(close):
             continue
+        opening = bar.get("Open")
+        borrowed = opening is None or pd.isna(opening)
+        if borrowed:
+            opening = previous_close.get(stamp)
         rows.append({
             "session_date": pd.Timestamp(stamp),
-            "Open": bar.get("Open"), "High": bar.get("High"),
+            "Open": opening, "High": bar.get("High"),
             "Low": bar.get("Low"), "Close": close,
+            "_open_from_previous_close": bool(borrowed),
             # No dividend adjustment is available for this source, so the
             # adjusted column must not claim one. The tail is raw either way.
             "Adj Close": close,
