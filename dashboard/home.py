@@ -420,7 +420,7 @@ def _render_scan_job(job):
                 pd.DataFrame(sorted(snapshot.status_breakdown.items(),
                                     key=lambda item: -item[1]),
                              columns=["Status", "Symbols"]),
-                hide_index=True, use_container_width=True)
+                hide_index=True, width="stretch")
         if job.sanitized_error:
             st.error(job.sanitized_error)
 
@@ -724,7 +724,7 @@ def _render_swing_advanced_research(
                         "symbol", "historical_row_count", "rejection_category",
                         "rejection_reason", "final_status",
                     ]], "symbol"),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
 
@@ -792,7 +792,7 @@ def _render_swing_advanced_research(
         ]
         st.dataframe(
             df[[column for column in comparison_columns if column in df.columns]],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config=_market_column_config(),
         )
@@ -837,7 +837,7 @@ def _render_swing_advanced_research(
         ]
         st.dataframe(
             df[[column for column in adaptive_columns if column in df.columns]],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config=_market_column_config(),
         )
@@ -858,7 +858,7 @@ def _render_swing_advanced_research(
                 st.dataframe(
                     df[["Ticker", *available_freshness]]
                     if "Ticker" in df.columns else df[available_freshness],
-                    use_container_width=True, hide_index=True,
+                    width="stretch", hide_index=True,
                 )
                 from core.live_feed import RETIREMENT_NOTE
 
@@ -879,7 +879,7 @@ def _render_swing_advanced_research(
         ]
         st.dataframe(
             _format_ai_probability(df[available].copy()),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config=_market_column_config(),
         )
@@ -938,7 +938,7 @@ def render_coverage_panel(coverage, results=None):
         # completed 241-symbol scan rendered its results and then crashed the
         # whole page on the exclusion table.
         frame = _with_company_names(frame, "Ticker")
-        st.dataframe(frame, use_container_width=True, hide_index=True)
+        st.dataframe(frame, width="stretch", hide_index=True)
         st.caption(
             "These symbols were NOT analyzed as current opportunities and carry "
             "no BUY/WATCH/AVOID decision."
@@ -1015,7 +1015,7 @@ def show_dashboard():
         if st.button(
             "فحص السوق اليومي",
             type="primary",
-            use_container_width=True,
+            width="stretch",
             disabled=active or awaiting_result or scan_completed,
             help="One immutable market scan is recorded per application session.",
             key="run_market_scan",
@@ -1035,7 +1035,7 @@ def show_dashboard():
     with status_col:
         if active:
             # Stop Scan remains an explicit, idempotent operator control.
-            if st.button("إيقاف الفحص", use_container_width=True,
+            if st.button("إيقاف الفحص", width="stretch",
                          key=f"stop_scan_{job.scan_id}"):
                 job.request_cancel()          # idempotent
                 st.rerun()
@@ -1043,7 +1043,7 @@ def show_dashboard():
             st.button(
                 "تم حفظ فحص الجلسة" if scan_completed else "جاهز للفحص",
                 disabled=True,
-                use_container_width=True,
+                width="stretch",
             )
 
     if job is not None:
@@ -1245,7 +1245,7 @@ def show_dashboard():
     else:
         st.dataframe(
             _swing_primary_frame(filtered),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             height=min(650, 82 + len(filtered) * 42),
             column_config={

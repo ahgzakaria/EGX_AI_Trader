@@ -396,7 +396,7 @@ def _symbol_selector():
     with button_col:
         st.markdown('<div style="height:1.75rem"></div>', unsafe_allow_html=True)
         pressed = st.button("▶ تحليل السهم · Analyze Stock", type="primary",
-                            use_container_width=True, key="_ai_analysis_go",
+                            width="stretch", key="_ai_analysis_go",
                             disabled=selected is None)
     return (selected.ticker if selected else None), bool(pressed and selected)
 
@@ -524,7 +524,7 @@ def _chart_section(result, presentation=None):
         if figure is None:
             empty_state("لا توجد بيانات كافية للرسم", "No candles in the selected window.")
         else:
-            st.plotly_chart(figure, use_container_width=True)
+            st.plotly_chart(figure, width="stretch")
             st.caption(
                 "خطوط متصلة: اختراق/إبطال · متقطعة: دعم ومقاومة · منقّطة: مستويات ثانوية · "
                 "نطاق بنفسجي: منطقة تصحيح بحثية · Solid: breakout/invalidation · "
@@ -562,7 +562,7 @@ def _chart_section(result, presentation=None):
                 xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#223049", title="EGP"),
                 xaxis_rangeslider_visible=False, showlegend=True,
                 legend=dict(orientation="h", y=1.12, bgcolor="rgba(0,0,0,0)"))
-            st.plotly_chart(intraday_figure, use_container_width=True)
+            st.plotly_chart(intraday_figure, width="stretch")
 
 
 def _readings_list(readings):
@@ -650,7 +650,7 @@ def _levels_section(result):
         "آخر لمسة / Last Touch": row["last_touch_date"],
         "المسافة / Distance": row["distance"],
     } for row in rows])
-    st.dataframe(frame, use_container_width=True, hide_index=True)
+    st.dataframe(frame, width="stretch", hide_index=True)
     st.caption("كل الحقول محسوبة في Core ومورّدة عبر العقد؛ لا تستنتج الواجهة أي مستوى. · "
                "All fields are Core-calculated and contract-supplied; the UI estimates none.")
 
@@ -895,7 +895,7 @@ def _narrative_section(narrative, result, bundle=None, regenerator=None):
             st.markdown('<div style="height:.85rem"></div>', unsafe_allow_html=True)
             if st.button(
                     "♻ إعادة توليد الشرح بالذكاء الاصطناعي",
-                    key="_ai_analysis_regen_narrative", use_container_width=True,
+                    key="_ai_analysis_regen_narrative", width="stretch",
                     help="يعيد توليد الشرح فقط دون إعادة حساب المؤشرات أو استدعاء أي "
                          "مزود بيانات."):
                 with st.spinner("جارٍ إعادة توليد الشرح… · Regenerating narrative only…"):
@@ -1036,7 +1036,7 @@ def _card_section(result, narrative):
         with right:
             st.image(card, caption=f"{presentation.ticker} · "
                                    f"{CARD_TYPE_LABELS[card_type]}",
-                     use_container_width=True)
+                     width="stretch")
             st.download_button(
                 "⬇ تنزيل PNG · Download PNG", data=card,
                 file_name=export_filename(presentation, request),
@@ -1079,7 +1079,7 @@ def _history_section(symbol):
         "التحقق / Validation": getattr(record, "narrative_validation_status", "") or EM_DASH,
         "الأدلة / Evidence": record.evidence_version,
     } for record in reversed(records)])
-    st.dataframe(frame, use_container_width=True, hide_index=True)
+    st.dataframe(frame, width="stretch", hide_index=True)
 
 
 # --------------------------------------------------------------------------- #

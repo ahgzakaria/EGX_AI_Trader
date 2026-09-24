@@ -87,10 +87,10 @@ def show_system_health():
         metric_card("جلسات قابلة للإعادة",
                     str(health["replay_readiness"]["ready_runs"]), "Replayable runs")
     refresh, full = st.columns(2)
-    if refresh.button("تحديث حالة النظام", use_container_width=True):
+    if refresh.button("تحديث حالة النظام", width="stretch"):
         st.rerun()
     if full.button("فحص كامل لقواعد البيانات · Full integrity scan",
-                   use_container_width=True,
+                   width="stretch",
                    help="PRAGMA integrity_check على كل قاعدة. يستغرق دقائق."):
         st.session_state["_system_health_deep"] = True
         st.rerun()
@@ -210,7 +210,7 @@ def show_provider_diagnostics():
     _provider_domains_panel()
     st.divider()
     st.json(provider_health("dashboard"), expanded=False)
-    if st.button("Refresh provider status", use_container_width=True):
+    if st.button("Refresh provider status", width="stretch"):
         st.rerun()
 
 
@@ -321,7 +321,7 @@ def show_replay_run():
     with st.expander("Original metrics", expanded=True):
         st.json(metadata.get("metrics", {}))
     st.warning("Replay is offline. Missing candles or predictions cause a hard failure; Yahoo/Rubix fallback is disabled.")
-    if st.button("Replay archived run", type="primary", use_container_width=True):
+    if st.button("Replay archived run", type="primary", width="stretch"):
         try:
             with st.spinner("Replaying exact archived inputs..."):
                 result = replay_run(selected)

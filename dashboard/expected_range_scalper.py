@@ -294,7 +294,7 @@ def _stale_alert(universe, rows):
                     "prov_latest_completed_session": "Latest",
                     "prov_data_status": "Status",
                     "prov_data_age_sessions": "Sessions behind"}),
-                use_container_width=True, hide_index=True)
+                width="stretch", hide_index=True)
 
 
 # --- main tabs (Phase 4C) ---------------------------------------------------
@@ -407,7 +407,7 @@ def _candidate_table(frame, key):
               .apply(_style(dq_tones), subset=["Data Quality"], axis=0)
               .apply(_style_score, subset=["Score"], axis=0))
     sel = st.dataframe(
-        styler, use_container_width=True, hide_index=True,
+        styler, width="stretch", hide_index=True,
         height=min(600, 46 + 35 * len(disp)),
         on_select="rerun", selection_mode="single-row", key=f"tbl_{key}",
         column_config={
@@ -572,7 +572,7 @@ def _render_drawer(symbol, rows, universe, scenarios):
 
 def _kv_table(pairs):
     st.dataframe(pd.DataFrame([{"Metric": k, "Value": dash(v)} for k, v in pairs]),
-                 use_container_width=True, hide_index=True)
+                 width="stretch", hide_index=True)
 
 
 def dash(v):
@@ -601,7 +601,7 @@ def _paper_status(cfg):
         cols = ["Scenario", "SignalCount", "TargetFirst", "StopFirst", "NeitherHit",
                 "ExpectancyAfterCosts%", "ProfitFactor"]
         st.dataframe(per_scenario[[c for c in cols if c in per_scenario.columns]],
-                     use_container_width=True, hide_index=True)
+                     width="stretch", hide_index=True)
 
 
 # --- row builder (pure, presentation prep) ----------------------------------

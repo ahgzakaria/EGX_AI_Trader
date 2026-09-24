@@ -392,7 +392,7 @@ def _render_range_bound_details(record):
             pd.DataFrame(
                 [{"البند": key, "القيمة": value} for key, value in detail.items()]
             ),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
         st.caption(
@@ -426,7 +426,7 @@ def _render_range_bound_tab(historical_result, live_batch=None):
         f"قائمة ثابتة للجلسة {header['target_session_date']}"
     )
     frame = _range_bound_primary_frame(record, live_batch)
-    st.dataframe(frame, use_container_width=True, hide_index=True)
+    st.dataframe(frame, width="stretch", hide_index=True)
     _render_range_bound_details(record)
     return frame
 
@@ -471,7 +471,7 @@ def _render_live_monitor_tab(
         )
         st.dataframe(
             frames["range_bound"],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
     if uptrend_ready:
@@ -485,7 +485,7 @@ def _render_live_monitor_tab(
         )
         st.dataframe(
             frames["uptrend_pullback"],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
     return frames
@@ -724,7 +724,7 @@ def _historical_watchlist_panel(service=None, *, target_session_date=None):
     )
 
     top = _historical_watchlist_frame(record, displayed_only=True)
-    st.dataframe(top, use_container_width=True, hide_index=True)
+    st.dataframe(top, width="stretch", hide_index=True)
 
     with st.expander(
         f"Complete hard-eligible universe ({header['eligible_count']})"
@@ -757,7 +757,7 @@ def _historical_watchlist_panel(service=None, *, target_session_date=None):
             ascending=not descending,
             kind="mergesort",
         )
-        st.dataframe(complete, use_container_width=True, hide_index=True)
+        st.dataframe(complete, width="stretch", hide_index=True)
 
     previous = service.repository.ready_before(header["target_session_date"])
     if previous is not None:
@@ -793,7 +793,7 @@ def _historical_watchlist_panel(service=None, *, target_session_date=None):
             if comparison.rank_changes:
                 st.dataframe(
                     pd.DataFrame(comparison.rank_changes),
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                 )
             st.caption(
@@ -953,7 +953,7 @@ def _live_entry_monitor_fragment(record, engine=None, evaluated_at=None):
         kind="mergesort",
         na_position="last",
     )
-    st.dataframe(ordered, use_container_width=True, hide_index=True)
+    st.dataframe(ordered, width="stretch", hide_index=True)
 
     with st.expander("Deterministic assessment details · تفاصيل التقييم"):
         selected = st.selectbox(
@@ -1114,7 +1114,7 @@ def show_scalping_dashboard():
     if st.button(
         "تجهيز قائمة السكالبنج",
         type="primary",
-        use_container_width=True,
+        width="stretch",
         key="prepare_scalping_watchlists",
     ):
         historical_result, uptrend_view, preparation_messages = (
@@ -1144,7 +1144,7 @@ def show_scalping_dashboard():
         if st.button(
             "تحديث المتابعة اللحظية",
             type="primary",
-            use_container_width=True,
+            width="stretch",
             disabled=(
                 historical_result.record is None
                 and uptrend_view.record is None
@@ -1458,7 +1458,7 @@ def _dash_ready_panel(rows, phase):
         "Stop": ready["Stop"].map(fmt_price), "Spread%": ready["Spread"].map(lambda x: fmt_percent(x)),
         "Score": ready["Score"].map(fmt_score), "Range Pos": ready["RangePos"].fillna(0).clip(0, 100),
     })
-    st.dataframe(disp, use_container_width=True, hide_index=True,
+    st.dataframe(disp, width="stretch", hide_index=True,
                  column_config={"Range Pos": st.column_config.ProgressColumn(
                      min_value=0, max_value=100, format="%d%%", width="small")})
 
@@ -1486,7 +1486,7 @@ def _dash_watchlist_panel(rows, phase):
         "Spread%": valid["Spread"].map(lambda x: fmt_percent(x)), "Score": valid["Score"].map(fmt_score),
     })
     if not disp.empty:
-        st.dataframe(disp, use_container_width=True, hide_index=True)
+        st.dataframe(disp, width="stretch", hide_index=True)
     if not invalid.empty:
         # Reference-only view: no valid last price exists, so the price is an em dash
         # and only the historical Trigger is shown — never implying an observed price.
@@ -1496,7 +1496,7 @@ def _dash_watchlist_panel(rows, phase):
             "Data Quality": ["Last Price Unavailable"] * len(invalid)})
         st.caption(f"Data Unavailable ({len(invalid)}) — no valid last price available; "
                    f"shown for historical trigger reference only, excluded from closest-to-ready ranking:")
-        st.dataframe(ref, use_container_width=True, hide_index=True)
+        st.dataframe(ref, width="stretch", hide_index=True)
 
 
 _TONE_HEX = {"green": "#34d399", "amber": "#fbbf24", "red": "#f87171",
@@ -1540,7 +1540,7 @@ def _dash_top_candidates(rows, phase):
     styler = (disp.style.apply(_style(state_tones), subset=["State"], axis=0)
               .apply(_style(dq_tones), subset=["Data Quality"], axis=0))
     sel = st.dataframe(
-        styler, use_container_width=True, hide_index=True, on_select="rerun",
+        styler, width="stretch", hide_index=True, on_select="rerun",
         selection_mode="single-row", key="dash_top",
         column_config={
             "Symbol": st.column_config.TextColumn(width="small", pinned=True),
@@ -1695,7 +1695,7 @@ def show_live_opportunities():
             "stop_2pct", "spread_percent", "volume", "score", "reasons",
             "data_freshness", "actionable", "blocked_reason",
         ]
-        st.dataframe(display[columns], use_container_width=True, hide_index=True)
+        st.dataframe(display[columns], width="stretch", hide_index=True)
         actionable = rows[rows["actionable"].fillna(False).astype(bool)]
         if not actionable.empty:
             st.caption("Paper execution only — entry is modelled at Ask plus configured slippage.")
@@ -1736,10 +1736,10 @@ def show_live_opportunities():
                 "These symbols were safely skipped. No old candle or synthetic price was used "
                 "for a scalping decision."
             )
-            st.dataframe(pd.DataFrame(skipped), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(skipped), width="stretch", hide_index=True)
     if unexpected_failures:
         with st.expander(f"Unexpected scanner errors ({len(unexpected_failures)})"):
-            st.dataframe(pd.DataFrame(unexpected_failures), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(unexpected_failures), width="stretch", hide_index=True)
 
 
 def show_active_scalping_trades():
@@ -1794,7 +1794,7 @@ def show_scalping_paper_portfolio():
     section_header("Closed paper trades", "Append-only fills and exits")
     if closed:
         st.dataframe(with_company_name_column(pd.DataFrame(closed), "ticker"),
-                     use_container_width=True, hide_index=True)
+                     width="stretch", hide_index=True)
     else:
         st.info("No scalping paper trades have closed yet.")
 
@@ -1825,7 +1825,7 @@ def show_scalping_history():
         with tab:
             rows = database.rows(query)
             if rows:
-                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
             else:
                 st.info("No records yet.")
 
@@ -2040,7 +2040,7 @@ def show_scalping_backtest():
         st.caption(source_caption)
         if result["limitations"]:
             st.warning("Coverage limitations: " + " | ".join(result["limitations"]))
-        st.dataframe(pd.DataFrame([result["metrics"]]), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame([result["metrics"]]), width="stretch", hide_index=True)
         tabs = st.tabs(["Trades", "By Setup", "By Time", "By Symbol"])
         tables = (
             pd.DataFrame(result["trades"]), result["by_setup"],
@@ -2049,6 +2049,6 @@ def show_scalping_backtest():
         for tab, table in zip(tabs, tables):
             with tab:
                 if table is not None and not table.empty:
-                    st.dataframe(table, use_container_width=True, hide_index=True)
+                    st.dataframe(table, width="stretch", hide_index=True)
                 else:
                     st.info("No qualifying records for this view.")

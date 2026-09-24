@@ -187,7 +187,7 @@ def render_comparison(comparison, archive_a, archive_b):
         st.dataframe(
             [{"Symbol": symbol, "Reason": reason}
              for symbol, reason in sorted(comparison.disappearance_reasons.items())],
-            use_container_width=True, hide_index=True,
+            width="stretch", hide_index=True,
         )
 
     st.subheader("Data coverage comparison")

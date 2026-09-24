@@ -59,7 +59,7 @@ def render_data_update_required(symbols, results):
     st.warning(withheld_badge())
     st.dataframe(
         with_company_name_column(pd.DataFrame(rows), "Ticker"),
-        hide_index=True, use_container_width=True,
+        hide_index=True, width="stretch",
     )
     st.caption(
         "These symbols remain on your watchlist. They carry no current "
@@ -128,7 +128,7 @@ def show_watchlist():
         if st.button(
             "🔍 Scan Watchlist",
             type="primary",
-            use_container_width=True,
+            width="stretch",
         ):
             with st.spinner("Scanning watchlist symbols..."):
                 st.session_state.watchlist_results = scan_symbols(symbols)
@@ -139,7 +139,7 @@ def show_watchlist():
         st.dataframe(
             with_company_name_column(pd.DataFrame({"Ticker": symbols}), "Ticker"),
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
         return
     if not results:
@@ -180,7 +180,7 @@ def show_watchlist():
             "Score", "AIProbability", "Price", "RR",
         ]], "Ticker"),
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             NAME_COLUMN: st.column_config.TextColumn("اسم السهم", width="large"),
             "Confidence": st.column_config.ProgressColumn(

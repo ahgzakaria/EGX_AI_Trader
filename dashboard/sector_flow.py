@@ -197,7 +197,7 @@ def _latest_session(snapshot):
         "مركّز": snapshot.get("ConcentratedSession", pd.Series(False, index=snapshot.index))
                    .map(lambda v: "⚠" if bool(v) else ""),
     })
-    st.dataframe(table, hide_index=True, use_container_width=True)
+    st.dataframe(table, hide_index=True, width="stretch")
     st.caption(
         "RVOL compares the session's turnover with the sector's own median over the "
         "20 sessions *before* it, so a sector is never scored against a window "
@@ -228,7 +228,7 @@ def _strength(history):
             ),
         }),
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
     st.caption(
         f"Strength is RVOL rescaled onto [0, 1]: a normal session (1.00×) is 0.50 and "
@@ -261,7 +261,7 @@ def _rotation(history):
     ordered.index = pd.to_datetime(ordered.index).strftime("%Y-%m-%d")
     st.dataframe(
         ordered.style.format("{:.1%}").background_gradient(cmap="Blues", axis=None),
-        use_container_width=True,
+        width="stretch",
     )
 
 
@@ -312,7 +312,7 @@ def _next_session(history):
     projection_note(
         "أرقام هذا الجدول محسوبة من الجلسات السابقة ولم تُقَس — ليست دوراناً "
         "فعلياً كبقية الصفحة.")
-    st.dataframe(table, hide_index=True, use_container_width=True)
+    st.dataframe(table, hide_index=True, width="stretch")
 
 
 def _intraday_section(history):
@@ -379,7 +379,7 @@ def _intraday_section(history):
             "Δ": forecast["Change"].map(lambda v: _signed_percent(v, 2)),
         }),
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
     st.caption(
         f"Session {forecast['SessionDate'].iloc[0]} · "

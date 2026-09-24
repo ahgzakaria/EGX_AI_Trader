@@ -133,7 +133,7 @@ def _upcoming_confirmed(svc):
         "Date": r.get("date"), "Name": r.get("name_en") or r.get("name_ar"),
         "Type": r.get("closure_type"), "Source": r.get("source_type"),
         "Confidence": r.get("confidence"), "By": r.get("confirmed_by")} for r in rows]),
-        use_container_width=True, hide_index=True)
+        width="stretch", hide_index=True)
 
 
 def _manual_override_form(svc):
@@ -161,7 +161,7 @@ def _conflicts(svc):
         return
     st.dataframe(pd.DataFrame([{
         "Date": c["date"], "Kind": c["kind"], "Detail": ", ".join(map(str, c.get("detail", [])))}
-        for c in conflicts]), use_container_width=True, hide_index=True)
+        for c in conflicts]), width="stretch", hide_index=True)
     st.caption("Manual override wins operationally, but the conflict remains visible for audit.")
 
 
@@ -174,14 +174,14 @@ def _rejected(svc):
     st.dataframe(pd.DataFrame([{
         "Date": r.get("date"), "Name": r.get("name_en") or r.get("name_ar"),
         "Status": r.get("status"), "Source": r.get("source_type"),
-        "Version": r.get("version")} for r in rows]), use_container_width=True, hide_index=True)
+        "Version": r.get("version")} for r in rows]), width="stretch", hide_index=True)
 
 
 def _sync_audit(svc):
     section_header("Sync History & Audit", "official-source runs + every manual action")
     runs = svc.read_sync_state().get("runs", []) or []
     if runs:
-        st.dataframe(pd.DataFrame(runs), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(runs), width="stretch", hide_index=True)
     else:
         st.caption("No sync runs recorded yet.")
     st.markdown("**Manual action audit (append-only)**")
@@ -190,7 +190,7 @@ def _sync_audit(svc):
         st.dataframe(pd.DataFrame([{
             "At": a.get("at"), "Action": a.get("action"), "Actor": a.get("actor"),
             "Date": a.get("date"), "Reason": a.get("reason")} for a in audit[-100:]]),
-            use_container_width=True, hide_index=True)
+            width="stretch", hide_index=True)
     else:
         st.caption("No manual actions recorded yet.")
 

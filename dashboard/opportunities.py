@@ -187,7 +187,7 @@ def _ready_view(rows, live, paper_idx, phase):
     styler = (disp.style.apply(_style(dq_tones), subset=["Data Quality"], axis=0)
               .apply(_style(paper_tones), subset=["Paper"], axis=0))
     sel = st.dataframe(
-        styler, use_container_width=True, hide_index=True, on_select="rerun",
+        styler, width="stretch", hide_index=True, on_select="rerun",
         selection_mode="single-row", key="opp_ready",
         column_config={
             "Symbol": st.column_config.TextColumn(width="small", pinned=True),
@@ -245,7 +245,7 @@ def _near_ready_view(rows, live, phase):
         dq_tones = [d[1] for d in dq]
         sel = st.dataframe(
             disp.style.apply(_style(dq_tones), subset=["Data Quality"], axis=0),
-            use_container_width=True, hide_index=True, on_select="rerun",
+            width="stretch", hide_index=True, on_select="rerun",
             selection_mode="single-row", key="opp_near",
             column_config={
                 "Symbol": st.column_config.TextColumn(width="small", pinned=True),
@@ -264,7 +264,7 @@ def _near_ready_view(rows, live, phase):
             "Data Quality": ["Last Price Unavailable"] * len(invalid)})
         st.caption(f"Data Unavailable ({len(invalid)}) — no valid last price available; "
                    f"shown for historical trigger reference only, excluded from near-ready ranking:")
-        st.dataframe(ref, use_container_width=True, hide_index=True)
+        st.dataframe(ref, width="stretch", hide_index=True)
 
 
 # --- 3. Invalidated view ----------------------------------------------------
@@ -300,7 +300,7 @@ def _invalidated_view(rows, transitions, paper_idx, phase, session_date):
         "Cycle": inv["activation_cycle"],
         "Paper UUID": [_paper_uuid(paper_idx, s) for s in inv["symbol"]],
     })
-    st.dataframe(disp, use_container_width=True, hide_index=True,
+    st.dataframe(disp, width="stretch", hide_index=True,
                  column_config={"Symbol": st.column_config.TextColumn(width="small", pinned=True),
                                 "Scenario": st.column_config.TextColumn(width="medium"),
                                 "Paper UUID": st.column_config.TextColumn(width="small")})
@@ -328,7 +328,7 @@ def _blocked_view(rows, phase):
         with st.expander(f"{lbl} — {n} symbol(s)"):
             st.dataframe(with_company_name_column(
                 pd.DataFrame({"Symbol": sorted(syms)}), "Symbol"),
-                         use_container_width=True, hide_index=True, height=min(320, 46 + 30 * n))
+                         width="stretch", hide_index=True, height=min(320, 46 + 30 * n))
 
 
 # --- 5. All evaluations view ------------------------------------------------
@@ -360,7 +360,7 @@ def _all_evaluations_view(rows, live, paper_idx, phase):
     styler = (disp.style.apply(_style(state_tones), subset=["State"], axis=0)
               .apply(_style(dq_tones), subset=["Data Quality"], axis=0))
     sel = st.dataframe(
-        styler, use_container_width=True, hide_index=True, on_select="rerun",
+        styler, width="stretch", hide_index=True, on_select="rerun",
         selection_mode="single-row", key="opp_all",
         height=min(640, 46 + 34 * len(disp)),
         column_config={
@@ -488,7 +488,7 @@ def _transition_timeline(symbol, transitions, paper_idx):
                    for to, n in zip(t["to_state"], t["note"])],
         "Cycle": t["activation_cycle"], "Note": t["note"].replace("", EM_DASH),
     })
-    st.dataframe(disp, use_container_width=True, hide_index=True,
+    st.dataframe(disp, width="stretch", hide_index=True,
                  height=min(280, 46 + 30 * len(disp)))
 
 

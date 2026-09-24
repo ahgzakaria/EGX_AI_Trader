@@ -94,7 +94,7 @@ def show_compare_runs():
     second_values = pd.to_numeric(metric_frame[second], errors="coerce")
     metric_frame["Difference"] = second_values - first_values
     st.dataframe(
-        metric_frame, use_container_width=True, hide_index=True,
+        metric_frame, width="stretch", hide_index=True,
         column_config={
             "Difference": st.column_config.NumberColumn("Δ Second − First", format="%.2f")
         },
@@ -123,7 +123,7 @@ def show_compare_runs():
         if frame.empty:
             st.info(f"No {label.lower()} are available for these runs.")
             continue
-        st.dataframe(frame, use_container_width=True, hide_index=True)
+        st.dataframe(frame, width="stretch", hide_index=True)
         st.bar_chart(frame.pivot(
             index="Period", columns="RunID", values="ReturnPercent"
         ))

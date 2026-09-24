@@ -270,7 +270,7 @@ def render_uptrend_pullback_tab(
         f"{header['candidate_limit']} · قطع D-1: "
         f"{header['historical_data_cutoff']}"
     )
-    st.dataframe(frame, use_container_width=True, hide_index=True)
+    st.dataframe(frame, width="stretch", hide_index=True)
     _render_details(view)
     _render_rejections(view)
     st.warning(
@@ -340,7 +340,7 @@ def _render_details(view):
         ]
         st.dataframe(
             pd.DataFrame(details, columns=["البند", "القيمة"]),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -361,7 +361,7 @@ def _render_rejections(view):
         ]
         st.dataframe(
             pd.DataFrame(rows),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 

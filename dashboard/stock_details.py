@@ -141,11 +141,11 @@ def show_stock_details(stock, *, freshness=None):
     )
     title_col.caption(company_name(stock["Ticker"]))
     if stock["Ticker"] in symbols:
-        if action_col.button("✕ Remove", use_container_width=True):
+        if action_col.button("✕ Remove", width="stretch"):
             watchlist.remove(stock["Ticker"])
             st.rerun()
     else:
-        if action_col.button("☆ Add to Watchlist", use_container_width=True):
+        if action_col.button("☆ Add to Watchlist", width="stretch"):
             watchlist.add(stock["Ticker"])
             st.rerun()
     count_col.metric("Watchlist", len(symbols))
@@ -164,7 +164,7 @@ def show_stock_details(stock, *, freshness=None):
             st.dataframe(
                 pd.DataFrame([{k: v for k, v in stock.items()
                                if k not in ("Data",)}]).T,
-                use_container_width=True,
+                width="stretch",
             )
         return
 
@@ -362,7 +362,7 @@ def _decision_trace(stock):
             "Original R/R": stock.get("RR"),
         }]),
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
     section_header("Gate Results",
                    "The exact unified decision path — PASS, FAIL, or no result")
@@ -384,7 +384,7 @@ def _decision_trace(stock):
         ],
     })
     st.dataframe(
-        scores, hide_index=True, use_container_width=True,
+        scores, hide_index=True, width="stretch",
         column_config={
             "Score": st.column_config.ProgressColumn("Score", min_value=0, max_value=30)
         },
@@ -442,7 +442,7 @@ def _chart_and_indicators(stock):
             for name in names
         ],
     })
-    st.dataframe(indicators, hide_index=True, use_container_width=True)
+    st.dataframe(indicators, hide_index=True, width="stretch")
 
 
 def stock_level_context(

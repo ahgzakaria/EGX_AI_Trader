@@ -54,7 +54,7 @@ def show_forward_testing():
             ]])
             daily = snapshots.set_index("Timestamp")[["equity"]].copy()
             daily["DailyReturnPercent"] = daily["equity"].pct_change() * 100
-            st.dataframe(daily.reset_index(), use_container_width=True, hide_index=True)
+            st.dataframe(daily.reset_index(), width="stretch", hide_index=True)
     with alerts_tab:
         _frame_or_message(data["alerts"], "No alerts generated yet.")
 
@@ -133,7 +133,7 @@ def _outcome_metrics(outcomes):
             icon="⏳",
         )
         return
-    st.dataframe(outcomes, use_container_width=True, hide_index=True)
+    st.dataframe(outcomes, width="stretch", hide_index=True)
 
 
 def _rolling_signal_charts(closed):
@@ -159,4 +159,4 @@ def _frame_or_message(frame, message):
         # JSON indicator payloads remain available for audit without forcing a
         # wide nested object into the primary operational tables.
         display = frame.drop(columns=["indicators_json"], errors="ignore")
-        st.dataframe(display, use_container_width=True, hide_index=True)
+        st.dataframe(display, width="stretch", hide_index=True)

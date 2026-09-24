@@ -104,7 +104,7 @@ def show_run_history():
     if run_status != "ALL":
         visible = visible[visible["Status"] == run_status]
     st.dataframe(
-        visible, use_container_width=True, hide_index=True,
+        visible, width="stretch", hide_index=True,
         column_config={
             "Return": st.column_config.NumberColumn("Return", format="%.2f%%"),
             "Drawdown": st.column_config.NumberColumn("Drawdown", format="%.2f%%"),
@@ -121,10 +121,10 @@ def show_run_history():
 
     open_col, compare_col, export_col, delete_col = st.columns(4)
     with open_col:
-        if st.button("📂 Open Report", use_container_width=True):
+        if st.button("📂 Open Report", width="stretch"):
             st.session_state.open_run_id = selected
     with compare_col:
-        if st.button("⚖️ Compare Runs", use_container_width=True):
+        if st.button("⚖️ Compare Runs", width="stretch"):
             st.session_state.compare_run_a = selected
             st.info("Run selected. Open Compare Runs and choose the second run.")
     with export_col:
@@ -133,22 +133,22 @@ def show_run_history():
             data=RunRepository.export_zip(selected),
             file_name=f"{selected}.zip",
             mime="application/zip",
-            use_container_width=True,
+            width="stretch",
         )
     with delete_col:
-        if st.button("🗑️ Delete Run", use_container_width=True):
+        if st.button("🗑️ Delete Run", width="stretch"):
             st.session_state.pending_delete_run = selected
 
     if st.session_state.get("pending_delete_run") == selected:
         st.warning(f"Delete {selected}? This removes only this archived run.")
         confirm_col, cancel_col = st.columns(2)
-        if confirm_col.button("Confirm Delete", type="primary", use_container_width=True):
+        if confirm_col.button("Confirm Delete", type="primary", width="stretch"):
             RunRepository.delete(selected)
             st.session_state.pop("pending_delete_run", None)
             st.session_state.pop("open_run_id", None)
             st.success("Run deleted.")
             st.rerun()
-        if cancel_col.button("Cancel", use_container_width=True):
+        if cancel_col.button("Cancel", width="stretch"):
             st.session_state.pop("pending_delete_run", None)
             st.rerun()
 
@@ -199,7 +199,7 @@ def _show_run(run_id, metadata):
                 if column in frame.columns:
                     frame = with_company_name_column(frame, column)
                     break
-            st.dataframe(frame, use_container_width=True, hide_index=True)
+            st.dataframe(frame, width="stretch", hide_index=True)
     elif path.suffix.lower() in {".md", ".json", ".txt"}:
         st.code(path.read_text(encoding="utf-8-sig"), language=None)
     else:

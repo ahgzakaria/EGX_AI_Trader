@@ -372,7 +372,7 @@ def _positions_table(view):
     st.dataframe(
         with_company_name_column(frame, "Ticker"),
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             NAME_COLUMN: st.column_config.TextColumn("اسم السهم", width="medium"),
             "الكمية": st.column_config.NumberColumn(format="%.0f"),
@@ -407,7 +407,7 @@ def _concentration(view):
         ]
     )
     st.dataframe(
-        frame, hide_index=True, use_container_width=True,
+        frame, hide_index=True, width="stretch",
         column_config={
             "القيمة": st.column_config.NumberColumn(format="%.0f"),
             "النسبة": st.column_config.ProgressColumn(
@@ -541,11 +541,11 @@ def _records(store, fee_model):
     frame = pd.DataFrame(trades)[
         ["id", "trade_date", "symbol", "side", "quantity", "price", "fees_egp", "note"]
     ]
-    st.dataframe(frame, hide_index=True, use_container_width=True)
+    st.dataframe(frame, hide_index=True, width="stretch")
 
     columns = st.columns([2, 1])
     trade_id = columns[0].number_input("رقم الصفقة للحذف", min_value=0, step=1, value=0)
-    if columns[1].button("حذف الصفقة", use_container_width=True):
+    if columns[1].button("حذف الصفقة", width="stretch"):
         if trade_id <= 0:
             st.error("اكتب رقم صفقة صحيحًا.")
             return
@@ -607,7 +607,7 @@ def _preview(rows):
     if not rows:
         return []
     st.dataframe(
-        _rows_frame(rows), hide_index=True, use_container_width=True,
+        _rows_frame(rows), hide_index=True, width="stretch",
         column_config={
             "الكمية": st.column_config.NumberColumn(format="%.0f"),
             "السعر": st.column_config.NumberColumn(format="%.4f"),
@@ -701,12 +701,12 @@ def _file_tab(store, fee_model):
     columns[0].download_button(
         "⬇ قالب المراكز الافتتاحية", imports.OPENING_TEMPLATE,
         file_name="opening_positions.csv", mime="text/csv",
-        use_container_width=True,
+        width="stretch",
     )
     columns[1].download_button(
         "⬇ قالب الصفقات التفصيلية", imports.TRANSACTIONS_TEMPLATE,
         file_name="transactions.csv", mime="text/csv",
-        use_container_width=True,
+        width="stretch",
     )
 
     uploaded = st.file_uploader(
@@ -730,7 +730,7 @@ def _file_tab(store, fee_model):
             "(صفقات تفصيلية) أو عمود متوسط الشراء (مراكز افتتاحية). نزّل قالبًا "
             "من فوق."
         )
-        st.dataframe(frame.head(10), hide_index=True, use_container_width=True)
+        st.dataframe(frame.head(10), hide_index=True, width="stretch")
         return
 
     st.info(
@@ -801,7 +801,7 @@ def _provenance(view):
         if fee.fee_lines:
             st.dataframe(
                 pd.DataFrame(fee.fee_lines, columns=["البند", "النسبة %"]),
-                hide_index=True, use_container_width=True,
+                hide_index=True, width="stretch",
             )
         policy = view.policy
         st.markdown(
@@ -842,7 +842,7 @@ def _log(store, view):
                 ["generated_at", "symbol", "action", "rule", "price", "price_basis",
                  "net_percent", "reason"]
             ]
-            st.dataframe(frame, hide_index=True, use_container_width=True)
+            st.dataframe(frame, hide_index=True, width="stretch")
             st.caption(
                 "كل توصية تطلب إجراءً تُسجَّل مرة واحدة لكل جلسة — هذا السجل هو ما "
                 "سيُحكم به على القواعد بعد عدد كافٍ من الجلسات."
@@ -863,7 +863,7 @@ def _log(store, view):
         ]
         st.dataframe(
             frame.sort_values(["symbol", "version"], ascending=[True, False]),
-            hide_index=True, use_container_width=True,
+            hide_index=True, width="stretch",
             column_config={
                 "stop": st.column_config.NumberColumn(format="%.3f"),
                 "target_partial": st.column_config.NumberColumn(format="%.3f"),
@@ -913,12 +913,12 @@ def show_portfolio():
     session = expected_completed_session()
     controls = st.columns([1, 1, 2])
     if controls[0].button("🔄 تحديث الأسعار", type="primary",
-                          use_container_width=True):
+                          width="stretch"):
         _quotes.clear()
         _sector_intraday.clear()
         st.rerun()
     rebuild = controls[1].button(
-        "♻ إعادة حساب الخطط", use_container_width=True,
+        "♻ إعادة حساب الخطط", width="stretch",
         help="يعيد قراءة الشموع اليومية لكل سهم ويبني الخطط من جديد. "
              "بيحصل تلقائيًا مع كل جلسة جديدة، فمش محتاجه إلا لو عايز تجبره.",
     )

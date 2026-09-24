@@ -76,7 +76,7 @@ def show_eodhd_migration_review():
                    "coverage and corporate-action handling change some backtests — see below.")
         st.dataframe(bt[["symbol", "window", "yahoo_bars", "eodhd_bars", "yahoo_trades",
                          "eodhd_trades", "classification"]].dropna(subset=["classification"]),
-                     use_container_width=True, hide_index=True)
+                     width="stretch", hide_index=True)
 
     st.markdown("**ORAS special rule:** " + badge_html("EODHD primary · Yahoo forbidden", "red"),
                 unsafe_allow_html=True)
@@ -86,7 +86,7 @@ def show_eodhd_migration_review():
     scale = _csv("price_scale_anomalies.csv")
     if not scale.empty:
         section_header("Price-scale anomalies", "")
-        st.dataframe(scale, use_container_width=True, hide_index=True)
+        st.dataframe(scale, width="stretch", hide_index=True)
 
     st.info("Routing remains INACTIVE. Enabling any tier is a separate, explicit approval + "
             "wiring step not performed here. Historical backtests are never repointed.")

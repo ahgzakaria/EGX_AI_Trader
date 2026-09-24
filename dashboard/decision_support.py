@@ -132,7 +132,7 @@ def _priority_tabs(frame):
             else:
                 st.dataframe(
                     values[["EdgeRank", "Ticker", "EdgeScore", "ExistingSignal", "StrategyScore", "RelativeVolume", "SpreadQuality", "LiquidityQuality"]],
-                    hide_index=True, use_container_width=True,
+                    hide_index=True, width="stretch",
                     column_config=_columns(),
                 )
 
@@ -192,7 +192,7 @@ def _opportunity_table(frame, pinned):
     st.dataframe(
         with_company_name_column(view[columns], "Ticker")
         if "Ticker" in columns else view[columns],
-        hide_index=True, use_container_width=True,
+        hide_index=True, width="stretch",
         height=min(720, 82 + len(view) * 35), column_config=_columns(),
     )
 
@@ -202,10 +202,10 @@ def _pins(service, frame, pinned):
     ticker = action_col.selectbox("Pinned-symbol control", frame["Ticker"].tolist(),
                                   format_func=symbol_option_label,
                                   label_visibility="collapsed")
-    if pin_col.button("☆ Pin", use_container_width=True, disabled=ticker in pinned):
+    if pin_col.button("☆ Pin", width="stretch", disabled=ticker in pinned):
         service.database.set_pinned(ticker, True)
         st.rerun()
-    if remove_col.button("✕ Unpin", use_container_width=True, disabled=ticker not in pinned):
+    if remove_col.button("✕ Unpin", width="stretch", disabled=ticker not in pinned):
         service.database.set_pinned(ticker, False)
         st.rerun()
 
@@ -261,7 +261,7 @@ def _heatmaps(frame, sectors):
         if sectors is None or sectors.empty or (sectors["Sector"] == "Unknown").all():
             st.caption("Sector heat unavailable until data/sectors.csv is supplied.")
         else:
-            st.dataframe(sectors, hide_index=True, use_container_width=True)
+            st.dataframe(sectors, hide_index=True, width="stretch")
     with tabs[2]:
         _heat_table(frame, ["Ticker", "LiquidityScore", "SpreadPercent", "RelativeVolume", "Turnover"])
     with tabs[3]:
@@ -274,7 +274,7 @@ def _heat_table(frame, columns):
     view = frame[columns].copy()
     numeric = view.select_dtypes(include="number").columns.tolist()
     styled = view.style.background_gradient(cmap="RdYlGn", subset=numeric) if numeric else view.style
-    st.dataframe(styled, hide_index=True, use_container_width=True)
+    st.dataframe(styled, hide_index=True, width="stretch")
 
 
 def _alerts(rows):
@@ -285,7 +285,7 @@ def _alerts(rows):
     frame = pd.DataFrame(rows)
     st.dataframe(
         frame[["created_at", "alert_type", "ticker", "message", "acknowledged"]],
-        hide_index=True, use_container_width=True,
+        hide_index=True, width="stretch",
     )
 
 
@@ -293,7 +293,7 @@ def _analytics_table(frame, label):
     if frame.empty:
         st.caption("Insufficient closed paper evidence.")
     else:
-        st.dataframe(frame, hide_index=True, use_container_width=True)
+        st.dataframe(frame, hide_index=True, width="stretch")
 
 
 def _columns():

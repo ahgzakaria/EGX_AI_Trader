@@ -740,7 +740,7 @@ def show_settings():
         run_button = st.empty()
         run_clicked = run_button.button(
             "▶ Run Backtest",
-            use_container_width=True,
+            width="stretch",
             type="primary",
             disabled=state.backtest_running,
             key="run_backtest_button",
@@ -770,7 +770,7 @@ def show_settings():
             run_button.empty()
             run_button.button(
                 "⏳ Backtest Running…",
-                use_container_width=True,
+                width="stretch",
                 disabled=True,
                 key="run_backtest_running_indicator",
             )
@@ -1071,14 +1071,14 @@ def show_settings():
                     st.dataframe(
                         result["errors"],
                         hide_index=True,
-                        use_container_width=True
+                        width="stretch"
                     )
 
         st.divider()
 
         if st.button(
             "🤖 Train AI",
-            use_container_width=True
+            width="stretch"
         ):
 
             with st.spinner("Training AI Model..."):
@@ -1103,13 +1103,13 @@ def show_settings():
 
         st.button(
             "📂 Open Reports",
-            use_container_width=True,
+            width="stretch",
             disabled=True
         )
 
         if st.button(
             "🔄 Reset Settings",
-            use_container_width=True
+            width="stretch"
         ):
 
             settings.reset()
@@ -1191,7 +1191,7 @@ def show_settings():
 
     if st.button(
         "💾 Save Settings",
-        use_container_width=True,
+        width="stretch",
         disabled=not settings_dirty or st.session_state.backtest_running,
         help=(
             "Change a setting to enable saving."
