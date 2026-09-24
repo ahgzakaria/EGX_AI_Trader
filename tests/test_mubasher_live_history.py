@@ -132,6 +132,9 @@ class EodhdReached(Exception):
 @pytest.fixture
 def store(tmp_path, monkeypatch):
     path, dates = make_store(tmp_path)
+    # These test the switch itself, from its EODHD side: the configured value
+    # has been "mubasher" since 2026-09-24, so the starting point is pinned.
+    monkeypatch.setitem(settings.data, "live_history_source", "eodhd")
     monkeypatch.setattr(measured_turnover, "DEFAULT_DATABASE", str(path))
     monkeypatch.setattr(router, "_expected_completed_session", lambda: dates[-1].date())
 
@@ -142,10 +145,13 @@ def store(tmp_path, monkeypatch):
     return path, dates
 
 
-def test_the_live_source_is_eodhd_until_it_is_switched():
-    assert DEFAULT_SETTINGS["live_history_source"] == "eodhd"
-    assert settings.data.get("live_history_source") == "eodhd"
-    assert router.live_history_source() == "eodhd"
+def test_the_live_source_is_mubasher_since_the_switch():
+    """Switched on 2026-09-24, ahead of the EODHD subscription lapsing, after the
+    shadow had the Daily Dashboard's own BUYs agreeing on 26 of 32 across the
+    two records and a scan with every EODHD request refused made none."""
+    assert DEFAULT_SETTINGS["live_history_source"] == "mubasher"
+    assert settings.data.get("live_history_source") == "mubasher"
+    assert router.live_history_source() == "mubasher"
 
 
 def test_the_default_path_still_reads_eodhd(store):
@@ -254,3 +260,24 @@ def test_sessions_to_record_starts_at_the_expected_session():
     chosen = sessions_to_record(dates[-2].date(), histories, backfill=3)
     assert chosen[0] == dates[-2]
     assert chosen[1:] == [dates[-3], dates[-4], dates[-5]]
+
+
+# --- what the pages say the source is ------------------------------------------
+
+def test_the_banner_names_the_record_the_scan_reads(monkeypatch):
+    from dashboard.scan_status_panel import MUBASHER, scan_status_view
+
+    monkeypatch.setitem(settings.data, "live_history_source", "mubasher")
+    assert scan_status_view(None)["historical_source"] == MUBASHER
+
+    monkeypatch.setitem(settings.data, "live_history_source", "eodhd")
+    assert scan_status_view(None)["historical_source"] == "EODHD"
+
+
+def test_system_health_names_the_configured_source_not_a_constant():
+    import inspect
+    from dashboard import system_health
+
+    source = inspect.getsource(system_health)
+    assert 'metric("Current Research Provider", "EODHD")' not in source
+    assert "history_labels()" in source

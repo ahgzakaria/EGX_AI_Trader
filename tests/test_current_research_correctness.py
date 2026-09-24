@@ -15,6 +15,16 @@ import core.research_router as router
 from providers import eodhd_volume_adjustment as vol
 
 
+@pytest.fixture(autouse=True)
+def _eodhd_route(monkeypatch):
+    """These test the tier routing, which is the router's EODHD branch. The
+    configured live source is MubasherTrade PRO since 2026-09-24, so the EODHD
+    branch -- still the way back while the subscription lasts -- is pinned."""
+    from config.settings_manager import settings
+
+    monkeypatch.setitem(settings.data, "live_history_source", "eodhd")
+
+
 def _load_splits(sym):
     path = Path(f"data/eodhd/corporate_actions/{sym}_splits.json")
     if not path.exists():

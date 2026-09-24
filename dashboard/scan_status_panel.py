@@ -27,6 +27,26 @@ from core.live_feed import LIVE_QUOTES_STATUS_EN
 EODHD = "EODHD"
 EODHD_CACHE = "EODHD cache"
 EODHD_CACHE_PLUS_REFRESH = "EODHD cache + bounded refreshes"
+#: The live path reads MubasherTrade PRO's own record since 2026-09-24. It
+#: has no cache or refresh of its own, so one label covers every state.
+MUBASHER = "MubasherTrade PRO"
+
+
+def history_labels():
+    """``(before a scan, cached, refreshed)`` for the configured live source.
+
+    Read from the setting, never assumed: this line said "EODHD" as a
+    constant, which would have gone on saying it after the switch.
+    """
+    try:
+        from core.research_router import live_history_source
+
+        source = live_history_source()
+    except Exception:                                   # noqa: BLE001
+        source = "eodhd"
+    if source == "mubasher":
+        return MUBASHER, MUBASHER, MUBASHER
+    return EODHD, EODHD_CACHE, EODHD_CACHE_PLUS_REFRESH
 
 AWAITING_SCAN = "Awaiting scan"
 
@@ -47,10 +67,12 @@ def scan_status_view(job_progress=None, expected_session=None, result_metadata=N
         CANCELLED, COMPLETED, COMPLETED_WITH_GAPS, FAILED, PREPARING_RUBIX, STARTING,
     )
 
+    before, cached, refreshed_label = history_labels()
+
     # No scan has run in this session.
     if job_progress is None:
         return {
-            "historical_source": EODHD,
+            "historical_source": before,
             "latest_completed_candle": AWAITING_SCAN,
             "live_overlay": LIVE_QUOTES_STATUS_EN,
         }
@@ -61,7 +83,7 @@ def scan_status_view(job_progress=None, expected_session=None, result_metadata=N
         # No row has been read yet, so no candle date is known. The expected
         # session is a different claim and never appears under this label.
         return {
-            "historical_source": EODHD,
+            "historical_source": before,
             "latest_completed_candle": AWAITING_SCAN,
             "live_overlay": LIVE_QUOTES_STATUS_EN,
         }
@@ -69,7 +91,7 @@ def scan_status_view(job_progress=None, expected_session=None, result_metadata=N
     overlay = LIVE_QUOTES_STATUS_EN
 
     refreshed = int(job_progress.eodhd_refresh_successes or 0)
-    historical = EODHD_CACHE_PLUS_REFRESH if refreshed else EODHD_CACHE
+    historical = refreshed_label if refreshed else cached
 
     if state in (COMPLETED, COMPLETED_WITH_GAPS, CANCELLED, FAILED):
         candle = (result_metadata or {}).get("latest_completed_candle")

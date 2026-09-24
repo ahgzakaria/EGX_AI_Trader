@@ -229,7 +229,8 @@ def _provider_domains_panel():
 
     st.subheader("CURRENT RESEARCH · CURRENT_RESEARCH_V2")
     c = st.columns(5)
-    c[0].metric("Current Research Provider", "EODHD")
+    from dashboard.scan_status_panel import history_labels
+    c[0].metric("Current Research Provider", history_labels()[0])
     c[1].metric("Activated symbols", summary.get("activated_current_research", "—"))
     try:
         from core.egx_calendar import effective_holidays

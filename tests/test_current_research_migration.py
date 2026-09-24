@@ -8,6 +8,16 @@ import pytest
 import core.research_router as router
 
 
+@pytest.fixture(autouse=True)
+def _eodhd_route(monkeypatch):
+    """These test the tier routing, which is the router's EODHD branch. The
+    configured live source is MubasherTrade PRO since 2026-09-24, so the EODHD
+    branch -- still the way back while the subscription lasts -- is pinned."""
+    from config.settings_manager import settings
+
+    monkeypatch.setitem(settings.data, "live_history_source", "eodhd")
+
+
 def _frame(rows=300, start="2024-01-01"):
     idx = pd.date_range(start, periods=rows, freq="B", name="Date")
     v = pd.Series(range(rows), dtype=float, index=idx)

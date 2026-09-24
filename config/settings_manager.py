@@ -19,7 +19,10 @@ DEFAULT_SETTINGS = {
     # The record the live scanner's daily history comes from. "eodhd" until
     # scripts/record_live_source_shadow.py has shown MubasherTrade PRO's record
     # ("mubasher") agreeing in practice; see core/mubasher_live_history.py.
-    "live_history_source": "eodhd",
+    # MubasherTrade PRO since 2026-09-24: EODHD's subscription lapses in
+    # October, and a fallback to a cancelled source is no fallback.
+    # docs/audits/providers/EODHD_TO_MUBASHER_SWITCH.md has the evidence.
+    "live_history_source": "mubasher",
     "market_data": {
         "cache_path": "data/market_data_cache.sqlite",
         "cache_source_provider": "rubix",

@@ -23,6 +23,16 @@ from dashboard.scan_status_panel import coverage_view, scan_status_view
 
 
 @pytest.fixture(autouse=True)
+def _eodhd_wording(monkeypatch):
+    """These pin the banner's EODHD wording, so the source is set to EODHD for
+    them. The configured source is MubasherTrade PRO since 2026-09-24; its
+    wording is pinned in tests/test_mubasher_live_history.py."""
+    from config.settings_manager import settings
+
+    monkeypatch.setitem(settings.data, "live_history_source", "eodhd")
+
+
+@pytest.fixture(autouse=True)
 def clean_registry():
     jm.REGISTRY.clear()
     yield
