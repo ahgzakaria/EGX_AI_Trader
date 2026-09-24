@@ -54,6 +54,12 @@ DEFAULT_DATABASE = PROJECT_ROOT / "data" / "swing_breakout_forward.db"
 #: before any conversion rate has been seen.
 WATCH_WINDOW = 10
 
+#: How many skipped sessions one run will replay. The recorder runs from the
+#: daily click, so a day it is not clicked is a day it did not see -- 2026-09-23
+#: was lost that way. Two trading weeks covers a holiday and a missed week;
+#: anything older is left out and reported rather than replayed.
+MAX_CATCH_UP_SESSIONS = 10
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
     session_id TEXT PRIMARY KEY,
@@ -341,13 +347,75 @@ class SwingForwardTest:
 
     # -- recording ---------------------------------------------------------
 
-    def record(self, now=None, histories=None, watch_result=None):
+    def missing_sessions(self, histories, limit=MAX_CATCH_UP_SESSIONS):
+        """Sessions the record skipped, oldest first, that ``histories`` can replay.
+
+        Only after the first session already recorded: a gap is a day the daily
+        run was not clicked, while anything before the first is history the
+        rule never saw live, and writing that in now would be a backtest filed
+        as a forward test. The newest session is not included -- ``record``
+        takes it from the full histories.
+        """
+        import pandas as pd
+
+        recorded = {row["session_date"] for row in self.store.rows(
+            "SELECT session_date FROM sessions WHERE source = ?", (SWING,))}
+        if not recorded:
+            return []
+        first = pd.Timestamp(min(recorded))
+        traded = set()
+        for frame in (histories or {}).values():
+            if frame is None or not len(frame):
+                continue
+            index = pd.to_datetime(frame.index)
+            traded.update(day.date().isoformat() for day in index[index > first])
+        if not traded:
+            return []
+        newest = max(traded)
+        missing = sorted(day for day in traded
+                         if day not in recorded and day != newest)
+        return missing[-int(limit):]
+
+    def record_missed(self, histories, now=None, limit=MAX_CATCH_UP_SESSIONS):
+        """Replay every skipped session from the histories as they stood then.
+
+        Each replay sees only bars on or before its own session, so the liquid
+        universe, the momentum rank and both rules are computed from what was
+        knowable that evening. ``recorded_at`` is the time of the replay, which
+        is what makes a caught-up session distinguishable from one recorded on
+        the day.
+        """
+        import pandas as pd
+
+        results = []
+        for day in self.missing_sessions(histories, limit=limit):
+            ceiling = pd.Timestamp(day)
+            sliced = {}
+            for symbol, frame in histories.items():
+                if frame is None or not len(frame):
+                    continue
+                cut = frame[pd.to_datetime(frame.index) <= ceiling]
+                if len(cut):
+                    sliced[symbol] = cut
+            outcome = self.record(now=now, histories=sliced)
+            if outcome.get("session") != day:
+                # `record` dates a session from the bars themselves, so when no
+                # liquid name traded on `day` it recorded the last session that
+                # did -- already in the record or a missed day of its own, and
+                # correct either way. Nothing is ever written under a date its
+                # data does not reach; this only says `day` itself was empty.
+                outcome = {**outcome, "wanted": day,
+                           "note": f"no liquid symbol traded on {day}"}
+            results.append(outcome)
+        return results
+
+    def record(self, now=None, histories=None, watch_result=None, failures=None):
         """Run both pages' own entry points and write down what they named."""
         from services.swing_breakout import (load_universe_histories,
                                              most_traded, scan)
 
         stamp = _now(now).isoformat()
-        failures = {}
+        failures = {} if failures is None else failures
         if histories is None:
             histories = load_universe_histories(
                 on_error=lambda symbol, reason: failures.setdefault(symbol, reason))

@@ -232,3 +232,95 @@ def test_the_roll_estimate_is_stored_but_never_selects(monkeypatch, store):
     conn.close()
     assert spread is None, "this source has no quotes and must not pretend to"
     assert roll == pytest.approx(0.21)
+
+
+# --- a day the daily run was not clicked -------------------------------------
+#
+# `daily` recorded only the newest session and graded the one before it, so
+# 2026-09-23 -- a session nobody ran the daily update on -- has no predictions,
+# although the minute store held its minutes for weeks afterwards.
+
+def test_a_skipped_session_is_recorded_on_the_next_run(store):
+    for session in ("2026-09-21", "2026-09-22"):
+        _seed(store, session=session).close()
+
+    held = ["2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24"]
+    assert recorder.sessions_to_record(held) == ["2026-09-23", "2026-09-24"]
+
+
+def test_history_before_the_record_began_is_not_backfilled(store):
+    """A gap is a missed day. Anything before the first recorded session is
+    history the rule never saw live -- writing it now is a backtest."""
+    _seed(store, session="2026-09-22").close()
+
+    held = ["2026-09-15", "2026-09-16", "2026-09-22", "2026-09-23"]
+    assert recorder.sessions_to_record(held) == ["2026-09-23"]
+
+
+def test_an_earlier_rule_versions_sessions_do_not_start_the_record(store):
+    """The v1 rows date from the Rubix feed. The current rule's record starts
+    where the current rule started, or catch-up would write it into v1's era."""
+    _seed(store, session="2026-08-26", rule_version="v1-rubix").close()
+    _seed(store, session="2026-09-22").close()
+
+    held = ["2026-08-26", "2026-08-27", "2026-09-22", "2026-09-23"]
+    assert recorder.sessions_to_record(held) == ["2026-09-23"]
+
+
+def test_an_empty_record_starts_with_the_newest_session_only(store):
+    assert recorder.sessions_to_record(["2026-09-22", "2026-09-23"]) == ["2026-09-23"]
+
+
+def test_daily_catches_up_and_grades_every_open_session(monkeypatch, store):
+    _seed(store, session="2026-09-21").close()
+    recorded, graded = [], []
+    monkeypatch.setattr("sector_flow.mubasher_local.available_sessions",
+                        lambda *a, **k: ["2026-09-21", "2026-09-22", "2026-09-23"])
+    monkeypatch.setattr(recorder, "record",
+                        lambda session, *a, **k: recorded.append(session))
+    monkeypatch.setattr(recorder, "grade", lambda session: graded.append(session))
+
+    recorder.daily(recorder.DEFAULT_MIN_BARS)
+
+    assert recorded == ["2026-09-22", "2026-09-23"]
+    # Only 2026-09-21 had a row to grade in this fixture; record() was stubbed.
+    assert graded == ["2026-09-21"]
+
+
+def test_one_incomplete_session_does_not_stop_the_catch_up(monkeypatch, store, capsys):
+    _seed(store, session="2026-09-21").close()
+    recorded = []
+
+    def record(session, *a, **k):
+        if session == "2026-09-22":
+            raise SystemExit("session 2026-09-22 looks incomplete")
+        recorded.append(session)
+
+    monkeypatch.setattr("sector_flow.mubasher_local.available_sessions",
+                        lambda *a, **k: ["2026-09-21", "2026-09-22", "2026-09-23"])
+    monkeypatch.setattr(recorder, "record", record)
+    monkeypatch.setattr(recorder, "grade", lambda session: None)
+
+    recorder.daily(recorder.DEFAULT_MIN_BARS)
+
+    assert recorded == ["2026-09-23"]
+    assert "2026-09-22: not recorded" in capsys.readouterr().out
+
+
+def test_a_session_already_graded_is_not_retried_for_its_stragglers(store):
+    """A symbol that did not trade the next session has no open to settle
+    against, and never will: grading uses that one session. Retrying it every
+    run only reprints the same zero."""
+    conn = _seed(store, session="2026-09-21", ticker="AAA")
+    conn.execute("UPDATE gap_predictions SET graded_at='t1' WHERE ticker='AAA'")
+    conn.commit()
+    conn.close()
+    _seed(store, session="2026-09-21", ticker="BBB").close()     # the straggler
+
+    assert recorder.needs_grading("2026-09-21") is False
+
+
+def test_a_session_never_graded_still_is(store):
+    _seed(store, session="2026-09-24").close()
+    assert recorder.needs_grading("2026-09-24") is True
+    assert recorder.needs_grading("2026-09-25") is False, "nothing recorded"

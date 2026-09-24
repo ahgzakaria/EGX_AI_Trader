@@ -221,3 +221,78 @@ def test_recording_writes_what_the_scan_named(tmp_path, monkeypatch):
     assert row["symbol"] == "ABUK.CA" and row["window_sessions"] == forward.WATCH_WINDOW
     assert {r["source"] for r in test.store.rows("SELECT source FROM sessions")} == {
         forward.SWING, forward.WATCH}
+
+
+# --- a day the daily run was not clicked -------------------------------------
+#
+# The recorder runs from the daily click and recorded only the newest session,
+# so 2026-09-23 -- a day nobody ran it -- was lost although every bar needed to
+# replay it was still in the history.
+
+def history(*days):
+    index = pd.to_datetime(list(days))
+    return pd.DataFrame({"Close": range(len(index))}, index=index, dtype="float64")
+
+
+def recorded(tmp_path, *days):
+    test = forward.SwingForwardTest(store=store(tmp_path))
+    for day in days:
+        test.store.record_session({**session_row(session=day),
+                                   "config_hash": test.fingerprint})
+    return test
+
+
+def test_a_skipped_session_is_found_between_recorded_ones(tmp_path):
+    test = recorded(tmp_path, "2026-09-21", "2026-09-22")
+    histories = {"COMI.CA": history("2026-09-21", "2026-09-22", "2026-09-23",
+                                    "2026-09-24")}
+    # The newest is left to `record`, which takes it from the full histories.
+    assert test.missing_sessions(histories) == ["2026-09-23"]
+
+
+def test_history_before_the_record_began_is_never_replayed(tmp_path):
+    """A gap is a missed day; anything earlier is a backtest filed as forward."""
+    test = recorded(tmp_path, "2026-09-22")
+    histories = {"COMI.CA": history("2026-09-15", "2026-09-16", "2026-09-22",
+                                    "2026-09-23", "2026-09-24")}
+    assert test.missing_sessions(histories) == ["2026-09-23"]
+
+
+def test_an_empty_record_replays_nothing(tmp_path):
+    test = forward.SwingForwardTest(store=store(tmp_path))
+    assert test.missing_sessions({"COMI.CA": history("2026-09-23", "2026-09-24")}) == []
+
+
+def test_the_catch_up_is_bounded(tmp_path):
+    test = recorded(tmp_path, "2026-08-02")
+    days = [d.date().isoformat() for d in pd.bdate_range("2026-08-03", periods=30)]
+    missing = test.missing_sessions({"COMI.CA": history(*days)}, limit=5)
+    assert missing == days[-6:-1], "the newest five, oldest first"
+
+
+def test_each_replay_sees_only_what_was_knowable_that_evening(tmp_path, monkeypatch):
+    test = recorded(tmp_path, "2026-09-21", "2026-09-22")
+    seen = []
+
+    def scan(universe, session_date=None, config=None):
+        seen.append((session_date, max(f.index.max() for f in universe.values())))
+        return SimpleNamespace(candidates=(), symbols_considered=len(universe),
+                               symbols_skipped={})
+
+    monkeypatch.setattr("services.swing_breakout.most_traded", lambda h, *a, **k: h)
+    monkeypatch.setattr("services.swing_breakout.scan", scan)
+    monkeypatch.setattr("strategy_momentum_breakout.watch.watch",
+                        lambda histories=None, **k: SimpleNamespace(
+                            candidates=[], considered=len(histories or {}),
+                            unreadable={}, funnel={}))
+
+    histories = {"COMI.CA": history("2026-09-21", "2026-09-22", "2026-09-23",
+                                    "2026-09-24")}
+    results = test.record_missed(histories)
+
+    assert [r["session"] for r in results] == ["2026-09-23"]
+    assert seen == [("2026-09-23", pd.Timestamp("2026-09-23"))], (
+        "the 23rd was replayed from bars up to the 23rd and nothing after")
+    sessions = {r["session_date"] for r in test.store.rows(
+        "SELECT session_date FROM sessions WHERE source = ?", (forward.SWING,))}
+    assert "2026-09-23" in sessions

@@ -47,17 +47,28 @@ def run(database=None):
 
     from services.swing_breakout_forward import SwingForwardStore, SwingForwardTest
 
+    from services.swing_breakout import load_universe_histories
+
     store = SwingForwardStore(database) if database else SwingForwardStore()
     test = SwingForwardTest(store=store)
 
-    recorded = test.record()
+    # Read once, then replay any session a missed daily run skipped before
+    # recording the newest. Both use the same histories, each cut at its day.
+    failures = {}
+    histories = load_universe_histories(
+        on_error=lambda symbol, reason: failures.setdefault(symbol, reason))
+    caught_up = test.record_missed(histories) if histories else []
+
+    recorded = test.record(histories=histories, failures=failures)
     if recorded["session"] is None:
-        return {"status": "NO_SESSION", "note": recorded.get("note", "")}
+        return {"status": "NO_SESSION", "note": recorded.get("note", ""),
+                "caught_up": [r.get("session") for r in caught_up]}
 
     resolved = test.resolve()
     return {
         "status": "OK",
         "session_date": recorded["session"],
+        "caught_up": [r.get("session") for r in caught_up],
         "swing_candidates": recorded["candidates"],
         "swing_written": recorded["candidates_written"],
         "watch_candidates": recorded["watch"],

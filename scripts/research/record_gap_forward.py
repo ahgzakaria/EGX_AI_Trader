@@ -359,19 +359,86 @@ def daily(min_bars: int) -> None:
     """
     from sector_flow.mubasher_local import available_sessions
 
-    sessions = list(reversed(available_sessions()))[:2]
-    if not sessions:
+    held = available_sessions()
+    if not held:
         raise SystemExit(
             "the MubasherTrade PRO minute store holds no sessions. It keeps a "
             "rolling fourteen and only while the terminal runs, so a machine "
             "that has not opened it has nothing to record.")
 
-    record(sessions[0], min_bars)
-    if len(sessions) > 1:
-        print(f"grading {sessions[1]} -- its outcome is {sessions[0]}'s open")
-        grade(sessions[1])
-    else:
+    # This used to record only the newest session and grade the one before it,
+    # so a day the daily run was not clicked was lost for good: 2026-09-23 has
+    # no predictions although the minute store still held it for weeks after.
+    for session in sessions_to_record(held):
+        try:
+            record(session, min_bars)
+        except SystemExit as refusal:     # one incomplete session is not fatal
+            print(f"session {session}: not recorded -- {refusal}")
+
+    graded = 0
+    for earlier, later in zip(held, held[1:]):
+        if needs_grading(earlier):
+            print(f"grading {earlier} -- its outcome is {later}'s open")
+            grade(earlier)
+            graded += 1
+    if len(held) < 2:
         print("only one session exists; nothing is gradeable yet")
+    elif not graded:
+        print(f"nothing ungraded through {held[-2]}")
+
+
+def recorded_sessions(rule_version=None):
+    """Sessions this rule version has recorded, oldest first."""
+    rule_version = RULE_VERSION if rule_version is None else rule_version
+    conn = connect()
+    try:
+        return [row[0] for row in conn.execute(
+            "select distinct session from gap_predictions where rule_version = ? "
+            "order by session", (rule_version,))]
+    finally:
+        conn.close()
+
+
+def sessions_to_record(held):
+    """The newest held session, and every held session the record skipped.
+
+    Only sessions AFTER the first one this rule version recorded: a gap in the
+    forward record is a missed day, while anything before it is history the
+    rule never saw live, and writing that in now would be a backtest filed as
+    a forward test. Each session is read from its own minutes only, so writing
+    it late changes what is known about it by nothing.
+    """
+    held = sorted(held)
+    if not held:
+        return []
+    done = set(recorded_sessions())
+    if not done:
+        return [held[-1]]                  # a new record starts today
+    first = min(done)
+    missing = [s for s in held if s > first and s not in done]
+    if held[-1] not in missing:
+        missing.append(held[-1])           # idempotent: rewrites nothing
+    return missing
+
+
+def needs_grading(session):
+    """True when ``session`` has predictions and none has been graded yet.
+
+    Not "any row still open": a prediction is settled against the very next
+    session's open, so a symbol that did not trade that session has no outcome
+    and never will. Those stragglers -- one each on 2026-09-10 and 2026-09-21 --
+    would otherwise be retried, and reprinted, on every run until the minute
+    store rolled them out.
+    """
+    conn = connect()
+    try:
+        ungraded, graded = conn.execute(
+            "select sum(graded_at IS NULL), sum(graded_at IS NOT NULL) "
+            "from gap_predictions where session = ? and rule_version = ?",
+            (session, RULE_VERSION)).fetchone()
+        return bool(ungraded) and not graded
+    finally:
+        conn.close()
 
 
 def main() -> None:

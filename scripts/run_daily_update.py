@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import json
 import os
 from pathlib import Path
 import sqlite3
@@ -411,11 +412,23 @@ def run_swing_forward():
     completed = subprocess.run(
         [sys.executable, "scripts/record_swing_breakout_forward.py"],
         capture_output=True, text=True, encoding="utf-8", errors="replace")
-    for line in (completed.stdout or "").splitlines():
-        if line.strip().startswith(('"session_date"', '"swing_candidates"',
-                                    '"watch_candidates"', '"resolved"',
-                                    '"status"')):
-            _say(f"  {line.strip().rstrip(',')}")
+    output = (completed.stdout or "").split("\nstatus written to", 1)[0]
+    try:
+        result = json.loads(output)
+    except ValueError:
+        result = None
+    if isinstance(result, dict):
+        _say(f"  {result.get('status')}  session {result.get('session_date')}: "
+             f"{result.get('swing_candidates', 0)} swing, "
+             f"{result.get('watch_candidates', 0)} watch; "
+             f"{result.get('resolved', 0)} resolved, "
+             f"{result.get('watch_resolved', 0)} watch resolved")
+        caught_up = [day for day in result.get("caught_up") or () if day]
+        if caught_up:
+            _say(f"  caught up the session(s) a missed run skipped: "
+                 f"{', '.join(caught_up)}")
+    elif completed.stdout:
+        _say("  " + completed.stdout.strip().splitlines()[-1])
     if completed.returncode != 0:
         for line in (completed.stderr or "").splitlines()[-6:]:
             if line.strip():
