@@ -47,7 +47,11 @@ import pandas as pd                                                  # noqa: E40
 
 DATABASE = PROJECT_ROOT / "data" / "research" / "live_source_shadow.db"
 SOURCES = ("eodhd", "mubasher")
-RULES = ("confirmed_breakout", "breakout_watch", "swing_breakout")
+#: ``daily_buy`` is the Daily Dashboard's own decision -- the strategy the
+#: dashboard trades on -- which this shadow did not record until 2026-09-24,
+#: when the EODHD subscription was set to lapse and the question became whether
+#: that strategy decides the same on Mubasher's record.
+RULES = ("confirmed_breakout", "breakout_watch", "swing_breakout", "daily_buy")
 #: Shared sessions over which a symbol's closes are compared on each run.
 AGREEMENT_SESSIONS = 20
 
@@ -127,7 +131,34 @@ def rule_symbols(histories):
         "breakout_watch": {c.symbol for c in watch(histories=histories).candidates},
         "swing_breakout": {c.symbol for c in swing_breakout.scan(
             swing_breakout.most_traded(histories)).candidates},
+        "daily_buy": daily_buys(histories),
     }
+
+
+def daily_buys(histories):
+    """Symbols the Daily Dashboard's decision calls BUY on each history's last bar.
+
+    The scanner's own steps, in its order: ``calculate_indicators``, then
+    ``TradingDecisionService`` in ``LIVE_ADVISORY`` mode evaluated on the last
+    index under the scanner's provider purpose. Nothing is re-derived; a symbol
+    the service cannot evaluate is left out rather than guessed.
+    """
+    from core.data_provider import provider_purpose
+    from indicators.technical import calculate_indicators
+    from strategy.trading_decision import TradingDecisionService
+
+    service = TradingDecisionService(mode=TradingDecisionService.LIVE_ADVISORY)
+    buys = set()
+    for symbol, frame in histories.items():
+        try:
+            data = calculate_indicators(frame)
+            with provider_purpose("scanner"):
+                result = service.evaluate(data, len(data) - 1)
+        except Exception:                                   # noqa: BLE001
+            continue
+        if str((result or {}).get("Signal", "")).upper() == "BUY":
+            buys.add(symbol)
+    return buys
 
 
 def _last(frame):

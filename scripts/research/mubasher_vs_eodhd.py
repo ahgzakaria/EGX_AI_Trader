@@ -69,7 +69,8 @@ from providers.eodhd_client import EODHDClient                         # noqa: E
 from providers.eodhd_volume_adjustment import resolve_operational_volume  # noqa: E402
 from sector_flow.mubasher_local import (HISTORY_RELATIVE,              # noqa: E402
                                         INTRADAY_RELATIVE, NOT_EQUITY,
-                                        available_sessions, find_root)
+                                        available_sessions, find_root,
+                                        history_database)
 from strategy_momentum_breakout.config import load as load_config      # noqa: E402
 from strategy_momentum_breakout.signal import measure, warmup_bars     # noqa: E402
 
@@ -142,7 +143,12 @@ def mubasher_isin_map(base):
 # --- Mubasher ----------------------------------------------------------------
 
 def mubasher_tables(base):
-    uri = f"file:{(base / HISTORY_RELATIVE).as_posix()}?mode=ro&immutable=1"
+    # The file the import reads, not `history.db` by name: the terminal has
+    # been leaving each download in `history.db.tmp` without putting it in
+    # place, and reading the stale file compared EODHD against a Mubasher
+    # record four sessions short.
+    history = history_database(base) or (base / HISTORY_RELATIVE)
+    uri = f"file:{history.as_posix()}?mode=ro&immutable=1"
     connection = sqlite3.connect(uri, uri=True)
     tables = {name[1:].upper(): name for (name,) in connection.execute(
         "SELECT name FROM sqlite_master WHERE type='table'") if name.startswith("_")}
