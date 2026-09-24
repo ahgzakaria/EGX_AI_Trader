@@ -52,8 +52,9 @@ from dashboard.formatting import (
 
 #: EODHD lists 241 codes; 11 of them duplicate a live ticker — a copy of its
 #: series or its retired ticker — and are registered as aliases in
-#: data/universe/symbol_aliases.csv.
-EXPECTED_ACTIVE = 230
+#: data/universe/symbol_aliases.csv; one more, SIMO, is listed but has not
+#: traded since 2014-03-03 and is registered in data/universe/dormant_symbols.csv.
+EXPECTED_ACTIVE = 229
 
 
 # --------------------------------------------------------------------------- #

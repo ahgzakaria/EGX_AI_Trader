@@ -1,0 +1,2 @@
+symbol,isin,last_traded,evidence,reviewed_on
+SIMO,EGS36091C014,2014-03-03,"EODHD SIMO.EGX: 898 bars 2010-01-04..2026-09-24, of which the 720 with volume end on 2014-03-03; every bar since is a zero-volume placeholder flat at 9.21, and none of the last 12 months traded. Mubasher history.db _SIMO: 93 rows 2013-09-22..2014-03-03, absent from the minute store. Refused as SKIPPED_STALE_DAILY_DATA (3,278 sessions behind) on every scan until 2026-09-24. The sector workbook's 2026-08-10 is the date the list was read, not a trade.",2026-09-24

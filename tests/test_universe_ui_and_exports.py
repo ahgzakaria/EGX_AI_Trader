@@ -96,7 +96,7 @@ def test_the_backtest_configuration_states_its_universe():
 
 def test_every_dropdown_option_is_ticker_dash_name_but_returns_the_ticker():
     options = load_approved_symbol_options()
-    assert len(options) == 230      # 241 EODHD codes less 11 registered aliases
+    assert len(options) == 229      # 241 EODHD codes less 11 aliases and 1 dormant symbol
     for option in options:
         label = option.display_label
         assert label.startswith(f"{option.ticker} — ")

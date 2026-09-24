@@ -52,6 +52,14 @@ SNAPSHOT_DIR = "data/universe/snapshots"
 ALIAS_FILENAME = "symbol_aliases.csv"
 ALIAS_FIELDNAMES = ("alias_symbol", "live_symbol", "isin", "evidence", "reviewed_on")
 
+#: Listed but not trading. EODHD's exchange list still names these as active,
+#: and prints a zero-volume placeholder bar for them every session, so a
+#: rebuild from it would put them straight back into every scan. SIMO's last
+#: session with any volume was 2014-03-03; it was scanned, and refused as
+#: 3,278 sessions stale, on every run until 2026-09-24.
+DORMANT_FILENAME = "dormant_symbols.csv"
+DORMANT_FIELDNAMES = ("symbol", "isin", "last_traded", "evidence", "reviewed_on")
+
 EXCHANGE = "EGX"
 EODHD_SUFFIX = ".EGX"
 #: Legacy internal alias still used as the wire format by providers, on-disk
@@ -235,6 +243,49 @@ def read_alias_registry(universe_path=None):
     return aliases
 
 
+def read_dormant_registry(universe_path=None):
+    """``{symbol: last traded session}`` for listed symbols that do not trade.
+
+    Absent means none. Present but malformed raises, for the same reason the
+    alias registry does: a row that cannot be read is a symbol that cannot be
+    kept out of the scan.
+    """
+
+    path = Path(universe_path or UNIVERSE_SOURCE).with_name(DORMANT_FILENAME)
+    if not path.is_file():
+        return {}
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except OSError as error:
+        raise UniverseUnavailable(f"Dormant registry unreadable at '{path}': {error}") from error
+
+    reader = csv.DictReader(text.splitlines())
+    missing = [name for name in DORMANT_FIELDNAMES if name not in (reader.fieldnames or [])]
+    if missing:
+        raise UniverseUnavailable(
+            f"Dormant registry '{path}' is missing columns: {', '.join(missing)}"
+        )
+    dormant = {}
+    for line_no, row in enumerate(reader, start=2):
+        symbol = canonical(row.get("symbol"))
+        if not symbol or not str(row.get("last_traded") or "").strip():
+            raise UniverseUnavailable(f"Malformed dormant row in '{path}' line {line_no}")
+        if symbol in dormant:
+            raise UniverseUnavailable(f"Duplicate dormant symbol '{symbol}' in '{path}'")
+        dormant[symbol] = str(row["last_traded"]).strip()
+    return dormant
+
+
+def _check_dormant(records, dormant, path):
+    for record in records:
+        if record.canonical_symbol in dormant and record.is_active:
+            raise UniverseUnavailable(
+                f"'{record.canonical_symbol}' is registered as dormant (last traded "
+                f"{dormant[record.canonical_symbol]}) but is active in '{path}'; "
+                "every scan would refuse it as stale"
+            )
+
+
 def _check_aliases(records, aliases, path):
     by_symbol = {record.canonical_symbol: record for record in records}
     for alias, live in sorted(aliases.items()):
@@ -349,6 +400,7 @@ def load_universe(path=None):
                            key=lambda r: (not r.is_active, r.canonical_symbol)))
     aliases = read_alias_registry(resolved)
     _check_aliases(records, aliases, resolved)
+    _check_dormant(records, read_dormant_registry(resolved), resolved)
     with _LOCK:
         _CACHE[key] = records
         _ALIAS_CACHE[key] = aliases

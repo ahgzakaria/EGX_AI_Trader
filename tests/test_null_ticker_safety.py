@@ -119,7 +119,7 @@ def test_symbol_loaders_leave_null_out_only_as_a_registered_alias(loader, tmp_pa
     symbols = loader(SYMBOL_SOURCE)
     assert "NULL.CA" not in symbols
     assert "FTNS.CA" in symbols
-    assert len(symbols) == 230      # 241 EODHD codes less 11 registered aliases
+    assert len(symbols) == 229      # 241 EODHD codes less 11 aliases and 1 dormant symbol
 
     # The same file with NULL's row marked active loads the literal ticker.
     text = Path(UNIVERSE_SOURCE).read_text(encoding="utf-8-sig")

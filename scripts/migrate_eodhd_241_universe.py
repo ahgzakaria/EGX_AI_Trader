@@ -43,6 +43,7 @@ from core.universe import (  # noqa: E402
     UNIVERSE_SOURCE,
     canonical,
     read_alias_registry,
+    read_dormant_registry,
 )
 from providers.eodhd_client import EODHDClient  # noqa: E402
 
@@ -275,11 +276,14 @@ def _record(row, *, active, observed, source_as_of):
 
 
 def build_universe_rows(active_rows, delisted_rows, legacy_tickers, observed,
-                        source_as_of, aliases=None):
+                        source_as_of, aliases=None, dormant=None):
     """Active records plus the archived records history still needs to name.
 
     ``aliases`` (``{alias: live ticker}``) keeps an EODHD code that duplicates a
     live ticker inactive, so a rebuild cannot list one instrument twice.
+    ``dormant`` (``{symbol: last traded}``) keeps a listed symbol that does not
+    trade inactive: EODHD names it active and prints it a zero-volume bar every
+    session, so without this a rebuild would scan it again.
     """
 
     records = [_record(row, active=True, observed=observed,
@@ -289,6 +293,10 @@ def build_universe_rows(active_rows, delisted_rows, legacy_tickers, observed,
         if live:
             record["is_active"] = "false"
             record["source"] = f"{SOURCE_LABEL}?alias_of={live}"
+        last = (dormant or {}).get(record["canonical_symbol"])
+        if last:
+            record["is_active"] = "false"
+            record["source"] = f"{SOURCE_LABEL}?dormant_since={last}"
     active_codes = {record["canonical_symbol"] for record in records}
 
     delisted_by_code = {canonical(row.get("Code")): row for row in delisted_rows}
@@ -567,7 +575,8 @@ def migrate(*, expected_count=EXPECTED_ACTIVE_COUNT, dry_run=False, client=None,
 
     records = build_universe_rows(active_rows, delisted_rows, legacy_tickers,
                                   observed, source_as_of,
-                                  aliases=read_alias_registry(UNIVERSE_PATH))
+                                  aliases=read_alias_registry(UNIVERSE_PATH),
+                                  dormant=read_dormant_registry(UNIVERSE_PATH))
     write_universe(records, dry_run)
     summary = build_audit(active_rows, legacy_tickers, records, observed,
                           retrieved_at, dry_run)

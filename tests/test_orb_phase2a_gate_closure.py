@@ -609,9 +609,10 @@ def test_reviewed_universe_counts_keep_archived_observed_but_ineligible():
     ]
 
     # 225/40 at review. ARVA moved from the first to the second on 2026-09-11,
-    # when it was registered as the retired ticker of AMII.
-    assert len(active) == 224
-    assert len(archived_verified) == 41
+    # when it was registered as the retired ticker of AMII, and SIMO on
+    # 2026-09-24, when it was registered as dormant (last traded 2014-03-03).
+    assert len(active) == 223
+    assert len(archived_verified) == 42
     assert (
         UniverseMembershipStatus.ACTIVE_UNIVERSE_VERIFIED_RUBIX
         in OPERATIONALLY_ELIGIBLE_MEMBERSHIP

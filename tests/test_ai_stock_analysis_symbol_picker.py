@@ -36,7 +36,7 @@ def _tickers(matches):
 
 def test_full_approved_universe_is_searchable_and_not_limited_to_ten(options):
     approved = load_symbols(SYMBOLS_PATH)
-    assert len(approved) == 230      # 241 EODHD codes less 11 registered aliases
+    assert len(approved) == 229      # 241 EODHD codes less 11 aliases and 1 dormant symbol
     assert len(options) == len({_normalized(value) for value in approved})
     assert len(options) > 10
     assert {"AALR", "COMI", "MPCO", "SWDY", "TMGH"} <= set(_tickers(options))

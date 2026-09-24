@@ -116,13 +116,16 @@ def test_each_registry_row_carries_the_alias_isin_and_its_evidence():
 
 
 def test_the_active_universe_is_the_eodhd_list_less_its_aliases():
+    """Less its dormant symbols too: listed by EODHD, but not trading."""
+    from core.universe import read_dormant_registry
     from scripts.migrate_eodhd_241_universe import latest_snapshot
 
     snapshot = latest_snapshot("active")
     if not snapshot:
         pytest.skip("no saved EODHD snapshot in this checkout")
     listed = {universe.canonical(row.get("Code")) for row in snapshot["rows"]}
-    assert set(active_symbols()) == listed - set(read_alias_registry())
+    assert set(active_symbols()) == (
+        listed - set(read_alias_registry()) - set(read_dormant_registry()))
 
 
 def test_a_rebuild_from_eodhd_keeps_an_alias_inactive():
