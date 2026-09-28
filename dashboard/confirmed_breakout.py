@@ -210,11 +210,15 @@ def _show_forward_record() -> None:
         )
 
 
-def _show_signals(result, cfg) -> None:
+def _show_signals(result, cfg, *, title="إشارات الجلسة · This session's signals",
+                  subtitle=None) -> None:
+    """The signal table and its plan. The Daily Dashboard draws it too, with its
+    own title, so the rule is presented in exactly one way on both pages."""
     section_header(
-        "إشارات الجلسة · This session's signals",
-        "Ordered by how strongly volume confirmed the breakout. That is a "
-        "reading order, not a ranking: nothing here predicts which one does best.",
+        title,
+        subtitle or "Ordered by how strongly volume confirmed the breakout. That "
+        "is a reading order, not a ranking: nothing here predicts which one does "
+        "best.",
     )
     costs = load_symbol_costs([s.symbol for s in result.signals])
     trades = session_trades([s.symbol for s in result.signals],

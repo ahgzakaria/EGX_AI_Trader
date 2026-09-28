@@ -560,6 +560,100 @@ SWING_PRIMARY_COLUMNS = (
 )
 
 
+#: What the old rule's live record says, in the words the page shows it.
+#: Source: docs/audits/strategies/DASHBOARD_CALLS_VS_OUTCOMES.md.
+LEGACY_RULE_NOTE = (
+    "على السجل الحي لم تتنبأ القاعدة القديمة بشيء: بعد 10 جلسات كان وسيط "
+    "إشارات شرائها −2.06% عن السوق، و44% فقط تفوقت عليه — أقل من الأسهم التي "
+    "قالت تجنبها. تبقى هنا للمقارنة، وسجلها الأمامي مستمر."
+)
+
+#: The watch list's caption: what it is, and what it measured.
+WATCH_LIST_NOTE = (
+    "ليست إشارة شراء — هي أول إغلاق فوق أعلى سعر في 20 جلسة، في سهم سيولته "
+    "اليومية 5 ملايين جنيه على الأقل، مرتبة بقوة الحجم. على السجل الحي كان "
+    "وسيطها بعد 10 جلسات +0.96% فوق السوق و55% تفوقت عليه، وفي الباك تيست "
+    "+2.67% و+1.27% في الحقبتين. الإشارة المؤكدة أعلاها هي نسختها بتأكيد الحجم."
+)
+
+
+def _breakout_board(results):
+    """Both breakout lists for this scan, computed once per scan and kept.
+
+    Built from the histories the scan already loaded, so the universe is not
+    read twice; cached by the scan's run id so a rerun of the page costs nothing.
+    """
+    from types import SimpleNamespace
+
+    from services.breakout_board import (confirmed_breakouts, fresh_breakouts,
+                                         histories_from_results)
+    from strategy_momentum_breakout.config import load as load_breakout_config
+
+    rows = list(results or ())
+    key = (rows[0].get("RunID") if rows else None, len(rows))
+    cached = st.session_state.get("_breakout_board_cache")
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    cfg = load_breakout_config()
+    histories = histories_from_results(rows)
+    confirmed = confirmed_breakouts(histories, cfg=cfg)
+    fresh = fresh_breakouts(histories,
+                            exclude=[signal.symbol for signal in confirmed.signals])
+    board = SimpleNamespace(confirmed=confirmed, fresh=fresh, cfg=cfg)
+    st.session_state["_breakout_board_cache"] = (key, board)
+    return board
+
+
+def _render_breakout_board(board):
+    """The buy signals, then the watch list -- the page's first two sections."""
+    from dashboard.confirmed_breakout import _show_signals
+    from dashboard.ui import quiet_state
+
+    title = "إشارات الشرا · اختراق مؤكد (Confirmed Breakout)"
+    subtitle = ("A close above the twenty-session high confirmed by volume, with "
+                "a measured stop and holding period. The one rule this data "
+                "measured as real.")
+    if board.confirmed.count:
+        _show_signals(board.confirmed, board.cfg, title=title, subtitle=subtitle)
+    else:
+        section_header(title, subtitle)
+        quiet_state(
+            "لا توجد إشارة اختراق مؤكد اليوم",
+            "القاعدة تطلق حوالي تسعين إشارة في السنة على السوق كله، فمعظم "
+            "الجلسات لا يظهر فيها شيء. هذا تصميمها وليس عطلًا.",
+            count=f"0 / {board.confirmed.considered}",
+        )
+
+    section_header("قائمة المراقبة · اختراقات قمة 20 يوم",
+                   "First closes above the twenty-session high, strongest volume first")
+    if not board.fresh:
+        quiet_state("لا يوجد اختراق جديد اليوم",
+                    "لم يغلق أي سهم سائل فوق أعلى سعر له في 20 جلسة لأول مرة.",
+                    count="0")
+        return
+    table = pd.DataFrame([{
+        "الرمز": item.symbol,
+        "الشركة": company_name(item.symbol),
+        "الإغلاق": item.close,
+        "القمة المخترقة": item.prior_high,
+        "فوق القمة %": item.above_percent,
+        "الحجم ×": item.volume_ratio,
+        "متوسط التداول اليومي": item.median_turnover_egp,
+    } for item in board.fresh])
+    st.dataframe(
+        table, hide_index=True, width="stretch",
+        column_config={
+            "الإغلاق": st.column_config.NumberColumn(format="%.3f"),
+            "القمة المخترقة": st.column_config.NumberColumn(
+                format="%.3f", help="أعلى سعر في الـ 20 جلسة السابقة، بدون اليوم."),
+            "فوق القمة %": st.column_config.NumberColumn(format="%.2f%%"),
+            "الحجم ×": st.column_config.NumberColumn(
+                format="%.1f×", help="قيمة تداول اليوم على متوسط الـ 20 جلسة السابقة."),
+            "متوسط التداول اليومي": st.column_config.NumberColumn(format="localized"),
+        })
+    st.caption(WATCH_LIST_NOTE)
+
+
 def _entry_band(low, high):
     """``12.40 – 12.75``, or an em dash when the scan produced no band.
 
@@ -1174,13 +1268,20 @@ def show_dashboard():
     # One line of seven readings rather than seven tiles. A tile is for a
     # figure you stop and read; these are read by sweeping across them, and
     # they were taking a third of the screen above the first result.
+    # The breakout lists lead the page and the strip; the old rule's counts are
+    # kept beside them, labelled, because they are what it is compared against.
+    board = _breakout_board(results)
+    confirmed_count, fresh_count = board.confirmed.count, len(board.fresh)
     st.markdown(
         context_strip([
-            ("شراء BUY", str(buy), "green" if buy else "gray", share(buy)),
-            ("متابعة WATCH", str(watch), "amber" if watch else "gray", share(watch)),
+            ("اختراق مؤكد", str(confirmed_count),
+             "green" if confirmed_count else "gray", ""),
+            ("اختراقات 20 يوم", str(fresh_count), "blue" if fresh_count else "gray", ""),
+            ("قديمة · شراء BUY", str(buy), "gray", share(buy)),
+            ("قديمة · متابعة WATCH", str(watch), "gray", share(watch)),
             # Roughly half of every scan lands here. Saying so is the difference
             # between a table the reader scans and one the reader filters.
-            ("تجنب AVOID", str(avoid), "red" if avoid else "gray", share(avoid)),
+            ("قديمة · تجنب AVOID", str(avoid), "gray", share(avoid)),
             ("التغطية", f"{total}/{attempted}",
              "amber" if failed_coverage else "green",
              f"−{len(failed_coverage)}" if failed_coverage else ""),
@@ -1205,16 +1306,24 @@ def show_dashboard():
             unsafe_allow_html=True,
         )
 
-    section_header("أهم الفرص القابلة للمتابعة", "Top actionable opportunities")
+    _render_breakout_board(board)
+
+    # The old rule, below the breakouts and labelled. It stays because its
+    # forward record goes on and is what the new lists are compared against.
+    section_header("القاعدة القديمة · مرجع للمقارنة",
+                   "The previous rule's buys -- kept to compare against, "
+                   "measured without an edge")
+    st.markdown(notice("LEGACY · مرجع", LEGACY_RULE_NOTE), unsafe_allow_html=True)
     top_buy = df[df["Signal"] == "BUY"].head(9)
-    if top_buy.empty:
-        empty_state(
-            "لا توجد فرص شراء اليوم",
-            "يمكن متابعة الأسهم الأخرى من الجدول المختصر أدناه.",
-            icon="○",
-        )
-    else:
-        _render_opportunities(top_buy)
+    with st.expander(f"شراء القاعدة القديمة ({len(top_buy)})", expanded=False):
+        if top_buy.empty:
+            empty_state(
+                "لا توجد فرص شراء اليوم",
+                "يمكن متابعة الأسهم الأخرى من الجدول المختصر أدناه.",
+                icon="○",
+            )
+        else:
+            _render_opportunities(top_buy)
 
     section_header("جدول السوق المختصر", "Compact market table")
     search_col, signal_col, result_col = st.columns([2, 1, 1])

@@ -64,7 +64,9 @@ def test_swing_default_view_keeps_trader_summary_primary():
     for reading in ("شراء", "متابعة", "تجنب", "BUY", "WATCH", "AVOID",
                     "التغطية", "حالة السوق"):
         assert reading in source, f"the default view lost {reading}"
-    assert "أهم الفرص القابلة للمتابعة" in source
+    # The old rule's buys became a labelled reference on 2026-09-28, below the
+    # breakout lists; see tests/test_breakout_board.py for the new order.
+    assert "القاعدة القديمة · مرجع للمقارنة" in source
     assert "جدول السوق المختصر" in source
     assert source.count("_render_swing_advanced_research(") == 1
 
