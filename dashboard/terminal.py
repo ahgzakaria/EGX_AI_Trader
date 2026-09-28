@@ -13,6 +13,12 @@ recorded. The rail's controls are links to the pages that own those jobs — a
 second owner for the scan lifecycle is how two concurrent scans of the same
 universe happened on 2026-08-03.
 
+**The scan pane is in the Daily Dashboard's order.** Confirmed breakouts first,
+then the first closes above the twenty-session high, then the old rule's calls
+as a labelled reference -- on the live record its BUYs did worse than its
+AVOIDs. The two breakout lists come from the dashboard's own cached builder, so
+the two pages show one computation of them, not two that could disagree.
+
 **Every pane fails alone.** A pane whose source is missing renders as
 unavailable and says what would make it computable; it does not take the screen
 down with it, and it never renders an absence as a zero.
@@ -260,6 +266,105 @@ def candidates_body(rows):
             f"<tbody>{''.join(body)}</tbody></table>")
 
 
+#: The old rule's live record, in the words this screen shows it beside the rule.
+#: Source: docs/audits/strategies/DASHBOARD_CALLS_VS_OUTCOMES.md.
+LEGACY_RULE_NOTE = ("Reference only. On the live record its BUYs were -2.06% "
+                    "against the median stock ten sessions later, and 44% beat "
+                    "it -- below the names it said to avoid.")
+
+#: What the watch list is, so it is not read as a second list of buys.
+WATCH_LIST_NOTE = ("Not a buy signal: the unconfirmed version of the rule above. "
+                   "Live, +0.96% against the median stock after ten sessions, "
+                   "55% beat it.")
+
+
+def section_html(title_en, title_ar, count, note=""):
+    """A heading inside a pane, for a pane that holds more than one list."""
+    head = (f'<div class="sec"><span>{esc(title_en)}'
+            f'<span class="ar">{esc(title_ar)}</span></span>'
+            f'<span class="n">{esc(count)}</span></div>')
+    return head + (f'<div class="note">{esc(note)}</div>' if note else "")
+
+
+def empty_list(message):
+    """A list that was read and found nothing -- a zero, said as one."""
+    return f'<div class="none"><b>0</b> {esc(message)}</div>'
+
+
+def confirmed_body(signals):
+    """CONFIRMED_VOLUME_BREAKOUT's signals, as its own scan produced them."""
+    body = []
+    for signal in signals:
+        body.append(
+            "<tr>"
+            f'<td class="t">{esc(str(signal.symbol).split(".")[0])}</td>'
+            f'<td class="r">{num(signal.close, 2)}</td>'
+            f'<td class="r">{num(signal.prior_high, 2)}</td>'
+            f'<td class="r dn">{num(signal.stop_loss, 2)}</td>'
+            f'<td class="r">{pct(signal.risk_percent, 1)}</td>'
+            f'<td class="r up">{num(signal.volume_ratio, 1)}&times;</td>'
+            "</tr>")
+    header = ("<tr><th>Sym</th><th class='r'>Last</th><th class='r'>Broke</th>"
+              "<th class='r'>Stop</th><th class='r'>Risk</th>"
+              "<th class='r'>Vol</th></tr>")
+    return (f"<table><thead>{header}</thead>"
+            f"<tbody>{''.join(body)}</tbody></table>")
+
+
+def fresh_body(breakouts):
+    """First closes above the twenty-session high, strongest volume first."""
+    body = []
+    for item in breakouts:
+        body.append(
+            "<tr>"
+            f'<td class="t">{esc(str(item.symbol).split(".")[0])}</td>'
+            f'<td class="r">{num(item.close, 2)}</td>'
+            f'<td class="r">{num(item.prior_high, 2)}</td>'
+            f'<td class="r up">{pct(item.above_percent, 2, plus=True)}</td>'
+            f'<td class="r">{num(item.volume_ratio, 1)}&times;</td>'
+            f'<td class="r">{num(item.median_turnover_egp / 1e6, 1)}M</td>'
+            "</tr>")
+    header = ("<tr><th>Sym</th><th class='r'>Last</th><th class='r'>Broke</th>"
+              "<th class='r'>Above</th><th class='r'>Vol</th>"
+              "<th class='r'>Turnover</th></tr>")
+    return (f"<table><thead>{header}</thead>"
+            f"<tbody>{''.join(body)}</tbody></table>")
+
+
+def breakouts_body(board, legacy_rows, legacy_total):
+    """The scan pane, in the Daily Dashboard's order.
+
+    Buy signals first, then the watch list, then the old rule as a reference.
+    ``board`` is ``None`` when the breakout lists could not be computed: both
+    sections then say so, and the old rule is still drawn below them.
+    """
+    if board is None:
+        unread = ('<div class="na"><b>' + UNKNOWN + '</b><p>The breakout lists '
+                  'could not be computed from this scan. Nothing here was '
+                  'guessed; the old rule below is unaffected.</p></div>')
+        parts = [section_html("Buy signals · confirmed breakout",
+                              "إشارات الشرا", UNKNOWN), unread,
+                 section_html("Watch · first close above 20-day high",
+                              "قائمة المراقبة", UNKNOWN)]
+    else:
+        confirmed, fresh = board.confirmed, board.fresh
+        parts = [section_html("Buy signals · confirmed breakout", "إشارات الشرا",
+                              f"{confirmed.count} of {confirmed.considered}")]
+        parts.append(confirmed_body(confirmed.signals) if confirmed.count else
+                     empty_list("The rule fires about ninety times a year across "
+                                "the market; most sessions show none."))
+        parts.append(section_html("Watch · first close above 20-day high",
+                                  "قائمة المراقبة", str(len(fresh)),
+                                  WATCH_LIST_NOTE))
+        parts.append(fresh_body(fresh) if fresh else
+                     empty_list("No liquid name closed above its twenty-session "
+                                "high for the first time."))
+    parts.append(section_html("Old rule · reference", "القاعدة القديمة",
+                              f"{legacy_total} analysed", LEGACY_RULE_NOTE))
+    parts.append(candidates_body(legacy_rows))
+    return "".join(parts)
+
+
 def kv_rows(rows):
     """``(label, value, tone)`` pairs, one per line."""
     out = []
@@ -283,8 +388,8 @@ def index_block(close, change, percent, previous):
             f'<div class="d {tone}">{esc(detail)}</div></div>')
 
 
-def decision_bars(counts, total):
-    """The three decisions, drawn to the same scale as one another.
+def decision_bars(counts, total, label="Decisions across"):
+    """Decisions, drawn to the same scale as one another.
 
     Widths are a share of the population the scan actually reached, so a bar
     is a picture of the same number the label carries. A decision nobody
@@ -292,14 +397,14 @@ def decision_bars(counts, total):
     fact about the day.
     """
     bars = []
-    for label, count, klass in counts:
+    for name, count, klass in counts:
         width = (count / total * 100.0) if total else 0.0
         bars.append(
-            f'<div class="bar"><span class="n">{esc(label)}</span>'
+            f'<div class="bar"><span class="n">{esc(name)}</span>'
             f'<span class="t"><i class="{klass}" '
             f'style="width:{width:.1f}%"></i></span>'
             f'<span class="p">{count:,}</span></div>')
-    return (f'<div class="bars"><div class="lbl">Decisions across '
+    return (f'<div class="bars"><div class="lbl">{esc(label)} '
             f'{total:,}</div>{"".join(bars)}</div>')
 
 
@@ -441,7 +546,7 @@ header[data-testid="stHeader"] { display:none !important; }
 .term .kv .k { color:var(--text-low); }
 .term .bars { padding:9px 10px; }
 .term .bars .lbl { margin-bottom:6px; }
-.term .bar { display:grid; grid-template-columns:44px 1fr 30px; gap:7px;
+.term .bar { display:grid; grid-template-columns:5.8em 1fr 30px; gap:7px;
     align-items:center; margin-bottom:4px; font-size:.82em; }
 .term .bar .n { color:var(--muted); }
 .term .bar .t { height:6px; background:var(--bg-2);
@@ -449,7 +554,23 @@ header[data-testid="stHeader"] { display:none !important; }
 .term .bar .t i { position:absolute; top:0; bottom:0; left:0; display:block;
     background:var(--text-low); }
 .term .bar .t i.w { background:var(--amber); opacity:.75; }
+.term .bar .t i.b { background:var(--green); opacity:.75; }
+.term .bars + .bars { border-top:1px solid var(--border); }
 .term .bar .p { text-align:right; color:var(--muted); }
+
+/* one pane holding more than one list: the scan pane, since 2026-09-28 */
+.term .sec { display:flex; justify-content:space-between; align-items:baseline;
+    gap:8px; padding:7px 10px 4px; border-top:1px solid var(--border);
+    font-size:.82em; font-weight:600; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--muted); }
+.term .scroll > .sec:first-child { border-top:0; }
+.term .sec .ar { font-family:var(--font-ar); font-weight:400; letter-spacing:0;
+    text-transform:none; color:var(--text-low); margin-left:6px; }
+.term .sec .n { color:var(--text-low); font-weight:400; letter-spacing:.04em; }
+.term .note { padding:0 10px 5px; color:var(--text-low); font-size:.82em;
+    line-height:1.5; }
+.term .none { padding:4px 10px 9px; color:var(--text-low); font-size:.86em; }
+.term .none b { color:var(--text); margin-right:4px; }
 
 /* a pane that could not be computed */
 .term .na { padding:14px 12px; }
@@ -699,11 +820,28 @@ def _positions_pane():
                       fixed=figures), unpriced)
 
 
+def breakout_board(results):
+    """The Daily Dashboard's two breakout lists for this scan, or ``None``.
+
+    Read through the dashboard's own cached builder, so the two pages show one
+    computation of them rather than two that could disagree, and a screen that
+    opens after the dashboard costs nothing.
+    """
+    from dashboard.home import _breakout_board
+
+    try:
+        return _breakout_board(results)
+    except Exception:                                       # noqa: BLE001
+        logger.exception("terminal could not build the breakout lists")
+        return None
+
+
 def _candidates_pane():
+    """Today's scan, in the dashboard's order: breakouts, then the old rule."""
     results = st.session_state.get("results")
     if not results:
         return unavailable_pane(
-            "Candidates", "مرشحو اليوم",
+            "Breakouts", "الاختراقات",
             "No scan has been adopted in this session. Run the daily scan from "
             "the Daily Dashboard — this screen reads a scan, it never starts "
             "one."), None
@@ -711,13 +849,19 @@ def _candidates_pane():
     coverage = getattr(results, "universe_coverage", None)
     attempted = getattr(coverage, "attempted", None) if coverage else None
     analysed = len(results)
-    meta = (f"{counts['BUY']} buy · {counts['WATCH']} watch · "
-            f"{counts['AVOID']} avoid · {analysed} analysed")
+    board = breakout_board(results)
+    breakouts = (None if board is None
+                 else (board.confirmed.count, len(board.fresh)))
+    if breakouts is None:
+        meta = f"breakouts {UNKNOWN}"
+    else:
+        meta = f"{breakouts[0]} confirmed · {breakouts[1]} 20-day"
+    meta += f" · {analysed} analysed"
     if attempted:
         meta += f" of {attempted}"
-    return (pane_html("Candidates", "مرشحو اليوم", meta,
-                      candidates_body(candidate_rows(results))),
-            (counts, analysed, attempted))
+    body = breakouts_body(board, candidate_rows(results), analysed)
+    return (pane_html("Breakouts", "الاختراقات", meta, body),
+            (counts, analysed, attempted, breakouts))
 
 
 def _market_pane(decisions):
@@ -740,10 +884,15 @@ def _market_pane(decisions):
     ]
     body = kv_rows(rows)
     if decisions:
-        counts, analysed, _ = decisions
+        counts, analysed, _, breakouts = decisions
+        if breakouts is not None:
+            body += decision_bars([("confirmed", breakouts[0], "b"),
+                                   ("20-day", breakouts[1], "w")], analysed,
+                                  label="Breakouts across")
         body += decision_bars([("buy", counts["BUY"], ""),
-                               ("watch", counts["WATCH"], "w"),
-                               ("avoid", counts["AVOID"], "")], analysed)
+                               ("watch", counts["WATCH"], ""),
+                               ("avoid", counts["AVOID"], "")], analysed,
+                              label="Old rule · reference, across")
     return pane_html("Market", "السوق", "EGX30", body,
                      fixed=index_block(index["close"], index["change"],
                                        index["percent"], index["previous"]))
@@ -804,7 +953,7 @@ def show_terminal():
 
     positions, unpriced = _unpack(build(_positions_pane, "Positions", "المراكز"))
     candidates, decisions = _unpack(
-        build(_candidates_pane, "Candidates", "مرشحو اليوم"))
+        build(_candidates_pane, "Breakouts", "الاختراقات"))
     market = build(lambda: _market_pane(decisions), "Market", "السوق")
     funnel = build(_funnel_pane, "Where names stopped", "البوابات")
 
@@ -858,7 +1007,7 @@ def show_terminal():
         logger.exception("terminal could not read the frozen manifest")
         cells.append(("frozen record", UNKNOWN, "unknown"))
     if decisions:
-        _, analysed, attempted = decisions
+        _, analysed, attempted, _ = decisions
         cells.append(("coverage",
                       f"{analysed}/{attempted}" if attempted else str(analysed),
                       ""))

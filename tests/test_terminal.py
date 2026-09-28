@@ -372,3 +372,113 @@ def test_a_gate_that_refused_nobody_is_listed_at_zero(monkeypatch):
     assert "price integrity" in markup
     assert ">0<" in markup
     assert ">12<" in markup            # the survivors
+
+
+# --- the scan pane, in the dashboard's order ------------------------------------
+# On the live record the old rule's BUYs did worse than its AVOIDs, and a plain
+# first close above the twenty-session high was the best group
+# (DASHBOARD_CALLS_VS_OUTCOMES.md). The Daily Dashboard leads with the breakouts
+# since 2026-09-28; this screen follows it rather than contradicting it.
+
+def fresh(symbol, ratio=2.0):
+    from services.breakout_board import FreshBreakout
+
+    return FreshBreakout(symbol=symbol, session_date="2026-09-28", close=11.0,
+                         prior_high=10.5, above_percent=4.76, volume_ratio=ratio,
+                         median_turnover_egp=12_500_000.0)
+
+
+def board(signals=(), fresh_list=(), considered=209):
+    confirmed = SimpleNamespace(signals=list(signals), count=len(signals),
+                                considered=considered)
+    return SimpleNamespace(confirmed=confirmed, fresh=list(fresh_list), cfg=None)
+
+
+def signal(symbol="COMI.CA"):
+    return SimpleNamespace(symbol=symbol, close=92.4, prior_high=90.1,
+                           stop_loss=86.0, risk_percent=6.9, volume_ratio=3.2)
+
+
+LEGACY = [{"Ticker": "ESRS.CA", "Signal": "BUY", "Price": 1120.0}]
+
+
+def test_the_breakouts_come_first_and_the_old_rule_last():
+    markup = terminal.breakouts_body(
+        board([signal()], [fresh("HRHO.CA")]), terminal.candidate_rows(LEGACY), 209)
+    buys = markup.index("Buy signals")
+    watch = markup.index("Watch · first close above 20-day high")
+    legacy = markup.index("Old rule · reference")
+    assert buys < markup.index("COMI") < watch < markup.index("HRHO") < legacy
+    assert legacy < markup.index("ESRS")
+
+
+def test_the_old_rule_carries_its_live_record():
+    assert "-2.06%" in terminal.LEGACY_RULE_NOTE and "44%" in terminal.LEGACY_RULE_NOTE
+    assert "Not a buy signal" in terminal.WATCH_LIST_NOTE
+    markup = terminal.breakouts_body(board(), [], 0)
+    assert terminal.esc(terminal.LEGACY_RULE_NOTE) in markup
+
+
+def test_a_session_without_a_breakout_is_a_zero_said_as_one():
+    """The rule fires about ninety times a year; most sessions show none."""
+    markup = terminal.breakouts_body(board(considered=209), [], 209)
+    assert "0 of 209" in markup
+    assert markup.count('class="none"') == 2
+    assert terminal.UNKNOWN not in markup.split("Old rule")[0]
+
+
+def test_lists_that_could_not_be_computed_are_unknown_not_empty():
+    markup = terminal.breakouts_body(None, terminal.candidate_rows(LEGACY), 1)
+    head = markup.split("Old rule")[0]
+    assert terminal.UNKNOWN in head and 'class="none"' not in head
+    assert "ESRS" in markup, "the old rule must still be drawn"
+
+
+def test_the_watch_list_shows_the_level_and_the_volume():
+    markup = terminal.fresh_body([fresh("HRHO.CA", ratio=2.4)])
+    assert ">HRHO<" in markup and "10.50" in markup
+    assert "+4.76%" in markup and "2.4&times;" in markup and "12.5M" in markup
+
+
+def test_nothing_in_the_breakout_lists_injects_markup():
+    markup = terminal.breakouts_body(
+        board([signal("<script>a</script>")], [fresh("<script>b</script>")]), [], 0)
+    assert "<script>" not in markup
+
+
+def test_the_pane_reads_the_dashboards_own_board(monkeypatch):
+    """One computation shown on two pages, not two that could disagree."""
+    monkeypatch.setattr(terminal.st, "session_state", {"results": LEGACY},
+                        raising=False)
+    monkeypatch.setattr("dashboard.home._breakout_board",
+                        lambda results: board([signal()], [fresh("A"), fresh("B")]))
+    markup, decisions = terminal._candidates_pane()
+    assert "1 confirmed · 2 20-day · 1 analysed" in markup
+    assert decisions[3] == (1, 2)
+    assert decisions[0]["BUY"] == 1
+
+
+def test_a_board_that_fails_does_not_take_the_pane_down(monkeypatch):
+    def fail(results):
+        raise RuntimeError("no histories")
+
+    monkeypatch.setattr(terminal.st, "session_state", {"results": LEGACY},
+                        raising=False)
+    monkeypatch.setattr("dashboard.home._breakout_board", fail)
+    markup, decisions = terminal._candidates_pane()
+    assert f"breakouts {terminal.UNKNOWN}" in markup
+    assert decisions[3] is None and "ESRS" in markup
+
+
+def test_the_market_pane_draws_the_breakouts_above_the_old_rule(monkeypatch):
+    monkeypatch.setattr(terminal, "index_reading", lambda: {
+        "close": 1.0, "change": 0.0, "percent": 0.0, "previous": 1.0})
+    monkeypatch.setattr(terminal, "market_gates", lambda: {
+        "regime": "BULL", "available": True, "passed": True, "required": False,
+        "reason": ""})
+    markup = terminal._market_pane(({"BUY": 3, "WATCH": 5, "AVOID": 9}, 17, 20, (1, 4)))
+    assert markup.index("Breakouts across 17") < markup.index("Old rule · reference, across 17")
+    assert ">confirmed<" in markup and ">20-day<" in markup
+
+    without = terminal._market_pane(({"BUY": 3, "WATCH": 5, "AVOID": 9}, 17, 20, None))
+    assert "Breakouts across" not in without and "Old rule" in without
