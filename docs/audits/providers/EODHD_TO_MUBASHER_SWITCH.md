@@ -73,3 +73,10 @@ when it sends a request, so the client the scan context still constructs is iner
    and audit scripts read it offline.
 3. To return to EODHD while it exists, set `live_history_source` back to
    `"eodhd"`; nothing else changes.
+
+**2026-10-01: the shadow left the daily click ahead of the end date.** The owner
+decided not to renew EODHD. That day the shadow spent an hour re-downloading
+every history: EODHD had not yet published the session, and it was serving full
+histories at 8–10 s a symbol. Step 1 above is therefore closed early and step 2
+is done. `scripts/record_live_source_shadow.py`, `data/research/live_source_shadow.db`
+and `data/eodhd_cache/` all remain.

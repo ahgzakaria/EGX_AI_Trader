@@ -275,6 +275,17 @@ def test_the_run_builds_the_t0_radar_after_the_import():
     assert main.index("run_cost_bank()") < main.index("run_t0_radar()")
 
 
+def test_the_daily_run_no_longer_waits_on_eodhd():
+    """The owner is not renewing EODHD (2026-10-01). That day the shadow step spent
+    an hour re-downloading the histories EODHD had not yet updated, holding up the
+    radar and the recorders behind it, so it left the click for good."""
+
+    text = (ROOT / "scripts" / "run_daily_update.py").read_text(encoding="utf-8")
+    main = text[text.index("def main("):]
+    assert "record_live_source_shadow" not in main
+    assert "live_source_shadow.db" not in text[text.index("RECORDERS = ("):text.index("def check_recorders")]
+
+
 def test_the_run_banks_the_trading_cost_while_the_archive_still_holds_it():
     """The trade archive keeps fourteen sessions; one not banked inside that
     window is gone. It ran by hand until 2026-10-01 and fell three weeks behind."""

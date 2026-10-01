@@ -15,11 +15,16 @@ this, in the order the inputs require:
   3. rebuild the sector liquidity history from it
   4. check that the daily candle reached the last completed session
   5. record and grade the gap forward test, which used to run on a clock
-  6. record the live-source shadow: the live rules on EODHD and on Mubasher
-  7. record what Swing Breakout and Breakout Watch named
-  8. bank each name's measured trading cost from the terminal's trade archive
-  9. build tomorrow's T+0 radar, and grade the lists before it
- 10. check that the stores which record themselves have not stalled
+  6. record what Swing Breakout and Breakout Watch named
+  7. bank each name's measured trading cost from the terminal's trade archive
+  8. build tomorrow's T+0 radar, and grade the lists before it
+  9. check that the stores which record themselves have not stalled
+
+Nothing here reads EODHD. The live-source shadow, which ran the live rules on
+EODHD and on Mubasher side by side, was taken out on 2026-10-01: the owner is
+not renewing the EODHD subscription, and that day the step spent an hour
+re-downloading every history EODHD had not yet brought up to date.
+``scripts/record_live_source_shadow.py`` and what it recorded remain.
 
 Step 1 is not decoration. The download is manual, so the likeliest reason a run
 produces nothing is that it did not happen -- and an import that reads a file
@@ -32,7 +37,7 @@ rebuild is worth knowing about separately from an import that did not happen.
 The exit code is 0 only when the last completed session is present in the
 store. That is the one thing worth failing on: everything downstream reads it,
 and a run that looks like it worked while the candle stayed a day behind is the
-failure this replaces. Step 6 is reported rather than failed on, because those
+failure this replaces. The recorder check is reported rather than failed on, because those
 stores are written by other tasks -- but a recorder that stops says nothing on
 its own, and the forward tests it feeds take a month to be worth reading.
 """
@@ -500,29 +505,6 @@ def run_t0_radar():
     return completed.returncode == 0
 
 
-def run_live_source_shadow():
-    """Run the live rules on EODHD and on Mubasher and record where they agree.
-
-    It belongs to the click rather than to a clock for the same reason the
-    import does: the session it records is only in Mubasher's record once the
-    download has been done. The recorder is idempotent per session.
-    """
-
-    import subprocess
-
-    completed = subprocess.run(
-        [sys.executable, "scripts/record_live_source_shadow.py"],
-        capture_output=True, text=True, encoding="utf-8", errors="replace")
-    for line in (completed.stdout or "").splitlines():
-        if line.strip():
-            _say(f"  {line.rstrip()}")
-    if completed.returncode != 0:
-        for line in (completed.stderr or "").splitlines()[-6:]:
-            if line.strip():
-                _say(f"  ! {line.rstrip()}")
-    return completed.returncode == 0
-
-
 #: The stores that are supposed to gain a row every session, and where each
 #: keeps the session it is up to. They are written by their own scheduled
 #: tasks, not by this run -- which is exactly why they are checked here. A
@@ -534,7 +516,6 @@ RECORDERS = (
     ("swing breakout",    "data/swing_breakout_forward.db", "sessions", "session_date"),
     ("confirmed breakout", "data/confirmed_breakout_forward.db", "sessions", "session_date"),
     ("live sessions",     "data/forward_testing.db", "live_sessions", "session_date"),
-    ("live source shadow", "data/research/live_source_shadow.db", "runs", "session_date"),
     ("t0 radar",          "data/t0_radar_forward.db", "runs", "session_date"),
 )
 
@@ -579,7 +560,7 @@ def main(argv=None):
                         help="import only; leave the sector history alone")
     args = parser.parse_args(argv)
 
-    total = 9 if args.skip_sector_flow else 10
+    total = 8 if args.skip_sector_flow else 9
     _open_log()
     _say()
     _say(RULE)
@@ -622,11 +603,6 @@ def main(argv=None):
     _step(step, total, "record and grade the gap forward test")
     if not run_gap_forward():
         failures.append("the gap forward test did not record")
-    step += 1
-
-    _step(step, total, "record the live-source shadow: EODHD against Mubasher")
-    if not run_live_source_shadow():
-        failures.append("the live-source shadow did not record")
     step += 1
 
     _step(step, total, "record what Swing Breakout and Breakout Watch named")
