@@ -16,7 +16,10 @@ this, in the order the inputs require:
   4. check that the daily candle reached the last completed session
   5. record and grade the gap forward test, which used to run on a clock
   6. record the live-source shadow: the live rules on EODHD and on Mubasher
-  7. check that the stores which record themselves have not stalled
+  7. record what Swing Breakout and Breakout Watch named
+  8. bank each name's measured trading cost from the terminal's trade archive
+  9. build tomorrow's T+0 radar, and grade the lists before it
+ 10. check that the stores which record themselves have not stalled
 
 Step 1 is not decoration. The download is manual, so the likeliest reason a run
 produces nothing is that it did not happen -- and an import that reads a file
@@ -436,6 +439,67 @@ def run_swing_forward():
     return completed.returncode == 0
 
 
+def run_cost_bank():
+    """Bank every session's measured round-trip cost the terminal still holds.
+
+    The trade archive it reads keeps a rolling fourteen sessions, so a session
+    not banked within that window is lost for good -- and until 2026-10-01 this
+    ran only by hand, which left the bank three weeks behind the market. The T+0
+    radar reads each name's cost from here, so it runs first. Idempotent: a
+    session already banked is skipped.
+    """
+
+    import subprocess
+
+    completed = subprocess.run(
+        [sys.executable, "scripts/bank_effective_cost.py"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    lines = [line for line in (completed.stdout or "").splitlines() if line.strip()]
+    for line in lines[-3:]:
+        _say(f"  {line.rstrip()}")
+    if completed.returncode != 0:
+        for line in (completed.stderr or "").splitlines()[-6:]:
+            if line.strip():
+                _say(f"  ! {line.rstrip()}")
+    return completed.returncode == 0
+
+
+def run_t0_radar():
+    """Build tomorrow's T+0 radar from the session just imported, and grade the old lists.
+
+    It belongs to the click for the reason the breakout recorder does: the list
+    is only worth anything once the session it reads is in the store. Its forward
+    record keeps the first list it is given for a session, so a second click
+    writes a fresh CSV and records nothing new.
+    """
+
+    import subprocess
+
+    completed = subprocess.run(
+        [sys.executable, "scripts/run_t0_radar.py"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    output = (completed.stdout or "").split("\nstatus written to", 1)[0]
+    try:
+        result = json.loads(output)
+    except ValueError:
+        result = None
+    if isinstance(result, dict):
+        record = result.get("record") or {}
+        _say(f"  {result.get('status')}  session {result.get('session_date')}: "
+             f"{result.get('candidates', 0)} candidates; recorded "
+             f"{result.get('recorded', 0)}, graded {result.get('graded', 0)}; "
+             f"{record.get('sessions_graded', 0)} session(s) graded so far")
+        if result.get("csv"):
+            _say(f"  list: {result['csv']}")
+    elif completed.stdout:
+        _say("  " + completed.stdout.strip().splitlines()[-1])
+    if completed.returncode != 0:
+        for line in (completed.stderr or "").splitlines()[-6:]:
+            if line.strip():
+                _say(f"  ! {line.rstrip()}")
+    return completed.returncode == 0
+
+
 def run_live_source_shadow():
     """Run the live rules on EODHD and on Mubasher and record where they agree.
 
@@ -471,6 +535,7 @@ RECORDERS = (
     ("confirmed breakout", "data/confirmed_breakout_forward.db", "sessions", "session_date"),
     ("live sessions",     "data/forward_testing.db", "live_sessions", "session_date"),
     ("live source shadow", "data/research/live_source_shadow.db", "runs", "session_date"),
+    ("t0 radar",          "data/t0_radar_forward.db", "runs", "session_date"),
 )
 
 
@@ -514,7 +579,7 @@ def main(argv=None):
                         help="import only; leave the sector history alone")
     args = parser.parse_args(argv)
 
-    total = 7 if args.skip_sector_flow else 8
+    total = 9 if args.skip_sector_flow else 10
     _open_log()
     _say()
     _say(RULE)
@@ -567,6 +632,16 @@ def main(argv=None):
     _step(step, total, "record what Swing Breakout and Breakout Watch named")
     if not run_swing_forward():
         failures.append("the swing breakout forward test did not record")
+    step += 1
+
+    _step(step, total, "bank each name's measured trading cost")
+    if not run_cost_bank():
+        failures.append("the trading-cost bank did not update")
+    step += 1
+
+    _step(step, total, "build tomorrow's T+0 radar and grade the lists before it")
+    if not run_t0_radar():
+        failures.append("the T+0 radar did not build")
     step += 1
 
     _step(step, total, "are the forward-test recorders still recording?")

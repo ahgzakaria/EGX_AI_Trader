@@ -88,22 +88,25 @@ def test_navigation_is_the_portfolio_two_workspaces_and_tools():
     sections = _section_titles()
     headings = list(sections)
 
-    assert len(headings) == 5, headings
+    assert len(headings) == 6, headings
     assert "TERMINAL" in headings[0]
     assert "PORTFOLIO" in headings[1]
     assert "SWING" in headings[2]
-    assert "AI ANALYSIS" in headings[3]
-    assert "SYSTEM" in headings[4]
+    assert "T+0" in headings[3]
+    assert "AI ANALYSIS" in headings[4]
+    assert "SYSTEM" in headings[5]
 
     # The terminal is one screen and owns no job: it reads what the other pages
     # produced, and every control on it is a link to the page that produces it.
     assert sections[headings[0]] == ["Terminal"]
     # The portfolio is one page, not a workspace that grew a second view.
     assert sections[headings[1]] == ["My Portfolio"]
+    # Same-session trading is one post-close list, not a workspace of signals.
+    assert sections[headings[3]] == ["T+0 Radar"]
     # AI Analysis is its own workspace, not filed with the diagnostics.
-    assert sections[headings[3]] == ["AI Analysis"]
+    assert sections[headings[4]] == ["AI Analysis"]
     # System holds tools only; nothing that produces a trading signal.
-    assert sections[headings[4]] == ["System Health", "Settings"]
+    assert sections[headings[5]] == ["System Health", "Settings"]
 
 
 def test_there_is_no_scalping_workspace_left():
@@ -153,6 +156,13 @@ def test_every_page_is_reachable_exactly_once():
     post-close read of everything the other pages produced, on one screen that
     does not scroll. It owns no job -- its controls are links to the pages that
     do -- which is why it is filed apart from the workspaces that run them.
+
+    "T+0 Radar" joined on 2026-10-01, at the owner's request, in a section of
+    its own. It is a list read after the close -- a forecast of how far each
+    liquid name moves next session, with the reasons for each -- and not a
+    return of the retired scalping workspace: it issues no signal, watches
+    nothing while the session runs, and claims no direction. Its one claim, the
+    size forecast, is graded in its forward record.
     """
     titles = _page_titles()
     assert len(titles) == len(set(titles)), f"a page is listed twice: {titles}"
@@ -161,7 +171,7 @@ def test_every_page_is_reachable_exactly_once():
         "My Portfolio",
         "Daily Dashboard", "Swing Breakout", "Breakout Watch",
         "Confirmed Breakout", "Sector Liquidity", "Watchlist",
-        "Stock Details", "AI Analysis", "System Health", "Settings",
+        "Stock Details", "T+0 Radar", "AI Analysis", "System Health", "Settings",
     }
 
 

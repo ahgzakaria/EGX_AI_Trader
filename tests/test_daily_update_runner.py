@@ -263,6 +263,26 @@ def test_the_run_records_what_the_two_breakout_pages_named():
     assert "swing_breakout_forward.db" in text
 
 
+def test_the_run_builds_the_t0_radar_after_the_import():
+    """The radar is read after the close, so it belongs to the click that
+    imports the close -- and its record is watched like every other one."""
+
+    text = (ROOT / "scripts" / "run_daily_update.py").read_text(encoding="utf-8")
+    assert "scripts/run_t0_radar.py" in text
+    assert "t0_radar_forward.db" in text
+    main = text[text.index("def main("):]
+    # The radar reads each name's cost from the bank, so the bank goes first.
+    assert main.index("run_cost_bank()") < main.index("run_t0_radar()")
+
+
+def test_the_run_banks_the_trading_cost_while_the_archive_still_holds_it():
+    """The trade archive keeps fourteen sessions; one not banked inside that
+    window is gone. It ran by hand until 2026-10-01 and fell three weeks behind."""
+
+    text = (ROOT / "scripts" / "run_daily_update.py").read_text(encoding="utf-8")
+    assert "scripts/bank_effective_cost.py" in text
+
+
 def test_the_runner_forces_the_sector_rebuild():
     """Left to its own missing-session check it would find none and skip.
 

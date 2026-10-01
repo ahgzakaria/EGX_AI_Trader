@@ -47,6 +47,7 @@ from dashboard.sector_flow import show_sector_flow
 from dashboard.settings import show_settings
 from dashboard.swing_signals import show_swing_signals
 from dashboard.system_health import show_system_health
+from dashboard.t0_radar import show_t0_radar
 from dashboard.ui import apply_global_style, sidebar_brand, sidebar_health
 from dashboard.watchlist import show_watchlist
 from services.experiment_tracking import RunRepository
@@ -128,6 +129,19 @@ navigation = st.navigation({
         ),
         st.Page(show_watchlist, title="Watchlist"),
         st.Page(show_stock_details_page, title="Stock Details"),
+    ],
+    # Same-session trading, back as one list and nothing else. Added on
+    # 2026-10-01 at the owner's request, as an assistant to a trader who decides
+    # every order himself: read after the close, it forecasts how far each liquid
+    # name will move in the next session and says why each one is listed. It does
+    # not reopen the retired workspace below -- no signal, no entry, no stop,
+    # nothing watched while the session runs -- and it makes no direction claim:
+    # replayed over 500 sessions its first ten moved 5.1% against 2.8% for the
+    # rest, and closed up no more often than anything else
+    # (docs/audits/strategies/T0_RADAR_ACCURACY.md). The size forecast is graded
+    # every day in its forward record.
+    "مضاربة · T+0": [
+        st.Page(show_t0_radar, title="T+0 Radar", url_path="t0-radar"),
     ],
     # There is no SCALPING workspace any more. ORB Signals joined the earlier
     # retirements (Scalping Dashboard / Active Trades / History, backed by
