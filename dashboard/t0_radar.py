@@ -159,7 +159,139 @@ def _render_record(top):
 def show_t0_radar() -> None:
     page_header("رادار T+0 · T+0 Radar",
                 "Built after the close: how far each liquid name is likely to move in the "
-                "next session, and why each one is on the list.")
+                "next session, and which names are testing a rising 200-day average.")
+    radar_tab, sma_tab = st.tabs(["رادار T+0 · next-session range",
+                                  "اختبار متوسط 200 يوم · 200-day average tests"])
+    with radar_tab:
+        _show_radar()
+    with sma_tab:
+        _show_sma200()
+
+
+# --- the 200-day average tab ---------------------------------------------------
+
+SMA_VISIBLE = ("symbol", "name", "close", "sma", "dist", "low_dist", "peak", "slope", "rsi",
+               "turnover")
+SMA_LABELS = {
+    "symbol": "Symbol", "name": "Name", "close": "Close", "sma": "SMA200",
+    "dist": "Close vs SMA200 %", "low_dist": "Low vs SMA200 %",
+    "peak": "Was above, max %", "slope": "SMA200 20d slope %", "rsi": "RSI14",
+    "turnover": "Turnover 20d (M)",
+}
+
+
+def _store_key():
+    """Changes whenever the daily import rewrites the measured store."""
+
+    from sector_flow import measured_turnover
+
+    path = Path(measured_turnover.DEFAULT_DATABASE)
+    try:
+        stat = path.stat()
+    except OSError:
+        return "missing"
+    return f"{path.resolve()}:{stat.st_size}:{stat.st_mtime_ns}"
+
+
+@st.cache_data(show_spinner=False)
+def _sma200_scan(_store_key: str):
+    from t0_radar import sma200
+
+    result = sma200.scan()
+    return result.session_date, result.below_sma20_share, result.selloff, result.names
+
+
+def _sma200_table(frame):
+    view = frame[[c for c in SMA_VISIBLE if c in frame.columns]].copy()
+    for column in ("dist", "low_dist", "peak", "slope"):
+        view[column] = view[column] * 100
+    view["turnover"] = view["turnover"] / 1e6
+    st.dataframe(view.rename(columns=SMA_LABELS).round(2), hide_index=True, width="stretch")
+
+
+def _show_sma200():
+    from t0_radar import sma200
+
+    with st.spinner("Reading the record…"):
+        session, below_share, selloff, names = _sma200_scan(_store_key())
+    evidence = sma200.EVIDENCE
+    good, bad, normal = (evidence["selloff_on_or_above"], evidence["selloff_below"],
+                         evidence["normal_on_or_above"])
+    st.info(
+        "الاختبار لوحده قرعة: على 2014–2026 السهم اللي نزل لمتوسط 200 يوم سبق السهم العادي "
+        f"بعد 20 جلسة في {normal['beat']} من {normal['episodes']} موجة في السوق العادي. "
+        "الفرق بييجي من حاجتين مع بعض: هبوط عام (75% أو أكتر من الأسهم تحت متوسط 20 يوم)، "
+        "وإن السهم يقفل على المتوسط أو فوقه. في الحالة دي سبق السوق في "
+        f"{good['beat']} من {good['episodes']} موجة بفارق {good['lift_median']:+.1f}% وارتد "
+        f"{good['bounce']}% من المرات. ولو قفل تحته: {bad['beat']} من {bad['episodes']} موجة، "
+        f"{bad['lift_median']:+.1f}%، وكسر {bad['break']}% من المرات. "
+        "ده دليل على 20 جلسة، مش على جلسة واحدة، ومش توصية.")
+
+    if session is None:
+        empty_state("No record", "The measured store could not be read.", icon="⌕")
+        return
+
+    header = st.columns(3)
+    header[0].metric("Data closed on", session)
+    header[1].metric("Liquid names below SMA20",
+                     "unknown" if below_share is None else f"{below_share:.0%}")
+    header[2].metric("Broad sell-off", "yes" if selloff else "no",
+                     help=f"At least {sma200.SELLOFF_SHARE:.0%} of liquid names below their "
+                          "own 20-day average. The evidence for a test that closes on or "
+                          "above the average holds only in a broad sell-off.")
+    if not selloff:
+        st.caption("Not a broad sell-off today: on the record, a test in a normal market is "
+                   "a coin flip whichever side it closed on.")
+
+    parts = {key: (names[names["state"] == key] if len(names) else names)
+             for key in (sma200.ON_OR_ABOVE, sma200.BELOW, sma200.APPROACHING, sma200.BROKE)}
+
+    section_header("قفلت على المتوسط أو فوقه · Closed on or above the average",
+                   f"{len(parts[sma200.ON_OR_ABOVE])} names. The side the record favours, "
+                   "in a broad sell-off.")
+    if len(parts[sma200.ON_OR_ABOVE]):
+        _sma200_table(parts[sma200.ON_OR_ABOVE])
+    else:
+        st.caption("None on this session.")
+
+    section_header("قفلت تحت المتوسط · Closed below the average",
+                   f"{len(parts[sma200.BELOW])} names. On the record these broke first more "
+                   "often than they bounced.")
+    if len(parts[sma200.BELOW]):
+        _sma200_table(parts[sma200.BELOW])
+    else:
+        st.caption("None on this session.")
+
+    with st.expander(f"قريبة من المتوسط · Approaching, 2–6% above "
+                     f"({len(parts[sma200.APPROACHING])})"):
+        if len(parts[sma200.APPROACHING]):
+            _sma200_table(parts[sma200.APPROACHING])
+        else:
+            st.caption("None on this session.")
+    with st.expander(f"كسرته · Already through it, 3–10% below "
+                     f"({len(parts[sma200.BROKE])})"):
+        if len(parts[sma200.BROKE]):
+            _sma200_table(parts[sma200.BROKE])
+        else:
+            st.caption("None on this session.")
+
+    st.caption(
+        f"A test: the 200-day average is rising over {sma200.SLOPE_SESSIONS} sessions, the "
+        f"name closed at least {sma200.CAME_FROM_ABOVE:.0%} above it within the last "
+        f"{sma200.CAME_FROM} sessions, the low reached within {sma200.ZONE_ABOVE:.0%} above "
+        f"it and the close is no more than {sma200.ZONE_BELOW:.0%} below it, turnover is at "
+        f"least {sma200.LIQUIDITY_EGP / 1e6:g}M EGP a session, and no move past the ±20% "
+        "limit in 200 sessions. Evidence: docs/audits/strategies/SMA200_PULLBACK.md.")
+    if len(names):
+        st.download_button("Download the 200-day list as CSV",
+                           data=names.to_csv(index=False).encode("utf-8-sig"),
+                           file_name=f"sma200_tests_{session}.csv", mime="text/csv")
+
+
+# --- the radar tab -------------------------------------------------------------
+
+
+def _show_radar():
     st.info(radar.HEADER_NOTE)
     _t0_banner()
 
