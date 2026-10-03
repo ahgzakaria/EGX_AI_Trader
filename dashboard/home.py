@@ -93,6 +93,23 @@ TERMINAL_HEADLINES = {
     job_manager.FAILED: ("error", "Scan failed"),
 }
 
+#: The market classifier's labels, in the words the page's summary uses. A label
+#: not listed here is shown as it is rather than guessed at.
+MARKET_STATE_AR = {
+    "STRONG_BULL": "صاعد بقوة",
+    "BULL": "صاعد",
+    "WEAK_BULL": "صاعد ضعيف",
+    "SIDEWAYS": "عرضي، من غير اتجاه واضح",
+    "HIGH_VOLATILITY": "متذبذب جدًا",
+    "BEAR": "هابط",
+    "PANIC": "هبوط حاد",
+    "UNKNOWN": "غير معروف",
+    "INSUFFICIENT_CURRENT_COVERAGE": "مش واضح: بيانات النهارده ناقصة لأسهم كتير",
+}
+
+#: How many names the summary lists before saying "and N more".
+SUMMARY_NAMES = 8
+
 
 #: Below this share of rows agreeing on one session date, a single headline date
 #: would misdescribe the table underneath it.
@@ -219,9 +236,21 @@ def discover_job(workspace_key):
     return job
 
 
-def _render_terminal_summary(job):
-    """Headline and counts for a finished job, above the existing results renderer."""
+def _render_terminal_summary(job, details=None):
+    """Headline and counts for a finished job.
+
+    A scan that finished cleanly says nothing here: the page's summary already
+    states what was analysed, and the counts below are in the scan details. A
+    scan that failed, was cancelled or carries an error shows everything at once,
+    where it cannot be missed -- that is the case these counts exist for.
+    """
     snapshot = job.progress()
+    clean = (snapshot.state in (job_manager.COMPLETED, job_manager.COMPLETED_WITH_GAPS)
+             and not job.sanitized_error)
+    if details is None:
+        details = not clean
+    if not details:
+        return
     tone, headline = TERMINAL_HEADLINES.get(snapshot.state, ("info", "Scan finished"))
     getattr(st, tone)(f"{headline} · scan `{snapshot.scan_id}`")
     if job.sanitized_error:
@@ -602,6 +631,44 @@ def _breakout_board(results):
     board = SimpleNamespace(confirmed=confirmed, fresh=fresh, cfg=cfg)
     st.session_state["_breakout_board_cache"] = (key, board)
     return board
+
+
+def _names(symbols):
+    from dashboard.formatting import display_ticker
+
+    shown = [display_ticker(s) or str(s) for s in symbols[:SUMMARY_NAMES]]
+    more = len(symbols) - len(shown)
+    return "، ".join(shown) + (f" و{more} كمان" if more > 0 else "")
+
+
+def _render_plain_summary(board, market_state, latest_date, analysed, attempted, excluded):
+    """What the scan found, in four plain sentences, before anything else.
+
+    The page used to open on the scan's diagnostics -- its id, typed outcome
+    codes, coverage counters and a rank-correlation caveat -- in English, so the
+    answer (often "nothing today") sat under twenty-odd lines nobody trading
+    needed. Every number here is one the page already computed; the diagnostics
+    are unchanged and sit behind the details switch below.
+    """
+
+    signals = [signal.symbol for signal in board.confirmed.signals]
+    fresh = [item.symbol for item in board.fresh]
+    buy_line = (f"**{len(signals)}**: {_names(signals)}" if signals else
+                "مفيش النهارده. القاعدة دي بتطلّع حوالي 90 إشارة في السنة على السوق كله، "
+                "فأغلب الأيام بتبقى فاضية، وده طبيعي.")
+    watch_line = (f"**{len(fresh)}**: {_names(fresh)}" if fresh else
+                  "مفيش سهم جديد قفل فوق أعلى سعر له في آخر 20 جلسة.")
+    state = MARKET_STATE_AR.get(str(market_state), str(market_state))
+    data_line = f"محدّثة لحد جلسة {latest_date}، واتحلل {analysed} سهم من {attempted}"
+    if excluded:
+        data_line += f" ({excluded} اتستبعدوا لأن بياناتهم ناقصة أو قديمة)"
+    with st.container(border=True):
+        st.markdown(
+            f"#### الخلاصة\n"
+            f"- **إشارات شرا (اختراق مؤكد):** {buy_line}\n"
+            f"- **أسهم للمتابعة (اختراق قمة 20 يوم):** {watch_line}\n"
+            f"- **حالة السوق:** {state}\n"
+            f"- **البيانات:** {data_line}")
 
 
 def _render_breakout_board(board):
@@ -1046,10 +1113,6 @@ def show_dashboard():
         icon="📊",
         badge="SWING",
     )
-    st.info(
-        "هذه الصفحة للتداول اليومي والمتوسط فقط. متابعة السكالبنج موجودة في "
-        "لوحة السكالبنج."
-    )
 
     live_policy_version = "SWING_HISTORY_PLUS_RUBIX_QUOTE_V5_ADAPTIVE_SELECTOR"
     if st.session_state.get("live_policy_version") != live_policy_version:
@@ -1080,11 +1143,9 @@ def show_dashboard():
     # away and back all reattach here instead of offering to start another scan.
     job = discover_job(workspace_key)
 
-    # The provider banner reads the configured operational route and the live job — it
-    # never infers a Yahoo fallback from Rubix quote health.
-    provider_placeholder = st.empty()
-    with provider_placeholder.container():
-        _render_scan_status(job.progress() if job is not None else None)
+    # The provider banner -- which record, which candle, no live quotes -- moved
+    # into the scan details below the results: above the button it was three
+    # technical lines in English before the page had said anything a trader uses.
 
     # Read job state ONCE per render. Reading ``is_active`` separately for the
     # button, the panel and the early return let one render disagree with
@@ -1111,7 +1172,8 @@ def show_dashboard():
             type="primary",
             width="stretch",
             disabled=active or awaiting_result or scan_completed,
-            help="One immutable market scan is recorded per application session.",
+            help="بيتسجل فحص واحد بس لكل مرة تفتح فيها البرنامج · "
+                 "One immutable market scan is recorded per application session.",
             key="run_market_scan",
         ):
             # Atomic in the registry, not merely disabled in the UI: a double
@@ -1146,8 +1208,8 @@ def show_dashboard():
             # summary and the normal market-results renderer below both see it.
             _adopt_finished_job(job)
             _render_terminal_summary(job)
-        _render_scan_job(job)
         if active or job.result_pending:
+            _render_scan_job(job)
             # The scan still owns the page. ``terminal_without_result`` keeps the
             # poller mounted through the brief window between the worker's
             # terminal state and its published result, so the handoff cannot be
@@ -1161,18 +1223,23 @@ def show_dashboard():
     if st.session_state.results is None:
         if _render_failed_archive_provenance(job):
             return
+        if job is not None:
+            # A finished job with no result: its progress panel is the explanation.
+            _render_scan_job(job)
         empty_state(
-            "No market scan yet",
-            "Run the scanner to create an immutable Phase 6/7 experiment.",
+            "مفيش نتيجة فحص لسه",
+            "اضغط «فحص السوق اليومي» فوق. بياخد حوالي دقيقة، وبعدها الخلاصة بتظهر هنا.",
             icon="🔎",
         )
         return
 
     results = st.session_state.results
     if not results:
+        if job is not None:
+            _render_scan_job(job)
         empty_state(
-            "No market data returned",
-            "Review failed-symbol details and the market-data connection.",
+            "الفحص مارجعش بيانات",
+            "مفيش سهم اتقرا. اتأكد إن التحديث اليومي اشتغل، وتفاصيل الفحص في القسم اللي فوق.",
             icon="⚠️",
         )
         return
@@ -1189,27 +1256,13 @@ def show_dashboard():
     # no stale row can reach a decision table. What remains is to say so
     # honestly: how much of the universe that represents, and whether it is
     # enough to support a market-WIDE claim.
-    coverage = getattr(results, "universe_coverage", None)
-    if coverage is not None:
-        render_coverage_panel(coverage, results)
-        if not coverage.market_wide_allowed:
-            st.session_state["market_regime_label"] = INSUFFICIENT_CURRENT_COVERAGE
+    # The state is set here, whatever is shown: the panel that explains it is in
+    # the scan details.
+    universe_coverage = getattr(results, "universe_coverage", None)
+    if universe_coverage is not None and not universe_coverage.market_wide_allowed:
+        st.session_state["market_regime_label"] = INSUFFICIENT_CURRENT_COVERAGE
 
     df = pd.DataFrame(results)
-    # The final banner is rendered from what the scan actually observed. It must NOT go
-    # back through ``summarize_frames``: with no observations that helper infers a
-    # fallback from Rubix quote health and announces ``local_cache:yahoo`` for the daily
-    # history provider — the exact mislabel this page was fixed to stop telling.
-    provider_placeholder.empty()
-    with provider_placeholder.container():
-        if job is not None:
-            _render_scan_status(job.progress(),
-                                result_metadata=_observed_metadata(results))
-        else:
-            # No job in this session (e.g. results restored from an older run): keep the
-            # legacy summary rather than inventing a provider we did not observe.
-            _render_provider_status(summarize_frames(
-                [row.get("Data") for row in results], purpose="dashboard"))
     df["_AIProbabilitySort"] = pd.to_numeric(
         df["AIProbability"], errors="coerce"
     ).fillna(-1.0)
@@ -1237,18 +1290,6 @@ def show_dashboard():
         for row in results if row.get("Data") is not None and len(row["Data"])
     ]
     latest_date = max(latest_dates).date().isoformat() if latest_dates else "N/A"
-    st.caption(
-        f"آخر شمعة يومية مكتملة: {latest_date} · "
-        f"مرجع الفحص: {run_id or 'غير متاح'}"
-    )
-    st.caption(
-        "الترتيب ثابت وليس تقييمًا للجودة · **The order is stable, not a "
-        "quality ranking.** Measured among the candidates that reach it, the "
-        "score's rank correlation with the outcome is +0.15 in 2016–2022 and "
-        "**+0.01 (p = 0.76)** in 2023–2026, and no reweighting of its "
-        "components recovers that. Read the gates, not the position in the "
-        "table."
-    )
 
     coverage = list(getattr(results, "coverage", []) or [])
     failed_coverage = [
@@ -1272,60 +1313,21 @@ def show_dashboard():
     # kept beside them, labelled, because they are what it is compared against.
     board = _breakout_board(results)
     confirmed_count, fresh_count = board.confirmed.count, len(board.fresh)
-    st.markdown(
-        context_strip([
-            ("اختراق مؤكد", str(confirmed_count),
-             "green" if confirmed_count else "gray", ""),
-            ("اختراقات 20 يوم", str(fresh_count), "blue" if fresh_count else "gray", ""),
-            ("قديمة · شراء BUY", str(buy), "gray", share(buy)),
-            ("قديمة · متابعة WATCH", str(watch), "gray", share(watch)),
-            # Roughly half of every scan lands here. Saying so is the difference
-            # between a table the reader scans and one the reader filters.
-            ("قديمة · تجنب AVOID", str(avoid), "gray", share(avoid)),
-            ("التغطية", f"{total}/{attempted}",
-             "amber" if failed_coverage else "green",
-             f"−{len(failed_coverage)}" if failed_coverage else ""),
-            ("حالة السوق", market_state, "blue", ""),
-            ("الجلسة", str(latest_date), "gray", ""),
-            # Who quoted AND whether it is current. It was green "Rubix" on
-            # five-day-old quotes after the feed was retired; see
-            # price_source_reading.
-            ("مصدر السعر", *price_source_reading(results)),
-        ]),
-        unsafe_allow_html=True,
-    )
 
-    if failed_coverage:
-        # One line. It was a Streamlit warning box: three lines of chrome for
-        # one fact, directly above the first result.
-        st.markdown(
-            notice("EXCLUSION · استبعاد",
-                   f"تعذر تحليل {len(failed_coverage)} سهم لعدم اكتمال البيانات "
-                   f"أو عدم تطابق الجلسة — عُزلت لمنع إشارة زائفة. "
-                   f"التفاصيل في البحث المتقدم أسفل الصفحة."),
-            unsafe_allow_html=True,
-        )
-
+    # What the scan found comes first, in plain words; then the two lists it
+    # summarises; then the table to look any name up in. The diagnostics that
+    # used to lead the page follow behind one switch, unchanged.
+    # Counted against the whole universe when the scan reports it: ``attempted``
+    # leaves out the names already dropped as stale, so "216 of 224, 8 excluded"
+    # hid five of the thirteen the scan set aside on 2026-10-01.
+    universe_total = getattr(universe_coverage, "universe_total", 0) or attempted
+    _render_plain_summary(board, market_state, latest_date, total, universe_total,
+                          max(0, universe_total - total))
     _render_breakout_board(board)
 
-    # The old rule, below the breakouts and labelled. It stays because its
-    # forward record goes on and is what the new lists are compared against.
-    section_header("القاعدة القديمة · مرجع للمقارنة",
-                   "The previous rule's buys -- kept to compare against, "
-                   "measured without an edge")
-    st.markdown(notice("LEGACY · مرجع", LEGACY_RULE_NOTE), unsafe_allow_html=True)
-    top_buy = df[df["Signal"] == "BUY"].head(9)
-    with st.expander(f"شراء القاعدة القديمة ({len(top_buy)})", expanded=False):
-        if top_buy.empty:
-            empty_state(
-                "لا توجد فرص شراء اليوم",
-                "يمكن متابعة الأسهم الأخرى من الجدول المختصر أدناه.",
-                icon="○",
-            )
-        else:
-            _render_opportunities(top_buy)
-
     section_header("جدول السوق المختصر", "Compact market table")
+    st.caption("ابحث عن أي سهم وشوف مستوياته. عمود «القرار» هنا جاي من القاعدة القديمة "
+               "(مرجع للمقارنة ومالهاش ميزة متقاسة)، مش إشارة شرا.")
     search_col, signal_col, result_col = st.columns([2, 1, 1])
     search = search_col.text_input(
         "ابحث عن سهم",
@@ -1362,6 +1364,90 @@ def show_dashboard():
                     EMA20_COLUMN, width="medium", help=EMA20_MARKER_HELP),
             },
         )
+
+    if not st.toggle(
+            "عرض تفاصيل الفحص · Scan details", value=False, key="dashboard_scan_details",
+            help="مصدر البيانات، والتغطية، وأسباب استبعاد الأسهم، وأرقام القاعدة "
+                 "القديمة، والبحث المتقدم."):
+        return
+
+    # The final banner is rendered from what the scan actually observed. It must NOT go
+    # back through ``summarize_frames``: with no observations that helper infers a
+    # fallback from Rubix quote health and announces ``local_cache:yahoo`` for the daily
+    # history provider — the exact mislabel this page was fixed to stop telling.
+    if job is not None:
+        _render_scan_status(job.progress(), result_metadata=_observed_metadata(results))
+        _render_terminal_summary(job, details=True)
+        _render_scan_job(job)
+    else:
+        # No job in this session (e.g. results restored from an older run): keep the
+        # legacy summary rather than inventing a provider we did not observe.
+        _render_provider_status(summarize_frames(
+            [row.get("Data") for row in results], purpose="dashboard"))
+    if universe_coverage is not None:
+        render_coverage_panel(universe_coverage, results)
+    st.caption(
+        f"آخر شمعة يومية مكتملة: {latest_date} · "
+        f"مرجع الفحص: {run_id or 'غير متاح'}"
+    )
+    st.caption(
+        "الترتيب ثابت وليس تقييمًا للجودة · **The order is stable, not a "
+        "quality ranking.** Measured among the candidates that reach it, the "
+        "score's rank correlation with the outcome is +0.15 in 2016–2022 and "
+        "**+0.01 (p = 0.76)** in 2023–2026, and no reweighting of its "
+        "components recovers that. Read the gates, not the position in the "
+        "table."
+    )
+    st.markdown(
+        context_strip([
+            ("اختراق مؤكد", str(confirmed_count),
+             "green" if confirmed_count else "gray", ""),
+            ("اختراقات 20 يوم", str(fresh_count), "blue" if fresh_count else "gray", ""),
+            ("قديمة · شراء BUY", str(buy), "gray", share(buy)),
+            ("قديمة · متابعة WATCH", str(watch), "gray", share(watch)),
+            # Roughly half of every scan lands here. Saying so is the difference
+            # between a table the reader scans and one the reader filters.
+            ("قديمة · تجنب AVOID", str(avoid), "gray", share(avoid)),
+            ("التغطية", f"{total}/{attempted}",
+             "amber" if failed_coverage else "green",
+             f"−{len(failed_coverage)}" if failed_coverage else ""),
+            ("حالة السوق", market_state, "blue", ""),
+            ("الجلسة", str(latest_date), "gray", ""),
+            # Who quoted AND whether it is current. It was green "Rubix" on
+            # five-day-old quotes after the feed was retired; see
+            # price_source_reading.
+            ("مصدر السعر", *price_source_reading(results)),
+        ]),
+        unsafe_allow_html=True,
+    )
+
+    if failed_coverage:
+        # One line. It was a Streamlit warning box: three lines of chrome for
+        # one fact, directly above the first result.
+        st.markdown(
+            notice("EXCLUSION · استبعاد",
+                   f"تعذر تحليل {len(failed_coverage)} سهم لعدم اكتمال البيانات "
+                   f"أو عدم تطابق الجلسة — عُزلت لمنع إشارة زائفة. "
+                   f"التفاصيل في البحث المتقدم أسفل الصفحة."),
+            unsafe_allow_html=True,
+        )
+
+    # The old rule, below the breakouts and labelled. It stays because its
+    # forward record goes on and is what the new lists are compared against.
+    section_header("القاعدة القديمة · مرجع للمقارنة",
+                   "The previous rule's buys -- kept to compare against, "
+                   "measured without an edge")
+    st.markdown(notice("LEGACY · مرجع", LEGACY_RULE_NOTE), unsafe_allow_html=True)
+    top_buy = df[df["Signal"] == "BUY"].head(9)
+    with st.expander(f"شراء القاعدة القديمة ({len(top_buy)})", expanded=False):
+        if top_buy.empty:
+            empty_state(
+                "لا توجد فرص شراء اليوم",
+                "يمكن متابعة الأسهم الأخرى من الجدول المختصر أدناه.",
+                icon="○",
+            )
+        else:
+            _render_opportunities(top_buy)
 
     _render_swing_advanced_research(
         df,

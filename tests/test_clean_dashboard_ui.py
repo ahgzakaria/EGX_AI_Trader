@@ -71,6 +71,58 @@ def test_swing_default_view_keeps_trader_summary_primary():
     assert source.count("_render_swing_advanced_research(") == 1
 
 
+def test_the_page_opens_on_a_plain_summary_and_keeps_the_diagnostics_behind_a_switch():
+    """On 2026-10-03 the owner said he could not understand the page at all.
+
+    Its answer that day was two zeros, and they sat under some twenty-five lines
+    of English scan diagnostics: an id, typed outcome codes, coverage counters
+    and a rank-correlation caveat. The answer now comes first and in Arabic. The
+    diagnostics are unchanged, and each one is still on the page, behind one
+    switch.
+    """
+    source = inspect.getsource(show_dashboard)
+    assert source.index("_render_plain_summary(") < source.index("_render_breakout_board(")
+    switch = source.index("st.toggle(")
+    for diagnostic in ("_render_scan_status(", "render_coverage_panel(", "context_strip(",
+                       "القاعدة القديمة · مرجع للمقارنة", "_render_swing_advanced_research("):
+        assert source.index(diagnostic) > switch, f"{diagnostic} is back above the answer"
+    assert source.index("جدول السوق المختصر") < switch
+    # Retired a month ago; the page was still pointing at it.
+    assert "لوحة السكالبنج" not in source
+    assert "Phase 6/7" not in source
+
+
+def test_the_summary_names_the_signals_in_arabic(monkeypatch):
+    from types import SimpleNamespace
+
+    from dashboard import home
+
+    written = []
+
+    class _Box:
+        def container(self, **_):
+            return self
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def markdown(self, text, **_):
+            written.append(text)
+
+    monkeypatch.setattr(home, "st", _Box())
+    board = SimpleNamespace(confirmed=SimpleNamespace(signals=[SimpleNamespace(symbol="COMI.CA")]),
+                            fresh=[])
+    home._render_plain_summary(board, "WEAK_BULL", "2026-10-01", 216, 229, 13)
+    text = written[-1]
+    assert "COMI" in text and ".CA" not in text
+    assert "صاعد ضعيف" in text and "WEAK_BULL" not in text
+    assert "216" in text and "229" in text and "13" in text
+    assert "مفيش سهم جديد" in text                      # the empty watch list says so
+
+
 def test_comparisons_charts_and_developer_fields_are_advanced_only():
     default_source = inspect.getsource(show_dashboard)
     advanced_source = inspect.getsource(_render_swing_advanced_research)
